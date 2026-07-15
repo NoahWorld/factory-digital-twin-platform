@@ -1,0 +1,4 @@
+# Copy this file to .dev.vars before starting the local Worker.
+# Generate a long random value; never commit the real value.
+BOOTSTRAP_TOKEN=replace-this-with-a-long-random-bootstrap-token
+SESSION_TTL_HOURS=24

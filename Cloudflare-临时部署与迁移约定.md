@@ -26,11 +26,15 @@ Cloudflare Workers 在这里充当临时的无服务器 API 入口，不等同�
 
 ## 首个原型需要接入的内容
 
-P1 原型的 Worker 配置和 D1 初始迁移已纳入 `apps/api/`；数据库尚未执行业务表迁移。后续只通过仓库中的迁移脚本变更 schema，不在 Cloudflare 控制台中手工维护代码或表结构。最小接口为：
+P1 原型的 Worker 配置和 D1 迁移已纳入 `apps/api/`；云端数据库尚未执行业务表迁移。后续只通过仓库中的迁移脚本变更 schema，不在 Cloudflare 控制台中手工维护代码或表结构。当前最小接口为：
 
 | 接口 | 用途 | 备注 |
 | --- | --- | --- |
 | `GET /health` | 部署、监控与迁移后的存活检查 | 返回版本、时间与依赖状态；不得返回密钥 |
+| `GET /api/v1/auth/bootstrap-status` | 判断是否需要首个管理员初始化 | 不返回用户信息或令牌 |
+| `POST /api/v1/auth/bootstrap` | 创建唯一首个管理员并建立会话 | 仅 users 为空且请求携带服务端 `BOOTSTRAP_TOKEN` 时允许 |
+| `POST /api/v1/auth/login` / `logout` | 登录、退出与 HttpOnly 会话 | 不设置默认账号或公开注册 |
+| `GET` / `POST /api/v1/projects` | 按角色与项目成员关系读取/新建项目 | 项目创建需要平台管理员或交付负责人 |
 | `GET /api/v1/projects/:id` | 下发已发布项目配置 | 配置由版本化 schema 生成 |
 | `GET /api/v1/assets/:assetId/state` | REST 轮询状态样例 | 返回统一 `assetId/timestamp/values` 结构 |
 | `GET /api/v1/events` 或 WebSocket 路由 | 实时状态入口 | 先定义事件契约后接入 |
