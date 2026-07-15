@@ -1,0 +1,13 @@
+{
+  "name": "factory-digital-twin-platform",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Factory digital twin delivery platform with 2D and 3D dashboards.",
+  "packageManager": "pnpm@10.0.0",
+  "scripts": {
+    "dev:web": "pnpm --filter @factory-twin/web dev",
+    "dev:api": "pnpm --filter @factory-twin/api dev",
+    "build": "pnpm --recursive run build",
+    "check": "pnpm --recursive run check"
+  }
+}
