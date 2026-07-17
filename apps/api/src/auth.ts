@@ -1,13 +1,17 @@
-type DatabaseStatement = {
+export type DatabaseResult = {
+  meta?: { changes?: number };
+};
+
+export type DatabaseStatement = {
   bind: (...values: unknown[]) => DatabaseStatement;
   first: <T>() => Promise<T | null>;
   all: <T>() => Promise<{ results: T[] }>;
-  run: () => Promise<unknown>;
+  run: () => Promise<DatabaseResult>;
 };
 
-type Database = {
+export type Database = {
   prepare: (query: string) => DatabaseStatement;
-  batch: (statements: DatabaseStatement[]) => Promise<unknown>;
+  batch: (statements: DatabaseStatement[]) => Promise<DatabaseResult[]>;
 };
 
 export type AppEnv = {

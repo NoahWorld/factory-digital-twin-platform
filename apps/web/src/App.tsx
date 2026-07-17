@@ -1,4 +1,6 @@
 import { FormEvent, useEffect, useState } from "react";
+import { ApiRequestError, errorMessage, request } from "./api";
+import { CanvasPage } from "./pages/CanvasPage";
 
 type Capability = {
   canCreateProject: boolean;
@@ -41,56 +43,6 @@ type ProjectResponse = {
   project: Project;
   requestId: string;
 };
-
-type ApiFailure = {
-  error?: string;
-  message?: string;
-  requestId?: string;
-};
-
-class ApiRequestError extends Error {
-  constructor(
-    readonly code: string,
-    readonly requestId: string | undefined,
-    message: string,
-  ) {
-    super(message);
-  }
-}
-
-const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
-
-async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const headers = new Headers(init.headers);
-
-  if (init.body && !headers.has("content-type")) {
-    headers.set("content-type", "application/json");
-  }
-
-  const response = await fetch(`${apiBaseUrl}${path}`, {
-    ...init,
-    credentials: "include",
-    headers,
-  });
-  const contentType = response.headers.get("content-type") ?? "";
-  const payload: unknown = contentType.includes("application/json")
-    ? await response.json()
-    : null;
-
-  if (!response.ok) {
-    const failure = payload as ApiFailure | null;
-    throw new ApiRequestError(
-      failure?.error ?? "request_failed",
-      failure?.requestId,
-      failure?.message ?? `API request failed with HTTP ${response.status}.`,
-    );
-  }
-
-  return payload as T;
-}
-
-const errorMessage = (reason: unknown): string =>
-  reason instanceof Error ? reason.message : String(reason);
 
 const projectStatusText: Record<Project["status"], string> = {
   draft: "草稿",
@@ -397,12 +349,33 @@ type WorkspaceProps = {
   onLogout: () => Promise<void>;
 };
 
+type WorkspaceRoute =
+  | { kind: "projects" }
+  | { kind: "canvas"; projectId: string; mode: "edit" | "preview" };
+
+const currentWorkspaceRoute = (): WorkspaceRoute => {
+  const match = window.location.hash.match(/^#\/projects\/([^/]+)\/(canvas|preview)$/);
+  if (!match) return { kind: "projects" };
+  return {
+    kind: "canvas",
+    projectId: decodeURIComponent(match[1]),
+    mode: match[2] === "preview" ? "preview" : "edit",
+  };
+};
+
 function Workspace({ user, onLogout }: WorkspaceProps) {
+  const [route, setRoute] = useState<WorkspaceRoute>(currentWorkspaceRoute);
   const [projects, setProjects] = useState<Project[]>([]);
   const [loadingProjects, setLoadingProjects] = useState(true);
   const [projectError, setProjectError] = useState<string | null>(null);
   const [showCreateProject, setShowCreateProject] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
+
+  useEffect(() => {
+    const updateRoute = () => setRoute(currentWorkspaceRoute());
+    window.addEventListener("hashchange", updateRoute);
+    return () => window.removeEventListener("hashchange", updateRoute);
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -444,10 +417,14 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
     setShowCreateProject(false);
   };
 
+  if (route.kind === "canvas") {
+    return <CanvasPage mode={route.mode} projectId={route.projectId} />;
+  }
+
   return (
     <main className="workspace-shell">
       <header className="topbar">
-        <a className="brand" href="/">
+        <a className="brand" href="#/projects">
           <span className="brand-mark">◫</span>
           <span>
             <strong>Factory Twin</strong>
@@ -455,7 +432,7 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
           </span>
         </a>
         <nav aria-label="主导航">
-          <a aria-current="page" href="#projects">项目</a>
+          <a aria-current="page" href="#/projects">项目</a>
           <span>模板</span>
           <span>资源库</span>
         </nav>
@@ -527,7 +504,7 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
                 <p className="project-id">ID · {project.id}</p>
                 <footer>
                   <span>更新于 {formatDate(project.updatedAt)}</span>
-                  <span className="next-step">配置台将在下一阶段接入 →</span>
+                  <a className="next-step" href={`#/projects/${encodeURIComponent(project.id)}/canvas`}>打开 2D 画布 →</a>
                 </footer>
               </article>
             ))}

@@ -16,6 +16,7 @@ import {
   type AppEnv,
   type AuthenticatedUser,
 } from "./auth";
+import { applyCanvasPatch, getCanvas, validateCanvasPatch } from "./canvas";
 
 type ProjectStatus = "draft" | "published" | "archived";
 
@@ -49,11 +50,16 @@ const errorResponse = (error: AppError, requestId: string): Response =>
     error.status,
   );
 
-const readJsonObject = async (request: Request): Promise<JsonObject> => {
+const readJsonObject = async (request: Request, maximumBytes = 64 * 1024): Promise<JsonObject> => {
   let body: unknown;
+  const text = await request.text();
+
+  if (new TextEncoder().encode(text).byteLength > maximumBytes) {
+    throw new AppError(413, "request_body_too_large", `Request body cannot exceed ${maximumBytes} bytes.`);
+  }
 
   try {
-    body = await request.json();
+    body = JSON.parse(text);
   } catch {
     throw new AppError(400, "invalid_json", "Request body must be valid JSON.");
   }
@@ -81,6 +87,14 @@ const validateProjectName = (value: unknown): string => {
   }
 
   return name;
+};
+
+const decodePathSegment = (value: string): string => {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    throw new AppError(400, "invalid_path_parameter", "The project ID path segment is not valid URL encoding.");
+  }
 };
 
 const presentUser = (user: AuthenticatedUser) => ({
@@ -121,6 +135,9 @@ const requireProjectAccess = async (
 
   return project;
 };
+
+const canEditProject = (user: AuthenticatedUser, project: ProjectRow): boolean =>
+  hasGlobalRole(user, "platform_admin") || project.project_role === "owner" || project.project_role === "editor";
 
 const listProjects = async (env: AppEnv, user: AuthenticatedUser): Promise<ProjectRow[]> => {
   const isPlatformAdmin = hasGlobalRole(user, "platform_admin") ? 1 : 0;
@@ -254,11 +271,44 @@ const handleApiRequest = async (
     return json({ project: presentProject(project), requestId }, 201);
   }
 
+  const canvasMatch = pathname.match(/^\/api\/v1\/projects\/([^/]+)\/canvas$/);
+
+  if ((method === "GET" || method === "PATCH") && canvasMatch) {
+    const startedAt = Date.now();
+    const user = await getAuthenticatedUser(env, request);
+    const projectId = decodePathSegment(canvasMatch[1]);
+    const project = await requireProjectAccess(env, user, projectId);
+    const editable = canEditProject(user, project);
+
+    if (method === "GET") {
+      return json({ project: presentProject(project), canvas: await getCanvas(env, projectId), editable, requestId });
+    }
+
+    if (!editable) {
+      throw new AppError(403, "permission_denied", "You do not have permission to edit this canvas.");
+    }
+
+    const body = await readJsonObject(request, 512 * 1024);
+    const patch = validateCanvasPatch(body);
+    const canvas = await applyCanvasPatch(env, projectId, user.id, patch);
+    console.log(JSON.stringify({
+      event: "canvas_saved",
+      requestId,
+      projectId,
+      userId: user.id,
+      revision: canvas.revision,
+      upsertedNodeCount: patch.upsertNodes.length,
+      deletedNodeCount: patch.deleteNodeIds.length,
+      durationMs: Date.now() - startedAt,
+    }));
+    return json({ canvas, requestId });
+  }
+
   const projectMatch = pathname.match(/^\/api\/v1\/projects\/([^/]+)$/);
 
   if (method === "GET" && projectMatch) {
     const user = await getAuthenticatedUser(env, request);
-    const project = await requireProjectAccess(env, user, decodeURIComponent(projectMatch[1]));
+    const project = await requireProjectAccess(env, user, decodePathSegment(projectMatch[1]));
     return json({ project: presentProject(project), requestId });
   }
 
