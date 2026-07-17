@@ -101,13 +101,21 @@ const requireString = (value: unknown, label: string, maximum: number): string =
   return value as string;
 };
 
+const requireNonEmptyString = (value: unknown, label: string, maximum: number): string => {
+  const text = requireString(value, label, maximum);
+  if (text.trim().length === 0) {
+    invalid("invalid_canvas_node", `${label} must not be empty.`);
+  }
+  return text;
+};
+
 const requireStringArray = (value: unknown, label: string, identifiers = false): string[] => {
   if (!Array.isArray(value) || value.length > MAX_POINTS) {
     invalid("invalid_canvas_node", `${label} must contain at most ${MAX_POINTS} strings.`);
   }
   return (value as unknown[]).map((item, index) => identifiers
     ? requireIdentifier(item, `${label}[${index}]`)
-    : requireString(item, `${label}[${index}]`, 80));
+    : requireNonEmptyString(item, `${label}[${index}]`, 80));
 };
 
 const validateNode = (value: unknown): CanvasNode => {
@@ -137,7 +145,7 @@ const validateNode = (value: unknown): CanvasNode => {
     height: requireNumber(node.height, "node.height", 160, 2160),
     zIndex: requireNumber(node.zIndex, "node.zIndex", 0, 100000),
     props: {
-      title: requireString(props.title, "props.title", 120),
+      title: requireNonEmptyString(props.title, "props.title", 120),
       categories,
       values,
       unit: requireString(props.unit, "props.unit", 24),

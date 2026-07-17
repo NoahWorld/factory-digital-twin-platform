@@ -8,6 +8,11 @@ export type SnappedPosition = {
   horizontalGuide: number | null;
 };
 
+export type ResizeDirection = "north-west" | "north-east" | "south-east" | "south-west";
+
+export const MIN_NODE_WIDTH = 240;
+export const MIN_NODE_HEIGHT = 160;
+
 const sortedUnique = (values: number[]): number[] =>
   [...new Set(values)].sort((left, right) => left - right);
 
@@ -82,4 +87,42 @@ export const snapNodePosition = (
     verticalGuide: horizontal.guide,
     horizontalGuide: vertical.guide,
   };
+};
+
+const clamp = (value: number, minimum: number, maximum: number) =>
+  Math.min(Math.max(value, minimum), maximum);
+
+export const resizeCanvasNode = (
+  node: CanvasNode,
+  direction: ResizeDirection,
+  deltaX: number,
+  deltaY: number,
+  canvasWidth: number,
+  canvasHeight: number,
+): CanvasNode => {
+  const west = direction === "north-west" || direction === "south-west";
+  const north = direction === "north-west" || direction === "north-east";
+  const fixedRight = Math.min(node.x + node.width, canvasWidth);
+  const fixedBottom = Math.min(node.y + node.height, canvasHeight);
+
+  let x = node.x;
+  let y = node.y;
+  let width = node.width;
+  let height = node.height;
+
+  if (west) {
+    x = clamp(Math.round(node.x + deltaX), 0, fixedRight - MIN_NODE_WIDTH);
+    width = fixedRight - x;
+  } else {
+    width = clamp(Math.round(node.width + deltaX), MIN_NODE_WIDTH, canvasWidth - node.x);
+  }
+
+  if (north) {
+    y = clamp(Math.round(node.y + deltaY), 0, fixedBottom - MIN_NODE_HEIGHT);
+    height = fixedBottom - y;
+  } else {
+    height = clamp(Math.round(node.height + deltaY), MIN_NODE_HEIGHT, canvasHeight - node.y);
+  }
+
+  return { ...node, x, y, width, height };
 };

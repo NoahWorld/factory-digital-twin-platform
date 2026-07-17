@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type DragEvent } from "react";
 import { errorMessage, request } from "../api";
+import { ChartInspector } from "../canvas/ChartInspector";
 import { CanvasSurface } from "../canvas/CanvasSurface";
 import { CANVAS_DRAG_TYPE, componentLabels, createCanvasNode, type CanvasDocument, type CanvasNode, type CanvasNodeType, type CanvasPatchResponse, type CanvasResponse } from "../canvas/types";
 
@@ -15,6 +16,7 @@ export function CanvasPage({ mode, projectId }: CanvasPageProps) {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [configurationError, setConfigurationError] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const dirtyNodeIdsRef = useRef(new Set<string>());
@@ -25,6 +27,7 @@ export function CanvasPage({ mode, projectId }: CanvasPageProps) {
     setLoading(true);
     setLoadError(null);
     setSelectedNodeId(null);
+    setConfigurationError(null);
     dirtyNodeIdsRef.current.clear();
     deletedNodeIdsRef.current.clear();
     setDirty(false);
@@ -72,6 +75,10 @@ export function CanvasPage({ mode, projectId }: CanvasPageProps) {
   };
 
   const save = async (): Promise<boolean> => {
+    if (configurationError) {
+      setSaveError(`组件配置无效：${configurationError}`);
+      return false;
+    }
     if (!document || !dirty || saving || !canEdit) return !dirty;
     setSaving(true);
     setSaveError(null);
@@ -115,6 +122,7 @@ export function CanvasPage({ mode, projectId }: CanvasPageProps) {
   }
 
   const editable = mode === "edit" && canEdit && !saving;
+  const selectedNode = selectedNodeId ? document.nodes.find((node) => node.id === selectedNodeId) ?? null : null;
   return (
     <main className={`canvas-page canvas-page-${mode}`}>
       <header className="canvas-toolbar">
@@ -123,8 +131,8 @@ export function CanvasPage({ mode, projectId }: CanvasPageProps) {
         <div className="canvas-toolbar-actions">
           {mode === "edit" ? <>
             <button className="secondary-button compact-button" disabled={!selectedNodeId || !canEdit || saving} onClick={deleteSelectedNode} type="button">删除组件</button>
-            <button className="secondary-button compact-button" disabled={saving} onClick={() => void openPreview()} type="button">预览</button>
-            <button className="primary-button compact-button" disabled={!dirty || saving || !canEdit} onClick={() => void save()} type="button">{saving ? "保存中…" : "保存画布"}</button>
+            <button className="secondary-button compact-button" disabled={saving || configurationError !== null} onClick={() => void openPreview()} title={configurationError ?? undefined} type="button">预览</button>
+            <button className="primary-button compact-button" disabled={!dirty || saving || !canEdit || configurationError !== null} onClick={() => void save()} title={configurationError ?? undefined} type="button">{saving ? "保存中…" : "保存画布"}</button>
           </> : <a className="secondary-button compact-button" href={routePath(projectId, "canvas")}>返回编辑</a>}
         </div>
       </header>
@@ -138,6 +146,7 @@ export function CanvasPage({ mode, projectId }: CanvasPageProps) {
           <div className="palette-note"><strong>轻量组件</strong><p>当前图表由 SVG 渲染，不引入大型图表运行库。后续绑定数据时只保存数据源引用。</p></div>
         </aside> : null}
         <CanvasSurface document={document} editable={editable} onCreateNode={createNode} onNodeChange={updateNode} onSelectNode={setSelectedNodeId} selectedNodeId={selectedNodeId} />
+        {mode === "edit" ? <ChartInspector editable={editable} node={selectedNode} onNodeChange={updateNode} onValidationChange={setConfigurationError} /> : null}
       </div>
     </main>
   );

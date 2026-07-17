@@ -103,12 +103,12 @@ export type ChartPropsResult =
   | { ok: false; message: string };
 
 export const parseChartProps = (props: Record<string, unknown>): ChartPropsResult => {
-  if (typeof props.title !== "string" || props.title.trim().length === 0) {
-    return { ok: false, message: "title 必须是非空文本" };
+  if (typeof props.title !== "string" || props.title.trim().length === 0 || props.title.length > 120) {
+    return { ok: false, message: "title 必须是 1–120 个字符的文本" };
   }
 
-  if (!Array.isArray(props.categories) || !props.categories.every((item) => typeof item === "string")) {
-    return { ok: false, message: "categories 必须是文本数组" };
+  if (!Array.isArray(props.categories) || !props.categories.every((item) => typeof item === "string" && item.trim().length > 0 && item.length <= 80)) {
+    return { ok: false, message: "categories 必须是非空文本数组，单项不超过 80 个字符" };
   }
 
   if (!Array.isArray(props.values) || !props.values.every((item) => typeof item === "number" && Number.isFinite(item))) {
@@ -119,8 +119,8 @@ export const parseChartProps = (props: Record<string, unknown>): ChartPropsResul
     return { ok: false, message: "categories 与 values 数量必须一致，且至少包含 2 项" };
   }
 
-  if (typeof props.unit !== "string" || typeof props.color !== "string") {
-    return { ok: false, message: "unit 与 color 必须是文本" };
+  if (typeof props.unit !== "string" || props.unit.length > 24 || typeof props.color !== "string" || !/^#[0-9a-fA-F]{6}$/.test(props.color)) {
+    return { ok: false, message: "unit 必须不超过 24 个字符，color 必须是六位十六进制颜色" };
   }
 
   return {

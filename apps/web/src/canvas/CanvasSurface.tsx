@@ -1,9 +1,10 @@
 import { memo, useCallback, useEffect, useRef, useState, type DragEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { ChartNode } from "./ChartNode";
-import { buildSnapTargets, snapNodePosition, type SnapTargets, type SnappedPosition } from "./geometry";
+import { buildSnapTargets, resizeCanvasNode, snapNodePosition, type ResizeDirection, type SnapTargets, type SnappedPosition } from "./geometry";
 import { CANVAS_DRAG_TYPE, isCanvasNodeType, type CanvasDocument, type CanvasNode, type CanvasNodeType } from "./types";
 
 type ActiveDrag = {
+  kind: "drag";
   node: CanvasNode;
   element: HTMLDivElement;
   pointerId: number;
@@ -15,14 +16,37 @@ type ActiveDrag = {
   snapped: SnappedPosition;
 };
 
+type ActiveResize = {
+  kind: "resize";
+  node: CanvasNode;
+  element: HTMLDivElement;
+  pointerId: number;
+  startClientX: number;
+  startClientY: number;
+  latestClientX: number;
+  latestClientY: number;
+  direction: ResizeDirection;
+  resizedNode: CanvasNode;
+};
+
+type ActiveInteraction = ActiveDrag | ActiveResize;
+
 type CanvasNodeViewProps = {
   editable: boolean;
   node: CanvasNode;
   selected: boolean;
   onPointerDown: (event: ReactPointerEvent<HTMLDivElement>, node: CanvasNode) => void;
+  onResizePointerDown: (event: ReactPointerEvent<HTMLButtonElement>, node: CanvasNode, direction: ResizeDirection) => void;
 };
 
-const CanvasNodeView = memo(function CanvasNodeView({ editable, node, selected, onPointerDown }: CanvasNodeViewProps) {
+const resizeHandles: Array<{ direction: ResizeDirection; label: string }> = [
+  { direction: "north-west", label: "从左上角调整组件大小" },
+  { direction: "north-east", label: "从右上角调整组件大小" },
+  { direction: "south-east", label: "从右下角调整组件大小" },
+  { direction: "south-west", label: "从左下角调整组件大小" },
+];
+
+const CanvasNodeView = memo(function CanvasNodeView({ editable, node, selected, onPointerDown, onResizePointerDown }: CanvasNodeViewProps) {
   return (
     <div
       aria-label={`${node.type} 组件`}
@@ -34,6 +58,15 @@ const CanvasNodeView = memo(function CanvasNodeView({ editable, node, selected, 
     >
       <ChartNode node={node} />
       {editable ? <span className="canvas-node-drag-hint">拖动</span> : null}
+      {editable && selected ? resizeHandles.map(({ direction, label }) => (
+        <button
+          aria-label={label}
+          className={`canvas-resize-handle is-${direction}`}
+          key={direction}
+          onPointerDown={(event) => onResizePointerDown(event, node, direction)}
+          type="button"
+        />
+      )) : null}
     </div>
   );
 });
@@ -52,7 +85,7 @@ export function CanvasSurface({ document, editable, selectedNodeId, onCreateNode
   const surfaceRef = useRef<HTMLDivElement>(null);
   const verticalGuideRef = useRef<HTMLDivElement>(null);
   const horizontalGuideRef = useRef<HTMLDivElement>(null);
-  const activeDragRef = useRef<ActiveDrag | null>(null);
+  const activeInteractionRef = useRef<ActiveInteraction | null>(null);
   const animationFrameRef = useRef<number | null>(null);
   const scaleRef = useRef(1);
   const [scale, setScale] = useState(1);
@@ -80,12 +113,24 @@ export function CanvasSurface({ document, editable, selectedNodeId, onCreateNode
     if (horizontalGuideRef.current) horizontalGuideRef.current.style.display = "none";
   }, []);
 
-  const renderActiveDrag = useCallback((): SnappedPosition | null => {
-    const active = activeDragRef.current;
+  const renderActiveInteraction = useCallback((): CanvasNode | null => {
+    const active = activeInteractionRef.current;
     if (!active) return null;
 
-    const rawX = active.node.x + (active.latestClientX - active.startClientX) / scaleRef.current;
-    const rawY = active.node.y + (active.latestClientY - active.startClientY) / scaleRef.current;
+    const deltaX = (active.latestClientX - active.startClientX) / scaleRef.current;
+    const deltaY = (active.latestClientY - active.startClientY) / scaleRef.current;
+
+    if (active.kind === "resize") {
+      const resizedNode = resizeCanvasNode(active.node, active.direction, deltaX, deltaY, document.width, document.height);
+      active.resizedNode = resizedNode;
+      active.element.style.width = `${resizedNode.width}px`;
+      active.element.style.height = `${resizedNode.height}px`;
+      active.element.style.transform = `translate3d(${resizedNode.x}px, ${resizedNode.y}px, 0)`;
+      return resizedNode;
+    }
+
+    const rawX = active.node.x + deltaX;
+    const rawY = active.node.y + deltaY;
     const snapped = snapNodePosition(rawX, rawY, active.node, active.targets, document.width, document.height);
     active.snapped = snapped;
     active.element.style.transform = `translate3d(${snapped.x}px, ${snapped.y}px, 0)`;
@@ -98,25 +143,25 @@ export function CanvasSurface({ document, editable, selectedNodeId, onCreateNode
       horizontalGuideRef.current.style.display = snapped.horizontalGuide === null ? "none" : "block";
       horizontalGuideRef.current.style.transform = `translateY(${snapped.horizontalGuide ?? 0}px)`;
     }
-    return snapped;
+    return { ...active.node, x: snapped.x, y: snapped.y };
   }, [document.height, document.width]);
 
   useEffect(() => {
     const handlePointerMove = (event: PointerEvent) => {
-      const active = activeDragRef.current;
+      const active = activeInteractionRef.current;
       if (!active || active.pointerId !== event.pointerId) return;
       active.latestClientX = event.clientX;
       active.latestClientY = event.clientY;
       if (animationFrameRef.current === null) {
         animationFrameRef.current = requestAnimationFrame(() => {
           animationFrameRef.current = null;
-          renderActiveDrag();
+          renderActiveInteraction();
         });
       }
     };
 
     const finishPointer = (event: PointerEvent) => {
-      const active = activeDragRef.current;
+      const active = activeInteractionRef.current;
       if (!active || active.pointerId !== event.pointerId) return;
       if (animationFrameRef.current !== null) {
         cancelAnimationFrame(animationFrameRef.current);
@@ -124,11 +169,13 @@ export function CanvasSurface({ document, editable, selectedNodeId, onCreateNode
       }
       active.latestClientX = event.clientX;
       active.latestClientY = event.clientY;
-      const snapped = renderActiveDrag() ?? active.snapped;
-      active.element.classList.remove("is-dragging");
-      activeDragRef.current = null;
+      const changedNode = renderActiveInteraction() ?? (active.kind === "drag"
+        ? { ...active.node, x: active.snapped.x, y: active.snapped.y }
+        : active.resizedNode);
+      active.element.classList.remove("is-dragging", "is-resizing");
+      activeInteractionRef.current = null;
       hideGuides();
-      onNodeChange({ ...active.node, x: snapped.x, y: snapped.y });
+      onNodeChange(changedNode);
     };
 
     window.addEventListener("pointermove", handlePointerMove);
@@ -140,7 +187,7 @@ export function CanvasSurface({ document, editable, selectedNodeId, onCreateNode
       window.removeEventListener("pointercancel", finishPointer);
       if (animationFrameRef.current !== null) cancelAnimationFrame(animationFrameRef.current);
     };
-  }, [hideGuides, onNodeChange, renderActiveDrag]);
+  }, [hideGuides, onNodeChange, renderActiveInteraction]);
 
   const startPointerDrag = useCallback((event: ReactPointerEvent<HTMLDivElement>, node: CanvasNode) => {
     if (event.button !== 0) return;
@@ -148,7 +195,8 @@ export function CanvasSurface({ document, editable, selectedNodeId, onCreateNode
     onSelectNode(node.id);
     const element = event.currentTarget;
     element.classList.add("is-dragging");
-    activeDragRef.current = {
+    activeInteractionRef.current = {
+      kind: "drag",
       node,
       element,
       pointerId: event.pointerId,
@@ -160,6 +208,28 @@ export function CanvasSurface({ document, editable, selectedNodeId, onCreateNode
       snapped: { x: node.x, y: node.y, verticalGuide: null, horizontalGuide: null },
     };
   }, [document.height, document.nodes, document.width, onSelectNode]);
+
+  const startPointerResize = useCallback((event: ReactPointerEvent<HTMLButtonElement>, node: CanvasNode, direction: ResizeDirection) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    onSelectNode(node.id);
+    const element = event.currentTarget.parentElement;
+    if (!(element instanceof HTMLDivElement)) return;
+    element.classList.add("is-resizing");
+    activeInteractionRef.current = {
+      kind: "resize",
+      node,
+      element,
+      pointerId: event.pointerId,
+      startClientX: event.clientX,
+      startClientY: event.clientY,
+      latestClientX: event.clientX,
+      latestClientY: event.clientY,
+      direction,
+      resizedNode: node,
+    };
+  }, [onSelectNode]);
 
   const allowDrop = (event: DragEvent<HTMLDivElement>) => {
     if (!editable || !event.dataTransfer.types.includes(CANVAS_DRAG_TYPE)) return;
@@ -190,7 +260,7 @@ export function CanvasSurface({ document, editable, selectedNodeId, onCreateNode
           ref={surfaceRef}
           style={{ backgroundColor: document.backgroundColor, height: document.height, transform: `scale(${scale})`, width: document.width }}
         >
-          {document.nodes.map((node) => <CanvasNodeView editable={editable} key={node.id} node={node} onPointerDown={startPointerDrag} selected={node.id === selectedNodeId} />)}
+          {document.nodes.map((node) => <CanvasNodeView editable={editable} key={node.id} node={node} onPointerDown={startPointerDrag} onResizePointerDown={startPointerResize} selected={node.id === selectedNodeId} />)}
           {editable && document.nodes.length === 0 ? <div className="canvas-empty-hint"><span>↘</span><strong>从左侧拖入图表组件</strong><p>组件落入后可继续拖动，靠近画布或其他组件边缘时会自动吸附。</p></div> : null}
           <div className="canvas-guide canvas-guide-vertical" ref={verticalGuideRef} />
           <div className="canvas-guide canvas-guide-horizontal" ref={horizontalGuideRef} />
