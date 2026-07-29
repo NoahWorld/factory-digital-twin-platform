@@ -16,6 +16,13 @@ import {
   type AppEnv,
   type AuthenticatedUser,
 } from "./auth";
+import {
+  createAsset,
+  listAssets,
+  updateAsset,
+  validateAssetCreate,
+  validateAssetPatch,
+} from "./assets";
 import { applyCanvasPatch, getCanvas, validateCanvasPatch } from "./canvas";
 import {
   listModelAssets,
@@ -329,6 +336,70 @@ const handleApiRequest = async (
       durationMs: Date.now() - startedAt,
     }));
     return json({ modelAsset, requestId }, 201);
+  }
+
+  const assetsMatch = pathname.match(/^\/api\/v1\/projects\/([^/]+)\/assets$/);
+
+  if ((method === "GET" || method === "POST") && assetsMatch) {
+    const startedAt = Date.now();
+    const user = await getAuthenticatedUser(env, request);
+    const projectId = decodePathSegment(assetsMatch[1]);
+    const project = await requireProjectAccess(env, user, projectId);
+
+    if (method === "GET") {
+      return json({ assets: await listAssets(env, projectId), requestId });
+    }
+
+    if (!canEditProject(user, project)) {
+      throw new AppError(403, "permission_denied", "You do not have permission to create assets in this project.");
+    }
+
+    const asset = await createAsset(
+      env,
+      projectId,
+      validateAssetCreate(await readJsonObject(request)),
+    );
+    console.log(JSON.stringify({
+      event: "asset_created",
+      requestId,
+      projectId,
+      userId: user.id,
+      assetRecordId: asset.id,
+      assetId: asset.assetId,
+      modelNode: asset.modelNode,
+      durationMs: Date.now() - startedAt,
+    }));
+    return json({ asset, requestId }, 201);
+  }
+
+  const assetMatch = pathname.match(/^\/api\/v1\/projects\/([^/]+)\/assets\/([^/]+)$/);
+
+  if (method === "PATCH" && assetMatch) {
+    const startedAt = Date.now();
+    const user = await getAuthenticatedUser(env, request);
+    const projectId = decodePathSegment(assetMatch[1]);
+    const project = await requireProjectAccess(env, user, projectId);
+    if (!canEditProject(user, project)) {
+      throw new AppError(403, "permission_denied", "You do not have permission to edit assets in this project.");
+    }
+
+    const asset = await updateAsset(
+      env,
+      projectId,
+      decodePathSegment(assetMatch[2]),
+      validateAssetPatch(await readJsonObject(request)),
+    );
+    console.log(JSON.stringify({
+      event: "asset_updated",
+      requestId,
+      projectId,
+      userId: user.id,
+      assetRecordId: asset.id,
+      assetId: asset.assetId,
+      modelNode: asset.modelNode,
+      durationMs: Date.now() - startedAt,
+    }));
+    return json({ asset, requestId });
   }
 
   const canvasMatch = pathname.match(/^\/api\/v1\/projects\/([^/]+)\/canvas$/);

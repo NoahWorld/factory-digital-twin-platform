@@ -1929,6 +1929,73 @@ input:focus {
   font-size: 0.62rem;
 }
 
+.model-asset-binding-section {
+  gap: 11px;
+}
+
+.model-asset-binding-form {
+  display: grid;
+  gap: 10px;
+}
+
+.model-asset-binding-form > label {
+  display: grid;
+}
+
+.model-asset-binding-summary {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 3px 8px;
+  padding: 10px;
+  border: 1px solid rgba(112, 217, 179, 0.26);
+  border-radius: 6px;
+  background: rgba(27, 83, 69, 0.2);
+}
+
+.model-asset-binding-summary span {
+  grid-column: 1 / -1;
+  color: #72988b;
+  font-size: 0.6rem;
+}
+
+.model-asset-binding-summary strong {
+  overflow: hidden;
+  color: #d8fff0;
+  font-size: 0.7rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.model-asset-binding-summary code {
+  color: #70d9b3;
+  font-size: 0.62rem;
+}
+
+.model-asset-binding-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.model-asset-binding-actions > :only-child {
+  grid-column: 1 / -1;
+}
+
+.model-asset-binding-actions button {
+  justify-content: center;
+}
+
+.model-asset-binding-notice {
+  margin: 0;
+  padding: 9px 10px;
+  border: 1px solid rgba(112, 217, 179, 0.3);
+  border-radius: 6px;
+  color: #9aebce;
+  background: rgba(27, 83, 69, 0.22);
+  font-size: 0.68rem;
+  line-height: 1.5;
+}
+
 .model-transform-section {
   gap: 12px;
 }

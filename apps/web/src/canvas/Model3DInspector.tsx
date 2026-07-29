@@ -5,8 +5,16 @@ import {
   useState,
   type ChangeEvent,
   type CSSProperties,
+  type FormEvent,
 } from "react";
 import { errorMessage, request } from "../api";
+import {
+  projectAssetPath,
+  projectAssetsPath,
+  type ProjectAsset,
+  type ProjectAssetListResponse,
+  type ProjectAssetResponse,
+} from "./assets";
 import {
   formatFileSize,
   modelAssetsPath,
@@ -47,6 +55,18 @@ type SceneTreeRow = {
   depth: number;
   node: ModelSceneNode;
 };
+
+type AssetBindingDraft = {
+  assetId: string;
+  name: string;
+  assetType: string;
+};
+
+const newAssetBindingDraft = (modelNode: string): AssetBindingDraft => ({
+  assetId: "",
+  name: modelNode,
+  assetType: "equipment",
+});
 
 const nodeLabel = (node: ModelSceneNode): string =>
   node.name || `未命名 ${node.objectType}`;
@@ -89,17 +109,27 @@ export function Model3DInspector({
   selectedSceneNodePath,
 }: Model3DInspectorProps) {
   const parsed = parseModel3DProps(node.props);
-  const [assets, setAssets] = useState<ModelAsset[]>([]);
+  const [modelAssets, setModelAssets] = useState<ModelAsset[]>([]);
   const [loadingAssets, setLoadingAssets] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [assetError, setAssetError] = useState<string | null>(null);
+  const [projectAssets, setProjectAssets] = useState<ProjectAsset[]>([]);
+  const [loadingProjectAssets, setLoadingProjectAssets] = useState(true);
+  const [projectAssetLoadError, setProjectAssetLoadError] = useState<string | null>(null);
+  const [assetBindingError, setAssetBindingError] = useState<string | null>(null);
+  const [assetBindingNotice, setAssetBindingNotice] = useState<string | null>(null);
+  const [savingAssetBinding, setSavingAssetBinding] = useState(false);
+  const [assetBindingChoice, setAssetBindingChoice] = useState("new");
+  const [assetBindingDraft, setAssetBindingDraft] = useState<AssetBindingDraft>(
+    () => newAssetBindingDraft(""),
+  );
   const [sceneSearch, setSceneSearch] = useState("");
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set());
   const fileInputRef = useRef<HTMLInputElement>(null);
   const selectedAssetId = node.resourceRefs[0] ?? "";
-  const selectedAsset = useMemo(
-    () => assets.find((asset) => asset.id === selectedAssetId) ?? null,
-    [assets, selectedAssetId],
+  const selectedModelAsset = useMemo(
+    () => modelAssets.find((asset) => asset.id === selectedAssetId) ?? null,
+    [modelAssets, selectedAssetId],
   );
   const activeScene = modelScene?.assetId === selectedAssetId ? modelScene : null;
   const normalizedSceneSearch = sceneSearch.trim().toLocaleLowerCase();
@@ -121,6 +151,17 @@ export function Model3DInspector({
     () => findModelSceneNode(activeScene?.roots ?? [], selectedSceneNodePath),
     [activeScene, selectedSceneNodePath],
   );
+  const selectedModelNodeName = selectedSceneNode?.name ?? "";
+  const selectedNameIsDuplicate = selectedModelNodeName.length > 0
+    && selectedModelAsset?.inspection.duplicateNodeNames.includes(selectedModelNodeName) === true;
+  const boundProjectAsset = useMemo(
+    () => projectAssets.find((asset) => asset.modelNode === selectedModelNodeName) ?? null,
+    [projectAssets, selectedModelNodeName],
+  );
+  const unboundProjectAssets = useMemo(
+    () => projectAssets.filter((asset) => asset.modelNode === null),
+    [projectAssets],
+  );
 
   useEffect(() => {
     onValidationChange(parsed.ok ? null : parsed.message);
@@ -133,13 +174,32 @@ export function Model3DInspector({
     setAssetError(null);
     void request<ModelAssetListResponse>(modelAssetsPath(projectId))
       .then((result) => {
-        if (active) setAssets(result.modelAssets);
+        if (active) setModelAssets(result.modelAssets);
       })
       .catch((reason) => {
         if (active) setAssetError(errorMessage(reason));
       })
       .finally(() => {
         if (active) setLoadingAssets(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [projectId]);
+
+  useEffect(() => {
+    let active = true;
+    setLoadingProjectAssets(true);
+    setProjectAssetLoadError(null);
+    void request<ProjectAssetListResponse>(projectAssetsPath(projectId))
+      .then((result) => {
+        if (active) setProjectAssets(result.assets);
+      })
+      .catch((reason) => {
+        if (active) setProjectAssetLoadError(errorMessage(reason));
+      })
+      .finally(() => {
+        if (active) setLoadingProjectAssets(false);
       });
     return () => {
       active = false;
@@ -157,6 +217,31 @@ export function Model3DInspector({
       onSceneNodeSelect(null);
     }
   }, [activeScene, onSceneNodeSelect, selectedSceneNode, selectedSceneNodePath]);
+
+  useEffect(() => {
+    setAssetBindingError(null);
+    setAssetBindingNotice(null);
+  }, [selectedModelNodeName]);
+
+  useEffect(() => {
+    if (boundProjectAsset) {
+      setAssetBindingChoice(boundProjectAsset.id);
+      setAssetBindingDraft({
+        assetId: boundProjectAsset.assetId,
+        name: boundProjectAsset.name,
+        assetType: boundProjectAsset.assetType,
+      });
+      return;
+    }
+    setAssetBindingChoice("new");
+    setAssetBindingDraft(newAssetBindingDraft(selectedModelNodeName));
+  }, [
+    boundProjectAsset?.assetId,
+    boundProjectAsset?.assetType,
+    boundProjectAsset?.id,
+    boundProjectAsset?.name,
+    selectedModelNodeName,
+  ]);
 
   if (!parsed.ok) {
     return <section className="component-inspector"><div className="inspector-empty is-error"><strong>3D 组件配置无效</strong><p>{parsed.message}</p></div></section>;
@@ -181,9 +266,6 @@ export function Model3DInspector({
     updateProps({ [field]: value });
   };
 
-  const selectedModelNodeName = selectedSceneNode?.name ?? "";
-  const selectedNameIsDuplicate = selectedModelNodeName.length > 0
-    && selectedAsset?.inspection.duplicateNodeNames.includes(selectedModelNodeName) === true;
   const canConfigureSelectedNode = editable
     && selectedModelNodeName.length > 0
     && !selectedNameIsDuplicate;
@@ -268,6 +350,99 @@ export function Model3DInspector({
     updateProps({ appearanceOverrides: nextOverrides });
   };
 
+  const replaceProjectAsset = (nextAsset: ProjectAsset) => {
+    setProjectAssets((current) => [
+      nextAsset,
+      ...current.filter((asset) => asset.id !== nextAsset.id),
+    ]);
+  };
+
+  const chooseAssetBinding = (recordId: string) => {
+    setAssetBindingChoice(recordId);
+    setAssetBindingError(null);
+    setAssetBindingNotice(null);
+    if (recordId === "new") {
+      setAssetBindingDraft(newAssetBindingDraft(selectedModelNodeName));
+      return;
+    }
+
+    const existing = projectAssets.find((asset) => asset.id === recordId);
+    if (!existing) {
+      setAssetBindingError("所选资产已不在当前资产列表中，请重新加载页面。");
+      return;
+    }
+    setAssetBindingDraft({
+      assetId: existing.assetId,
+      name: existing.name,
+      assetType: existing.assetType,
+    });
+  };
+
+  const saveAssetBinding = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!canConfigureSelectedNode) return;
+
+    setSavingAssetBinding(true);
+    setAssetBindingError(null);
+    setAssetBindingNotice(null);
+    try {
+      const existing = assetBindingChoice === "new"
+        ? null
+        : projectAssets.find((asset) => asset.id === assetBindingChoice) ?? null;
+      if (assetBindingChoice !== "new" && !existing) {
+        throw new Error("所选资产已不存在，请刷新页面后重试。");
+      }
+
+      const payload = {
+        assetId: assetBindingDraft.assetId,
+        assetType: assetBindingDraft.assetType,
+        modelNode: selectedModelNodeName,
+        name: assetBindingDraft.name,
+      };
+      const result = await request<ProjectAssetResponse>(
+        existing
+          ? projectAssetPath(projectId, existing.id)
+          : projectAssetsPath(projectId),
+        {
+          method: existing ? "PATCH" : "POST",
+          body: JSON.stringify(payload),
+        },
+      );
+      replaceProjectAsset(result.asset);
+      setAssetBindingChoice(result.asset.id);
+      setAssetBindingNotice(
+        existing ? "资产信息与模型节点绑定已保存。" : "资产已创建并绑定到当前模型节点。",
+      );
+    } catch (reason) {
+      setAssetBindingError(errorMessage(reason));
+    } finally {
+      setSavingAssetBinding(false);
+    }
+  };
+
+  const unbindSelectedAsset = async () => {
+    if (!canConfigureSelectedNode || !boundProjectAsset) return;
+
+    setSavingAssetBinding(true);
+    setAssetBindingError(null);
+    setAssetBindingNotice(null);
+    try {
+      const result = await request<ProjectAssetResponse>(
+        projectAssetPath(projectId, boundProjectAsset.id),
+        {
+          method: "PATCH",
+          body: JSON.stringify({ modelNode: null }),
+        },
+      );
+      replaceProjectAsset(result.asset);
+      setAssetBindingNotice("已解除模型节点绑定，资产台账记录仍然保留。");
+    } catch (reason) {
+      setAssetBindingError(errorMessage(reason));
+    } finally {
+      setSavingAssetBinding(false);
+    }
+  };
+
   const chooseAsset = (assetId: string) => {
     onSceneNodeSelect(null);
     onNodeChange({ ...node, resourceRefs: assetId ? [assetId] : [] });
@@ -314,7 +489,7 @@ export function Model3DInspector({
           },
         },
       );
-      setAssets((current) => [
+      setModelAssets((current) => [
         result.modelAsset,
         ...current.filter((asset) => asset.id !== result.modelAsset.id),
       ]);
@@ -343,7 +518,7 @@ export function Model3DInspector({
           value={selectedAssetId}
         >
           <option value="">{loadingAssets ? "正在读取模型…" : "请选择模型"}</option>
-          {assets.map((asset) => (
+          {modelAssets.map((asset) => (
             <option key={asset.id} value={asset.id}>
               {asset.originalFilename} · {formatFileSize(asset.byteSize)}
             </option>
@@ -369,23 +544,23 @@ export function Model3DInspector({
         {assetError ? <p className="inspector-inline-error" role="alert">模型资源错误：{assetError}</p> : null}
       </div>
 
-      {selectedAsset ? (
+      {selectedModelAsset ? (
         <div className="model-inspection-card">
-          <strong>{selectedAsset.originalFilename}</strong>
-          <span>{selectedAsset.format.toUpperCase()} 2.x · {formatFileSize(selectedAsset.byteSize)}</span>
+          <strong>{selectedModelAsset.originalFilename}</strong>
+          <span>{selectedModelAsset.format.toUpperCase()} 2.x · {formatFileSize(selectedModelAsset.byteSize)}</span>
           <dl>
-            <div><dt>节点</dt><dd>{selectedAsset.inspection.nodeCount}</dd></div>
-            <div><dt>网格</dt><dd>{selectedAsset.inspection.meshCount}</dd></div>
-            <div><dt>材质</dt><dd>{selectedAsset.inspection.materialCount}</dd></div>
-            <div><dt>动画</dt><dd>{selectedAsset.inspection.animationCount}</dd></div>
+            <div><dt>节点</dt><dd>{selectedModelAsset.inspection.nodeCount}</dd></div>
+            <div><dt>网格</dt><dd>{selectedModelAsset.inspection.meshCount}</dd></div>
+            <div><dt>材质</dt><dd>{selectedModelAsset.inspection.materialCount}</dd></div>
+            <div><dt>动画</dt><dd>{selectedModelAsset.inspection.animationCount}</dd></div>
           </dl>
-          {selectedAsset.inspection.duplicateNodeNames.length > 0 ? (
-            <p className="model-inspection-warning">存在 {selectedAsset.inspection.duplicateNodeNames.length} 个重复节点名，发布前必须处理。</p>
+          {selectedModelAsset.inspection.duplicateNodeNames.length > 0 ? (
+            <p className="model-inspection-warning">存在 {selectedModelAsset.inspection.duplicateNodeNames.length} 个重复节点名，发布前必须处理。</p>
           ) : <p className="model-inspection-ok">节点名称检查通过</p>}
         </div>
       ) : null}
 
-      {selectedAsset ? (
+      {selectedModelAsset ? (
         <section className="inspector-section model-scene-tree-section">
           <div className="inspector-section-title">
             <strong>模型节点树</strong>
@@ -474,6 +649,146 @@ export function Model3DInspector({
               <span>等待模型渲染器返回实际场景层级…</span>
             </div>
           )}
+        </section>
+      ) : null}
+
+      {selectedSceneNode ? (
+        <section className="inspector-section model-asset-binding-section">
+          <div className="inspector-section-title">
+            <strong>资产绑定</strong>
+            <span>{boundProjectAsset ? "已绑定" : "未绑定"}</span>
+          </div>
+          {!selectedModelNodeName ? (
+            <p className="model-inspection-warning">
+              未命名节点不能绑定资产。请先在建模软件中设置唯一名称后重新导出。
+            </p>
+          ) : null}
+          {selectedNameIsDuplicate ? (
+            <p className="model-inspection-warning">
+              节点名“{selectedModelNodeName}”不唯一，无法建立稳定资产映射。
+            </p>
+          ) : null}
+          {loadingProjectAssets ? (
+            <div className="model-scene-tree-loading">
+              <span className="model-loading-spinner" />
+              <span>正在读取资产台账…</span>
+            </div>
+          ) : null}
+          {projectAssetLoadError ? (
+            <p className="inspector-inline-error" role="alert">
+              资产台账读取失败：{projectAssetLoadError}
+            </p>
+          ) : null}
+          {!loadingProjectAssets
+            && !projectAssetLoadError
+            && selectedModelNodeName
+            && !selectedNameIsDuplicate ? (
+            <form className="model-asset-binding-form" onSubmit={(event) => void saveAssetBinding(event)}>
+              {boundProjectAsset ? (
+                <div className="model-asset-binding-summary">
+                  <span>当前模型节点</span>
+                  <strong>{selectedModelNodeName}</strong>
+                  <code>{boundProjectAsset.assetId}</code>
+                </div>
+              ) : (
+                <label>
+                  <span>资产来源</span>
+                  <select
+                    disabled={!editable || savingAssetBinding}
+                    onChange={(event) => chooseAssetBinding(event.target.value)}
+                    value={assetBindingChoice}
+                  >
+                    <option value="new">新建资产并绑定</option>
+                    {unboundProjectAssets.map((asset) => (
+                      <option key={asset.id} value={asset.id}>
+                        绑定已有资产 · {asset.assetId} · {asset.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+              <label>
+                <span>资产编号 assetId</span>
+                <input
+                  autoComplete="off"
+                  disabled={!editable || savingAssetBinding}
+                  maxLength={80}
+                  onChange={(event) => setAssetBindingDraft((current) => ({
+                    ...current,
+                    assetId: event.target.value,
+                  }))}
+                  pattern="[A-Za-z0-9][A-Za-z0-9._:-]*"
+                  placeholder="例如：LINE01-PUMP-001"
+                  required
+                  value={assetBindingDraft.assetId}
+                />
+              </label>
+              <label>
+                <span>资产名称</span>
+                <input
+                  disabled={!editable || savingAssetBinding}
+                  maxLength={120}
+                  onChange={(event) => setAssetBindingDraft((current) => ({
+                    ...current,
+                    name: event.target.value,
+                  }))}
+                  placeholder="例如：一线循环泵"
+                  required
+                  value={assetBindingDraft.name}
+                />
+              </label>
+              <label>
+                <span>资产类型</span>
+                <input
+                  autoComplete="off"
+                  disabled={!editable || savingAssetBinding}
+                  maxLength={64}
+                  onChange={(event) => setAssetBindingDraft((current) => ({
+                    ...current,
+                    assetType: event.target.value,
+                  }))}
+                  pattern="[A-Za-z0-9][A-Za-z0-9_-]*"
+                  placeholder="例如：pump"
+                  required
+                  value={assetBindingDraft.assetType}
+                />
+              </label>
+              <p className="inspector-help">
+                <code>assetId</code> 是后续 3D 状态、2D 详情和实时数据共用的稳定业务编号。
+              </p>
+              <div className="model-asset-binding-actions">
+                {boundProjectAsset ? (
+                  <button
+                    className="secondary-button"
+                    disabled={!editable || savingAssetBinding}
+                    onClick={() => void unbindSelectedAsset()}
+                    type="button"
+                  >
+                    解除绑定
+                  </button>
+                ) : null}
+                <button
+                  className="primary-button"
+                  disabled={!editable || savingAssetBinding}
+                  type="submit"
+                >
+                  {savingAssetBinding
+                    ? "保存中…"
+                    : boundProjectAsset
+                      ? "保存资产"
+                      : "绑定资产"}
+                </button>
+              </div>
+            </form>
+          ) : null}
+          {assetBindingError ? (
+            <p className="inspector-inline-error" role="alert">
+              资产绑定错误：{assetBindingError}
+            </p>
+          ) : null}
+          {assetBindingNotice ? (
+            <p className="model-asset-binding-notice" role="status">{assetBindingNotice}</p>
+          ) : null}
         </section>
       ) : null}
 
