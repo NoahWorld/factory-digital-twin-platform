@@ -39,8 +39,10 @@ type CanvasNodeViewProps = {
   editable: boolean;
   node: CanvasNode;
   onModelSceneChange: (canvasNodeId: string, snapshot: ModelSceneSnapshot | null) => void;
+  onModelSceneNodeSelect: (canvasNodeId: string, sceneNodePath: string | null) => void;
   projectId: string;
   selected: boolean;
+  selectedModelSceneNodePath: string | null;
   onPointerDown: (event: ReactPointerEvent<HTMLDivElement>, node: CanvasNode) => void;
   onResizePointerDown: (event: ReactPointerEvent<HTMLButtonElement>, node: CanvasNode, direction: ResizeDirection) => void;
 };
@@ -59,7 +61,7 @@ const hasGeometryChanged = (previous: CanvasNode, next: CanvasNode) => (
   || previous.height !== next.height
 );
 
-const CanvasNodeView = memo(function CanvasNodeView({ editable, node, onModelSceneChange, projectId, selected, onPointerDown, onResizePointerDown }: CanvasNodeViewProps) {
+const CanvasNodeView = memo(function CanvasNodeView({ editable, node, onModelSceneChange, onModelSceneNodeSelect, projectId, selected, selectedModelSceneNodePath, onPointerDown, onResizePointerDown }: CanvasNodeViewProps) {
   return (
     <div
       aria-label={`${node.type} 组件`}
@@ -74,7 +76,16 @@ const CanvasNodeView = memo(function CanvasNodeView({ editable, node, onModelSce
         : isDecorationNodeType(node.type)
           ? <DecorationNode node={node} />
           : isModel3DNodeType(node.type)
-            ? <Model3DNode editable={editable} node={node} onSceneChange={onModelSceneChange} projectId={projectId} />
+            ? (
+                <Model3DNode
+                  editable={editable}
+                  node={node}
+                  onSceneChange={onModelSceneChange}
+                  onSceneNodeSelect={onModelSceneNodeSelect}
+                  projectId={projectId}
+                  selectedSceneNodePath={selectedModelSceneNodePath}
+                />
+              )
             : <ChartNode node={node} />}
       {editable ? <span className="canvas-node-drag-hint">拖动</span> : null}
       {editable && selected ? resizeHandles.map(({ direction, label }) => (
@@ -96,11 +107,13 @@ type CanvasSurfaceProps = {
   selectedNodeId: string | null;
   onCreateNode: (type: CanvasNodeType, x: number, y: number) => void;
   onModelSceneChange: (canvasNodeId: string, snapshot: ModelSceneSnapshot | null) => void;
+  onModelSceneNodeSelect: (canvasNodeId: string, sceneNodePath: string | null) => void;
   onNodeChange: (node: CanvasNode) => void;
   onSelectNode: (nodeId: string | null) => void;
+  selectedModelSceneNodePath: string | null;
 };
 
-export function CanvasSurface({ document, editable, selectedNodeId, onCreateNode, onModelSceneChange, onNodeChange, onSelectNode }: CanvasSurfaceProps) {
+export function CanvasSurface({ document, editable, selectedNodeId, selectedModelSceneNodePath, onCreateNode, onModelSceneChange, onModelSceneNodeSelect, onNodeChange, onSelectNode }: CanvasSurfaceProps) {
   const viewportRef = useRef<HTMLDivElement>(null);
   const surfaceRef = useRef<HTMLDivElement>(null);
   const verticalGuideRef = useRef<HTMLDivElement>(null);
@@ -281,7 +294,22 @@ export function CanvasSurface({ document, editable, selectedNodeId, onCreateNode
           ref={surfaceRef}
           style={{ backgroundColor: document.backgroundColor, height: document.height, transform: `scale(${scale})`, width: document.width }}
         >
-          {document.nodes.map((node) => <CanvasNodeView editable={editable} key={node.id} node={node} onModelSceneChange={onModelSceneChange} onPointerDown={startPointerDrag} onResizePointerDown={startPointerResize} projectId={document.projectId} selected={node.id === selectedNodeId} />)}
+          {document.nodes.map((node) => (
+            <CanvasNodeView
+              editable={editable}
+              key={node.id}
+              node={node}
+              onModelSceneChange={onModelSceneChange}
+              onModelSceneNodeSelect={onModelSceneNodeSelect}
+              onPointerDown={startPointerDrag}
+              onResizePointerDown={startPointerResize}
+              projectId={document.projectId}
+              selected={node.id === selectedNodeId}
+              selectedModelSceneNodePath={
+                node.id === selectedNodeId ? selectedModelSceneNodePath : null
+              }
+            />
+          ))}
           {editable && document.nodes.length === 0 ? <div className="canvas-empty-hint"><span>↘</span><strong>从左侧拖入组件</strong><p>组件落入后可继续拖动，靠近画布或其他组件边缘时会自动吸附。</p></div> : null}
           <div className="canvas-guide canvas-guide-vertical" ref={verticalGuideRef} />
           <div className="canvas-guide canvas-guide-horizontal" ref={horizontalGuideRef} />

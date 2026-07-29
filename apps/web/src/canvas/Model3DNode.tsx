@@ -1,4 +1,10 @@
-import { memo, useEffect, useRef, useState } from "react";
+import {
+  memo,
+  useEffect,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 import type { Material, Object3D } from "three";
 import {
   componentLabels,
@@ -15,7 +21,9 @@ type Model3DNodeProps = {
   editable: boolean;
   node: CanvasNode;
   onSceneChange?: (canvasNodeId: string, snapshot: ModelSceneSnapshot | null) => void;
+  onSceneNodeSelect: (canvasNodeId: string, sceneNodePath: string | null) => void;
   projectId: string;
+  selectedSceneNodePath: string | null;
 };
 
 type LoadState =
@@ -26,8 +34,10 @@ type LoadState =
 
 type ModelRuntime = {
   applyAppearances: (overrides: Record<string, ModelNodeAppearance>) => void;
+  applySelection: (sceneNodePath: string | null) => void;
   applySceneSettings: (settings: Model3DProps) => void;
   applyTransforms: (overrides: Record<string, ModelNodeTransform>) => void;
+  pickScenePath: (clientX: number, clientY: number) => string | null;
 };
 
 type MaterialObject = Object3D & {
@@ -45,12 +55,21 @@ export const Model3DNode = memo(function Model3DNode({
   editable,
   node,
   onSceneChange,
+  onSceneNodeSelect,
   projectId,
+  selectedSceneNodePath,
 }: Model3DNodeProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const controlsRef = useRef<{ enabled: boolean } | null>(null);
   const runtimeRef = useRef<ModelRuntime | null>(null);
   const modelPropsRef = useRef<Model3DProps | null>(null);
+  const pointerStartRef = useRef<{
+    clientX: number;
+    clientY: number;
+    pointerId: number;
+  } | null>(null);
+  const selectedSceneNodePathRef = useRef(selectedSceneNodePath);
+  selectedSceneNodePathRef.current = selectedSceneNodePath;
   const settingsRef = useRef({
     autoRotate: true,
     rotationSpeed: 0.35,
@@ -151,6 +170,25 @@ export const Model3DNode = memo(function Model3DNode({
   }, [appearanceOverridesSignature, assetId, node.id, parsed.ok]);
 
   useEffect(() => {
+    if (!runtimeRef.current) return;
+    try {
+      runtimeRef.current.applySelection(selectedSceneNodePath);
+      setLoadState({ status: "ready" });
+    } catch (reason) {
+      console.error("Failed to highlight the selected model node.", {
+        assetId,
+        canvasNodeId: node.id,
+        reason,
+        selectedSceneNodePath,
+      });
+      setLoadState({
+        status: "error",
+        message: `节点高亮失败：${errorText(reason)}`,
+      });
+    }
+  }, [assetId, node.id, selectedSceneNodePath]);
+
+  useEffect(() => {
     const container = containerRef.current;
     if (!container || !assetId || !parsed.ok) {
       onSceneChange?.(node.id, null);
@@ -162,6 +200,7 @@ export const Model3DNode = memo(function Model3DNode({
     let dispose: (() => void) | null = null;
     let runtimeController: ModelRuntime | null = null;
     let restoreRuntimeAppearanceState: (() => void) | null = null;
+    let clearRuntimeSelectionState: (() => void) | null = null;
     runtimeRef.current = null;
     onSceneChange?.(node.id, null);
     setLoadState({ status: "loading" });
@@ -216,6 +255,7 @@ export const Model3DNode = memo(function Model3DNode({
 
       let modelRoot: Object3D | null = null;
       let modelRadius: number | null = null;
+      let selectionHelper: InstanceType<typeof THREE.BoxHelper> | null = null;
       let visible = true;
       let lastFrame = performance.now();
 
@@ -291,6 +331,7 @@ export const Model3DNode = memo(function Model3DNode({
         if (modelRoot && settingsRef.current.autoRotate) {
           modelRoot.rotation.y += deltaSeconds * settingsRef.current.rotationSpeed;
         }
+        selectionHelper?.update();
         controls.update();
         renderer.render(scene, camera);
       });
@@ -314,6 +355,22 @@ export const Model3DNode = memo(function Model3DNode({
             original: Material | Material[];
           }>();
           const objectsByName = new Map<string, Object3D[]>();
+          const objectsByPath = new Map<string, Object3D>();
+          const pathsByObject = new Map<Object3D, string>();
+          const pathStack = gltf.scene.children
+            .map((object, index) => ({ object, path: String(index) }))
+            .reverse();
+          while (pathStack.length > 0) {
+            const entry = pathStack.pop()!;
+            objectsByPath.set(entry.path, entry.object);
+            pathsByObject.set(entry.object, entry.path);
+            for (let index = entry.object.children.length - 1; index >= 0; index -= 1) {
+              pathStack.push({
+                object: entry.object.children[index]!,
+                path: `${entry.path}/${index}`,
+              });
+            }
+          }
           gltf.scene.traverse((object) => {
             originals.set(object, {
               position: object.position.clone(),
@@ -351,6 +408,66 @@ export const Model3DNode = memo(function Model3DNode({
             });
           };
           restoreRuntimeAppearanceState = restoreAppearanceState;
+
+          const clearSelectionState = () => {
+            if (!selectionHelper) return;
+            scene.remove(selectionHelper);
+            selectionHelper.geometry.dispose();
+            selectionHelper.material.dispose();
+            selectionHelper = null;
+          };
+          clearRuntimeSelectionState = clearSelectionState;
+
+          const applySelection = (sceneNodePath: string | null) => {
+            clearSelectionState();
+            if (sceneNodePath === null) return;
+            const selectedObject = objectsByPath.get(sceneNodePath);
+            if (!selectedObject) {
+              throw new Error(`模型中找不到当前选择路径：${sceneNodePath}`);
+            }
+            const selectedBounds = new THREE.Box3().setFromObject(selectedObject);
+            if (selectedBounds.isEmpty()) {
+              // Groups, cameras and bones are valid scene-tree selections even
+              // when they do not own renderable geometry.
+              return;
+            }
+            const helper = new THREE.BoxHelper(selectedObject, 0x5ad8ff);
+            helper.material.depthTest = false;
+            helper.material.transparent = true;
+            helper.material.opacity = 0.95;
+            helper.material.toneMapped = false;
+            helper.renderOrder = 100000;
+            selectionHelper = helper;
+            scene.add(helper);
+          };
+
+          const isEffectivelyVisible = (object: Object3D) => {
+            let current: Object3D | null = object;
+            while (current) {
+              if (!current.visible) return false;
+              current = current.parent;
+            }
+            return true;
+          };
+          const raycaster = new THREE.Raycaster();
+          const pointer = new THREE.Vector2();
+          const pickScenePath = (clientX: number, clientY: number) => {
+            const bounds = renderer.domElement.getBoundingClientRect();
+            if (bounds.width <= 0 || bounds.height <= 0) {
+              throw new Error("3D 视窗尺寸无效，无法执行对象命中测试");
+            }
+            pointer.set(
+              ((clientX - bounds.left) / bounds.width) * 2 - 1,
+              -((clientY - bounds.top) / bounds.height) * 2 + 1,
+            );
+            raycaster.setFromCamera(pointer, camera);
+            const hit = raycaster
+              .intersectObject(gltf.scene, true)
+              .find((intersection) =>
+                pathsByObject.has(intersection.object)
+                && isEffectivelyVisible(intersection.object));
+            return hit ? pathsByObject.get(hit.object) ?? null : null;
+          };
 
           const applyAppearances = (
             overrides: Record<string, ModelNodeAppearance>,
@@ -464,6 +581,7 @@ export const Model3DNode = memo(function Model3DNode({
             applySceneSettings(latestSettings);
             applyTransforms(latestSettings.transformOverrides);
             applyAppearances(latestSettings.appearanceOverrides);
+            applySelection(selectedSceneNodePathRef.current);
           } catch (reason) {
             console.error("Failed to initialize the 3D model scene.", {
               assetId,
@@ -480,8 +598,10 @@ export const Model3DNode = memo(function Model3DNode({
 
           runtimeController = {
             applyAppearances,
+            applySelection,
             applySceneSettings,
             applyTransforms,
+            pickScenePath,
           };
           runtimeRef.current = runtimeController;
           onSceneChange?.(node.id, { assetId, ...sceneTree });
@@ -501,6 +621,8 @@ export const Model3DNode = memo(function Model3DNode({
         resizeObserver.disconnect();
         intersectionObserver.disconnect();
         controls.dispose();
+        clearRuntimeSelectionState?.();
+        clearRuntimeSelectionState = null;
         restoreRuntimeAppearanceState?.();
         restoreRuntimeAppearanceState = null;
         scene.traverse((object) => {
@@ -535,17 +657,62 @@ export const Model3DNode = memo(function Model3DNode({
     };
   }, [assetId, node.id, onSceneChange, parsed.ok, projectId]);
 
+  const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (!editable || event.button !== 0) return;
+    pointerStartRef.current = {
+      clientX: event.clientX,
+      clientY: event.clientY,
+      pointerId: event.pointerId,
+    };
+  };
+
+  const handlePointerUp = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const start = pointerStartRef.current;
+    pointerStartRef.current = null;
+    if (!editable || !start || start.pointerId !== event.pointerId) return;
+    if (Math.hypot(event.clientX - start.clientX, event.clientY - start.clientY) > 4) {
+      return;
+    }
+    try {
+      const sceneNodePath = runtimeRef.current?.pickScenePath(
+        event.clientX,
+        event.clientY,
+      ) ?? null;
+      onSceneNodeSelect(node.id, sceneNodePath);
+    } catch (reason) {
+      console.error("Failed to pick a model node.", {
+        assetId,
+        canvasNodeId: node.id,
+        clientX: event.clientX,
+        clientY: event.clientY,
+        reason,
+      });
+      setLoadState({
+        status: "error",
+        message: `节点选择失败：${errorText(reason)}`,
+      });
+    }
+  };
+
   if (!parsed.ok) {
     return <div className="model-3d-message is-error" role="alert"><strong>{componentLabels[node.type]}配置错误</strong><span>{parsed.message}</span></div>;
   }
 
   return (
     <div className="model-3d-node">
-      <div className="model-3d-renderer" ref={containerRef} />
+      <div
+        className="model-3d-renderer"
+        onPointerCancel={() => {
+          pointerStartRef.current = null;
+        }}
+        onPointerDown={handlePointerDown}
+        onPointerUp={handlePointerUp}
+        ref={containerRef}
+      />
       {loadState.status === "empty" ? <div className="model-3d-message"><strong>尚未绑定模型</strong><span>在右侧属性面板导入 GLB 或 GLTF</span></div> : null}
       {loadState.status === "loading" ? <div className="model-3d-message"><span className="model-loading-spinner" /><strong>正在加载 3D 模型</strong></div> : null}
       {loadState.status === "error" ? <div className="model-3d-message is-error" role="alert"><strong>3D 模型不可用</strong><span>{loadState.message}</span></div> : null}
-      {loadState.status === "ready" && editable ? <span className="model-3d-edit-hint">预览模式可旋转与缩放视角</span> : null}
+      {loadState.status === "ready" && editable ? <span className="model-3d-edit-hint">点击对象选中 · 拖动可移动组件</span> : null}
     </div>
   );
 });

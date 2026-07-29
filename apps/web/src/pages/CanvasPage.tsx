@@ -60,6 +60,14 @@ export function CanvasPage({ mode, projectId }: CanvasPageProps) {
     setSelectedModelSceneNodePath(null);
   }, []);
 
+  const selectModelSceneNode = useCallback((
+    canvasNodeId: string,
+    sceneNodePath: string | null,
+  ) => {
+    setSelectedNodeId(canvasNodeId);
+    setSelectedModelSceneNodePath(sceneNodePath);
+  }, []);
+
   const updateModelScene = useCallback((
     canvasNodeId: string,
     snapshot: ModelSceneSnapshot | null,
@@ -192,7 +200,7 @@ export function CanvasPage({ mode, projectId }: CanvasPageProps) {
           </section>
           <div className="palette-note"><strong>资源分离</strong><p>模型文件独立存储；画布节点只保存配置、资源 ID 与数据绑定 ID。</p></div>
         </aside> : null}
-        <CanvasSurface document={document} editable={editable} onCreateNode={createNode} onModelSceneChange={updateModelScene} onNodeChange={updateNode} onSelectNode={selectCanvasNode} selectedNodeId={selectedNodeId} />
+        <CanvasSurface document={document} editable={editable} onCreateNode={createNode} onModelSceneChange={updateModelScene} onModelSceneNodeSelect={selectModelSceneNode} onNodeChange={updateNode} onSelectNode={selectCanvasNode} selectedModelSceneNodePath={selectedModelSceneNodePath} selectedNodeId={selectedNodeId} />
         {mode === "edit" ? <ComponentInspector editable={editable} modelScene={selectedNode ? modelScenes[selectedNode.id] ?? null : null} node={selectedNode} onModelSceneNodeSelect={setSelectedModelSceneNodePath} onNodeChange={updateNode} onValidationChange={setConfigurationError} projectId={projectId} selectedModelSceneNodePath={selectedModelSceneNodePath} /> : null}
       </div>
     </main>
