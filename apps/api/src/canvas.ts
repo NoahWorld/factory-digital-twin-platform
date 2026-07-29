@@ -9,8 +9,18 @@ export type DecorationNodeType =
   | "section-title"
   | "card-background"
   | "icon-background";
+export type DashboardNodeType =
+  | "metric-card"
+  | "radial-gauge"
+  | "progress-list"
+  | "status-grid";
 export type Model3DNodeType = "model-3d";
-export type CanvasNodeType = ChartNodeType | ShapeNodeType | DecorationNodeType | Model3DNodeType;
+export type CanvasNodeType =
+  | ChartNodeType
+  | ShapeNodeType
+  | DecorationNodeType
+  | DashboardNodeType
+  | Model3DNodeType;
 
 export type ChartProps = {
   title: string;
@@ -40,6 +50,59 @@ export type DecorationProps = {
   showDate: boolean;
   showSeconds: boolean;
 };
+
+export type DashboardTone = "normal" | "warning" | "danger" | "offline";
+
+export type DashboardBaseProps = {
+  title: string;
+  textColor: string;
+  accentColor: string;
+  fillColor: string;
+  borderColor: string;
+  sample: boolean;
+};
+
+export type MetricCardProps = DashboardBaseProps & {
+  value: string;
+  unit: string;
+  subtitle: string;
+  icon: string;
+};
+
+export type RadialGaugeProps = DashboardBaseProps & {
+  value: number;
+  maximum: number;
+  unit: string;
+  subtitle: string;
+};
+
+export type ProgressListItem = {
+  label: string;
+  value: number;
+  maximum: number;
+  unit: string;
+};
+
+export type ProgressListProps = DashboardBaseProps & {
+  items: ProgressListItem[];
+};
+
+export type StatusGridItem = {
+  label: string;
+  value: string;
+  tone: DashboardTone;
+};
+
+export type StatusGridProps = DashboardBaseProps & {
+  columns: number;
+  items: StatusGridItem[];
+};
+
+export type DashboardProps =
+  | MetricCardProps
+  | RadialGaugeProps
+  | ProgressListProps
+  | StatusGridProps;
 
 export type Vector3Tuple = [number, number, number];
 
@@ -81,7 +144,7 @@ export type CanvasNode = {
   width: number;
   height: number;
   zIndex: number;
-  props: ChartProps | ShapeProps | DecorationProps | Model3DProps;
+  props: ChartProps | ShapeProps | DecorationProps | DashboardProps | Model3DProps;
   resourceRefs: string[];
   dataBindingRefs: string[];
 };
@@ -132,6 +195,8 @@ const MAX_POINTS = 32;
 const MAX_PROPS_BYTES = 16 * 1024;
 const MAX_MODEL_NODE_TRANSFORMS = 100;
 const MAX_MODEL_NODE_APPEARANCES = 100;
+const MAX_PROGRESS_ITEMS = 12;
+const MAX_STATUS_ITEMS = 24;
 const identifierPattern = /^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,119}$/;
 const colorPattern = /^#[0-9a-fA-F]{6}$/;
 const encoder = new TextEncoder();
@@ -146,6 +211,10 @@ const minimumNodeSizes: Record<CanvasNodeType, { width: number; height: number }
   "section-title": { width: 160, height: 48 },
   "card-background": { width: 160, height: 100 },
   "icon-background": { width: 64, height: 64 },
+  "metric-card": { width: 200, height: 120 },
+  "radial-gauge": { width: 240, height: 220 },
+  "progress-list": { width: 280, height: 220 },
+  "status-grid": { width: 300, height: 200 },
   "model-3d": { width: 360, height: 240 },
 };
 
@@ -336,6 +405,22 @@ const requireAlignment = (value: unknown, label: string): DecorationProps["align
   return value as DecorationProps["align"];
 };
 
+const requireDashboardTone = (value: unknown, label: string): DashboardTone => {
+  if (value !== "normal" && value !== "warning" && value !== "danger" && value !== "offline") {
+    invalid("invalid_canvas_node", `${label} must be normal, warning, danger, or offline.`);
+  }
+  return value as DashboardTone;
+};
+
+const requireDashboardBase = (props: Record<string, unknown>): DashboardBaseProps => ({
+  title: requireNonEmptyString(props.title, "props.title", 120),
+  textColor: requireColor(props.textColor, "props.textColor"),
+  accentColor: requireColor(props.accentColor, "props.accentColor"),
+  fillColor: requireColor(props.fillColor, "props.fillColor"),
+  borderColor: requireColor(props.borderColor, "props.borderColor"),
+  sample: requireBoolean(props.sample, "props.sample"),
+});
+
 const requireStringArray = (value: unknown, label: string, identifiers = false): string[] => {
   if (!Array.isArray(value) || value.length > MAX_POINTS) {
     invalid("invalid_canvas_node", `${label} must contain at most ${MAX_POINTS} strings.`);
@@ -356,12 +441,19 @@ const isDecorationNodeType = (value: unknown): value is DecorationNodeType =>
 const isModel3DNodeType = (value: unknown): value is Model3DNodeType =>
   value === "model-3d";
 
+const isDashboardNodeType = (value: unknown): value is DashboardNodeType =>
+  value === "metric-card" ||
+  value === "radial-gauge" ||
+  value === "progress-list" ||
+  value === "status-grid";
+
 const isCanvasNodeType = (value: unknown): value is CanvasNodeType =>
   value === "line-chart" ||
   value === "bar-chart" ||
   value === "rectangle" ||
   value === "circle" ||
   isDecorationNodeType(value) ||
+  isDashboardNodeType(value) ||
   isModel3DNodeType(value);
 
 const validateNode = (value: unknown): CanvasNode => {
@@ -373,7 +465,7 @@ const validateNode = (value: unknown): CanvasNode => {
   const type = rawType as CanvasNodeType;
 
   const props = requireObject(node.props, "canvas node props");
-  let validatedProps: ChartProps | ShapeProps | DecorationProps | Model3DProps;
+  let validatedProps: ChartProps | ShapeProps | DecorationProps | DashboardProps | Model3DProps;
 
   if (type === "line-chart" || type === "bar-chart") {
     const categories = requireStringArray(props.categories, "props.categories");
@@ -416,6 +508,66 @@ const validateNode = (value: unknown): CanvasNode => {
       showDate: requireBoolean(props.showDate, "props.showDate"),
       showSeconds: requireBoolean(props.showSeconds, "props.showSeconds"),
     };
+  } else if (isDashboardNodeType(type)) {
+    const base = requireDashboardBase(props);
+    if (type === "metric-card") {
+      validatedProps = {
+        ...base,
+        value: requireString(props.value, "props.value", 40),
+        unit: requireString(props.unit, "props.unit", 24),
+        subtitle: requireString(props.subtitle, "props.subtitle", 120),
+        icon: requireString(props.icon, "props.icon", 4),
+      };
+    } else if (type === "radial-gauge") {
+      const value = requireNumber(props.value, "props.value", 0, 1_000_000_000);
+      const maximum = requireNumber(props.maximum, "props.maximum", 0.000001, 1_000_000_000);
+      if (value > maximum) {
+        invalid("invalid_canvas_node", "props.value must not be greater than props.maximum.");
+      }
+      validatedProps = {
+        ...base,
+        value,
+        maximum,
+        unit: requireString(props.unit, "props.unit", 24),
+        subtitle: requireString(props.subtitle, "props.subtitle", 120),
+      };
+    } else if (type === "progress-list") {
+      if (!Array.isArray(props.items) || props.items.length < 1 || props.items.length > MAX_PROGRESS_ITEMS) {
+        invalid("invalid_canvas_node", `props.items must contain between 1 and ${MAX_PROGRESS_ITEMS} progress items.`);
+      }
+      const items = (props.items as unknown[]).map((rawItem, index): ProgressListItem => {
+        const item = requireObject(rawItem, `props.items[${index}]`);
+        const value = requireNumber(item.value, `props.items[${index}].value`, 0, 1_000_000_000);
+        const maximum = requireNumber(item.maximum, `props.items[${index}].maximum`, 0.000001, 1_000_000_000);
+        if (value > maximum) {
+          invalid("invalid_canvas_node", `props.items[${index}].value must not be greater than its maximum.`);
+        }
+        return {
+          label: requireNonEmptyString(item.label, `props.items[${index}].label`, 80),
+          value,
+          maximum,
+          unit: requireString(item.unit, `props.items[${index}].unit`, 24),
+        };
+      });
+      validatedProps = { ...base, items };
+    } else {
+      const columns = requireNumber(props.columns, "props.columns", 1, 6);
+      if (!Number.isInteger(columns)) {
+        invalid("invalid_canvas_node", "props.columns must be an integer.");
+      }
+      if (!Array.isArray(props.items) || props.items.length < 1 || props.items.length > MAX_STATUS_ITEMS) {
+        invalid("invalid_canvas_node", `props.items must contain between 1 and ${MAX_STATUS_ITEMS} status items.`);
+      }
+      const items = (props.items as unknown[]).map((rawItem, index): StatusGridItem => {
+        const item = requireObject(rawItem, `props.items[${index}]`);
+        return {
+          label: requireNonEmptyString(item.label, `props.items[${index}].label`, 80),
+          value: requireString(item.value, `props.items[${index}].value`, 80),
+          tone: requireDashboardTone(item.tone, `props.items[${index}].tone`),
+        };
+      });
+      validatedProps = { ...base, columns, items };
+    }
   } else {
     validatedProps = {
       backgroundColor: requireColor(props.backgroundColor, "props.backgroundColor"),

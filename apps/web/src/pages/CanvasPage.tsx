@@ -3,6 +3,8 @@ import { errorMessage, request } from "../api";
 import { ComponentInspector } from "../canvas/ComponentInspector";
 import { CanvasSurface } from "../canvas/CanvasSurface";
 import { canvasRoutePath, modelEditorRoutePath, projectCanvasPath } from "../canvas/routes";
+import { TemplateDialog } from "../canvas/TemplateDialog";
+import { instantiateCanvasTemplate, type CanvasTemplateId } from "../canvas/templates";
 import { CANVAS_DRAG_TYPE, componentLabels, createCanvasNode, isBackgroundNodeType, type CanvasDocument, type CanvasNode, type CanvasNodeType, type CanvasPatchResponse, type CanvasResponse } from "../canvas/types";
 import { DataSourcePanel } from "../DataSourcePanel";
 
@@ -19,6 +21,7 @@ export function CanvasPage({ mode, projectId }: CanvasPageProps) {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [configurationError, setConfigurationError] = useState<string | null>(null);
   const [showDataSources, setShowDataSources] = useState(false);
+  const [showTemplates, setShowTemplates] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const dirtyNodeIdsRef = useRef(new Set<string>());
@@ -137,6 +140,27 @@ export function CanvasPage({ mode, projectId }: CanvasPageProps) {
     event.dataTransfer.effectAllowed = "copy";
   };
 
+  const applyTemplate = (templateId: CanvasTemplateId) => {
+    if (!document || !canEdit || saving) return;
+    const nextNodes = instantiateCanvasTemplate(templateId, document.nodes);
+    const patchNodeCount = document.nodes.length + nextNodes.length;
+    if (patchNodeCount > 100) {
+      setSaveError(`无法套用模板：替换操作包含 ${patchNodeCount} 个节点，超过单次保存上限 100。请先保存并删除部分旧组件。`);
+      return;
+    }
+
+    dirtyNodeIdsRef.current.clear();
+    deletedNodeIdsRef.current.clear();
+    nextNodes.forEach((node) => dirtyNodeIdsRef.current.add(node.id));
+    document.nodes.forEach((node) => deletedNodeIdsRef.current.add(node.id));
+    setDocument({ ...document, nodes: nextNodes });
+    selectCanvasNode(null);
+    setConfigurationError(null);
+    setSaveError(null);
+    setDirty(true);
+    setShowTemplates(false);
+  };
+
   if (loading) return <main className="canvas-page-state"><p className="eyebrow">Canvas</p><h1>正在加载画布…</h1></main>;
   if (loadError || !document) {
     return <main className="canvas-page-state error-state"><p className="eyebrow">Canvas error</p><h1>画布加载失败</h1><p>{loadError ?? "接口没有返回画布文档。"}</p><a className="secondary-button" href="#/projects">返回项目列表</a></main>;
@@ -151,6 +175,7 @@ export function CanvasPage({ mode, projectId }: CanvasPageProps) {
         <div className="canvas-document-meta"><span>{document.width} × {document.height}</span><span>版本 {document.revision}</span>{mode === "edit" ? <span className={dirty ? "is-dirty" : "is-saved"}>{dirty ? "有未保存更改" : "已保存"}</span> : null}</div>
         <div className="canvas-toolbar-actions">
           {mode === "edit" ? <>
+            <button className="secondary-button compact-button" disabled={!canEdit || saving} onClick={() => setShowTemplates(true)} type="button">模板</button>
             <button className="secondary-button compact-button" onClick={() => setShowDataSources(true)} type="button">数据源</button>
             <button className="secondary-button compact-button" disabled={!selectedNodeId || !canEdit || saving} onClick={deleteSelectedNode} type="button">删除组件</button>
             <button className="secondary-button compact-button" disabled={saving || configurationError !== null} onClick={() => void openPreview()} title={configurationError ?? undefined} type="button">预览</button>
@@ -171,6 +196,13 @@ export function CanvasPage({ mode, projectId }: CanvasPageProps) {
             <h3 className="palette-group-title" id="palette-charts-title"><span>图表</span><em>2</em></h3>
             <button aria-label="折线图，连续趋势数据" className="palette-item palette-line-chart" disabled={!canEdit || saving} draggable={canEdit && !saving} onDragStart={(event) => startPaletteDrag(event, "line-chart")} title="折线图 · 连续趋势数据" type="button"><span className="palette-icon" aria-hidden="true">⌁</span><span><strong>折线图</strong><small>连续趋势数据</small></span><span className="palette-drag-mark">⋮⋮</span></button>
             <button aria-label="柱状图，分类对比数据" className="palette-item palette-bar-chart" disabled={!canEdit || saving} draggable={canEdit && !saving} onDragStart={(event) => startPaletteDrag(event, "bar-chart")} title="柱状图 · 分类对比数据" type="button"><span className="palette-icon" aria-hidden="true">▥</span><span><strong>柱状图</strong><small>分类对比数据</small></span><span className="palette-drag-mark">⋮⋮</span></button>
+          </section>
+          <section aria-labelledby="palette-dashboard-title" className="palette-group is-dashboard">
+            <h3 className="palette-group-title" id="palette-dashboard-title"><span>数据展示</span><em>4</em></h3>
+            <button aria-label="指标卡，展示核心数字和摘要" className="palette-item palette-metric-card" disabled={!canEdit || saving} draggable={canEdit && !saving} onDragStart={(event) => startPaletteDrag(event, "metric-card")} title="指标卡 · 核心数字与摘要" type="button"><span className="palette-icon" aria-hidden="true">#</span><span><strong>指标卡</strong><small>核心数字与摘要</small></span><span className="palette-drag-mark">⋮⋮</span></button>
+            <button aria-label="环形进度，展示完成率和消耗率" className="palette-item palette-radial-gauge" disabled={!canEdit || saving} draggable={canEdit && !saving} onDragStart={(event) => startPaletteDrag(event, "radial-gauge")} title="环形进度 · 完成率与消耗率" type="button"><span className="palette-icon" aria-hidden="true">◉</span><span><strong>环形进度</strong><small>完成率与消耗率</small></span><span className="palette-drag-mark">⋮⋮</span></button>
+            <button aria-label="流程排行，多行进度与排行" className="palette-item palette-progress-list" disabled={!canEdit || saving} draggable={canEdit && !saving} onDragStart={(event) => startPaletteDrag(event, "progress-list")} title="流程排行 · 多行进度与排行" type="button"><span className="palette-icon" aria-hidden="true">≡</span><span><strong>流程排行</strong><small>多行进度与排行</small></span><span className="palette-drag-mark">⋮⋮</span></button>
+            <button aria-label="状态矩阵，展示设备、人员或告警状态" className="palette-item palette-status-grid" disabled={!canEdit || saving} draggable={canEdit && !saving} onDragStart={(event) => startPaletteDrag(event, "status-grid")} title="状态矩阵 · 设备、人员或告警" type="button"><span className="palette-icon" aria-hidden="true">▦</span><span><strong>状态矩阵</strong><small>设备、人员或告警</small></span><span className="palette-drag-mark">⋮⋮</span></button>
           </section>
           <section aria-labelledby="palette-shapes-title" className="palette-group is-shape">
             <h3 className="palette-group-title" id="palette-shapes-title"><span>基础图形</span><em>2</em></h3>
@@ -196,6 +228,13 @@ export function CanvasPage({ mode, projectId }: CanvasPageProps) {
           editable={canEdit && !saving}
           onClose={() => setShowDataSources(false)}
           projectId={projectId}
+        />
+      ) : null}
+      {showTemplates ? (
+        <TemplateDialog
+          editable={canEdit && !saving}
+          onApply={applyTemplate}
+          onClose={() => setShowTemplates(false)}
         />
       ) : null}
     </main>

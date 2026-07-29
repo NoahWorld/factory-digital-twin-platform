@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
+import { DashboardNodeInspector } from "./DashboardNodeInspector";
 import {
   componentLabels,
+  isDashboardNodeType,
   isDecorationNodeType,
   isModel3DNodeType,
   isShapeNodeType,
@@ -499,6 +501,17 @@ export function ComponentInspector({
       return <InvalidComponentInspector message={parsed.message} onValidationChange={onValidationChange} />;
     }
     return <ValidDecorationInspector editable={editable} node={node} onNodeChange={onNodeChange} onValidationChange={onValidationChange} props={parsed.value} />;
+  }
+
+  if (isDashboardNodeType(node.type)) {
+    return (
+      <DashboardNodeInspector
+        editable={editable}
+        node={node}
+        onNodeChange={onNodeChange}
+        onValidationChange={onValidationChange}
+      />
+    );
   }
 
   if (isModel3DNodeType(node.type)) {

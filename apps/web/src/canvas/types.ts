@@ -10,7 +10,17 @@ export type DecorationNodeType =
   | "card-background"
   | "icon-background";
 export type Model3DNodeType = "model-3d";
-export type CanvasNodeType = ChartNodeType | ShapeNodeType | DecorationNodeType | Model3DNodeType;
+export type DashboardNodeType =
+  | "metric-card"
+  | "radial-gauge"
+  | "progress-list"
+  | "status-grid";
+export type CanvasNodeType =
+  | ChartNodeType
+  | ShapeNodeType
+  | DecorationNodeType
+  | Model3DNodeType
+  | DashboardNodeType;
 
 export type ChartProps = {
   title: string;
@@ -42,6 +52,59 @@ export type DecorationProps = {
   showDate: boolean;
   showSeconds: boolean;
 };
+
+export type DashboardTone = "normal" | "warning" | "danger" | "offline";
+
+export type DashboardBaseProps = {
+  title: string;
+  textColor: string;
+  accentColor: string;
+  fillColor: string;
+  borderColor: string;
+  sample: boolean;
+};
+
+export type MetricCardProps = DashboardBaseProps & {
+  value: string;
+  unit: string;
+  subtitle: string;
+  icon: string;
+};
+
+export type RadialGaugeProps = DashboardBaseProps & {
+  value: number;
+  maximum: number;
+  unit: string;
+  subtitle: string;
+};
+
+export type ProgressListItem = {
+  label: string;
+  value: number;
+  maximum: number;
+  unit: string;
+};
+
+export type ProgressListProps = DashboardBaseProps & {
+  items: ProgressListItem[];
+};
+
+export type StatusGridItem = {
+  label: string;
+  value: string;
+  tone: DashboardTone;
+};
+
+export type StatusGridProps = DashboardBaseProps & {
+  columns: number;
+  items: StatusGridItem[];
+};
+
+export type DashboardProps =
+  | MetricCardProps
+  | RadialGaugeProps
+  | ProgressListProps
+  | StatusGridProps;
 
 export type Vector3Tuple = [number, number, number];
 
@@ -244,6 +307,60 @@ const model3DDefaults: Record<Model3DNodeType, Model3DProps> = {
   },
 };
 
+const dashboardDefaults: Record<DashboardNodeType, DashboardProps> = {
+  "metric-card": {
+    title: "设备在线率",
+    value: "98.6",
+    unit: "%",
+    subtitle: "较昨日 +0.8%",
+    icon: "↗",
+    textColor: "#eafaff",
+    accentColor: "#55d8ff",
+    fillColor: "#0b2638",
+    borderColor: "#286783",
+    sample: true,
+  },
+  "radial-gauge": {
+    title: "任务完成率",
+    value: 86,
+    maximum: 100,
+    unit: "%",
+    subtitle: "目标 90%",
+    textColor: "#eafaff",
+    accentColor: "#46e3b7",
+    fillColor: "#0b2638",
+    borderColor: "#286783",
+    sample: true,
+  },
+  "progress-list": {
+    title: "保障申请流程",
+    items: [
+      { label: "申请准备", value: 8, maximum: 10, unit: "项" },
+      { label: "分级审批", value: 5, maximum: 10, unit: "项" },
+      { label: "送修交接", value: 7, maximum: 10, unit: "项" },
+    ],
+    textColor: "#eafaff",
+    accentColor: "#55d8ff",
+    fillColor: "#0b2638",
+    borderColor: "#286783",
+    sample: true,
+  },
+  "status-grid": {
+    title: "设备状态",
+    columns: 3,
+    items: [
+      { label: "01 号设备", value: "运行", tone: "normal" },
+      { label: "02 号设备", value: "预警", tone: "warning" },
+      { label: "03 号设备", value: "离线", tone: "offline" },
+    ],
+    textColor: "#eafaff",
+    accentColor: "#55d8ff",
+    fillColor: "#0b2638",
+    borderColor: "#286783",
+    sample: true,
+  },
+};
+
 export const componentLabels: Record<CanvasNodeType, string> = {
   "line-chart": "折线图",
   "bar-chart": "柱状图",
@@ -256,6 +373,10 @@ export const componentLabels: Record<CanvasNodeType, string> = {
   "card-background": "小卡片背景",
   "icon-background": "小图标背景",
   "model-3d": "3D 模型",
+  "metric-card": "指标卡",
+  "radial-gauge": "环形进度",
+  "progress-list": "进度排行",
+  "status-grid": "状态矩阵",
 };
 
 export const defaultNodeSizes: Record<CanvasNodeType, { width: number; height: number }> = {
@@ -270,6 +391,10 @@ export const defaultNodeSizes: Record<CanvasNodeType, { width: number; height: n
   "card-background": { width: 360, height: 220 },
   "icon-background": { width: 96, height: 96 },
   "model-3d": { width: 720, height: 460 },
+  "metric-card": { width: 280, height: 150 },
+  "radial-gauge": { width: 320, height: 300 },
+  "progress-list": { width: 420, height: 320 },
+  "status-grid": { width: 480, height: 300 },
 };
 
 export const minimumNodeSizes: Record<CanvasNodeType, { width: number; height: number }> = {
@@ -284,6 +409,10 @@ export const minimumNodeSizes: Record<CanvasNodeType, { width: number; height: n
   "card-background": { width: 160, height: 100 },
   "icon-background": { width: 64, height: 64 },
   "model-3d": { width: 360, height: 240 },
+  "metric-card": { width: 200, height: 120 },
+  "radial-gauge": { width: 240, height: 220 },
+  "progress-list": { width: 280, height: 220 },
+  "status-grid": { width: 300, height: 200 },
 };
 
 export const isChartNodeType = (value: string): value is ChartNodeType =>
@@ -302,6 +431,12 @@ export const isDecorationNodeType = (value: string): value is DecorationNodeType
 
 export const isModel3DNodeType = (value: string): value is Model3DNodeType =>
   value === "model-3d";
+
+export const isDashboardNodeType = (value: string): value is DashboardNodeType =>
+  value === "metric-card" ||
+  value === "radial-gauge" ||
+  value === "progress-list" ||
+  value === "status-grid";
 
 export const isBackgroundNodeType = (value: CanvasNodeType): boolean =>
   value === "background-decoration" || value === "card-background";
@@ -325,7 +460,14 @@ export const createCanvasNode = (
       ? { ...shapeDefaults[type] }
       : isDecorationNodeType(type)
         ? { ...decorationDefaults[type] }
-        : { ...model3DDefaults[type] };
+        : isDashboardNodeType(type)
+          ? (() => {
+              const defaults = dashboardDefaults[type];
+              return "items" in defaults
+                ? { ...defaults, items: defaults.items.map((item) => ({ ...item })) }
+                : { ...defaults };
+            })()
+          : { ...model3DDefaults[type] };
 
   return {
     id: crypto.randomUUID(),
@@ -342,7 +484,192 @@ export const createCanvasNode = (
 };
 
 export const isCanvasNodeType = (value: string): value is CanvasNodeType =>
-  isChartNodeType(value) || isShapeNodeType(value) || isDecorationNodeType(value) || isModel3DNodeType(value);
+  isChartNodeType(value) ||
+  isShapeNodeType(value) ||
+  isDecorationNodeType(value) ||
+  isModel3DNodeType(value) ||
+  isDashboardNodeType(value);
+
+export type DashboardPropsResult =
+  | { ok: true; value: DashboardProps }
+  | { ok: false; message: string };
+
+const parseDashboardBase = (
+  props: Record<string, unknown>,
+): { ok: true; value: DashboardBaseProps } | { ok: false; message: string } => {
+  if (typeof props.title !== "string" || props.title.trim().length === 0 || props.title.length > 120) {
+    return { ok: false, message: "title 必须是 1–120 个字符的文本" };
+  }
+  if (
+    !isHexColor(props.textColor) ||
+    !isHexColor(props.accentColor) ||
+    !isHexColor(props.fillColor) ||
+    !isHexColor(props.borderColor)
+  ) {
+    return { ok: false, message: "所有颜色字段都必须是六位十六进制颜色" };
+  }
+  if (typeof props.sample !== "boolean") {
+    return { ok: false, message: "sample 必须是布尔值" };
+  }
+  return {
+    ok: true,
+    value: {
+      title: props.title,
+      textColor: props.textColor,
+      accentColor: props.accentColor,
+      fillColor: props.fillColor,
+      borderColor: props.borderColor,
+      sample: props.sample,
+    },
+  };
+};
+
+const parseDashboardNumber = (
+  value: unknown,
+  label: string,
+  minimum = 0,
+  maximum = 1_000_000_000,
+): { ok: true; value: number } | { ok: false; message: string } => {
+  if (
+    typeof value !== "number" ||
+    !Number.isFinite(value) ||
+    value < minimum ||
+    value > maximum
+  ) {
+    return { ok: false, message: `${label} 必须是 ${minimum}–${maximum} 之间的有限数值` };
+  }
+  return { ok: true, value };
+};
+
+export const parseDashboardProps = (
+  type: DashboardNodeType,
+  props: Record<string, unknown>,
+): DashboardPropsResult => {
+  const base = parseDashboardBase(props);
+  if (!base.ok) return base;
+
+  if (type === "metric-card") {
+    if (
+      typeof props.value !== "string" ||
+      props.value.length > 40 ||
+      typeof props.unit !== "string" ||
+      props.unit.length > 24 ||
+      typeof props.subtitle !== "string" ||
+      props.subtitle.length > 120 ||
+      typeof props.icon !== "string" ||
+      props.icon.length > 4
+    ) {
+      return { ok: false, message: "指标值、单位、副标题或图标文本超出长度限制" };
+    }
+    return {
+      ok: true,
+      value: {
+        ...base.value,
+        value: props.value,
+        unit: props.unit,
+        subtitle: props.subtitle,
+        icon: props.icon,
+      },
+    };
+  }
+
+  if (type === "radial-gauge") {
+    const value = parseDashboardNumber(props.value, "value");
+    if (!value.ok) return value;
+    const maximum = parseDashboardNumber(props.maximum, "maximum", 0.000001);
+    if (!maximum.ok) return maximum;
+    if (value.value > maximum.value) {
+      return { ok: false, message: "value 不能大于 maximum" };
+    }
+    if (
+      typeof props.unit !== "string" ||
+      props.unit.length > 24 ||
+      typeof props.subtitle !== "string" ||
+      props.subtitle.length > 120
+    ) {
+      return { ok: false, message: "unit 或 subtitle 超出长度限制" };
+    }
+    return {
+      ok: true,
+      value: {
+        ...base.value,
+        value: value.value,
+        maximum: maximum.value,
+        unit: props.unit,
+        subtitle: props.subtitle,
+      },
+    };
+  }
+
+  if (type === "progress-list") {
+    if (!Array.isArray(props.items) || props.items.length < 1 || props.items.length > 12) {
+      return { ok: false, message: "items 必须包含 1–12 项进度数据" };
+    }
+    const items: ProgressListItem[] = [];
+    for (const [index, rawItem] of props.items.entries()) {
+      if (!rawItem || typeof rawItem !== "object" || Array.isArray(rawItem)) {
+        return { ok: false, message: `items[${index}] 必须是对象` };
+      }
+      const item = rawItem as Record<string, unknown>;
+      if (
+        typeof item.label !== "string" ||
+        item.label.trim().length === 0 ||
+        item.label.length > 80 ||
+        typeof item.unit !== "string" ||
+        item.unit.length > 24
+      ) {
+        return { ok: false, message: `items[${index}] 的名称或单位无效` };
+      }
+      const value = parseDashboardNumber(item.value, `items[${index}].value`);
+      if (!value.ok) return value;
+      const maximum = parseDashboardNumber(item.maximum, `items[${index}].maximum`, 0.000001);
+      if (!maximum.ok) return maximum;
+      if (value.value > maximum.value) {
+        return { ok: false, message: `items[${index}].value 不能大于 maximum` };
+      }
+      items.push({ label: item.label, value: value.value, maximum: maximum.value, unit: item.unit });
+    }
+    return { ok: true, value: { ...base.value, items } };
+  }
+
+  if (
+    typeof props.columns !== "number" ||
+    !Number.isInteger(props.columns) ||
+    props.columns < 1 ||
+    props.columns > 6
+  ) {
+    return { ok: false, message: "columns 必须是 1–6 之间的整数" };
+  }
+  if (!Array.isArray(props.items) || props.items.length < 1 || props.items.length > 24) {
+    return { ok: false, message: "items 必须包含 1–24 项状态数据" };
+  }
+  const items: StatusGridItem[] = [];
+  for (const [index, rawItem] of props.items.entries()) {
+    if (!rawItem || typeof rawItem !== "object" || Array.isArray(rawItem)) {
+      return { ok: false, message: `items[${index}] 必须是对象` };
+    }
+    const item = rawItem as Record<string, unknown>;
+    if (
+      typeof item.label !== "string" ||
+      item.label.trim().length === 0 ||
+      item.label.length > 80 ||
+      typeof item.value !== "string" ||
+      item.value.length > 80
+    ) {
+      return { ok: false, message: `items[${index}] 的名称或状态值无效` };
+    }
+    if (
+      item.tone !== "normal" &&
+      item.tone !== "warning" &&
+      item.tone !== "danger" &&
+      item.tone !== "offline"
+    ) {
+      return { ok: false, message: `items[${index}].tone 不受支持` };
+    }
+    items.push({ label: item.label, value: item.value, tone: item.tone });
+  }
+  return { ok: true, value: { ...base.value, columns: props.columns, items } };
+};
 
 export type ChartPropsResult =
   | { ok: true; value: ChartProps }
