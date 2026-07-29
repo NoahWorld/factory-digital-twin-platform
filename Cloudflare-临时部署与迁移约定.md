@@ -37,6 +37,8 @@ P1 原型的 Worker 配置和 D1 迁移已纳入 `apps/api/`；云端数据库�
 | `GET` / `POST /api/v1/projects` | 按角色与项目成员关系读取/新建项目 | 项目创建需要平台管理员或交付负责人 |
 | `GET` / `POST /api/v1/projects/:id/assets` | 读取资产台账、新建资产并可绑定模型节点 | `assetId` 与 `modelNode` 均做项目内冲突校验 |
 | `PATCH /api/v1/projects/:id/assets/:recordId` | 修改资产信息、绑定或解除模型节点 | 解除绑定保留资产台账记录；修改需要项目编辑权限 |
+| `GET` / `POST /api/v1/projects/:id/data-sources` | 读取或新建 REST/WebSocket 连接配置 | 只保存连接元数据与服务端凭据引用，不保存明文凭据 |
+| `PATCH /api/v1/projects/:id/data-sources/:sourceId` | 修改项目数据源配置 | 当前不代表连接已启用；连接测试和运行状态由后续采集执行器提供 |
 | `GET /api/v1/projects/:id` | 下发已发布项目配置 | 配置由版本化 schema 生成 |
 | `GET /api/v1/assets/:assetId/state` | REST 轮询状态样例 | 返回统一 `assetId/timestamp/values` 结构 |
 | `GET /api/v1/events` 或 WebSocket 路由 | 实时状态入口 | 先定义事件契约后接入 |

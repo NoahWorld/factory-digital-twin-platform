@@ -25,6 +25,12 @@ import {
 } from "./assets";
 import { applyCanvasPatch, getCanvas, validateCanvasPatch } from "./canvas";
 import {
+  createDataSource,
+  listDataSources,
+  updateDataSource,
+  validateDataSourceCreate,
+} from "./data-sources";
+import {
   listModelAssets,
   modelAssetContentResponse,
   uploadModelAsset,
@@ -400,6 +406,77 @@ const handleApiRequest = async (
       durationMs: Date.now() - startedAt,
     }));
     return json({ asset, requestId });
+  }
+
+  const dataSourcesMatch = pathname.match(/^\/api\/v1\/projects\/([^/]+)\/data-sources$/);
+
+  if ((method === "GET" || method === "POST") && dataSourcesMatch) {
+    const startedAt = Date.now();
+    const user = await getAuthenticatedUser(env, request);
+    const projectId = decodePathSegment(dataSourcesMatch[1]);
+    const project = await requireProjectAccess(env, user, projectId);
+
+    if (method === "GET") {
+      return json({ dataSources: await listDataSources(env, projectId), requestId });
+    }
+    if (!canEditProject(user, project)) {
+      throw new AppError(
+        403,
+        "permission_denied",
+        "You do not have permission to create data sources in this project.",
+      );
+    }
+
+    const dataSource = await createDataSource(
+      env,
+      projectId,
+      validateDataSourceCreate(await readJsonObject(request)),
+    );
+    console.log(JSON.stringify({
+      event: "data_source_created",
+      requestId,
+      projectId,
+      userId: user.id,
+      dataSourceId: dataSource.id,
+      sourceType: dataSource.sourceType,
+      durationMs: Date.now() - startedAt,
+    }));
+    return json({ dataSource, requestId }, 201);
+  }
+
+  const dataSourceMatch = pathname.match(
+    /^\/api\/v1\/projects\/([^/]+)\/data-sources\/([^/]+)$/,
+  );
+
+  if (method === "PATCH" && dataSourceMatch) {
+    const startedAt = Date.now();
+    const user = await getAuthenticatedUser(env, request);
+    const projectId = decodePathSegment(dataSourceMatch[1]);
+    const project = await requireProjectAccess(env, user, projectId);
+    if (!canEditProject(user, project)) {
+      throw new AppError(
+        403,
+        "permission_denied",
+        "You do not have permission to edit data sources in this project.",
+      );
+    }
+
+    const dataSource = await updateDataSource(
+      env,
+      projectId,
+      decodePathSegment(dataSourceMatch[2]),
+      await readJsonObject(request),
+    );
+    console.log(JSON.stringify({
+      event: "data_source_updated",
+      requestId,
+      projectId,
+      userId: user.id,
+      dataSourceId: dataSource.id,
+      sourceType: dataSource.sourceType,
+      durationMs: Date.now() - startedAt,
+    }));
+    return json({ dataSource, requestId });
   }
 
   const canvasMatch = pathname.match(/^\/api\/v1\/projects\/([^/]+)\/canvas$/);

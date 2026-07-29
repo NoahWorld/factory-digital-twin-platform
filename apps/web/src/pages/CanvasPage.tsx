@@ -4,6 +4,7 @@ import { ComponentInspector } from "../canvas/ComponentInspector";
 import { CanvasSurface } from "../canvas/CanvasSurface";
 import type { ModelSceneSnapshot } from "../canvas/model-scene";
 import { CANVAS_DRAG_TYPE, componentLabels, createCanvasNode, isBackgroundNodeType, type CanvasDocument, type CanvasNode, type CanvasNodeType, type CanvasPatchResponse, type CanvasResponse } from "../canvas/types";
+import { DataSourcePanel } from "../DataSourcePanel";
 
 type CanvasPageProps = { mode: "edit" | "preview"; projectId: string };
 const projectPath = (projectId: string) => `/api/v1/projects/${encodeURIComponent(projectId)}/canvas`;
@@ -20,6 +21,7 @@ export function CanvasPage({ mode, projectId }: CanvasPageProps) {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [configurationError, setConfigurationError] = useState<string | null>(null);
+  const [showDataSources, setShowDataSources] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const dirtyNodeIdsRef = useRef(new Set<string>());
@@ -164,6 +166,7 @@ export function CanvasPage({ mode, projectId }: CanvasPageProps) {
         <div className="canvas-document-meta"><span>{document.width} × {document.height}</span><span>版本 {document.revision}</span>{mode === "edit" ? <span className={dirty ? "is-dirty" : "is-saved"}>{dirty ? "有未保存更改" : "已保存"}</span> : null}</div>
         <div className="canvas-toolbar-actions">
           {mode === "edit" ? <>
+            <button className="secondary-button compact-button" onClick={() => setShowDataSources(true)} type="button">数据源</button>
             <button className="secondary-button compact-button" disabled={!selectedNodeId || !canEdit || saving} onClick={deleteSelectedNode} type="button">删除组件</button>
             <button className="secondary-button compact-button" disabled={saving || configurationError !== null} onClick={() => void openPreview()} title={configurationError ?? undefined} type="button">预览</button>
             <button className="primary-button compact-button" disabled={!dirty || saving || !canEdit || configurationError !== null} onClick={() => void save()} title={configurationError ?? undefined} type="button">{saving ? "保存中…" : "保存画布"}</button>
@@ -203,6 +206,13 @@ export function CanvasPage({ mode, projectId }: CanvasPageProps) {
         <CanvasSurface document={document} editable={editable} onCreateNode={createNode} onModelSceneChange={updateModelScene} onModelSceneNodeSelect={selectModelSceneNode} onNodeChange={updateNode} onSelectNode={selectCanvasNode} selectedModelSceneNodePath={selectedModelSceneNodePath} selectedNodeId={selectedNodeId} />
         {mode === "edit" ? <ComponentInspector editable={editable} modelScene={selectedNode ? modelScenes[selectedNode.id] ?? null : null} node={selectedNode} onModelSceneNodeSelect={setSelectedModelSceneNodePath} onNodeChange={updateNode} onValidationChange={setConfigurationError} projectId={projectId} selectedModelSceneNodePath={selectedModelSceneNodePath} /> : null}
       </div>
+      {showDataSources ? (
+        <DataSourcePanel
+          editable={canEdit && !saving}
+          onClose={() => setShowDataSources(false)}
+          projectId={projectId}
+        />
+      ) : null}
     </main>
   );
 }
