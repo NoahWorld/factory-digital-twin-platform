@@ -15,6 +15,7 @@ import {
   type ProjectAssetListResponse,
   type ProjectAssetResponse,
 } from "./assets";
+import { AssetDataBindingSection } from "./AssetDataBindingSection";
 import {
   formatFileSize,
   modelAssetsPath,
@@ -790,6 +791,14 @@ export function Model3DInspector({
             <p className="model-asset-binding-notice" role="status">{assetBindingNotice}</p>
           ) : null}
         </section>
+      ) : null}
+
+      {selectedSceneNode && boundProjectAsset ? (
+        <AssetDataBindingSection
+          asset={boundProjectAsset}
+          editable={editable}
+          projectId={projectId}
+        />
       ) : null}
 
       {selectedSceneNode && selectedTransform ? (

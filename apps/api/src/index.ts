@@ -23,6 +23,13 @@ import {
   validateAssetCreate,
   validateAssetPatch,
 } from "./assets";
+import {
+  createAssetDataBinding,
+  deleteAssetDataBinding,
+  listAssetDataBindings,
+  updateAssetDataBinding,
+  validateAssetDataBindingCreate,
+} from "./asset-data-bindings";
 import { applyCanvasPatch, getCanvas, validateCanvasPatch } from "./canvas";
 import {
   createDataSource,
@@ -406,6 +413,115 @@ const handleApiRequest = async (
       durationMs: Date.now() - startedAt,
     }));
     return json({ asset, requestId });
+  }
+
+  const assetDataBindingsMatch = pathname.match(
+    /^\/api\/v1\/projects\/([^/]+)\/assets\/([^/]+)\/data-bindings$/,
+  );
+
+  if ((method === "GET" || method === "POST") && assetDataBindingsMatch) {
+    const startedAt = Date.now();
+    const user = await getAuthenticatedUser(env, request);
+    const projectId = decodePathSegment(assetDataBindingsMatch[1]);
+    const assetRecordId = decodePathSegment(assetDataBindingsMatch[2]);
+    const project = await requireProjectAccess(env, user, projectId);
+
+    if (method === "GET") {
+      return json({
+        dataBindings: await listAssetDataBindings(env, projectId, assetRecordId),
+        requestId,
+      });
+    }
+
+    if (!canEditProject(user, project)) {
+      throw new AppError(
+        403,
+        "permission_denied",
+        "You do not have permission to create asset data bindings in this project.",
+      );
+    }
+    const dataBinding = await createAssetDataBinding(
+      env,
+      projectId,
+      assetRecordId,
+      validateAssetDataBindingCreate(await readJsonObject(request)),
+    );
+    console.log(JSON.stringify({
+      event: "asset_data_binding_created",
+      requestId,
+      projectId,
+      userId: user.id,
+      assetRecordId,
+      assetDataBindingId: dataBinding.id,
+      dataSourceId: dataBinding.dataSourceId,
+      metricKey: dataBinding.metricKey,
+      durationMs: Date.now() - startedAt,
+    }));
+    return json({ dataBinding, requestId }, 201);
+  }
+
+  const assetDataBindingMatch = pathname.match(
+    /^\/api\/v1\/projects\/([^/]+)\/assets\/([^/]+)\/data-bindings\/([^/]+)$/,
+  );
+
+  if (
+    (method === "PATCH" || method === "DELETE")
+    && assetDataBindingMatch
+  ) {
+    const startedAt = Date.now();
+    const user = await getAuthenticatedUser(env, request);
+    const projectId = decodePathSegment(assetDataBindingMatch[1]);
+    const assetRecordId = decodePathSegment(assetDataBindingMatch[2]);
+    const bindingId = decodePathSegment(assetDataBindingMatch[3]);
+    const project = await requireProjectAccess(env, user, projectId);
+    if (!canEditProject(user, project)) {
+      throw new AppError(
+        403,
+        "permission_denied",
+        "You do not have permission to edit asset data bindings in this project.",
+      );
+    }
+
+    if (method === "DELETE") {
+      const dataBinding = await deleteAssetDataBinding(
+        env,
+        projectId,
+        assetRecordId,
+        bindingId,
+      );
+      console.log(JSON.stringify({
+        event: "asset_data_binding_deleted",
+        requestId,
+        projectId,
+        userId: user.id,
+        assetRecordId,
+        assetDataBindingId: dataBinding.id,
+        dataSourceId: dataBinding.dataSourceId,
+        metricKey: dataBinding.metricKey,
+        durationMs: Date.now() - startedAt,
+      }));
+      return new Response(null, { status: 204 });
+    }
+
+    const dataBinding = await updateAssetDataBinding(
+      env,
+      projectId,
+      assetRecordId,
+      bindingId,
+      await readJsonObject(request),
+    );
+    console.log(JSON.stringify({
+      event: "asset_data_binding_updated",
+      requestId,
+      projectId,
+      userId: user.id,
+      assetRecordId,
+      assetDataBindingId: dataBinding.id,
+      dataSourceId: dataBinding.dataSourceId,
+      metricKey: dataBinding.metricKey,
+      durationMs: Date.now() - startedAt,
+    }));
+    return json({ dataBinding, requestId });
   }
 
   const dataSourcesMatch = pathname.match(/^\/api\/v1\/projects\/([^/]+)\/data-sources$/);

@@ -2028,6 +2028,177 @@ input:focus {
   line-height: 1.5;
 }
 
+.asset-data-binding-section {
+  gap: 11px;
+}
+
+.asset-data-binding-context {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 3px 8px;
+  padding: 9px 10px;
+  border: 1px solid rgba(90, 216, 255, 0.2);
+  border-radius: 6px;
+  background: rgba(21, 73, 94, 0.16);
+}
+
+.asset-data-binding-context span {
+  grid-column: 1 / -1;
+  color: #6f8ba0;
+  font-size: 0.6rem;
+}
+
+.asset-data-binding-context strong {
+  overflow: hidden;
+  color: #ddf7ff;
+  font-size: 0.7rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.asset-data-binding-context code {
+  color: #68cbe9;
+  font-size: 0.62rem;
+}
+
+.asset-data-binding-list-heading,
+.asset-data-binding-form-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.asset-data-binding-list-heading > span {
+  color: #7991a1;
+  font-size: 0.62rem;
+}
+
+.asset-data-binding-list-heading button {
+  border: 0;
+  color: #70d9b3;
+  background: transparent;
+  font: inherit;
+  font-size: 0.64rem;
+  cursor: pointer;
+}
+
+.asset-data-binding-list-heading button:disabled {
+  color: #526573;
+  cursor: not-allowed;
+}
+
+.asset-data-binding-list {
+  display: grid;
+  gap: 5px;
+}
+
+.asset-data-binding-list > button {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 9px;
+  border: 1px solid #263b4b;
+  border-radius: 6px;
+  color: #abc0ce;
+  background: #101d27;
+  text-align: left;
+  cursor: pointer;
+}
+
+.asset-data-binding-list > button:hover,
+.asset-data-binding-list > button.is-active {
+  border-color: rgba(90, 216, 255, 0.45);
+  background: rgba(21, 73, 94, 0.24);
+}
+
+.asset-data-binding-list > button:disabled {
+  cursor: wait;
+  opacity: 0.72;
+}
+
+.asset-data-binding-list > button span {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.asset-data-binding-list strong,
+.asset-data-binding-list small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.asset-data-binding-list strong {
+  color: #d7edf7;
+  font-size: 0.68rem;
+}
+
+.asset-data-binding-list small {
+  color: #718b9d;
+  font-size: 0.58rem;
+}
+
+.asset-data-binding-list em {
+  color: #70d9b3;
+  font-size: 0.58rem;
+  font-style: normal;
+}
+
+.asset-data-binding-empty {
+  margin: 0;
+  padding: 10px;
+  border: 1px dashed #294155;
+  border-radius: 6px;
+  color: #718c9e;
+  font-size: 0.64rem;
+  text-align: center;
+}
+
+.asset-data-binding-form {
+  display: grid;
+  gap: 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(142, 171, 178, 0.12);
+}
+
+.asset-data-binding-form-heading strong {
+  color: #d7edf7;
+  font-size: 0.7rem;
+}
+
+.asset-data-binding-form-heading span {
+  color: #718b9d;
+  font-size: 0.56rem;
+}
+
+.asset-data-binding-form > label,
+.asset-data-binding-grid > label {
+  display: grid;
+}
+
+.asset-data-binding-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.asset-data-binding-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.asset-data-binding-actions > :only-child {
+  grid-column: 1 / -1;
+}
+
+.asset-data-binding-actions button {
+  justify-content: center;
+}
+
 .data-source-panel-backdrop {
   position: fixed;
   z-index: 100;
