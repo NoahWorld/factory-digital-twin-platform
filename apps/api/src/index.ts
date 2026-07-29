@@ -621,6 +621,8 @@ const handleApiRequest = async (
       projectId,
       userId: user.id,
       revision: canvas.revision,
+      themeChanged: patch.theme !== undefined,
+      themeMode: patch.theme?.mode ?? null,
       upsertedNodeCount: patch.upsertNodes.length,
       deletedNodeCount: patch.deleteNodeIds.length,
       durationMs: Date.now() - startedAt,

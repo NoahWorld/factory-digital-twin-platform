@@ -22,6 +22,17 @@ export type CanvasNodeType =
   | DashboardNodeType
   | Model3DNodeType;
 
+export type CanvasThemeMode = "dark" | "light" | "custom";
+
+export type CanvasTheme = {
+  mode: CanvasThemeMode;
+  backgroundColor: string;
+  surfaceColor: string;
+  textColor: string;
+  accentColor: string;
+  borderColor: string;
+};
+
 export type ChartProps = {
   title: string;
   categories: string[];
@@ -153,7 +164,7 @@ export type CanvasDocument = {
   projectId: string;
   width: number;
   height: number;
-  backgroundColor: string;
+  theme: CanvasTheme;
   revision: number;
   updatedAt: string | null;
   nodes: CanvasNode[];
@@ -161,6 +172,7 @@ export type CanvasDocument = {
 
 export type CanvasPatch = {
   expectedRevision: number;
+  theme?: CanvasTheme;
   upsertNodes: CanvasNode[];
   deleteNodeIds: string[];
 };
@@ -170,6 +182,11 @@ type CanvasRow = {
   width: number;
   height: number;
   background_color: string;
+  theme_mode: CanvasThemeMode;
+  theme_surface_color: string;
+  theme_text_color: string;
+  theme_accent_color: string;
+  theme_border_color: string;
   revision: number;
   updated_at: string;
 };
@@ -189,7 +206,14 @@ type CanvasNodeRow = {
 
 const DEFAULT_WIDTH = 1920;
 const DEFAULT_HEIGHT = 1080;
-const DEFAULT_BACKGROUND = "#071525";
+const DEFAULT_THEME: CanvasTheme = {
+  mode: "dark",
+  backgroundColor: "#071525",
+  surfaceColor: "#0b2638",
+  textColor: "#eafaff",
+  accentColor: "#55d8ff",
+  borderColor: "#286783",
+};
 const MAX_PATCH_NODES = 100;
 const MAX_POINTS = 32;
 const MAX_PROPS_BYTES = 16 * 1024;
@@ -271,6 +295,49 @@ const requireColor = (value: unknown, label: string): string => {
     invalid("invalid_canvas_node", `${label} must be a six-digit hexadecimal color.`);
   }
   return color;
+};
+
+const validateCanvasTheme = (value: unknown): CanvasTheme => {
+  const theme = requireObject(value, "theme");
+  if (theme.mode !== "dark" && theme.mode !== "light" && theme.mode !== "custom") {
+    invalid("invalid_canvas_theme", "theme.mode must be dark, light, or custom.");
+  }
+  const requireThemeColor = (color: unknown, label: string): string => {
+    if (typeof color !== "string" || !colorPattern.test(color)) {
+      invalid("invalid_canvas_theme", `${label} must be a six-digit hexadecimal color.`);
+    }
+    return color as string;
+  };
+  return {
+    mode: theme.mode as CanvasThemeMode,
+    backgroundColor: requireThemeColor(theme.backgroundColor, "theme.backgroundColor"),
+    surfaceColor: requireThemeColor(theme.surfaceColor, "theme.surfaceColor"),
+    textColor: requireThemeColor(theme.textColor, "theme.textColor"),
+    accentColor: requireThemeColor(theme.accentColor, "theme.accentColor"),
+    borderColor: requireThemeColor(theme.borderColor, "theme.borderColor"),
+  };
+};
+
+const presentStoredTheme = (row: CanvasRow): CanvasTheme => {
+  try {
+    return validateCanvasTheme({
+      mode: row.theme_mode,
+      backgroundColor: row.background_color,
+      surfaceColor: row.theme_surface_color,
+      textColor: row.theme_text_color,
+      accentColor: row.theme_accent_color,
+      borderColor: row.theme_border_color,
+    });
+  } catch (error) {
+    if (error instanceof AppError && error.status === 400) {
+      throw new AppError(
+        500,
+        "invalid_canvas_storage",
+        `Stored canvas ${row.project_id} has an invalid theme: ${error.message}`,
+      );
+    }
+    throw error;
+  }
 };
 
 const requireModelCameraView = (
@@ -649,7 +716,8 @@ export const validateCanvasPatch = (value: Record<string, unknown>): CanvasPatch
   }
   const upsertValues = value.upsertNodes as unknown[];
   const deleteValues = value.deleteNodeIds as unknown[];
-  if (upsertValues.length + deleteValues.length === 0) {
+  const theme = value.theme === undefined ? undefined : validateCanvasTheme(value.theme);
+  if (upsertValues.length + deleteValues.length === 0 && theme === undefined) {
     invalid("empty_canvas_patch", "A canvas patch must contain at least one change.");
   }
   if (upsertValues.length + deleteValues.length > MAX_PATCH_NODES) {
@@ -662,7 +730,7 @@ export const validateCanvasPatch = (value: Record<string, unknown>): CanvasPatch
   if (new Set(allIds).size !== allIds.length) {
     invalid("duplicate_canvas_node_id", "Node IDs must not be duplicated across upserts and deletes.");
   }
-  return { expectedRevision: expectedRevision as number, upsertNodes, deleteNodeIds };
+  return { expectedRevision: expectedRevision as number, theme, upsertNodes, deleteNodeIds };
 };
 
 const parseStoredArray = (json: string, label: string): unknown[] => {
@@ -698,10 +766,12 @@ const presentStoredNode = (row: CanvasNodeRow): CanvasNode => {
 
 export const getCanvas = async (env: AppEnv, projectId: string): Promise<CanvasDocument> => {
   const canvas = await env.DB.prepare(
-    "SELECT project_id, width, height, background_color, revision, updated_at FROM project_canvases WHERE project_id = ?",
+    `SELECT project_id, width, height, background_color, theme_mode, theme_surface_color,
+       theme_text_color, theme_accent_color, theme_border_color, revision, updated_at
+     FROM project_canvases WHERE project_id = ?`,
   ).bind(projectId).first<CanvasRow>();
   if (!canvas) {
-    return { projectId, width: DEFAULT_WIDTH, height: DEFAULT_HEIGHT, backgroundColor: DEFAULT_BACKGROUND, revision: 0, updatedAt: null, nodes: [] };
+    return { projectId, width: DEFAULT_WIDTH, height: DEFAULT_HEIGHT, theme: { ...DEFAULT_THEME }, revision: 0, updatedAt: null, nodes: [] };
   }
   const rows = await env.DB.prepare(
     `SELECT id, node_type, x, y, width, height, z_index, props_json, resource_refs_json, data_binding_refs_json
@@ -709,7 +779,8 @@ export const getCanvas = async (env: AppEnv, projectId: string): Promise<CanvasD
   ).bind(projectId).all<CanvasNodeRow>();
   return {
     projectId: canvas.project_id, width: canvas.width, height: canvas.height,
-    backgroundColor: canvas.background_color, revision: canvas.revision, updatedAt: canvas.updated_at,
+    theme: presentStoredTheme(canvas),
+    revision: canvas.revision, updatedAt: canvas.updated_at,
     nodes: rows.results.map(presentStoredNode),
   };
 };
@@ -819,9 +890,22 @@ export const applyCanvasPatch = async (
   const statements = [
     env.DB.prepare(
       `INSERT OR IGNORE INTO project_canvases
-       (project_id, width, height, background_color, revision, updated_by_user_id, updated_at)
-       VALUES (?, ?, ?, ?, 0, ?, ?)`,
-    ).bind(projectId, DEFAULT_WIDTH, DEFAULT_HEIGHT, DEFAULT_BACKGROUND, userId, now),
+       (project_id, width, height, background_color, theme_mode, theme_surface_color,
+        theme_text_color, theme_accent_color, theme_border_color, revision, updated_by_user_id, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
+    ).bind(
+      projectId,
+      DEFAULT_WIDTH,
+      DEFAULT_HEIGHT,
+      DEFAULT_THEME.backgroundColor,
+      DEFAULT_THEME.mode,
+      DEFAULT_THEME.surfaceColor,
+      DEFAULT_THEME.textColor,
+      DEFAULT_THEME.accentColor,
+      DEFAULT_THEME.borderColor,
+      userId,
+      now,
+    ),
   ];
 
   for (const node of patch.upsertNodes) {
@@ -849,10 +933,29 @@ export const applyCanvasPatch = async (
     ).bind(nodeId, projectId, projectId, patch.expectedRevision));
   }
 
-  statements.push(env.DB.prepare(
-    `UPDATE project_canvases SET revision = revision + 1, updated_by_user_id = ?, updated_at = ?
-     WHERE project_id = ? AND revision = ?`,
-  ).bind(userId, now, projectId, patch.expectedRevision));
+  statements.push(patch.theme
+    ? env.DB.prepare(
+      `UPDATE project_canvases SET
+         background_color = ?, theme_mode = ?, theme_surface_color = ?,
+         theme_text_color = ?, theme_accent_color = ?, theme_border_color = ?,
+         revision = revision + 1, updated_by_user_id = ?, updated_at = ?
+       WHERE project_id = ? AND revision = ?`,
+    ).bind(
+      patch.theme.backgroundColor,
+      patch.theme.mode,
+      patch.theme.surfaceColor,
+      patch.theme.textColor,
+      patch.theme.accentColor,
+      patch.theme.borderColor,
+      userId,
+      now,
+      projectId,
+      patch.expectedRevision,
+    )
+    : env.DB.prepare(
+      `UPDATE project_canvases SET revision = revision + 1, updated_by_user_id = ?, updated_at = ?
+       WHERE project_id = ? AND revision = ?`,
+    ).bind(userId, now, projectId, patch.expectedRevision));
 
   const results = await env.DB.batch(statements);
   if (changes(results.at(-1)) !== 1) {

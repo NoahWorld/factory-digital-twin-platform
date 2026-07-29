@@ -99,7 +99,7 @@ export const ChartNode = memo(function ChartNode({ node }: { node: CanvasNode })
         {node.type === "line-chart" ? (
           <>
             <polyline className="chart-line" fill="none" points={linePoints} stroke={color} strokeLinecap="round" strokeLinejoin="round" />
-            {values.map((_, index) => <circle className="chart-point" cx={left + index * step} cy={yPositions[index]} fill="#0c1d2c" key={`${categories[index]}-${index}`} r="4" stroke={color} />)}
+            {values.map((_, index) => <circle className="chart-point" cx={left + index * step} cy={yPositions[index]} fill="var(--canvas-theme-surface)" key={`${categories[index]}-${index}`} r="4" stroke={color} />)}
           </>
         ) : values.map((value, index) => {
           const valueY = top + plotHeight - ((value - minimum) / range) * plotHeight;

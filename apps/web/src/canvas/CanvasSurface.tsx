@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useRef, useState, type DragEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { memo, useCallback, useEffect, useRef, useState, type CSSProperties, type DragEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { ChartNode } from "./ChartNode";
 import { DashboardNode } from "./DashboardNode";
 import { DecorationNode } from "./DecorationNode";
@@ -125,6 +125,17 @@ export function CanvasSurface({ document, editable, selectedNodeId, selectedMode
   const animationFrameRef = useRef<number | null>(null);
   const scaleRef = useRef(1);
   const [scale, setScale] = useState(1);
+  const surfaceStyle = {
+    "--canvas-theme-accent": document.theme.accentColor,
+    "--canvas-theme-background": document.theme.backgroundColor,
+    "--canvas-theme-border": document.theme.borderColor,
+    "--canvas-theme-surface": document.theme.surfaceColor,
+    "--canvas-theme-text": document.theme.textColor,
+    backgroundColor: document.theme.backgroundColor,
+    height: document.height,
+    transform: `scale(${scale})`,
+    width: document.width,
+  } as CSSProperties;
 
   useEffect(() => {
     const viewport = viewportRef.current;
@@ -291,11 +302,12 @@ export function CanvasSurface({ document, editable, selectedNodeId, selectedMode
       <div className="canvas-scale-frame" style={{ height: document.height * scale, width: document.width * scale }}>
         <div
           className={`canvas-surface${editable ? " is-editable" : " is-preview"}`}
+          data-theme={document.theme.mode}
           onClick={(event) => { if (event.target === event.currentTarget) onSelectNode(null); }}
           onDragOver={allowDrop}
           onDrop={dropComponent}
           ref={surfaceRef}
-          style={{ backgroundColor: document.backgroundColor, height: document.height, transform: `scale(${scale})`, width: document.width }}
+          style={surfaceStyle}
         >
           {document.nodes.map((node) => (
             <CanvasNodeView

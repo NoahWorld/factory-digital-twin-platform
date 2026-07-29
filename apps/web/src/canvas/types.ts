@@ -22,6 +22,17 @@ export type CanvasNodeType =
   | Model3DNodeType
   | DashboardNodeType;
 
+export type CanvasThemeMode = "dark" | "light" | "custom";
+
+export type CanvasTheme = {
+  mode: CanvasThemeMode;
+  backgroundColor: string;
+  surfaceColor: string;
+  textColor: string;
+  accentColor: string;
+  borderColor: string;
+};
+
 export type ChartProps = {
   title: string;
   categories: string[];
@@ -155,7 +166,7 @@ export type CanvasDocument = {
   projectId: string;
   width: number;
   height: number;
-  backgroundColor: string;
+  theme: CanvasTheme;
   revision: number;
   updatedAt: string | null;
   nodes: CanvasNode[];

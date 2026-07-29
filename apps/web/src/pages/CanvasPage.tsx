@@ -4,8 +4,10 @@ import { ComponentInspector } from "../canvas/ComponentInspector";
 import { CanvasSurface } from "../canvas/CanvasSurface";
 import { canvasRoutePath, modelEditorRoutePath, projectCanvasPath } from "../canvas/routes";
 import { TemplateDialog } from "../canvas/TemplateDialog";
-import { instantiateCanvasTemplate, type CanvasTemplateId } from "../canvas/templates";
-import { CANVAS_DRAG_TYPE, componentLabels, createCanvasNode, isBackgroundNodeType, type CanvasDocument, type CanvasNode, type CanvasNodeType, type CanvasPatchResponse, type CanvasResponse } from "../canvas/types";
+import { getCanvasTemplate, instantiateCanvasTemplate, type CanvasTemplateId } from "../canvas/templates";
+import { ThemeDialog } from "../canvas/ThemeDialog";
+import { applyCanvasThemeToNode, applyCanvasThemeToNodes, canvasThemeLabels } from "../canvas/themes";
+import { CANVAS_DRAG_TYPE, componentLabels, createCanvasNode, isBackgroundNodeType, isModel3DNodeType, type CanvasDocument, type CanvasNode, type CanvasNodeType, type CanvasPatchResponse, type CanvasResponse, type CanvasTheme } from "../canvas/types";
 import { DataSourcePanel } from "../DataSourcePanel";
 
 type CanvasPageProps = {
@@ -26,6 +28,8 @@ export function CanvasPage({ initialTemplateId, mode, projectId }: CanvasPagePro
   const [configurationError, setConfigurationError] = useState<string | null>(null);
   const [showDataSources, setShowDataSources] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
+  const [showThemes, setShowThemes] = useState(false);
+  const [themeNotice, setThemeNotice] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const dirtyNodeIdsRef = useRef(new Set<string>());
@@ -82,7 +86,10 @@ export function CanvasPage({ initialTemplateId, mode, projectId }: CanvasPagePro
   const createNode = useCallback((type: CanvasNodeType, x: number, y: number) => {
     if (!document) return;
     const maxZIndex = document.nodes.reduce((maximum, node) => Math.max(maximum, node.zIndex), 0);
-    const node = createCanvasNode(type, x, y, isBackgroundNodeType(type) ? 0 : maxZIndex + 1);
+    const node = applyCanvasThemeToNode(
+      createCanvasNode(type, x, y, isBackgroundNodeType(type) ? 0 : maxZIndex + 1),
+      document.theme,
+    );
     setDocument({ ...document, nodes: [...document.nodes, node] });
     selectCanvasNode(node.id);
     markNodeDirty(node.id);
@@ -112,6 +119,7 @@ export function CanvasPage({ initialTemplateId, mode, projectId }: CanvasPagePro
         method: "PATCH",
         body: JSON.stringify({
           expectedRevision: document.revision,
+          theme: document.theme,
           upsertNodes: document.nodes.filter((node) => dirtyNodeIds.has(node.id)),
           deleteNodeIds: [...deletedNodeIdsRef.current],
         }),
@@ -148,6 +156,7 @@ export function CanvasPage({ initialTemplateId, mode, projectId }: CanvasPagePro
   const applyTemplate = useCallback((templateId: CanvasTemplateId) => {
     if (!document || !canEdit || saving) return;
     const nextNodes = instantiateCanvasTemplate(templateId, document.nodes);
+    const template = getCanvasTemplate(templateId);
     const patchNodeCount = document.nodes.length + nextNodes.length;
     if (patchNodeCount > 100) {
       setSaveError(`无法套用模板：替换操作包含 ${patchNodeCount} 个节点，超过单次保存上限 100。请先保存并删除部分旧组件。`);
@@ -158,13 +167,28 @@ export function CanvasPage({ initialTemplateId, mode, projectId }: CanvasPagePro
     deletedNodeIdsRef.current.clear();
     nextNodes.forEach((node) => dirtyNodeIdsRef.current.add(node.id));
     document.nodes.forEach((node) => deletedNodeIdsRef.current.add(node.id));
-    setDocument({ ...document, nodes: nextNodes });
+    setDocument({ ...document, nodes: nextNodes, theme: template.canvasTheme });
     selectCanvasNode(null);
     setConfigurationError(null);
     setSaveError(null);
+    setThemeNotice(`已应用“${template.name}”配色；模板中的 3D 组件沿用原有 3D 配置。`);
     setDirty(true);
     setShowTemplates(false);
   }, [canEdit, document, saving, selectCanvasNode]);
+
+  const applyTheme = useCallback((theme: CanvasTheme) => {
+    if (!document || !canEdit || saving) return;
+    const nextNodes = applyCanvasThemeToNodes(document.nodes, theme);
+    const themedNodes = nextNodes.filter((node) => !isModel3DNodeType(node.type));
+    themedNodes.forEach((node) => dirtyNodeIdsRef.current.add(node.id));
+    setDocument({ ...document, nodes: nextNodes, theme });
+    setSaveError(null);
+    setThemeNotice(
+      `已切换为${canvasThemeLabels[theme.mode]}主题，联动更新 ${themedNodes.length} 个非 3D 组件；3D 组件保持不变。`,
+    );
+    setDirty(true);
+    setShowThemes(false);
+  }, [canEdit, document, saving]);
 
   useEffect(() => {
     if (!initialTemplateId || loading || !document || initialTemplateAppliedRef.current) return;
@@ -192,10 +216,14 @@ export function CanvasPage({ initialTemplateId, mode, projectId }: CanvasPagePro
     <main className={`canvas-page canvas-page-${mode}`}>
       <header className="canvas-toolbar">
         <div className="canvas-toolbar-title"><a aria-label="返回项目列表" className="canvas-back-link" href="#/projects">←</a><div><span>{mode === "edit" ? "2D 画布" : "可视化预览"}</span><strong>{projectName}</strong></div></div>
-        <div className="canvas-document-meta"><span>{document.width} × {document.height}</span><span>版本 {document.revision}</span>{mode === "edit" ? <span className={dirty ? "is-dirty" : "is-saved"}>{dirty ? "有未保存更改" : "已保存"}</span> : null}</div>
+        <div className="canvas-document-meta"><span>{document.width} × {document.height}</span><span>{canvasThemeLabels[document.theme.mode]}主题</span><span>版本 {document.revision}</span>{mode === "edit" ? <span className={dirty ? "is-dirty" : "is-saved"}>{dirty ? "有未保存更改" : "已保存"}</span> : null}</div>
         <div className="canvas-toolbar-actions">
           {mode === "edit" ? <>
             <button className="secondary-button compact-button" disabled={!canEdit || saving} onClick={() => setShowTemplates(true)} type="button">模板</button>
+            <button className="secondary-button compact-button canvas-theme-button" disabled={!canEdit || saving} onClick={() => setShowThemes(true)} type="button">
+              <span aria-hidden="true" style={{ backgroundColor: document.theme.accentColor }} />
+              主题
+            </button>
             <button className="secondary-button compact-button" onClick={() => setShowDataSources(true)} type="button">数据源</button>
             <button className="secondary-button compact-button" disabled={!selectedNodeId || !canEdit || saving} onClick={deleteSelectedNode} type="button">删除组件</button>
             <button className="secondary-button compact-button" disabled={saving || configurationError !== null} onClick={() => void openPreview()} title={configurationError ?? undefined} type="button">预览</button>
@@ -203,8 +231,13 @@ export function CanvasPage({ initialTemplateId, mode, projectId }: CanvasPagePro
           </> : <a className="secondary-button compact-button" href={canvasRoutePath(projectId, "canvas")}>返回编辑</a>}
         </div>
       </header>
-      {saveError ? <div className="canvas-save-error" role="alert">保存失败：{saveError}</div> : null}
-      {mode === "edit" && !canEdit ? <div className="canvas-readonly-notice">当前项目权限为只读，不能移动或保存组件。</div> : null}
+      {saveError || themeNotice || (mode === "edit" && !canEdit) ? (
+        <div className="canvas-message-stack">
+          {saveError ? <div className="canvas-save-error" role="alert">保存失败：{saveError}</div> : null}
+          {themeNotice ? <div className="canvas-theme-notice" role="status"><span>{themeNotice}</span><button aria-label="关闭主题提示" onClick={() => setThemeNotice(null)} type="button">×</button></div> : null}
+          {mode === "edit" && !canEdit ? <div className="canvas-readonly-notice">当前项目权限为只读，不能移动或保存组件。</div> : null}
+        </div>
+      ) : null}
       <div className={`canvas-workbench${mode === "preview" ? " is-preview" : ""}`}>
         {mode === "edit" ? <aside className="component-palette">
           <div className="component-palette-heading"><span className="eyebrow">Components</span><h2>组件库</h2><p>拖到画布中创建组件</p></div>
@@ -255,6 +288,14 @@ export function CanvasPage({ initialTemplateId, mode, projectId }: CanvasPagePro
           editable={canEdit && !saving}
           onApply={applyTemplate}
           onClose={() => setShowTemplates(false)}
+        />
+      ) : null}
+      {showThemes ? (
+        <ThemeDialog
+          currentTheme={document.theme}
+          editable={canEdit && !saving}
+          onApply={applyTheme}
+          onClose={() => setShowThemes(false)}
         />
       ) : null}
     </main>

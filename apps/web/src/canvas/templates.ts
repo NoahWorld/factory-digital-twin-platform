@@ -1,6 +1,7 @@
 import type {
   CanvasNode,
   CanvasNodeType,
+  CanvasTheme,
   ChartProps,
   DashboardBaseProps,
   DecorationProps,
@@ -22,6 +23,7 @@ export type CanvasTemplate = {
   description: string;
   category: string;
   theme: "light" | "dark" | "green" | "amber";
+  canvasTheme: CanvasTheme;
   componentSummary: string;
 };
 
@@ -456,6 +458,14 @@ export const canvasTemplates: CanvasTemplate[] = [
     description: "浅色维修保障主题，包含申请流程、修理闭环、故障排行与人员质量概览。",
     category: "维修保障",
     theme: "light",
+    canvasTheme: {
+      mode: "light",
+      backgroundColor: "#dceef1",
+      surfaceColor: "#edf8fa",
+      textColor: "#253b4b",
+      accentColor: "#16839a",
+      borderColor: "#8cbec9",
+    },
     componentSummary: "6 指标卡 · 环形进度 · 进度排行 · 状态矩阵 · 图表",
   },
   {
@@ -464,6 +474,14 @@ export const canvasTemplates: CanvasTemplate[] = [
     description: "深色科技主题，组合车辆、钥匙、人员、动用趋势与 3D 场区主视图。",
     category: "装备保障",
     theme: "dark",
+    canvasTheme: {
+      mode: "dark",
+      backgroundColor: "#04111d",
+      surfaceColor: "#0a2235",
+      textColor: "#e9f8ff",
+      accentColor: "#52d7ff",
+      borderColor: "#276f8d",
+    },
     componentSummary: "5 指标卡 · 3D 场景 · 状态矩阵 · 环形进度 · 趋势图",
   },
   {
@@ -472,6 +490,14 @@ export const canvasTemplates: CanvasTemplate[] = [
     description: "面向生产运营的产量、节拍、质量、OEE 与设备状态综合大屏。",
     category: "生产运营",
     theme: "green",
+    canvasTheme: {
+      mode: "custom",
+      backgroundColor: "#071a1d",
+      surfaceColor: "#0c2927",
+      textColor: "#e9fff6",
+      accentColor: "#48e0a4",
+      borderColor: "#2d826d",
+    },
     componentSummary: "5 指标卡 · 双图表 · 工序进度 · 设备状态",
   },
   {
@@ -480,6 +506,14 @@ export const canvasTemplates: CanvasTemplate[] = [
     description: "聚合水电气、碳排预算、安全告警和重点区域运行状态。",
     category: "能源安全",
     theme: "amber",
+    canvasTheme: {
+      mode: "custom",
+      backgroundColor: "#17140e",
+      surfaceColor: "#292417",
+      textColor: "#fff8e8",
+      accentColor: "#ffbf54",
+      borderColor: "#8b6c32",
+    },
     componentSummary: "5 指标卡 · 能耗趋势 · 预算进度 · 告警矩阵",
   },
 ];
@@ -490,6 +524,12 @@ const canvasTemplateIds = new Set<CanvasTemplateId>(
 
 export const isCanvasTemplateId = (value: string): value is CanvasTemplateId =>
   canvasTemplateIds.has(value as CanvasTemplateId);
+
+export const getCanvasTemplate = (templateId: CanvasTemplateId): CanvasTemplate => {
+  const template = canvasTemplates.find((candidate) => candidate.id === templateId);
+  if (!template) throw new Error(`Unsupported canvas template: ${templateId}`);
+  return template;
+};
 
 export const instantiateCanvasTemplate = (
   templateId: CanvasTemplateId,
