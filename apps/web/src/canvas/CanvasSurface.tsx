@@ -38,7 +38,7 @@ type ActiveInteraction = ActiveDrag | ActiveResize;
 type CanvasNodeViewProps = {
   editable: boolean;
   node: CanvasNode;
-  onModelSceneChange: (canvasNodeId: string, snapshot: ModelSceneSnapshot | null) => void;
+  onModelSceneChange?: (canvasNodeId: string, snapshot: ModelSceneSnapshot | null) => void;
   onModelSceneNodeSelect: (canvasNodeId: string, sceneNodePath: string | null) => void;
   projectId: string;
   selected: boolean;
@@ -106,7 +106,7 @@ type CanvasSurfaceProps = {
   editable: boolean;
   selectedNodeId: string | null;
   onCreateNode: (type: CanvasNodeType, x: number, y: number) => void;
-  onModelSceneChange: (canvasNodeId: string, snapshot: ModelSceneSnapshot | null) => void;
+  onModelSceneChange?: (canvasNodeId: string, snapshot: ModelSceneSnapshot | null) => void;
   onModelSceneNodeSelect: (canvasNodeId: string, sceneNodePath: string | null) => void;
   onNodeChange: (node: CanvasNode) => void;
   onSelectNode: (nodeId: string | null) => void;

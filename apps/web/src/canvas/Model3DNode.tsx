@@ -18,7 +18,9 @@ import { modelAssetContentUrl } from "./model-assets";
 import { buildModelSceneTree, type ModelSceneSnapshot } from "./model-scene";
 
 type Model3DNodeProps = {
+  cameraControlsEnabled?: boolean;
   editable: boolean;
+  interactionHint?: string;
   node: CanvasNode;
   onSceneChange?: (canvasNodeId: string, snapshot: ModelSceneSnapshot | null) => void;
   onSceneNodeSelect: (canvasNodeId: string, sceneNodePath: string | null) => void;
@@ -52,7 +54,9 @@ const errorText = (reason: unknown): string =>
   reason instanceof Error ? reason.message : String(reason);
 
 export const Model3DNode = memo(function Model3DNode({
+  cameraControlsEnabled,
   editable,
+  interactionHint = "点击对象选中 · 拖动可移动组件",
   node,
   onSceneChange,
   onSceneNodeSelect,
@@ -130,8 +134,10 @@ export const Model3DNode = memo(function Model3DNode({
   }, [assetId, node.id, parsed.ok, sceneSettingsSignature]);
 
   useEffect(() => {
-    if (controlsRef.current) controlsRef.current.enabled = !editable;
-  }, [editable]);
+    if (controlsRef.current) {
+      controlsRef.current.enabled = cameraControlsEnabled ?? !editable;
+    }
+  }, [cameraControlsEnabled, editable]);
 
   useEffect(() => {
     if (!parsed.ok || !runtimeRef.current) return;
@@ -244,7 +250,7 @@ export const Model3DNode = memo(function Model3DNode({
       scene.add(keyLight);
 
       const controls = new OrbitControls(camera, renderer.domElement);
-      controls.enabled = !editable;
+      controls.enabled = cameraControlsEnabled ?? !editable;
       controls.enableDamping = true;
       controls.dampingFactor = 0.08;
       controlsRef.current = controls;
@@ -342,7 +348,7 @@ export const Model3DNode = memo(function Model3DNode({
         (gltf) => {
           if (cancelled) return;
 
-          const sceneTree = buildModelSceneTree(gltf.scene);
+          const sceneTree = onSceneChange ? buildModelSceneTree(gltf.scene) : null;
           const originals = new Map<Object3D, {
             position: InstanceType<typeof THREE.Vector3>;
             quaternion: InstanceType<typeof THREE.Quaternion>;
@@ -604,7 +610,7 @@ export const Model3DNode = memo(function Model3DNode({
             pickScenePath,
           };
           runtimeRef.current = runtimeController;
-          onSceneChange?.(node.id, { assetId, ...sceneTree });
+          if (sceneTree) onSceneChange?.(node.id, { assetId, ...sceneTree });
           setLoadState({ status: "ready" });
         },
         undefined,
@@ -655,7 +661,7 @@ export const Model3DNode = memo(function Model3DNode({
       onSceneChange?.(node.id, null);
       dispose?.();
     };
-  }, [assetId, node.id, onSceneChange, parsed.ok, projectId]);
+  }, [assetId, cameraControlsEnabled, node.id, onSceneChange, parsed.ok, projectId]);
 
   const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (!editable || event.button !== 0) return;
@@ -712,7 +718,7 @@ export const Model3DNode = memo(function Model3DNode({
       {loadState.status === "empty" ? <div className="model-3d-message"><strong>尚未绑定模型</strong><span>在右侧属性面板导入 GLB 或 GLTF</span></div> : null}
       {loadState.status === "loading" ? <div className="model-3d-message"><span className="model-loading-spinner" /><strong>正在加载 3D 模型</strong></div> : null}
       {loadState.status === "error" ? <div className="model-3d-message is-error" role="alert"><strong>3D 模型不可用</strong><span>{loadState.message}</span></div> : null}
-      {loadState.status === "ready" && editable ? <span className="model-3d-edit-hint">点击对象选中 · 拖动可移动组件</span> : null}
+      {loadState.status === "ready" && editable ? <span className="model-3d-edit-hint">{interactionHint}</span> : null}
     </div>
   );
 });

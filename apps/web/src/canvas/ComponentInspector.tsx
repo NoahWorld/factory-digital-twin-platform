@@ -1,6 +1,4 @@
 import { useEffect, useMemo, useState } from "react";
-import { Model3DInspector } from "./Model3DInspector";
-import type { ModelSceneSnapshot } from "./model-scene";
 import {
   componentLabels,
   isDecorationNodeType,
@@ -8,6 +6,7 @@ import {
   isShapeNodeType,
   parseChartProps,
   parseDecorationProps,
+  parseModel3DProps,
   parseShapeProps,
   type CanvasNode,
   type ChartProps,
@@ -18,12 +17,67 @@ import {
 
 type ComponentInspectorProps = {
   editable: boolean;
-  modelScene?: ModelSceneSnapshot | null;
   node: CanvasNode | null;
-  onModelSceneNodeSelect?: (path: string | null) => void;
+  onModelEditorOpen?: (nodeId: string) => void;
   onNodeChange: (node: CanvasNode) => void;
   onValidationChange: (message: string | null) => void;
 };
+
+function Model3DLaunchInspector({
+  editable,
+  node,
+  onModelEditorOpen,
+  onValidationChange,
+}: Pick<ComponentInspectorProps, "editable" | "onModelEditorOpen" | "onValidationChange"> & {
+  node: CanvasNode;
+}) {
+  const parsed = parseModel3DProps(node.props);
+  const validationMessage = parsed.ok ? null : parsed.message;
+
+  useEffect(() => {
+    onValidationChange(validationMessage);
+    return () => onValidationChange(null);
+  }, [onValidationChange, validationMessage]);
+
+  if (!parsed.ok) {
+    return <aside className="component-inspector is-empty"><div className="inspector-invalid"><strong>3D 组件配置无效</strong><p>{parsed.message}</p></div></aside>;
+  }
+
+  return (
+    <aside className="component-inspector model-editor-launch">
+      <header className="inspector-heading">
+        <span className="eyebrow">3D workspace</span>
+        <h2>{componentLabels[node.type]}</h2>
+        <p>组件 ID：{node.id.slice(0, 8)}</p>
+      </header>
+      <section className="inspector-section model-editor-launch-card">
+        <span className="model-editor-launch-icon" aria-hidden="true">⬡</span>
+        <strong>使用独立 3D 编辑器</strong>
+        <p>在更大的视口中导入模型、选择节点，并配置位置、材质、灯光、镜头和资产绑定。</p>
+        <button
+          className="primary-button"
+          onClick={() => onModelEditorOpen?.(node.id)}
+          type="button"
+        >
+          {editable ? "进入 3D 编辑器" : "查看 3D 场景"}
+        </button>
+      </section>
+      <section className="inspector-section model-editor-summary">
+        <div className="inspector-section-title"><strong>配置摘要</strong><span>保存后回传画布</span></div>
+        <dl>
+          <div><dt>模型资源</dt><dd>{node.resourceRefs[0] ? "已绑定" : "未绑定"}</dd></div>
+          <div><dt>节点变换</dt><dd>{Object.keys(parsed.value.transformOverrides).length} 项</dd></div>
+          <div><dt>节点外观</dt><dd>{Object.keys(parsed.value.appearanceOverrides).length} 项</dd></div>
+          <div><dt>初始镜头</dt><dd>{parsed.value.cameraView === "isometric" ? "等距" : parsed.value.cameraView === "front" ? "正面" : "顶部"}</dd></div>
+        </dl>
+      </section>
+      <div className="inspector-note">
+        <strong>同一份组件数据</strong>
+        <p>独立编辑器保存的是当前画布里的同一个 3D 节点，不会复制模型或维护第二份配置。</p>
+      </div>
+    </aside>
+  );
+}
 
 type ChartDraft = {
   title: string;
@@ -419,16 +473,10 @@ function ValidDecorationInspector({
 export function ComponentInspector({
   editable,
   node,
+  onModelEditorOpen,
   onNodeChange,
   onValidationChange,
-  modelScene,
-  onModelSceneNodeSelect,
-  projectId,
-  selectedModelSceneNodePath,
-}: ComponentInspectorProps & {
-  projectId: string;
-  selectedModelSceneNodePath?: string | null;
-}) {
+}: ComponentInspectorProps) {
   useEffect(() => {
     if (!node) onValidationChange(null);
   }, [node, onValidationChange]);
@@ -455,15 +503,11 @@ export function ComponentInspector({
 
   if (isModel3DNodeType(node.type)) {
     return (
-      <Model3DInspector
+      <Model3DLaunchInspector
         editable={editable}
-        modelScene={modelScene ?? null}
         node={node}
-        onNodeChange={onNodeChange}
-        onSceneNodeSelect={onModelSceneNodeSelect ?? (() => undefined)}
+        onModelEditorOpen={onModelEditorOpen}
         onValidationChange={onValidationChange}
-        projectId={projectId}
-        selectedSceneNodePath={selectedModelSceneNodePath ?? null}
       />
     );
   }

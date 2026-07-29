@@ -1,6 +1,8 @@
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, lazy, Suspense, useEffect, useState } from "react";
 import { ApiRequestError, errorMessage, request } from "./api";
 import { CanvasPage } from "./pages/CanvasPage";
+
+const Model3DEditorPage = lazy(() => import("./pages/Model3DEditorPage"));
 
 type Capability = {
   canCreateProject: boolean;
@@ -351,15 +353,24 @@ type WorkspaceProps = {
 
 type WorkspaceRoute =
   | { kind: "projects" }
-  | { kind: "canvas"; projectId: string; mode: "edit" | "preview" };
+  | { kind: "canvas"; projectId: string; mode: "edit" | "preview" }
+  | { kind: "model-editor"; projectId: string; nodeId: string };
 
 const currentWorkspaceRoute = (): WorkspaceRoute => {
-  const match = window.location.hash.match(/^#\/projects\/([^/]+)\/(canvas|preview)$/);
-  if (!match) return { kind: "projects" };
+  const modelEditorMatch = window.location.hash.match(/^#\/projects\/([^/]+)\/3d-editor\/([^/]+)$/);
+  if (modelEditorMatch) {
+    return {
+      kind: "model-editor",
+      projectId: decodeURIComponent(modelEditorMatch[1]),
+      nodeId: decodeURIComponent(modelEditorMatch[2]),
+    };
+  }
+  const canvasMatch = window.location.hash.match(/^#\/projects\/([^/]+)\/(canvas|preview)$/);
+  if (!canvasMatch) return { kind: "projects" };
   return {
     kind: "canvas",
-    projectId: decodeURIComponent(match[1]),
-    mode: match[2] === "preview" ? "preview" : "edit",
+    projectId: decodeURIComponent(canvasMatch[1]),
+    mode: canvasMatch[2] === "preview" ? "preview" : "edit",
   };
 };
 
@@ -419,6 +430,14 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
 
   if (route.kind === "canvas") {
     return <CanvasPage mode={route.mode} projectId={route.projectId} />;
+  }
+
+  if (route.kind === "model-editor") {
+    return (
+      <Suspense fallback={<main className="canvas-page-state"><p className="eyebrow">3D editor</p><h1>正在准备 3D 编辑器…</h1></main>}>
+        <Model3DEditorPage nodeId={route.nodeId} projectId={route.projectId} />
+      </Suspense>
+    );
   }
 
   return (
