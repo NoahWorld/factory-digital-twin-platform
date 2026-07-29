@@ -24,6 +24,7 @@ import {
   parseModel3DProps,
   type CanvasNode,
   type Model3DProps,
+  type ModelNodeAppearance,
   type ModelNodeTransform,
   type Vector3Tuple,
 } from "./types";
@@ -190,6 +191,22 @@ export function Model3DInspector({
     ? parsed.value.transformOverrides[selectedModelNodeName]
     : undefined;
   const selectedTransform = selectedTransformOverride ?? selectedSceneNode?.transform ?? null;
+  const selectedAppearanceOverride = selectedModelNodeName
+    ? parsed.value.appearanceOverrides[selectedModelNodeName]
+    : undefined;
+  const selectedAppearance: ModelNodeAppearance | null = selectedSceneNode
+    ? selectedAppearanceOverride ?? {
+        color: selectedSceneNode.appearance.materialColor ?? "#ffffff",
+        opacity: selectedSceneNode.appearance.materialOpacity ?? 1,
+        visible: selectedSceneNode.appearance.visible,
+      }
+    : null;
+  const canConfigureMaterialColor = canConfigureSelectedNode
+    && selectedSceneNode?.isMesh === true
+    && selectedSceneNode.appearance.materialColor !== null;
+  const canConfigureMaterialOpacity = canConfigureSelectedNode
+    && selectedSceneNode?.isMesh === true
+    && selectedSceneNode.appearance.materialOpacity !== null;
 
   const updateSelectedTransform = (
     field: keyof ModelNodeTransform,
@@ -220,6 +237,35 @@ export function Model3DInspector({
     const nextOverrides = { ...parsed.value.transformOverrides };
     delete nextOverrides[selectedModelNodeName];
     updateProps({ transformOverrides: nextOverrides });
+  };
+
+  const updateSelectedAppearance = (
+    patch: Partial<ModelNodeAppearance>,
+  ) => {
+    if (!canConfigureSelectedNode || !selectedAppearance) return;
+    updateProps({
+      appearanceOverrides: {
+        ...parsed.value.appearanceOverrides,
+        [selectedModelNodeName]: {
+          ...selectedAppearance,
+          ...patch,
+        },
+      },
+    });
+  };
+
+  const updateSelectedOpacity = (rawValue: string) => {
+    if (!canConfigureMaterialOpacity || rawValue.trim() === "") return;
+    const opacity = Number(rawValue);
+    if (!Number.isFinite(opacity)) return;
+    updateSelectedAppearance({ opacity });
+  };
+
+  const resetSelectedAppearance = () => {
+    if (!selectedModelNodeName || !selectedAppearanceOverride) return;
+    const nextOverrides = { ...parsed.value.appearanceOverrides };
+    delete nextOverrides[selectedModelNodeName];
+    updateProps({ appearanceOverrides: nextOverrides });
   };
 
   const chooseAsset = (assetId: string) => {
@@ -486,6 +532,90 @@ export function Model3DInspector({
             className="secondary-button model-transform-reset"
             disabled={!editable || !selectedTransformOverride}
             onClick={resetSelectedTransform}
+            type="button"
+          >
+            重置为模型原值
+          </button>
+        </section>
+      ) : null}
+
+      {selectedSceneNode && selectedAppearance ? (
+        <section className="inspector-section model-appearance-section">
+          <div className="inspector-section-title">
+            <strong>节点外观</strong>
+            <span>
+              {selectedAppearanceOverride ? "已覆盖模型原值" : "模型原值"}
+              {" · "}
+              {Object.keys(parsed.value.appearanceOverrides).length}/100
+            </span>
+          </div>
+          {!selectedModelNodeName ? (
+            <p className="model-inspection-warning">
+              未命名节点不能保存外观，请先在建模软件中设置唯一名称后重新导出。
+            </p>
+          ) : null}
+          {selectedNameIsDuplicate ? (
+            <p className="model-inspection-warning">
+              节点名“{selectedModelNodeName}”不唯一，无法确定持久化目标。
+            </p>
+          ) : null}
+          <label className="model-appearance-visibility">
+            <input
+              checked={selectedAppearance.visible}
+              disabled={!canConfigureSelectedNode}
+              onChange={(event) =>
+                updateSelectedAppearance({ visible: event.target.checked })}
+              type="checkbox"
+            />
+            <span>显示节点</span>
+          </label>
+          <div className="inspector-grid-two model-appearance-material">
+            <label>
+              <span>材质颜色</span>
+              <input
+                aria-label="材质颜色"
+                disabled={!canConfigureMaterialColor}
+                onChange={(event) =>
+                  updateSelectedAppearance({ color: event.target.value })}
+                type="color"
+                value={selectedAppearance.color}
+              />
+            </label>
+            <label>
+              <span>材质透明度</span>
+              <input
+                aria-label="材质透明度"
+                disabled={!canConfigureMaterialOpacity}
+                max="1"
+                min="0"
+                onChange={(event) => updateSelectedOpacity(event.target.value)}
+                step="0.05"
+                type="number"
+                value={selectedAppearance.opacity}
+              />
+            </label>
+          </div>
+          {selectedSceneNode.appearance.materialCount > 1 ? (
+            <p className="inspector-help">
+              此节点有 {selectedSceneNode.appearance.materialCount} 个材质，颜色和透明度会统一应用。
+            </p>
+          ) : null}
+          {!selectedSceneNode.isMesh || selectedSceneNode.appearance.materialCount === 0 ? (
+            <p className="inspector-help">
+              当前节点没有可编辑材质，但仍可配置节点显隐。
+            </p>
+          ) : null}
+          {selectedSceneNode.isMesh
+            && selectedSceneNode.appearance.materialCount > 0
+            && selectedSceneNode.appearance.materialColor === null ? (
+              <p className="inspector-help">
+                当前着色器不支持通用颜色属性，只能配置透明度和显隐。
+              </p>
+            ) : null}
+          <button
+            className="secondary-button model-appearance-reset"
+            disabled={!editable || !selectedAppearanceOverride}
+            onClick={resetSelectedAppearance}
             type="button"
           >
             重置为模型原值

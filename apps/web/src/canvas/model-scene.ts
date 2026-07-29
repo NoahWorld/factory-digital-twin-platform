@@ -1,5 +1,12 @@
-import type { Object3D } from "three";
+import type { Material, Object3D } from "three";
 import type { ModelNodeTransform } from "./types";
+
+export type ModelSceneNodeAppearance = {
+  materialColor: string | null;
+  materialCount: number;
+  materialOpacity: number | null;
+  visible: boolean;
+};
 
 export type ModelSceneNode = {
   path: string;
@@ -7,6 +14,7 @@ export type ModelSceneNode = {
   objectType: string;
   isMesh: boolean;
   transform: ModelNodeTransform;
+  appearance: ModelSceneNodeAppearance;
   children: ModelSceneNode[];
 };
 
@@ -19,6 +27,10 @@ export type ModelSceneSnapshot = {
 
 type SceneTreeResult = Omit<ModelSceneSnapshot, "assetId">;
 
+type MaterialWithColor = Material & {
+  color?: { getHexString: () => string };
+};
+
 const toSceneNode = (
   object: Object3D,
   path: string,
@@ -27,6 +39,18 @@ const toSceneNode = (
   const name = object.name.trim();
   counts.total += 1;
   if (name) counts.named += 1;
+  const materialOwner = object as Object3D & {
+    material?: Material | Material[];
+  };
+  const materials = materialOwner.material
+    ? Array.isArray(materialOwner.material)
+      ? materialOwner.material
+      : [materialOwner.material]
+    : [];
+  const colorMaterial = materials.find(
+    (material) => typeof (material as MaterialWithColor).color?.getHexString === "function",
+  ) as MaterialWithColor | undefined;
+  const firstMaterial = materials[0];
 
   return {
     path,
@@ -41,6 +65,14 @@ const toSceneNode = (
         object.rotation.z * 180 / Math.PI,
       ],
       scale: [object.scale.x, object.scale.y, object.scale.z],
+    },
+    appearance: {
+      materialColor: colorMaterial?.color
+        ? `#${colorMaterial.color.getHexString()}`
+        : null,
+      materialCount: materials.length,
+      materialOpacity: firstMaterial?.opacity ?? null,
+      visible: object.visible,
     },
     children: object.children.map((child, index) =>
       toSceneNode(child, `${path}/${index}`, counts),

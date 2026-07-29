@@ -1974,6 +1974,44 @@ input:focus {
   justify-content: center;
 }
 
+.model-appearance-section {
+  gap: 12px;
+}
+
+.model-appearance-visibility {
+  display: grid;
+  grid-template-columns: 18px 1fr;
+  align-items: center;
+  gap: 7px;
+  padding: 9px;
+  border: 1px solid #2c4255;
+  border-radius: 6px;
+  background: #0a1a29;
+}
+
+.model-appearance-visibility input {
+  width: 15px;
+  height: 15px;
+  min-width: 15px;
+  padding: 0;
+  accent-color: #ffb86b;
+}
+
+.model-appearance-visibility span {
+  color: #a8bdca;
+  font-size: 0.68rem;
+}
+
+.model-appearance-material {
+  display: grid;
+  gap: 10px;
+}
+
+.model-appearance-reset {
+  width: 100%;
+  justify-content: center;
+}
+
 .inspector-grid-two {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }

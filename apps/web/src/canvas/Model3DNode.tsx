@@ -1,10 +1,11 @@
 import { memo, useEffect, useRef, useState } from "react";
-import type { Object3D } from "three";
+import type { Material, Object3D } from "three";
 import {
   componentLabels,
   parseModel3DProps,
   type CanvasNode,
   type Model3DProps,
+  type ModelNodeAppearance,
   type ModelNodeTransform,
 } from "./types";
 import { modelAssetContentUrl } from "./model-assets";
@@ -24,8 +25,17 @@ type LoadState =
   | { status: "error"; message: string };
 
 type ModelRuntime = {
+  applyAppearances: (overrides: Record<string, ModelNodeAppearance>) => void;
   applySceneSettings: (settings: Model3DProps) => void;
   applyTransforms: (overrides: Record<string, ModelNodeTransform>) => void;
+};
+
+type MaterialObject = Object3D & {
+  material?: Material | Material[];
+};
+
+type ColorMaterial = Material & {
+  color?: { set: (value: string) => unknown };
 };
 
 const errorText = (reason: unknown): string =>
@@ -53,6 +63,9 @@ export const Model3DNode = memo(function Model3DNode({
   const assetId = node.resourceRefs[0] ?? null;
   const transformOverridesSignature = parsed.ok
     ? JSON.stringify(parsed.value.transformOverrides)
+    : "";
+  const appearanceOverridesSignature = parsed.ok
+    ? JSON.stringify(parsed.value.appearanceOverrides)
     : "";
   const sceneSettingsSignature = parsed.ok
     ? JSON.stringify([
@@ -120,6 +133,24 @@ export const Model3DNode = memo(function Model3DNode({
   }, [assetId, node.id, parsed.ok, transformOverridesSignature]);
 
   useEffect(() => {
+    if (!parsed.ok || !runtimeRef.current) return;
+    try {
+      runtimeRef.current.applyAppearances(parsed.value.appearanceOverrides);
+      setLoadState({ status: "ready" });
+    } catch (reason) {
+      console.error("Failed to apply model node appearances.", {
+        assetId,
+        canvasNodeId: node.id,
+        reason,
+      });
+      setLoadState({
+        status: "error",
+        message: `节点外观应用失败：${errorText(reason)}`,
+      });
+    }
+  }, [appearanceOverridesSignature, assetId, node.id, parsed.ok]);
+
+  useEffect(() => {
     const container = containerRef.current;
     if (!container || !assetId || !parsed.ok) {
       onSceneChange?.(node.id, null);
@@ -130,6 +161,7 @@ export const Model3DNode = memo(function Model3DNode({
     let cancelled = false;
     let dispose: (() => void) | null = null;
     let runtimeController: ModelRuntime | null = null;
+    let restoreRuntimeAppearanceState: (() => void) | null = null;
     runtimeRef.current = null;
     onSceneChange?.(node.id, null);
     setLoadState({ status: "loading" });
@@ -275,6 +307,12 @@ export const Model3DNode = memo(function Model3DNode({
             quaternion: InstanceType<typeof THREE.Quaternion>;
             scale: InstanceType<typeof THREE.Vector3>;
           }>();
+          const originalVisibility = new Map<Object3D, boolean>();
+          const originalMaterials = new Map<MaterialObject, Material | Material[]>();
+          const activeMaterialClones = new Map<MaterialObject, {
+            clones: Material[];
+            original: Material | Material[];
+          }>();
           const objectsByName = new Map<string, Object3D[]>();
           gltf.scene.traverse((object) => {
             originals.set(object, {
@@ -282,6 +320,11 @@ export const Model3DNode = memo(function Model3DNode({
               quaternion: object.quaternion.clone(),
               scale: object.scale.clone(),
             });
+            originalVisibility.set(object, object.visible);
+            const materialOwner = object as MaterialObject;
+            if (materialOwner.material) {
+              originalMaterials.set(materialOwner, materialOwner.material);
+            }
             const name = object.name.trim();
             if (!name) return;
             const matches = objectsByName.get(name) ?? [];
@@ -295,6 +338,66 @@ export const Model3DNode = memo(function Model3DNode({
           rotationPivot.add(contentOffset);
           scene.add(rotationPivot);
           modelRoot = rotationPivot;
+
+          const restoreAppearanceState = () => {
+            activeMaterialClones.forEach(({ clones, original }, object) => {
+              const originalMaterial = original;
+              object.material = originalMaterial;
+              clones.forEach((material) => material.dispose());
+            });
+            activeMaterialClones.clear();
+            originalVisibility.forEach((visibleValue, object) => {
+              object.visible = visibleValue;
+            });
+          };
+          restoreRuntimeAppearanceState = restoreAppearanceState;
+
+          const applyAppearances = (
+            overrides: Record<string, ModelNodeAppearance>,
+          ) => {
+            const targets = Object.entries(overrides).map(([nodeName, appearance]) => {
+              const matches = objectsByName.get(nodeName);
+              if (!matches || matches.length === 0) {
+                throw new Error(`模型中找不到已配置节点：${nodeName}`);
+              }
+              if (matches.length > 1) {
+                throw new Error(`模型节点名不唯一，不能应用外观：${nodeName}`);
+              }
+              return { appearance, nodeName, object: matches[0] };
+            });
+
+            restoreAppearanceState();
+            try {
+              for (const { appearance, object } of targets) {
+                object.visible = appearance.visible;
+                const materialOwner = object as MaterialObject;
+                const originalMaterial = originalMaterials.get(materialOwner);
+                if (!originalMaterial) continue;
+
+                const originalsForObject = Array.isArray(originalMaterial)
+                  ? originalMaterial
+                  : [originalMaterial];
+                const clones = originalsForObject.map((material) => {
+                  const clone = material.clone();
+                  const colorMaterial = clone as ColorMaterial;
+                  colorMaterial.color?.set(appearance.color);
+                  clone.opacity = appearance.opacity;
+                  clone.transparent = appearance.opacity < 1 || material.transparent;
+                  clone.depthWrite = appearance.opacity < 1 ? false : material.depthWrite;
+                  clone.needsUpdate = true;
+                  return clone;
+                });
+                materialOwner.material = Array.isArray(originalMaterial) ? clones : clones[0]!;
+                activeMaterialClones.set(materialOwner, {
+                  clones,
+                  original: originalMaterial,
+                });
+              }
+            } catch (reason) {
+              restoreAppearanceState();
+              throw reason;
+            }
+          };
 
           const applyTransforms = (
             overrides: Record<string, ModelNodeTransform>,
@@ -360,6 +463,7 @@ export const Model3DNode = memo(function Model3DNode({
             }
             applySceneSettings(latestSettings);
             applyTransforms(latestSettings.transformOverrides);
+            applyAppearances(latestSettings.appearanceOverrides);
           } catch (reason) {
             console.error("Failed to initialize the 3D model scene.", {
               assetId,
@@ -374,7 +478,11 @@ export const Model3DNode = memo(function Model3DNode({
             return;
           }
 
-          runtimeController = { applySceneSettings, applyTransforms };
+          runtimeController = {
+            applyAppearances,
+            applySceneSettings,
+            applyTransforms,
+          };
           runtimeRef.current = runtimeController;
           onSceneChange?.(node.id, { assetId, ...sceneTree });
           setLoadState({ status: "ready" });
@@ -393,6 +501,8 @@ export const Model3DNode = memo(function Model3DNode({
         resizeObserver.disconnect();
         intersectionObserver.disconnect();
         controls.dispose();
+        restoreRuntimeAppearanceState?.();
+        restoreRuntimeAppearanceState = null;
         scene.traverse((object) => {
           const candidate = object as Object3D & {
             geometry?: { dispose: () => void };

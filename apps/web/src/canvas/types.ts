@@ -51,6 +51,12 @@ export type ModelNodeTransform = {
   scale: Vector3Tuple;
 };
 
+export type ModelNodeAppearance = {
+  color: string;
+  opacity: number;
+  visible: boolean;
+};
+
 export type ModelCameraView = "isometric" | "front" | "top";
 
 export type Model3DProps = {
@@ -65,6 +71,7 @@ export type Model3DProps = {
   autoRotate: boolean;
   rotationSpeed: number;
   showGrid: boolean;
+  appearanceOverrides: Record<string, ModelNodeAppearance>;
   transformOverrides: Record<string, ModelNodeTransform>;
 };
 
@@ -232,6 +239,7 @@ const model3DDefaults: Record<Model3DNodeType, Model3DProps> = {
     autoRotate: true,
     rotationSpeed: 0.35,
     showGrid: true,
+    appearanceOverrides: {},
     transformOverrides: {},
   },
 };
@@ -478,6 +486,7 @@ export type Model3DPropsResult =
   | { ok: false; message: string };
 
 const MAX_MODEL_NODE_TRANSFORMS = 100;
+const MAX_MODEL_NODE_APPEARANCES = 100;
 
 const parseVector3Tuple = (
   value: unknown,
@@ -558,6 +567,54 @@ const parseTransformOverrides = (
   return { ok: true, value: result };
 };
 
+const parseAppearanceOverrides = (
+  value: unknown,
+): { ok: true; value: Record<string, ModelNodeAppearance> } | { ok: false; message: string } => {
+  if (value === undefined) return { ok: true, value: {} };
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return { ok: false, message: "appearanceOverrides 必须是对象" };
+  }
+
+  const entries = Object.entries(value);
+  if (entries.length > MAX_MODEL_NODE_APPEARANCES) {
+    return {
+      ok: false,
+      message: `单个 3D 组件最多保存 ${MAX_MODEL_NODE_APPEARANCES} 个节点外观`,
+    };
+  }
+
+  const result: Record<string, ModelNodeAppearance> = {};
+  for (const [nodeName, rawAppearance] of entries) {
+    if (nodeName.length === 0 || nodeName.length > 240 || nodeName !== nodeName.trim()) {
+      return { ok: false, message: "模型节点名必须为 1–240 个字符且首尾不能有空格" };
+    }
+    if (!rawAppearance || typeof rawAppearance !== "object" || Array.isArray(rawAppearance)) {
+      return { ok: false, message: `节点 ${nodeName} 的外观配置必须是对象` };
+    }
+    const appearance = rawAppearance as Record<string, unknown>;
+    if (!isHexColor(appearance.color)) {
+      return { ok: false, message: `${nodeName}.color 必须是六位十六进制颜色` };
+    }
+    if (
+      typeof appearance.opacity !== "number"
+      || !Number.isFinite(appearance.opacity)
+      || appearance.opacity < 0
+      || appearance.opacity > 1
+    ) {
+      return { ok: false, message: `${nodeName}.opacity 必须是 0–1 之间的数值` };
+    }
+    if (typeof appearance.visible !== "boolean") {
+      return { ok: false, message: `${nodeName}.visible 必须是布尔值` };
+    }
+    result[nodeName] = {
+      color: appearance.color,
+      opacity: appearance.opacity,
+      visible: appearance.visible,
+    };
+  }
+  return { ok: true, value: result };
+};
+
 export const parseModel3DProps = (props: Record<string, unknown>): Model3DPropsResult => {
   if (!isHexColor(props.backgroundColor)) {
     return { ok: false, message: "backgroundColor 必须是六位十六进制颜色" };
@@ -629,6 +686,8 @@ export const parseModel3DProps = (props: Record<string, unknown>): Model3DPropsR
   }
   const transformOverrides = parseTransformOverrides(props.transformOverrides);
   if (!transformOverrides.ok) return transformOverrides;
+  const appearanceOverrides = parseAppearanceOverrides(props.appearanceOverrides);
+  if (!appearanceOverrides.ok) return appearanceOverrides;
 
   return {
     ok: true,
@@ -644,6 +703,7 @@ export const parseModel3DProps = (props: Record<string, unknown>): Model3DPropsR
       autoRotate: props.autoRotate,
       rotationSpeed: props.rotationSpeed,
       showGrid: props.showGrid,
+      appearanceOverrides: appearanceOverrides.value,
       transformOverrides: transformOverrides.value,
     },
   };

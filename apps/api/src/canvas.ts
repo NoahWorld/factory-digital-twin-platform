@@ -49,6 +49,12 @@ export type ModelNodeTransform = {
   scale: Vector3Tuple;
 };
 
+export type ModelNodeAppearance = {
+  color: string;
+  opacity: number;
+  visible: boolean;
+};
+
 export type ModelCameraView = "isometric" | "front" | "top";
 
 export type Model3DProps = {
@@ -63,6 +69,7 @@ export type Model3DProps = {
   autoRotate: boolean;
   rotationSpeed: number;
   showGrid: boolean;
+  appearanceOverrides: Record<string, ModelNodeAppearance>;
   transformOverrides: Record<string, ModelNodeTransform>;
 };
 
@@ -124,6 +131,7 @@ const MAX_PATCH_NODES = 100;
 const MAX_POINTS = 32;
 const MAX_PROPS_BYTES = 16 * 1024;
 const MAX_MODEL_NODE_TRANSFORMS = 100;
+const MAX_MODEL_NODE_APPEARANCES = 100;
 const identifierPattern = /^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,119}$/;
 const colorPattern = /^#[0-9a-fA-F]{6}$/;
 const encoder = new TextEncoder();
@@ -274,6 +282,53 @@ const requireModelNodeTransforms = (
   return result;
 };
 
+const requireModelNodeAppearances = (
+  value: unknown,
+): Record<string, ModelNodeAppearance> => {
+  if (value === undefined) return {};
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    invalid("invalid_canvas_node", "props.appearanceOverrides must be a JSON object.");
+  }
+  const entries = Object.entries(value as Record<string, unknown>);
+  if (entries.length > MAX_MODEL_NODE_APPEARANCES) {
+    invalid(
+      "invalid_canvas_node",
+      `props.appearanceOverrides cannot contain more than ${MAX_MODEL_NODE_APPEARANCES} model nodes.`,
+    );
+  }
+
+  const result: Record<string, ModelNodeAppearance> = {};
+  for (const [nodeName, rawAppearance] of entries) {
+    if (nodeName.length === 0 || nodeName.length > 240 || nodeName !== nodeName.trim()) {
+      invalid(
+        "invalid_canvas_node",
+        "Model node names in props.appearanceOverrides must contain 1 to 240 characters without surrounding whitespace.",
+      );
+    }
+    const appearance = requireObject(
+      rawAppearance,
+      `props.appearanceOverrides[${JSON.stringify(nodeName)}]`,
+    );
+    result[nodeName] = {
+      color: requireColor(
+        appearance.color,
+        `props.appearanceOverrides[${JSON.stringify(nodeName)}].color`,
+      ),
+      opacity: requireNumber(
+        appearance.opacity,
+        `props.appearanceOverrides[${JSON.stringify(nodeName)}].opacity`,
+        0,
+        1,
+      ),
+      visible: requireBoolean(
+        appearance.visible,
+        `props.appearanceOverrides[${JSON.stringify(nodeName)}].visible`,
+      ),
+    };
+  }
+  return result;
+};
+
 const requireAlignment = (value: unknown, label: string): DecorationProps["align"] => {
   if (value !== "left" && value !== "center" && value !== "right") {
     invalid("invalid_canvas_node", `${label} must be left, center, or right.`);
@@ -393,6 +448,7 @@ const validateNode = (value: unknown): CanvasNode => {
       autoRotate: requireBoolean(props.autoRotate, "props.autoRotate"),
       rotationSpeed: requireNumber(props.rotationSpeed, "props.rotationSpeed", 0, 5),
       showGrid: requireBoolean(props.showGrid, "props.showGrid"),
+      appearanceOverrides: requireModelNodeAppearances(props.appearanceOverrides),
       transformOverrides: requireModelNodeTransforms(props.transformOverrides),
     };
   }
@@ -570,15 +626,22 @@ export const applyCanvasPatch = async (
 
   for (const node of modelNodes) {
     const transformOverrides = (node.props as Model3DProps).transformOverrides;
+    const appearanceOverrides = (node.props as Model3DProps).appearanceOverrides;
     const transformedNodeNames = Object.keys(transformOverrides);
-    if (transformedNodeNames.length === 0) continue;
+    const appearanceNodeNames = Object.keys(appearanceOverrides);
+    if (transformedNodeNames.length === 0 && appearanceNodeNames.length === 0) continue;
 
     const assetId = node.resourceRefs[0];
     if (!assetId) {
+      const hasAppearanceOverride = appearanceNodeNames.length > 0;
       throw new AppError(
         400,
-        "model_transform_without_asset",
-        `Canvas node ${node.id} cannot store model node transforms without a model asset.`,
+        hasAppearanceOverride
+          ? "model_appearance_without_asset"
+          : "model_transform_without_asset",
+        `Canvas node ${node.id} cannot store model node ${
+          hasAppearanceOverride ? "appearances" : "transforms"
+        } without a model asset.`,
       );
     }
     const duplicateNames = duplicateNamesByAssetId.get(assetId);
@@ -588,6 +651,14 @@ export const applyCanvasPatch = async (
         400,
         "ambiguous_model_node_transform",
         `Canvas node ${node.id} cannot transform duplicate model node name ${JSON.stringify(duplicateTransformName)}. Rename the model nodes and upload the model again.`,
+      );
+    }
+    const duplicateAppearanceName = appearanceNodeNames.find((name) => duplicateNames?.has(name));
+    if (duplicateAppearanceName) {
+      throw new AppError(
+        400,
+        "ambiguous_model_node_appearance",
+        `Canvas node ${node.id} cannot configure the appearance of duplicate model node name ${JSON.stringify(duplicateAppearanceName)}. Rename the model nodes and upload the model again.`,
       );
     }
   }
