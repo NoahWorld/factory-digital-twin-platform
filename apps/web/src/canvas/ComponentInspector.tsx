@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Model3DInspector } from "./Model3DInspector";
+import type { ModelSceneSnapshot } from "./model-scene";
 import {
   componentLabels,
   isDecorationNodeType,
@@ -17,7 +18,9 @@ import {
 
 type ComponentInspectorProps = {
   editable: boolean;
+  modelScene?: ModelSceneSnapshot | null;
   node: CanvasNode | null;
+  onModelSceneNodeSelect?: (path: string | null) => void;
   onNodeChange: (node: CanvasNode) => void;
   onValidationChange: (message: string | null) => void;
 };
@@ -418,8 +421,14 @@ export function ComponentInspector({
   node,
   onNodeChange,
   onValidationChange,
+  modelScene,
+  onModelSceneNodeSelect,
   projectId,
-}: ComponentInspectorProps & { projectId: string }) {
+  selectedModelSceneNodePath,
+}: ComponentInspectorProps & {
+  projectId: string;
+  selectedModelSceneNodePath?: string | null;
+}) {
   useEffect(() => {
     if (!node) onValidationChange(null);
   }, [node, onValidationChange]);
@@ -445,7 +454,18 @@ export function ComponentInspector({
   }
 
   if (isModel3DNodeType(node.type)) {
-    return <Model3DInspector editable={editable} node={node} onNodeChange={onNodeChange} onValidationChange={onValidationChange} projectId={projectId} />;
+    return (
+      <Model3DInspector
+        editable={editable}
+        modelScene={modelScene ?? null}
+        node={node}
+        onNodeChange={onNodeChange}
+        onSceneNodeSelect={onModelSceneNodeSelect ?? (() => undefined)}
+        onValidationChange={onValidationChange}
+        projectId={projectId}
+        selectedSceneNodePath={selectedModelSceneNodePath ?? null}
+      />
+    );
   }
 
   const parsed = parseChartProps(node.props);

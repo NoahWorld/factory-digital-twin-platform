@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type DragEvent } from "react"
 import { errorMessage, request } from "../api";
 import { ComponentInspector } from "../canvas/ComponentInspector";
 import { CanvasSurface } from "../canvas/CanvasSurface";
+import type { ModelSceneSnapshot } from "../canvas/model-scene";
 import { CANVAS_DRAG_TYPE, componentLabels, createCanvasNode, isBackgroundNodeType, type CanvasDocument, type CanvasNode, type CanvasNodeType, type CanvasPatchResponse, type CanvasResponse } from "../canvas/types";
 
 type CanvasPageProps = { mode: "edit" | "preview"; projectId: string };
@@ -13,6 +14,8 @@ export function CanvasPage({ mode, projectId }: CanvasPageProps) {
   const [projectName, setProjectName] = useState("");
   const [canEdit, setCanEdit] = useState(false);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [selectedModelSceneNodePath, setSelectedModelSceneNodePath] = useState<string | null>(null);
+  const [modelScenes, setModelScenes] = useState<Record<string, ModelSceneSnapshot>>({});
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -27,6 +30,8 @@ export function CanvasPage({ mode, projectId }: CanvasPageProps) {
     setLoading(true);
     setLoadError(null);
     setSelectedNodeId(null);
+    setSelectedModelSceneNodePath(null);
+    setModelScenes({});
     setConfigurationError(null);
     dirtyNodeIdsRef.current.clear();
     deletedNodeIdsRef.current.clear();
@@ -50,6 +55,27 @@ export function CanvasPage({ mode, projectId }: CanvasPageProps) {
     setSaveError(null);
   }, []);
 
+  const selectCanvasNode = useCallback((nodeId: string | null) => {
+    setSelectedNodeId(nodeId);
+    setSelectedModelSceneNodePath(null);
+  }, []);
+
+  const updateModelScene = useCallback((
+    canvasNodeId: string,
+    snapshot: ModelSceneSnapshot | null,
+  ) => {
+    setModelScenes((current) => {
+      if (snapshot === null) {
+        if (!(canvasNodeId in current)) return current;
+        const next = { ...current };
+        delete next[canvasNodeId];
+        return next;
+      }
+      if (current[canvasNodeId] === snapshot) return current;
+      return { ...current, [canvasNodeId]: snapshot };
+    });
+  }, []);
+
   const updateNode = useCallback((node: CanvasNode) => {
     setDocument((current) => current ? { ...current, nodes: current.nodes.map((item) => item.id === node.id ? node : item) } : current);
     markNodeDirty(node.id);
@@ -60,16 +86,16 @@ export function CanvasPage({ mode, projectId }: CanvasPageProps) {
     const maxZIndex = document.nodes.reduce((maximum, node) => Math.max(maximum, node.zIndex), 0);
     const node = createCanvasNode(type, x, y, isBackgroundNodeType(type) ? 0 : maxZIndex + 1);
     setDocument({ ...document, nodes: [...document.nodes, node] });
-    setSelectedNodeId(node.id);
+    selectCanvasNode(node.id);
     markNodeDirty(node.id);
-  }, [document, markNodeDirty]);
+  }, [document, markNodeDirty, selectCanvasNode]);
 
   const deleteSelectedNode = () => {
     if (!document || !selectedNodeId || !document.nodes.some((node) => node.id === selectedNodeId)) return;
     setDocument({ ...document, nodes: document.nodes.filter((node) => node.id !== selectedNodeId) });
     dirtyNodeIdsRef.current.delete(selectedNodeId);
     deletedNodeIdsRef.current.add(selectedNodeId);
-    setSelectedNodeId(null);
+    selectCanvasNode(null);
     setDirty(true);
     setSaveError(null);
   };
@@ -166,8 +192,8 @@ export function CanvasPage({ mode, projectId }: CanvasPageProps) {
           </section>
           <div className="palette-note"><strong>资源分离</strong><p>模型文件独立存储；画布节点只保存配置、资源 ID 与数据绑定 ID。</p></div>
         </aside> : null}
-        <CanvasSurface document={document} editable={editable} onCreateNode={createNode} onNodeChange={updateNode} onSelectNode={setSelectedNodeId} selectedNodeId={selectedNodeId} />
-        {mode === "edit" ? <ComponentInspector editable={editable} node={selectedNode} onNodeChange={updateNode} onValidationChange={setConfigurationError} projectId={projectId} /> : null}
+        <CanvasSurface document={document} editable={editable} onCreateNode={createNode} onModelSceneChange={updateModelScene} onNodeChange={updateNode} onSelectNode={selectCanvasNode} selectedNodeId={selectedNodeId} />
+        {mode === "edit" ? <ComponentInspector editable={editable} modelScene={selectedNode ? modelScenes[selectedNode.id] ?? null : null} node={selectedNode} onModelSceneNodeSelect={setSelectedModelSceneNodePath} onNodeChange={updateNode} onValidationChange={setConfigurationError} projectId={projectId} selectedModelSceneNodePath={selectedModelSceneNodePath} /> : null}
       </div>
     </main>
   );

@@ -9,10 +9,12 @@ import type {
 } from "three";
 import { componentLabels, parseModel3DProps, type CanvasNode } from "./types";
 import { modelAssetContentUrl } from "./model-assets";
+import { buildModelSceneTree, type ModelSceneSnapshot } from "./model-scene";
 
 type Model3DNodeProps = {
   editable: boolean;
   node: CanvasNode;
+  onSceneChange?: (canvasNodeId: string, snapshot: ModelSceneSnapshot | null) => void;
   projectId: string;
 };
 
@@ -28,6 +30,7 @@ const errorText = (reason: unknown): string =>
 export const Model3DNode = memo(function Model3DNode({
   editable,
   node,
+  onSceneChange,
   projectId,
 }: Model3DNodeProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -60,12 +63,14 @@ export const Model3DNode = memo(function Model3DNode({
   useEffect(() => {
     const container = containerRef.current;
     if (!container || !assetId || !parsed.ok) {
+      onSceneChange?.(node.id, null);
       setLoadState(assetId ? { status: "error", message: parsed.ok ? "3D 容器不可用" : parsed.message } : { status: "empty" });
       return;
     }
 
     let cancelled = false;
     let dispose: (() => void) | null = null;
+    onSceneChange?.(node.id, null);
     setLoadState({ status: "loading" });
 
     void Promise.all([
@@ -158,10 +163,12 @@ export const Model3DNode = memo(function Model3DNode({
 
           const box: Box3 = new THREE.Box3().setFromObject(gltf.scene);
           if (box.isEmpty()) {
+            onSceneChange?.(node.id, null);
             setLoadState({ status: "error", message: "模型没有可显示的几何边界" });
             return;
           }
 
+          const sceneTree = buildModelSceneTree(gltf.scene);
           const center = box.getCenter(new THREE.Vector3());
           const size = box.getSize(new THREE.Vector3());
           const radius = Math.max(size.length() / 2, 0.01);
@@ -177,11 +184,13 @@ export const Model3DNode = memo(function Model3DNode({
           camera.far = Math.max(radius * 100, 100);
           camera.updateProjectionMatrix();
           fitCameraToModel();
+          onSceneChange?.(node.id, { assetId, ...sceneTree });
           setLoadState({ status: "ready" });
         },
         undefined,
         (reason) => {
           if (!cancelled) {
+            onSceneChange?.(node.id, null);
             setLoadState({ status: "error", message: `模型加载失败：${errorText(reason)}` });
           }
         },
@@ -212,15 +221,17 @@ export const Model3DNode = memo(function Model3DNode({
       };
     }).catch((reason) => {
       if (!cancelled) {
+        onSceneChange?.(node.id, null);
         setLoadState({ status: "error", message: `3D 引擎加载失败：${errorText(reason)}` });
       }
     });
 
     return () => {
       cancelled = true;
+      onSceneChange?.(node.id, null);
       dispose?.();
     };
-  }, [assetId, editable, parsed.ok, projectId]);
+  }, [assetId, editable, node.id, onSceneChange, parsed.ok, projectId]);
 
   if (!parsed.ok) {
     return <div className="model-3d-message is-error" role="alert"><strong>{componentLabels[node.type]}配置错误</strong><span>{parsed.message}</span></div>;

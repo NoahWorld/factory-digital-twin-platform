@@ -3,6 +3,7 @@ import { ChartNode } from "./ChartNode";
 import { DecorationNode } from "./DecorationNode";
 import { buildSnapTargets, resizeCanvasNode, snapNodePosition, type ResizeDirection, type SnapTargets, type SnappedPosition } from "./geometry";
 import { Model3DNode } from "./Model3DNode";
+import type { ModelSceneSnapshot } from "./model-scene";
 import { ShapeNode } from "./ShapeNode";
 import { CANVAS_DRAG_TYPE, defaultNodeSizes, isCanvasNodeType, isDecorationNodeType, isModel3DNodeType, isShapeNodeType, type CanvasDocument, type CanvasNode, type CanvasNodeType } from "./types";
 
@@ -37,6 +38,7 @@ type ActiveInteraction = ActiveDrag | ActiveResize;
 type CanvasNodeViewProps = {
   editable: boolean;
   node: CanvasNode;
+  onModelSceneChange: (canvasNodeId: string, snapshot: ModelSceneSnapshot | null) => void;
   projectId: string;
   selected: boolean;
   onPointerDown: (event: ReactPointerEvent<HTMLDivElement>, node: CanvasNode) => void;
@@ -57,7 +59,7 @@ const hasGeometryChanged = (previous: CanvasNode, next: CanvasNode) => (
   || previous.height !== next.height
 );
 
-const CanvasNodeView = memo(function CanvasNodeView({ editable, node, projectId, selected, onPointerDown, onResizePointerDown }: CanvasNodeViewProps) {
+const CanvasNodeView = memo(function CanvasNodeView({ editable, node, onModelSceneChange, projectId, selected, onPointerDown, onResizePointerDown }: CanvasNodeViewProps) {
   return (
     <div
       aria-label={`${node.type} 组件`}
@@ -72,7 +74,7 @@ const CanvasNodeView = memo(function CanvasNodeView({ editable, node, projectId,
         : isDecorationNodeType(node.type)
           ? <DecorationNode node={node} />
           : isModel3DNodeType(node.type)
-            ? <Model3DNode editable={editable} node={node} projectId={projectId} />
+            ? <Model3DNode editable={editable} node={node} onSceneChange={onModelSceneChange} projectId={projectId} />
             : <ChartNode node={node} />}
       {editable ? <span className="canvas-node-drag-hint">拖动</span> : null}
       {editable && selected ? resizeHandles.map(({ direction, label }) => (
@@ -93,11 +95,12 @@ type CanvasSurfaceProps = {
   editable: boolean;
   selectedNodeId: string | null;
   onCreateNode: (type: CanvasNodeType, x: number, y: number) => void;
+  onModelSceneChange: (canvasNodeId: string, snapshot: ModelSceneSnapshot | null) => void;
   onNodeChange: (node: CanvasNode) => void;
   onSelectNode: (nodeId: string | null) => void;
 };
 
-export function CanvasSurface({ document, editable, selectedNodeId, onCreateNode, onNodeChange, onSelectNode }: CanvasSurfaceProps) {
+export function CanvasSurface({ document, editable, selectedNodeId, onCreateNode, onModelSceneChange, onNodeChange, onSelectNode }: CanvasSurfaceProps) {
   const viewportRef = useRef<HTMLDivElement>(null);
   const surfaceRef = useRef<HTMLDivElement>(null);
   const verticalGuideRef = useRef<HTMLDivElement>(null);
@@ -278,7 +281,7 @@ export function CanvasSurface({ document, editable, selectedNodeId, onCreateNode
           ref={surfaceRef}
           style={{ backgroundColor: document.backgroundColor, height: document.height, transform: `scale(${scale})`, width: document.width }}
         >
-          {document.nodes.map((node) => <CanvasNodeView editable={editable} key={node.id} node={node} onPointerDown={startPointerDrag} onResizePointerDown={startPointerResize} projectId={document.projectId} selected={node.id === selectedNodeId} />)}
+          {document.nodes.map((node) => <CanvasNodeView editable={editable} key={node.id} node={node} onModelSceneChange={onModelSceneChange} onPointerDown={startPointerDrag} onResizePointerDown={startPointerResize} projectId={document.projectId} selected={node.id === selectedNodeId} />)}
           {editable && document.nodes.length === 0 ? <div className="canvas-empty-hint"><span>↘</span><strong>从左侧拖入组件</strong><p>组件落入后可继续拖动，靠近画布或其他组件边缘时会自动吸附。</p></div> : null}
           <div className="canvas-guide canvas-guide-vertical" ref={verticalGuideRef} />
           <div className="canvas-guide canvas-guide-horizontal" ref={horizontalGuideRef} />

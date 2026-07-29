@@ -1,4 +1,11 @@
-import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type CSSProperties,
+} from "react";
 import { errorMessage, request } from "../api";
 import {
   formatFileSize,
@@ -8,6 +15,11 @@ import {
   type ModelAssetUploadResponse,
 } from "./model-assets";
 import {
+  findModelSceneNode,
+  type ModelSceneNode,
+  type ModelSceneSnapshot,
+} from "./model-scene";
+import {
   componentLabels,
   parseModel3DProps,
   type CanvasNode,
@@ -16,31 +28,95 @@ import {
 
 type Model3DInspectorProps = {
   editable: boolean;
+  modelScene: ModelSceneSnapshot | null;
   node: CanvasNode;
   onNodeChange: (node: CanvasNode) => void;
+  onSceneNodeSelect: (path: string | null) => void;
   onValidationChange: (message: string | null) => void;
   projectId: string;
+  selectedSceneNodePath: string | null;
 };
 
 const MAX_MODEL_BYTES = 25 * 1024 * 1024;
+const MAX_VISIBLE_TREE_ROWS = 400;
+
+type SceneTreeRow = {
+  depth: number;
+  node: ModelSceneNode;
+};
+
+const nodeLabel = (node: ModelSceneNode): string =>
+  node.name || `未命名 ${node.objectType}`;
+
+const filterTree = (
+  nodes: ModelSceneNode[],
+  normalizedQuery: string,
+): ModelSceneNode[] =>
+  nodes.flatMap((node) => {
+    const children = filterTree(node.children, normalizedQuery);
+    const matches = `${node.name} ${node.objectType}`.toLocaleLowerCase().includes(normalizedQuery);
+    return matches || children.length > 0 ? [{ ...node, children }] : [];
+  });
+
+const flattenTree = (
+  nodes: ModelSceneNode[],
+  expandedPaths: Set<string>,
+  expandAll: boolean,
+  depth = 0,
+  rows: SceneTreeRow[] = [],
+): SceneTreeRow[] => {
+  for (const node of nodes) {
+    if (rows.length >= MAX_VISIBLE_TREE_ROWS) break;
+    rows.push({ depth, node });
+    if (node.children.length > 0 && (expandAll || expandedPaths.has(node.path))) {
+      flattenTree(node.children, expandedPaths, expandAll, depth + 1, rows);
+    }
+  }
+  return rows;
+};
 
 export function Model3DInspector({
   editable,
+  modelScene,
   node,
   onNodeChange,
+  onSceneNodeSelect,
   onValidationChange,
   projectId,
+  selectedSceneNodePath,
 }: Model3DInspectorProps) {
   const parsed = parseModel3DProps(node.props);
   const [assets, setAssets] = useState<ModelAsset[]>([]);
   const [loadingAssets, setLoadingAssets] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [assetError, setAssetError] = useState<string | null>(null);
+  const [sceneSearch, setSceneSearch] = useState("");
+  const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set());
   const fileInputRef = useRef<HTMLInputElement>(null);
   const selectedAssetId = node.resourceRefs[0] ?? "";
   const selectedAsset = useMemo(
     () => assets.find((asset) => asset.id === selectedAssetId) ?? null,
     [assets, selectedAssetId],
+  );
+  const activeScene = modelScene?.assetId === selectedAssetId ? modelScene : null;
+  const normalizedSceneSearch = sceneSearch.trim().toLocaleLowerCase();
+  const visibleSceneTree = useMemo(
+    () => normalizedSceneSearch && activeScene
+      ? filterTree(activeScene.roots, normalizedSceneSearch)
+      : activeScene?.roots ?? [],
+    [activeScene, normalizedSceneSearch],
+  );
+  const visibleSceneRows = useMemo(
+    () => flattenTree(
+      visibleSceneTree,
+      expandedPaths,
+      normalizedSceneSearch.length > 0,
+    ),
+    [expandedPaths, normalizedSceneSearch, visibleSceneTree],
+  );
+  const selectedSceneNode = useMemo(
+    () => findModelSceneNode(activeScene?.roots ?? [], selectedSceneNodePath),
+    [activeScene, selectedSceneNodePath],
   );
 
   useEffect(() => {
@@ -67,6 +143,18 @@ export function Model3DInspector({
     };
   }, [projectId]);
 
+  useEffect(() => {
+    setSceneSearch("");
+    setExpandedPaths(new Set(activeScene?.roots.map((root) => root.path) ?? []));
+    onSceneNodeSelect(null);
+  }, [activeScene?.assetId, onSceneNodeSelect]);
+
+  useEffect(() => {
+    if (selectedSceneNodePath !== null && activeScene && selectedSceneNode === null) {
+      onSceneNodeSelect(null);
+    }
+  }, [activeScene, onSceneNodeSelect, selectedSceneNode, selectedSceneNodePath]);
+
   if (!parsed.ok) {
     return <section className="component-inspector"><div className="inspector-empty is-error"><strong>3D 组件配置无效</strong><p>{parsed.message}</p></div></section>;
   }
@@ -76,7 +164,17 @@ export function Model3DInspector({
   };
 
   const chooseAsset = (assetId: string) => {
+    onSceneNodeSelect(null);
     onNodeChange({ ...node, resourceRefs: assetId ? [assetId] : [] });
+  };
+
+  const toggleSceneNode = (path: string) => {
+    setExpandedPaths((current) => {
+      const next = new Set(current);
+      if (next.has(path)) next.delete(path);
+      else next.add(path);
+      return next;
+    });
   };
 
   const upload = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -180,6 +278,98 @@ export function Model3DInspector({
             <p className="model-inspection-warning">存在 {selectedAsset.inspection.duplicateNodeNames.length} 个重复节点名，发布前必须处理。</p>
           ) : <p className="model-inspection-ok">节点名称检查通过</p>}
         </div>
+      ) : null}
+
+      {selectedAsset ? (
+        <section className="inspector-section model-scene-tree-section">
+          <div className="inspector-section-title">
+            <strong>模型节点树</strong>
+            <span>
+              {activeScene
+                ? `${activeScene.namedNodeCount}/${activeScene.totalNodeCount} 已命名`
+                : "正在解析场景…"}
+            </span>
+          </div>
+          <label className="model-scene-search">
+            <span className="sr-only">搜索模型节点</span>
+            <input
+              disabled={!activeScene}
+              onChange={(event) => setSceneSearch(event.target.value)}
+              placeholder="搜索节点名称或类型"
+              type="search"
+              value={sceneSearch}
+            />
+          </label>
+          {activeScene ? (
+            <>
+              <div
+                aria-label="模型节点树"
+                className="model-scene-tree"
+                role="tree"
+              >
+                {visibleSceneRows.map(({ depth, node: sceneNode }) => {
+                  const expanded = expandedPaths.has(sceneNode.path);
+                  const selected = selectedSceneNodePath === sceneNode.path;
+                  return (
+                    <div
+                      aria-level={depth + 1}
+                      aria-selected={selected}
+                      className={`model-scene-tree-row${selected ? " is-selected" : ""}`}
+                      key={sceneNode.path}
+                      role="treeitem"
+                      style={{ "--scene-depth": depth } as CSSProperties}
+                    >
+                      {sceneNode.children.length > 0 ? (
+                        <button
+                          aria-label={`${expanded ? "收起" : "展开"} ${nodeLabel(sceneNode)}`}
+                          className="model-scene-tree-toggle"
+                          onClick={() => toggleSceneNode(sceneNode.path)}
+                          type="button"
+                        >
+                          {expanded || normalizedSceneSearch ? "⌄" : "›"}
+                        </button>
+                      ) : <span className="model-scene-tree-toggle is-placeholder" />}
+                      <button
+                        className="model-scene-tree-select"
+                        onClick={() => onSceneNodeSelect(sceneNode.path)}
+                        title={`${nodeLabel(sceneNode)} · ${sceneNode.objectType}`}
+                        type="button"
+                      >
+                        <span className={`model-scene-node-icon${sceneNode.isMesh ? " is-mesh" : ""}`}>
+                          {sceneNode.isMesh ? "◆" : "◇"}
+                        </span>
+                        <span>{nodeLabel(sceneNode)}</span>
+                        <small>{sceneNode.objectType}</small>
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+              {visibleSceneRows.length === 0 ? (
+                <p className="model-scene-empty">没有匹配的模型节点。</p>
+              ) : null}
+              {visibleSceneRows.length >= MAX_VISIBLE_TREE_ROWS ? (
+                <p className="model-inspection-warning">
+                  当前最多展示 {MAX_VISIBLE_TREE_ROWS} 行，请通过搜索缩小范围。
+                </p>
+              ) : null}
+              {selectedSceneNode ? (
+                <div className="model-scene-selection">
+                  <span>当前节点</span>
+                  <strong>{nodeLabel(selectedSceneNode)}</strong>
+                  <code>{selectedSceneNode.path}</code>
+                </div>
+              ) : (
+                <p className="inspector-help">选择节点后，后续位置、材质和数据绑定都将作用于该节点。</p>
+              )}
+            </>
+          ) : (
+            <div className="model-scene-tree-loading">
+              <span className="model-loading-spinner" />
+              <span>等待模型渲染器返回实际场景层级…</span>
+            </div>
+          )}
+        </section>
       ) : null}
 
       <div className="inspector-section inspector-grid-two">
