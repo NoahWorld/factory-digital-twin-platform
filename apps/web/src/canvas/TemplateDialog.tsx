@@ -1,4 +1,5 @@
-import { canvasTemplates, type CanvasTemplateId } from "./templates";
+import { CanvasTemplateGallery } from "./CanvasTemplateGallery";
+import type { CanvasTemplateId } from "./templates";
 
 type TemplateDialogProps = {
   editable: boolean;
@@ -28,35 +29,7 @@ export function TemplateDialog({ editable, onApply, onClose }: TemplateDialogPro
           <strong>模板数据均为示例</strong>
           <span>所有初始指标都会显示“示例数据”标识。装备保障模板会复用画布中首个 3D 模型资源。</span>
         </div>
-        <div className="template-gallery">
-          {canvasTemplates.map((template) => (
-            <article className={`template-card is-${template.theme}`} key={template.id}>
-              <div aria-hidden="true" className="template-card-preview">
-                <span className="template-preview-title" />
-                <span className="template-preview-metric metric-one" />
-                <span className="template-preview-metric metric-two" />
-                <span className="template-preview-metric metric-three" />
-                <span className="template-preview-panel panel-one" />
-                <span className="template-preview-panel panel-two" />
-                <span className="template-preview-panel panel-three" />
-              </div>
-              <div className="template-card-copy">
-                <span>{template.category}</span>
-                <h3>{template.name}</h3>
-                <p>{template.description}</p>
-                <small>{template.componentSummary}</small>
-              </div>
-              <button
-                className="secondary-button"
-                disabled={!editable}
-                onClick={() => onApply(template.id)}
-                type="button"
-              >
-                使用此模板
-              </button>
-            </article>
-          ))}
-        </div>
+        <CanvasTemplateGallery editable={editable} onApply={onApply} />
       </section>
     </div>
   );

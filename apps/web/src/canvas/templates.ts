@@ -484,6 +484,13 @@ export const canvasTemplates: CanvasTemplate[] = [
   },
 ];
 
+const canvasTemplateIds = new Set<CanvasTemplateId>(
+  canvasTemplates.map((template) => template.id),
+);
+
+export const isCanvasTemplateId = (value: string): value is CanvasTemplateId =>
+  canvasTemplateIds.has(value as CanvasTemplateId);
+
 export const instantiateCanvasTemplate = (
   templateId: CanvasTemplateId,
   existingNodes: CanvasNode[],

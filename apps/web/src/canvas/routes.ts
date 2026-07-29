@@ -1,3 +1,5 @@
+import type { CanvasTemplateId } from "./templates";
+
 export const projectCanvasPath = (projectId: string): string =>
   `/api/v1/projects/${encodeURIComponent(projectId)}/canvas`;
 
@@ -6,6 +8,12 @@ export const canvasRoutePath = (
   suffix: "canvas" | "preview",
 ): string =>
   `#/projects/${encodeURIComponent(projectId)}/${suffix}`;
+
+export const projectTemplateCanvasPath = (
+  projectId: string,
+  templateId: CanvasTemplateId,
+): string =>
+  `${canvasRoutePath(projectId, "canvas")}?template=${encodeURIComponent(templateId)}`;
 
 export const modelEditorRoutePath = (
   projectId: string,

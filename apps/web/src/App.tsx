@@ -1,6 +1,8 @@
 import { FormEvent, lazy, Suspense, useEffect, useState } from "react";
 import { ApiRequestError, errorMessage, request } from "./api";
+import { isCanvasTemplateId, type CanvasTemplateId } from "./canvas/templates";
 import { CanvasPage } from "./pages/CanvasPage";
+import { TemplatesPage } from "./pages/TemplatesPage";
 
 const Model3DEditorPage = lazy(() => import("./pages/Model3DEditorPage"));
 
@@ -374,10 +376,15 @@ type WorkspaceProps = {
 
 type WorkspaceRoute =
   | { kind: "projects" }
-  | { kind: "canvas"; projectId: string; mode: "edit" | "preview" }
-  | { kind: "model-editor"; projectId: string; nodeId: string };
+  | { kind: "templates" }
+  | { kind: "canvas"; projectId: string; mode: "edit" | "preview"; templateId?: CanvasTemplateId }
+  | { kind: "model-editor"; projectId: string; nodeId: string }
+  | { kind: "invalid"; message: string };
 
 const currentWorkspaceRoute = (): WorkspaceRoute => {
+  if (window.location.hash === "#/templates") {
+    return { kind: "templates" };
+  }
   const modelEditorMatch = window.location.hash.match(/^#\/projects\/([^/]+)\/3d-editor\/([^/]+)$/);
   if (modelEditorMatch) {
     return {
@@ -386,12 +393,21 @@ const currentWorkspaceRoute = (): WorkspaceRoute => {
       nodeId: decodeURIComponent(modelEditorMatch[2]),
     };
   }
-  const canvasMatch = window.location.hash.match(/^#\/projects\/([^/]+)\/(canvas|preview)$/);
+  const canvasMatch = window.location.hash.match(/^#\/projects\/([^/]+)\/(canvas|preview)(?:\?template=([^&]+))?$/);
   if (!canvasMatch) return { kind: "projects" };
+  const templateValue = canvasMatch[3] ? decodeURIComponent(canvasMatch[3]) : undefined;
+  let templateId: CanvasTemplateId | undefined;
+  if (templateValue) {
+    if (!isCanvasTemplateId(templateValue)) {
+      return { kind: "invalid", message: `未知的大屏模板：${templateValue}` };
+    }
+    templateId = templateValue;
+  }
   return {
     kind: "canvas",
     projectId: decodeURIComponent(canvasMatch[1]),
     mode: canvasMatch[2] === "preview" ? "preview" : "edit",
+    templateId,
   };
 };
 
@@ -450,7 +466,14 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
   };
 
   if (route.kind === "canvas") {
-    return <CanvasPage mode={route.mode} projectId={route.projectId} />;
+    return (
+      <CanvasPage
+        initialTemplateId={route.templateId}
+        key={`${route.projectId}:${route.mode}:${route.templateId ?? "saved"}`}
+        mode={route.mode}
+        projectId={route.projectId}
+      />
+    );
   }
 
   if (route.kind === "model-editor") {
@@ -458,6 +481,17 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
       <Suspense fallback={<main className="canvas-page-state"><p className="eyebrow">3D editor</p><h1>正在准备 3D 编辑器…</h1></main>}>
         <Model3DEditorPage nodeId={route.nodeId} projectId={route.projectId} />
       </Suspense>
+    );
+  }
+
+  if (route.kind === "invalid") {
+    return (
+      <main className="canvas-page-state error-state">
+        <p className="eyebrow">Route error</p>
+        <h1>页面地址无效</h1>
+        <p>{route.message}</p>
+        <a className="secondary-button" href="#/templates">返回模板中心</a>
+      </main>
     );
   }
 
@@ -472,8 +506,8 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
           </span>
         </a>
         <nav aria-label="主导航">
-          <a aria-current="page" href="#/projects">项目</a>
-          <span>模板</span>
+          <a aria-current={route.kind === "projects" ? "page" : undefined} href="#/projects">项目</a>
+          <a aria-current={route.kind === "templates" ? "page" : undefined} href="#/templates">模板</a>
           <span>资源库</span>
         </nav>
         <div className="user-menu">
@@ -487,6 +521,13 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
         </div>
       </header>
 
+      {route.kind === "templates" ? (
+        <TemplatesPage
+          loadingProjects={loadingProjects}
+          projectError={projectError}
+          projects={projects}
+        />
+      ) : (
       <section className="workspace-content" id="projects">
         <div className="page-heading">
           <div>
@@ -571,6 +612,7 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
           </section>
         ) : null}
       </section>
+      )}
 
       {showCreateProject ? (
         <CreateProjectDialog onClose={() => setShowCreateProject(false)} onCreated={createProject} />

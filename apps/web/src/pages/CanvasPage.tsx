@@ -8,9 +8,13 @@ import { instantiateCanvasTemplate, type CanvasTemplateId } from "../canvas/temp
 import { CANVAS_DRAG_TYPE, componentLabels, createCanvasNode, isBackgroundNodeType, type CanvasDocument, type CanvasNode, type CanvasNodeType, type CanvasPatchResponse, type CanvasResponse } from "../canvas/types";
 import { DataSourcePanel } from "../DataSourcePanel";
 
-type CanvasPageProps = { mode: "edit" | "preview"; projectId: string };
+type CanvasPageProps = {
+  initialTemplateId?: CanvasTemplateId;
+  mode: "edit" | "preview";
+  projectId: string;
+};
 
-export function CanvasPage({ mode, projectId }: CanvasPageProps) {
+export function CanvasPage({ initialTemplateId, mode, projectId }: CanvasPageProps) {
   const [document, setDocument] = useState<CanvasDocument | null>(null);
   const [projectName, setProjectName] = useState("");
   const [canEdit, setCanEdit] = useState(false);
@@ -26,6 +30,7 @@ export function CanvasPage({ mode, projectId }: CanvasPageProps) {
   const [saving, setSaving] = useState(false);
   const dirtyNodeIdsRef = useRef(new Set<string>());
   const deletedNodeIdsRef = useRef(new Set<string>());
+  const initialTemplateAppliedRef = useRef(false);
 
   useEffect(() => {
     let active = true;
@@ -140,7 +145,7 @@ export function CanvasPage({ mode, projectId }: CanvasPageProps) {
     event.dataTransfer.effectAllowed = "copy";
   };
 
-  const applyTemplate = (templateId: CanvasTemplateId) => {
+  const applyTemplate = useCallback((templateId: CanvasTemplateId) => {
     if (!document || !canEdit || saving) return;
     const nextNodes = instantiateCanvasTemplate(templateId, document.nodes);
     const patchNodeCount = document.nodes.length + nextNodes.length;
@@ -159,7 +164,22 @@ export function CanvasPage({ mode, projectId }: CanvasPageProps) {
     setSaveError(null);
     setDirty(true);
     setShowTemplates(false);
-  };
+  }, [canEdit, document, saving, selectCanvasNode]);
+
+  useEffect(() => {
+    if (!initialTemplateId || loading || !document || initialTemplateAppliedRef.current) return;
+    initialTemplateAppliedRef.current = true;
+
+    if (mode !== "edit") {
+      setSaveError("模板只能在 2D 画布编辑模式中套用。");
+    } else if (!canEdit) {
+      setSaveError("当前项目是只读项目，不能套用模板。");
+    } else {
+      applyTemplate(initialTemplateId);
+    }
+
+    window.history.replaceState(null, "", canvasRoutePath(projectId, "canvas"));
+  }, [applyTemplate, canEdit, document, initialTemplateId, loading, mode, projectId]);
 
   if (loading) return <main className="canvas-page-state"><p className="eyebrow">Canvas</p><h1>正在加载画布…</h1></main>;
   if (loadError || !document) {
