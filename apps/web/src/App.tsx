@@ -5,6 +5,7 @@ import { CanvasPage } from "./pages/CanvasPage";
 import { TemplatesPage } from "./pages/TemplatesPage";
 
 const Model3DEditorPage = lazy(() => import("./pages/Model3DEditorPage"));
+const ProductLandingPage = lazy(() => import("./pages/ProductLandingPage"));
 
 type Capability = {
   canCreateProject: boolean;
@@ -290,6 +291,9 @@ function AuthPage({ setupRequired, onSuccess }: AuthPageProps) {
           <span>权限边界</span>
           <p>平台管理员、交付负责人和项目成员拥有不同的访问范围。</p>
         </div>
+        <a className="auth-product-link" href="#/">
+          查看产品介绍 <span aria-hidden="true">→</span>
+        </a>
       </section>
       <section className="auth-card">
         <p className="eyebrow">{setupRequired ? "First setup" : "Sign in"}</p>
@@ -622,13 +626,31 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
 }
 
 export function App() {
+  const [showProductLanding, setShowProductLanding] = useState(
+    () => window.location.hash === "" || window.location.hash === "#/",
+  );
   const [initializing, setInitializing] = useState(true);
   const [setupRequired, setSetupRequired] = useState(false);
   const [user, setUser] = useState<CurrentUser | null>(null);
   const [initializationError, setInitializationError] = useState<string | null>(null);
 
   useEffect(() => {
+    const updatePublicRoute = () => {
+      setShowProductLanding(window.location.hash === "" || window.location.hash === "#/");
+    };
+
+    window.addEventListener("hashchange", updatePublicRoute);
+    return () => window.removeEventListener("hashchange", updatePublicRoute);
+  }, []);
+
+  useEffect(() => {
+    if (showProductLanding) {
+      return;
+    }
+
     let active = true;
+    setInitializing(true);
+    setInitializationError(null);
 
     void (async () => {
       try {
@@ -667,7 +689,7 @@ export function App() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [showProductLanding]);
 
   const authenticated = (nextUser: CurrentUser) => {
     setSetupRequired(false);
@@ -682,6 +704,14 @@ export function App() {
       throw new Error(`无法退出登录：${errorMessage(reason)}`);
     }
   };
+
+  if (showProductLanding) {
+    return (
+      <Suspense fallback={<main className="loading-shell"><h1>正在打开产品介绍…</h1></main>}>
+        <ProductLandingPage />
+      </Suspense>
+    );
+  }
 
   if (initializing) {
     return (
