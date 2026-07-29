@@ -933,6 +933,15 @@ export const applyCanvasPatch = async (
     ).bind(nodeId, projectId, projectId, patch.expectedRevision));
   }
 
+  statements.push(env.DB.prepare(
+    `UPDATE projects SET updated_at = ?
+     WHERE id = ?
+     AND EXISTS (
+       SELECT 1 FROM project_canvases
+       WHERE project_id = ? AND revision = ?
+     )`,
+  ).bind(now, projectId, projectId, patch.expectedRevision));
+
   statements.push(patch.theme
     ? env.DB.prepare(
       `UPDATE project_canvases SET

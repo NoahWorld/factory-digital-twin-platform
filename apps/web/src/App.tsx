@@ -1,6 +1,11 @@
 import { FormEvent, lazy, Suspense, useEffect, useState } from "react";
-import { ApiRequestError, errorMessage, request } from "./api";
-import { isCanvasTemplateId, type CanvasTemplateId } from "./canvas/templates";
+import { apiUrl, ApiRequestError, errorMessage, request } from "./api";
+import { projectTemplateCanvasPath } from "./canvas/routes";
+import {
+  getCanvasTemplate,
+  isCanvasTemplateId,
+  type CanvasTemplateId,
+} from "./canvas/templates";
 import { CanvasPage } from "./pages/CanvasPage";
 import { TemplatesPage } from "./pages/TemplatesPage";
 
@@ -27,6 +32,7 @@ type Project = {
   createdAt: string;
   updatedAt: string;
   projectRole: "owner" | "editor" | "viewer" | null;
+  coverUrl: string | null;
 };
 
 type BootstrapStatusResponse = {
@@ -46,6 +52,13 @@ type ProjectsResponse = {
 
 type ProjectResponse = {
   project: Project;
+  requestId: string;
+};
+
+type DeleteProjectResponse = {
+  deletedProjectId: string;
+  deletedModelObjectCount: number;
+  warning: string | null;
   requestId: string;
 };
 
@@ -77,7 +90,7 @@ function FormNotice({ error }: FormNoticeProps) {
 }
 
 type ActionIconProps = {
-  name: "add" | "view";
+  name: "add" | "delete" | "edit" | "view";
 };
 
 function ActionIcon({ name }: ActionIconProps) {
@@ -85,6 +98,23 @@ function ActionIcon({ name }: ActionIconProps) {
     return (
       <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24">
         <path d="M12 5v14M5 12h14" />
+      </svg>
+    );
+  }
+
+  if (name === "edit") {
+    return (
+      <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24">
+        <path d="m4 20 4.4-1 10-10a2.4 2.4 0 0 0-3.4-3.4l-10 10L4 20Z" />
+        <path d="m13.8 6.8 3.4 3.4" />
+      </svg>
+    );
+  }
+
+  if (name === "delete") {
+    return (
+      <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24">
+        <path d="M4 7h16M9 7V4h6v3m3 0-1 13H7L6 7m4 4v5m4-5v5" />
       </svg>
     );
   }
@@ -311,11 +341,17 @@ function AuthPage({ setupRequired, onSuccess }: AuthPageProps) {
 
 type CreateProjectDialogProps = {
   onClose: () => void;
-  onCreated: (project: Project) => void;
+  onCreated: (project: Project, templateId: CanvasTemplateId | null) => void;
+  templateId: CanvasTemplateId | null;
 };
 
-function CreateProjectDialog({ onClose, onCreated }: CreateProjectDialogProps) {
-  const [name, setName] = useState("");
+function CreateProjectDialog({
+  onClose,
+  onCreated,
+  templateId,
+}: CreateProjectDialogProps) {
+  const template = templateId ? getCanvasTemplate(templateId) : null;
+  const [name, setName] = useState(() => template ? `${template.name}项目` : "");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -329,7 +365,7 @@ function CreateProjectDialog({ onClose, onCreated }: CreateProjectDialogProps) {
         method: "POST",
         body: JSON.stringify({ name }),
       });
-      onCreated(result.project);
+      onCreated(result.project, templateId);
     } catch (reason) {
       setError(errorMessage(reason));
     } finally {
@@ -344,8 +380,12 @@ function CreateProjectDialog({ onClose, onCreated }: CreateProjectDialogProps) {
           ×
         </button>
         <p className="eyebrow">New project</p>
-        <h2>创建项目</h2>
-        <p>新项目默认处于草稿状态，创建人自动成为项目负责人。</p>
+        <h2>{template ? "使用模板创建项目" : "创建空白项目"}</h2>
+        <p>
+          {template
+            ? `将创建一个新项目，并在画布中载入“${template.name}”模板；确认效果后保存画布即可生成项目封面。`
+            : "新项目默认处于草稿状态，创建人自动成为项目负责人。"}
+        </p>
         <label>
           <span>项目名称</span>
           <input
@@ -365,7 +405,125 @@ function CreateProjectDialog({ onClose, onCreated }: CreateProjectDialogProps) {
             取消
           </button>
           <button className="primary-button" disabled={submitting} type="submit">
-            {submitting ? "正在创建…" : "创建草稿项目"}
+            {submitting ? "正在创建…" : template ? "创建并进入画布" : "创建草稿项目"}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+type RenameProjectDialogProps = {
+  onClose: () => void;
+  onRenamed: (project: Project) => void;
+  project: Project;
+};
+
+function RenameProjectDialog({
+  onClose,
+  onRenamed,
+  project,
+}: RenameProjectDialogProps) {
+  const [name, setName] = useState(project.name);
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setSubmitting(true);
+    setError(null);
+
+    try {
+      const result = await request<ProjectResponse>(
+        `/api/v1/projects/${encodeURIComponent(project.id)}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({ name }),
+        },
+      );
+      onRenamed(result.project);
+    } catch (reason) {
+      setError(errorMessage(reason));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div aria-modal="true" className="dialog-backdrop" role="dialog">
+      <form className="dialog-card" onSubmit={submit}>
+        <button aria-label="关闭" className="dialog-close" disabled={submitting} onClick={onClose} type="button">×</button>
+        <p className="eyebrow">Rename project</p>
+        <h2>修改项目名称</h2>
+        <p>名称修改后会立即同步到项目列表和画布标题。</p>
+        <label>
+          <span>项目名称</span>
+          <input
+            autoFocus
+            disabled={submitting}
+            maxLength={100}
+            minLength={2}
+            onChange={(event) => setName(event.target.value)}
+            required
+            value={name}
+          />
+        </label>
+        <FormNotice error={error} />
+        <div className="dialog-actions">
+          <button className="secondary-button" disabled={submitting} onClick={onClose} type="button">取消</button>
+          <button className="primary-button" disabled={submitting || name.trim() === project.name} type="submit">
+            {submitting ? "正在保存…" : "保存名称"}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+type DeleteProjectDialogProps = {
+  onClose: () => void;
+  onDeleted: (projectId: string, warning: string | null) => void;
+  project: Project;
+};
+
+function DeleteProjectDialog({
+  onClose,
+  onDeleted,
+  project,
+}: DeleteProjectDialogProps) {
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setSubmitting(true);
+    setError(null);
+
+    try {
+      const result = await request<DeleteProjectResponse>(
+        `/api/v1/projects/${encodeURIComponent(project.id)}`,
+        { method: "DELETE" },
+      );
+      onDeleted(result.deletedProjectId, result.warning);
+    } catch (reason) {
+      setError(errorMessage(reason));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div aria-modal="true" className="dialog-backdrop" role="dialog">
+      <form className="dialog-card delete-project-dialog" onSubmit={submit}>
+        <button aria-label="关闭" className="dialog-close" disabled={submitting} onClick={onClose} type="button">×</button>
+        <p className="eyebrow">Delete project</p>
+        <h2>删除“{project.name}”？</h2>
+        <p>项目画布、模型元数据、资产、数据源和成员关系都会被永久删除，此操作不可撤销。</p>
+        <FormNotice error={error} />
+        <div className="dialog-actions">
+          <button className="secondary-button" disabled={submitting} onClick={onClose} type="button">取消</button>
+          <button className="danger-button" disabled={submitting} type="submit">
+            {submitting ? "正在删除…" : "永久删除项目"}
           </button>
         </div>
       </form>
@@ -421,6 +579,10 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
   const [loadingProjects, setLoadingProjects] = useState(true);
   const [projectError, setProjectError] = useState<string | null>(null);
   const [showCreateProject, setShowCreateProject] = useState(false);
+  const [createProjectTemplateId, setCreateProjectTemplateId] = useState<CanvasTemplateId | null>(null);
+  const [renamingProject, setRenamingProject] = useState<Project | null>(null);
+  const [deletingProject, setDeletingProject] = useState<Project | null>(null);
+  const [projectNotice, setProjectNotice] = useState<string | null>(null);
   const [loggingOut, setLoggingOut] = useState(false);
 
   useEffect(() => {
@@ -430,7 +592,10 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
   }, []);
 
   useEffect(() => {
+    if (route.kind !== "projects") return;
     let active = true;
+    setLoadingProjects(true);
+    setProjectError(null);
 
     void request<ProjectsResponse>("/api/v1/projects")
       .then((result) => {
@@ -452,7 +617,7 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
     return () => {
       active = false;
     };
-  }, []);
+  }, [route.kind]);
 
   const logout = async () => {
     setLoggingOut(true);
@@ -464,9 +629,42 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
     }
   };
 
-  const createProject = (project: Project) => {
+  const createProject = (project: Project, templateId: CanvasTemplateId | null) => {
     setProjects((current) => [project, ...current]);
     setShowCreateProject(false);
+    setCreateProjectTemplateId(null);
+    if (templateId) {
+      window.location.hash = projectTemplateCanvasPath(project.id, templateId).slice(1);
+    }
+  };
+
+  const openBlankProjectDialog = () => {
+    setCreateProjectTemplateId(null);
+    setShowCreateProject(true);
+  };
+
+  const openTemplateProjectDialog = (templateId: CanvasTemplateId) => {
+    setCreateProjectTemplateId(templateId);
+    setShowCreateProject(true);
+  };
+
+  const renamedProject = (project: Project) => {
+    setProjects((current) => [
+      project,
+      ...current.filter((candidate) => candidate.id !== project.id),
+    ]);
+    setRenamingProject(null);
+    setProjectNotice(`项目已重命名为“${project.name}”。`);
+  };
+
+  const deletedProject = (projectId: string, warning: string | null) => {
+    setProjects((current) => current.filter((project) => project.id !== projectId));
+    setDeletingProject(null);
+    setProjectNotice(
+      warning
+        ? `项目已删除，但对象存储清理需要处理：${warning}`
+        : "项目已永久删除。",
+    );
   };
 
   if (route.kind === "canvas") {
@@ -499,6 +697,8 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
     );
   }
 
+  const isPlatformAdmin = user.roles.includes("platform_admin");
+
   return (
     <main className="workspace-shell">
       <header className="topbar">
@@ -527,9 +727,8 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
 
       {route.kind === "templates" ? (
         <TemplatesPage
-          loadingProjects={loadingProjects}
-          projectError={projectError}
-          projects={projects}
+          canCreateProject={user.capabilities.canCreateProject}
+          onCreateFromTemplate={openTemplateProjectDialog}
         />
       ) : (
       <section className="workspace-content" id="projects">
@@ -543,7 +742,7 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
             <button
               aria-label="新建项目"
               className="primary-button icon-button"
-              onClick={() => setShowCreateProject(true)}
+              onClick={openBlankProjectDialog}
               title="新建项目"
               type="button"
             >
@@ -551,6 +750,13 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
             </button>
           ) : null}
         </div>
+
+        {projectNotice ? (
+          <div className="project-notice" role="status">
+            <span>{projectNotice}</span>
+            <button aria-label="关闭项目提示" onClick={() => setProjectNotice(null)} type="button">×</button>
+          </div>
+        ) : null}
 
         {projectError ? (
           <section className="state-card error-state">
@@ -575,7 +781,7 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
               <button
                 aria-label="创建第一个项目"
                 className="primary-button icon-button"
-                onClick={() => setShowCreateProject(true)}
+                onClick={openBlankProjectDialog}
                 title="创建第一个项目"
                 type="button"
               >
@@ -589,37 +795,99 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
 
         {!loadingProjects && !projectError && projects.length > 0 ? (
           <section aria-label="项目列表" className="project-grid">
-            {projects.map((project) => (
-              <article className="project-card" key={project.id}>
-                <div className="project-card-header">
-                  <span className={`status-tag status-${project.status}`}>
-                    {projectStatusText[project.status]}
-                  </span>
-                  {project.projectRole ? <span>{projectRoleText[project.projectRole]}</span> : null}
-                </div>
-                <h2>{project.name}</h2>
-                <footer>
-                  <span>更新于 {formatDate(project.updatedAt)}</span>
-                  <div className="project-card-actions">
-                    <a
-                      aria-label={`打开 ${project.name} 的 2D 画布`}
-                      className="icon-button project-action"
-                      href={`#/projects/${encodeURIComponent(project.id)}/canvas`}
-                      title="打开 2D 画布"
-                    >
-                      <ActionIcon name="view" />
-                    </a>
+            {projects.map((project) => {
+              const canRename = isPlatformAdmin
+                || project.projectRole === "owner"
+                || project.projectRole === "editor";
+              const canDelete = isPlatformAdmin || project.projectRole === "owner";
+              return (
+                <article className="project-card" key={project.id}>
+                  <a
+                    aria-label={`打开 ${project.name} 的 2D 画布`}
+                    className="project-card-cover"
+                    href={`#/projects/${encodeURIComponent(project.id)}/canvas`}
+                  >
+                    {project.coverUrl ? (
+                      <img alt={`${project.name} 画布缩略图`} src={apiUrl(project.coverUrl)} />
+                    ) : (
+                      <span className="project-card-cover-empty">
+                        <i aria-hidden="true">◇</i>
+                        <strong>保存画布后生成封面</strong>
+                      </span>
+                    )}
+                  </a>
+                  <div className="project-card-body">
+                    <div className="project-card-header">
+                      <span className={`status-tag status-${project.status}`}>
+                        {projectStatusText[project.status]}
+                      </span>
+                      {project.projectRole ? <span>{projectRoleText[project.projectRole]}</span> : null}
+                    </div>
+                    <h2>{project.name}</h2>
+                    <footer>
+                      <span>更新于 {formatDate(project.updatedAt)}</span>
+                      <div className="project-card-actions">
+                        {canRename ? (
+                          <button
+                            aria-label={`修改 ${project.name} 的名称`}
+                            className="icon-button project-action"
+                            onClick={() => setRenamingProject(project)}
+                            title="修改名称"
+                            type="button"
+                          >
+                            <ActionIcon name="edit" />
+                          </button>
+                        ) : null}
+                        {canDelete ? (
+                          <button
+                            aria-label={`删除 ${project.name}`}
+                            className="icon-button project-action project-delete-action"
+                            onClick={() => setDeletingProject(project)}
+                            title="删除项目"
+                            type="button"
+                          >
+                            <ActionIcon name="delete" />
+                          </button>
+                        ) : null}
+                        <a
+                          aria-label={`打开 ${project.name} 的 2D 画布`}
+                          className="icon-button project-action"
+                          href={`#/projects/${encodeURIComponent(project.id)}/canvas`}
+                          title="打开 2D 画布"
+                        >
+                          <ActionIcon name="view" />
+                        </a>
+                      </div>
+                    </footer>
                   </div>
-                </footer>
-              </article>
-            ))}
+                </article>
+              );
+            })}
           </section>
         ) : null}
       </section>
       )}
 
       {showCreateProject ? (
-        <CreateProjectDialog onClose={() => setShowCreateProject(false)} onCreated={createProject} />
+        <CreateProjectDialog
+          onClose={() => setShowCreateProject(false)}
+          onCreated={createProject}
+          templateId={createProjectTemplateId}
+        />
+      ) : null}
+      {renamingProject ? (
+        <RenameProjectDialog
+          onClose={() => setRenamingProject(null)}
+          onRenamed={renamedProject}
+          project={renamingProject}
+        />
+      ) : null}
+      {deletingProject ? (
+        <DeleteProjectDialog
+          onClose={() => setDeletingProject(null)}
+          onDeleted={deletedProject}
+          project={deletingProject}
+        />
       ) : null}
     </main>
   );

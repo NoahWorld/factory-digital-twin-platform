@@ -42,6 +42,7 @@ import {
   modelAssetContentResponse,
   uploadModelAsset,
 } from "./model-assets";
+import { projectCoverResponse } from "./project-covers";
 
 type ProjectStatus = "draft" | "published" | "archived";
 
@@ -52,6 +53,7 @@ type ProjectRow = {
   created_at: string;
   updated_at: string;
   project_role: "owner" | "editor" | "viewer" | null;
+  cover_revision: number | null;
 };
 
 type JsonObject = Record<string, unknown>;
@@ -137,6 +139,9 @@ const presentProject = (project: ProjectRow) => ({
   createdAt: project.created_at,
   updatedAt: project.updated_at,
   projectRole: project.project_role,
+  coverUrl: project.cover_revision && project.cover_revision > 0
+    ? `/api/v1/projects/${encodeURIComponent(project.id)}/cover.svg?revision=${project.cover_revision}`
+    : null,
 });
 
 const requireProjectAccess = async (
@@ -146,9 +151,11 @@ const requireProjectAccess = async (
 ): Promise<ProjectRow> => {
   const isPlatformAdmin = hasGlobalRole(user, "platform_admin") ? 1 : 0;
   const project = await env.DB.prepare(
-    `SELECT p.id, p.name, p.status, p.created_at, p.updated_at, pm.role AS project_role
+    `SELECT p.id, p.name, p.status, p.created_at, p.updated_at,
+       pm.role AS project_role, pc.revision AS cover_revision
      FROM projects p
      LEFT JOIN project_members pm ON pm.project_id = p.id AND pm.user_id = ?
+     LEFT JOIN project_canvases pc ON pc.project_id = p.id
      WHERE p.id = ? AND (? = 1 OR pm.user_id IS NOT NULL)`,
   )
     .bind(user.id, projectId, isPlatformAdmin)
@@ -164,12 +171,17 @@ const requireProjectAccess = async (
 const canEditProject = (user: AuthenticatedUser, project: ProjectRow): boolean =>
   hasGlobalRole(user, "platform_admin") || project.project_role === "owner" || project.project_role === "editor";
 
+const canDeleteProject = (user: AuthenticatedUser, project: ProjectRow): boolean =>
+  hasGlobalRole(user, "platform_admin") || project.project_role === "owner";
+
 const listProjects = async (env: AppEnv, user: AuthenticatedUser): Promise<ProjectRow[]> => {
   const isPlatformAdmin = hasGlobalRole(user, "platform_admin") ? 1 : 0;
   const result = await env.DB.prepare(
-    `SELECT p.id, p.name, p.status, p.created_at, p.updated_at, pm.role AS project_role
+    `SELECT p.id, p.name, p.status, p.created_at, p.updated_at,
+       pm.role AS project_role, pc.revision AS cover_revision
      FROM projects p
      LEFT JOIN project_members pm ON pm.project_id = p.id AND pm.user_id = ?
+     LEFT JOIN project_canvases pc ON pc.project_id = p.id
      WHERE ? = 1 OR pm.user_id IS NOT NULL
      ORDER BY p.updated_at DESC, p.name ASC`,
   )
@@ -214,7 +226,83 @@ const createProject = async (
     created_at: now,
     updated_at: now,
     project_role: "owner",
+    cover_revision: null,
   };
+};
+
+const updateProjectName = async (
+  env: AppEnv,
+  project: ProjectRow,
+  name: string,
+): Promise<ProjectRow> => {
+  const now = new Date().toISOString();
+  const result = await env.DB.prepare(
+    "UPDATE projects SET name = ?, updated_at = ? WHERE id = ?",
+  ).bind(name, now, project.id).run();
+
+  if (result.meta?.changes !== 1) {
+    throw new AppError(
+      409,
+      "project_update_conflict",
+      "The project could not be renamed because it changed or was deleted.",
+    );
+  }
+
+  return { ...project, name, updated_at: now };
+};
+
+type ProjectDeletionResult = {
+  deletedProjectId: string;
+  deletedModelObjectCount: number;
+  warning: string | null;
+};
+
+const deleteProject = async (
+  env: AppEnv,
+  projectId: string,
+): Promise<ProjectDeletionResult> => {
+  const objectRows = await env.DB.prepare(
+    "SELECT object_key FROM model_assets WHERE project_id = ? ORDER BY object_key ASC",
+  ).bind(projectId).all<{ object_key: string }>();
+
+  const results = await env.DB.batch([
+    env.DB.prepare(
+      `DELETE FROM asset_data_bindings
+       WHERE asset_id IN (SELECT id FROM assets WHERE project_id = ?)`,
+    ).bind(projectId),
+    env.DB.prepare(
+      `DELETE FROM asset_data_bindings
+       WHERE data_source_id IN (SELECT id FROM data_sources WHERE project_id = ?)`,
+    ).bind(projectId),
+    env.DB.prepare("DELETE FROM assets WHERE project_id = ?").bind(projectId),
+    env.DB.prepare("DELETE FROM data_sources WHERE project_id = ?").bind(projectId),
+    env.DB.prepare("DELETE FROM project_versions WHERE project_id = ?").bind(projectId),
+    env.DB.prepare("DELETE FROM model_assets WHERE project_id = ?").bind(projectId),
+    env.DB.prepare("DELETE FROM project_canvases WHERE project_id = ?").bind(projectId),
+    env.DB.prepare("DELETE FROM project_members WHERE project_id = ?").bind(projectId),
+    env.DB.prepare("DELETE FROM projects WHERE id = ?").bind(projectId),
+  ]);
+
+  if (results.at(-1)?.meta?.changes !== 1) {
+    throw new AppError(
+      409,
+      "project_delete_conflict",
+      "The project could not be deleted because it changed or was already deleted.",
+    );
+  }
+
+  let deletedModelObjectCount = 0;
+  let warning: string | null = null;
+  try {
+    for (const row of objectRows.results) {
+      await env.MODEL_ASSETS.delete(row.object_key);
+      deletedModelObjectCount += 1;
+    }
+  } catch (error) {
+    warning = `The project was deleted, but model object cleanup stopped after ${deletedModelObjectCount} of ${objectRows.results.length} object(s): ${error instanceof Error ? error.message : String(error)}`;
+  }
+
+  return { deletedProjectId: projectId, deletedModelObjectCount, warning };
 };
 
 const handleApiRequest = async (
@@ -294,6 +382,23 @@ const handleApiRequest = async (
     const body = await readJsonObject(request);
     const project = await createProject(env, user, validateProjectName(body.name));
     return json({ project: presentProject(project), requestId }, 201);
+  }
+
+  const projectCoverMatch = pathname.match(/^\/api\/v1\/projects\/([^/]+)\/cover\.svg$/);
+
+  if (method === "GET" && projectCoverMatch) {
+    const user = await getAuthenticatedUser(env, request);
+    const projectId = decodePathSegment(projectCoverMatch[1]);
+    const project = await requireProjectAccess(env, user, projectId);
+    const canvas = await getCanvas(env, projectId);
+    if (canvas.revision < 1) {
+      throw new AppError(
+        404,
+        "project_cover_not_available",
+        "Save the project canvas before requesting its cover.",
+      );
+    }
+    return projectCoverResponse(request, canvas);
   }
 
   const modelAssetContentMatch = pathname.match(
@@ -632,10 +737,63 @@ const handleApiRequest = async (
 
   const projectMatch = pathname.match(/^\/api\/v1\/projects\/([^/]+)$/);
 
-  if (method === "GET" && projectMatch) {
+  if ((method === "GET" || method === "PATCH" || method === "DELETE") && projectMatch) {
+    const startedAt = Date.now();
     const user = await getAuthenticatedUser(env, request);
-    const project = await requireProjectAccess(env, user, decodePathSegment(projectMatch[1]));
-    return json({ project: presentProject(project), requestId });
+    const projectId = decodePathSegment(projectMatch[1]);
+    const project = await requireProjectAccess(env, user, projectId);
+
+    if (method === "GET") {
+      return json({ project: presentProject(project), requestId });
+    }
+
+    if (method === "PATCH") {
+      if (!canEditProject(user, project)) {
+        throw new AppError(
+          403,
+          "permission_denied",
+          "You do not have permission to rename this project.",
+        );
+      }
+      const renamedProject = await updateProjectName(
+        env,
+        project,
+        validateProjectName((await readJsonObject(request)).name),
+      );
+      console.log(JSON.stringify({
+        event: "project_renamed",
+        requestId,
+        projectId,
+        userId: user.id,
+        durationMs: Date.now() - startedAt,
+      }));
+      return json({ project: presentProject(renamedProject), requestId });
+    }
+
+    if (!canDeleteProject(user, project)) {
+      throw new AppError(
+        403,
+        "permission_denied",
+        "Only a project owner or platform administrator can delete this project.",
+      );
+    }
+
+    const deletion = await deleteProject(env, projectId);
+    const logContext = {
+      event: deletion.warning ? "project_deleted_with_cleanup_warning" : "project_deleted",
+      requestId,
+      projectId,
+      userId: user.id,
+      deletedModelObjectCount: deletion.deletedModelObjectCount,
+      warning: deletion.warning,
+      durationMs: Date.now() - startedAt,
+    };
+    if (deletion.warning) {
+      console.error(JSON.stringify(logContext));
+    } else {
+      console.log(JSON.stringify(logContext));
+    }
+    return json({ ...deletion, requestId });
   }
 
   throw new AppError(404, "route_not_found", `No route matches ${method} ${pathname}.`);
