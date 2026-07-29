@@ -43,11 +43,20 @@ export type DecorationProps = {
   showSeconds: boolean;
 };
 
+export type Vector3Tuple = [number, number, number];
+
+export type ModelNodeTransform = {
+  position: Vector3Tuple;
+  rotation: Vector3Tuple;
+  scale: Vector3Tuple;
+};
+
 export type Model3DProps = {
   backgroundColor: string;
   autoRotate: boolean;
   rotationSpeed: number;
   showGrid: boolean;
+  transformOverrides: Record<string, ModelNodeTransform>;
 };
 
 export type CanvasNode = {
@@ -207,6 +216,7 @@ const model3DDefaults: Record<Model3DNodeType, Model3DProps> = {
     autoRotate: true,
     rotationSpeed: 0.35,
     showGrid: true,
+    transformOverrides: {},
   },
 };
 
@@ -451,6 +461,87 @@ export type Model3DPropsResult =
   | { ok: true; value: Model3DProps }
   | { ok: false; message: string };
 
+const MAX_MODEL_NODE_TRANSFORMS = 100;
+
+const parseVector3Tuple = (
+  value: unknown,
+  label: string,
+  minimum: number,
+  maximum: number,
+): { ok: true; value: Vector3Tuple } | { ok: false; message: string } => {
+  if (
+    !Array.isArray(value)
+    || value.length !== 3
+    || value.some((item) =>
+      typeof item !== "number"
+      || !Number.isFinite(item)
+      || item < minimum
+      || item > maximum)
+  ) {
+    return {
+      ok: false,
+      message: `${label} 必须包含 3 个 ${minimum}–${maximum} 之间的有限数值`,
+    };
+  }
+  return { ok: true, value: [value[0], value[1], value[2]] };
+};
+
+const parseTransformOverrides = (
+  value: unknown,
+): { ok: true; value: Record<string, ModelNodeTransform> } | { ok: false; message: string } => {
+  if (value === undefined) return { ok: true, value: {} };
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return { ok: false, message: "transformOverrides 必须是对象" };
+  }
+
+  const entries = Object.entries(value);
+  if (entries.length > MAX_MODEL_NODE_TRANSFORMS) {
+    return {
+      ok: false,
+      message: `单个 3D 组件最多保存 ${MAX_MODEL_NODE_TRANSFORMS} 个节点变换`,
+    };
+  }
+
+  const result: Record<string, ModelNodeTransform> = {};
+  for (const [nodeName, rawTransform] of entries) {
+    if (nodeName.length === 0 || nodeName.length > 240 || nodeName !== nodeName.trim()) {
+      return { ok: false, message: "模型节点名必须为 1–240 个字符且首尾不能有空格" };
+    }
+    if (!rawTransform || typeof rawTransform !== "object" || Array.isArray(rawTransform)) {
+      return { ok: false, message: `节点 ${nodeName} 的变换配置必须是对象` };
+    }
+    const transform = rawTransform as Record<string, unknown>;
+    const position = parseVector3Tuple(
+      transform.position,
+      `${nodeName}.position`,
+      -1_000_000,
+      1_000_000,
+    );
+    if (!position.ok) return position;
+    const rotation = parseVector3Tuple(
+      transform.rotation,
+      `${nodeName}.rotation`,
+      -3_600,
+      3_600,
+    );
+    if (!rotation.ok) return rotation;
+    const scale = parseVector3Tuple(
+      transform.scale,
+      `${nodeName}.scale`,
+      0.001,
+      1_000,
+    );
+    if (!scale.ok) return scale;
+
+    result[nodeName] = {
+      position: position.value,
+      rotation: rotation.value,
+      scale: scale.value,
+    };
+  }
+  return { ok: true, value: result };
+};
+
 export const parseModel3DProps = (props: Record<string, unknown>): Model3DPropsResult => {
   if (!isHexColor(props.backgroundColor)) {
     return { ok: false, message: "backgroundColor 必须是六位十六进制颜色" };
@@ -466,6 +557,8 @@ export const parseModel3DProps = (props: Record<string, unknown>): Model3DPropsR
   ) {
     return { ok: false, message: "rotationSpeed 必须是 0–5 之间的数值" };
   }
+  const transformOverrides = parseTransformOverrides(props.transformOverrides);
+  if (!transformOverrides.ok) return transformOverrides;
 
   return {
     ok: true,
@@ -474,6 +567,7 @@ export const parseModel3DProps = (props: Record<string, unknown>): Model3DPropsR
       autoRotate: props.autoRotate,
       rotationSpeed: props.rotationSpeed,
       showGrid: props.showGrid,
+      transformOverrides: transformOverrides.value,
     },
   };
 };

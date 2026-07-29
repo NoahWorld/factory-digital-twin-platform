@@ -1,13 +1,17 @@
 import { memo, useEffect, useRef, useState } from "react";
 import type {
-  Box3,
   GridHelper,
   Object3D,
   PerspectiveCamera,
   Scene,
   WebGLRenderer,
 } from "three";
-import { componentLabels, parseModel3DProps, type CanvasNode } from "./types";
+import {
+  componentLabels,
+  parseModel3DProps,
+  type CanvasNode,
+  type ModelNodeTransform,
+} from "./types";
 import { modelAssetContentUrl } from "./model-assets";
 import { buildModelSceneTree, type ModelSceneSnapshot } from "./model-scene";
 
@@ -24,6 +28,10 @@ type LoadState =
   | { status: "ready" }
   | { status: "error"; message: string };
 
+type ModelRuntime = {
+  applyTransforms: (overrides: Record<string, ModelNodeTransform>) => void;
+};
+
 const errorText = (reason: unknown): string =>
   reason instanceof Error ? reason.message : String(reason);
 
@@ -34,8 +42,10 @@ export const Model3DNode = memo(function Model3DNode({
   projectId,
 }: Model3DNodeProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const controlsRef = useRef<{ enabled: boolean } | null>(null);
   const sceneRef = useRef<Scene | null>(null);
   const gridRef = useRef<GridHelper | null>(null);
+  const runtimeRef = useRef<ModelRuntime | null>(null);
   const settingsRef = useRef({
     autoRotate: true,
     rotationSpeed: 0.35,
@@ -45,6 +55,9 @@ export const Model3DNode = memo(function Model3DNode({
   );
   const parsed = parseModel3DProps(node.props);
   const assetId = node.resourceRefs[0] ?? null;
+  const transformOverridesSignature = parsed.ok
+    ? JSON.stringify(parsed.value.transformOverrides)
+    : "";
 
   useEffect(() => {
     if (!parsed.ok) return;
@@ -61,6 +74,28 @@ export const Model3DNode = memo(function Model3DNode({
   }, [parsed.ok ? parsed.value.autoRotate : null, parsed.ok ? parsed.value.backgroundColor : null, parsed.ok ? parsed.value.rotationSpeed : null, parsed.ok ? parsed.value.showGrid : null]);
 
   useEffect(() => {
+    if (controlsRef.current) controlsRef.current.enabled = !editable;
+  }, [editable]);
+
+  useEffect(() => {
+    if (!parsed.ok || !runtimeRef.current) return;
+    try {
+      runtimeRef.current.applyTransforms(parsed.value.transformOverrides);
+      setLoadState({ status: "ready" });
+    } catch (reason) {
+      console.error("Failed to apply model node transforms.", {
+        assetId,
+        canvasNodeId: node.id,
+        reason,
+      });
+      setLoadState({
+        status: "error",
+        message: `节点变换应用失败：${errorText(reason)}`,
+      });
+    }
+  }, [assetId, node.id, parsed.ok, transformOverridesSignature]);
+
+  useEffect(() => {
     const container = containerRef.current;
     if (!container || !assetId || !parsed.ok) {
       onSceneChange?.(node.id, null);
@@ -70,6 +105,8 @@ export const Model3DNode = memo(function Model3DNode({
 
     let cancelled = false;
     let dispose: (() => void) | null = null;
+    let runtimeController: ModelRuntime | null = null;
+    runtimeRef.current = null;
     onSceneChange?.(node.id, null);
     setLoadState({ status: "loading" });
 
@@ -99,6 +136,7 @@ export const Model3DNode = memo(function Model3DNode({
       controls.enabled = !editable;
       controls.enableDamping = true;
       controls.dampingFactor = 0.08;
+      controlsRef.current = controls;
 
       const grid = new THREE.GridHelper(10, 20, 0x2a7590, 0x163d50);
       grid.visible = parsed.value.showGrid;
@@ -161,29 +199,108 @@ export const Model3DNode = memo(function Model3DNode({
         (gltf) => {
           if (cancelled) return;
 
-          const box: Box3 = new THREE.Box3().setFromObject(gltf.scene);
-          if (box.isEmpty()) {
+          const sceneTree = buildModelSceneTree(gltf.scene);
+          const originals = new Map<Object3D, {
+            position: InstanceType<typeof THREE.Vector3>;
+            quaternion: InstanceType<typeof THREE.Quaternion>;
+            scale: InstanceType<typeof THREE.Vector3>;
+          }>();
+          const objectsByName = new Map<string, Object3D[]>();
+          gltf.scene.traverse((object) => {
+            originals.set(object, {
+              position: object.position.clone(),
+              quaternion: object.quaternion.clone(),
+              scale: object.scale.clone(),
+            });
+            const name = object.name.trim();
+            if (!name) return;
+            const matches = objectsByName.get(name) ?? [];
+            matches.push(object);
+            objectsByName.set(name, matches);
+          });
+
+          const rotationPivot = new THREE.Group();
+          const contentOffset = new THREE.Group();
+          contentOffset.add(gltf.scene);
+          rotationPivot.add(contentOffset);
+          scene.add(rotationPivot);
+          modelRoot = rotationPivot;
+
+          const applyTransforms = (
+            overrides: Record<string, ModelNodeTransform>,
+          ) => {
+            contentOffset.position.set(0, 0, 0);
+            originals.forEach((original, object) => {
+              object.position.copy(original.position);
+              object.quaternion.copy(original.quaternion);
+              object.scale.copy(original.scale);
+            });
+
+            for (const [nodeName, transform] of Object.entries(overrides)) {
+              const matches = objectsByName.get(nodeName);
+              if (!matches || matches.length === 0) {
+                throw new Error(`模型中找不到已配置节点：${nodeName}`);
+              }
+              for (const object of matches) {
+                object.position.set(...transform.position);
+                object.rotation.set(
+                  THREE.MathUtils.degToRad(transform.rotation[0]),
+                  THREE.MathUtils.degToRad(transform.rotation[1]),
+                  THREE.MathUtils.degToRad(transform.rotation[2]),
+                  object.rotation.order,
+                );
+                object.scale.set(...transform.scale);
+              }
+            }
+
+            gltf.scene.updateMatrixWorld(true);
+            const box = new THREE.Box3().setFromObject(gltf.scene);
+            if (box.isEmpty()) {
+              throw new Error("模型没有可显示的几何边界");
+            }
+            const center = box.getCenter(new THREE.Vector3());
+            const size = box.getSize(new THREE.Vector3());
+            if (
+              !Number.isFinite(center.x)
+              || !Number.isFinite(center.y)
+              || !Number.isFinite(center.z)
+              || !Number.isFinite(size.x)
+              || !Number.isFinite(size.y)
+              || !Number.isFinite(size.z)
+            ) {
+              throw new Error("节点变换产生了无效的模型边界");
+            }
+
+            contentOffset.position.copy(center).multiplyScalar(-1);
+            contentOffset.updateMatrixWorld(true);
+            const radius = Math.max(size.length() / 2, 0.01);
+            modelRadius = radius;
+            grid.scale.setScalar(Math.max(radius / 2.5, 0.2));
+            grid.position.y = -size.y / 2;
+            camera.near = Math.max(radius / 100, 0.001);
+            camera.far = Math.max(radius * 100, 100);
+            camera.updateProjectionMatrix();
+            fitCameraToModel();
+          };
+
+          try {
+            applyTransforms(parsed.value.transformOverrides);
+          } catch (reason) {
+            console.error("Failed to initialize model node transforms.", {
+              assetId,
+              canvasNodeId: node.id,
+              reason,
+            });
             onSceneChange?.(node.id, null);
-            setLoadState({ status: "error", message: "模型没有可显示的几何边界" });
+            setLoadState({
+              status: "error",
+              message: `节点变换应用失败：${errorText(reason)}`,
+            });
             return;
           }
 
-          const sceneTree = buildModelSceneTree(gltf.scene);
-          const center = box.getCenter(new THREE.Vector3());
-          const size = box.getSize(new THREE.Vector3());
-          const radius = Math.max(size.length() / 2, 0.01);
-          const rotationPivot = new THREE.Group();
-          gltf.scene.position.sub(center);
-          rotationPivot.add(gltf.scene);
-          scene.add(rotationPivot);
-          modelRoot = rotationPivot;
-          modelRadius = radius;
-          grid.scale.setScalar(Math.max(radius / 2.5, 0.2));
-          grid.position.y = -size.y / 2;
-          camera.near = Math.max(radius / 100, 0.001);
-          camera.far = Math.max(radius * 100, 100);
-          camera.updateProjectionMatrix();
-          fitCameraToModel();
+          runtimeController = { applyTransforms };
+          runtimeRef.current = runtimeController;
           onSceneChange?.(node.id, { assetId, ...sceneTree });
           setLoadState({ status: "ready" });
         },
@@ -217,6 +334,8 @@ export const Model3DNode = memo(function Model3DNode({
         renderer.forceContextLoss();
         sceneRef.current = null;
         gridRef.current = null;
+        if (controlsRef.current === controls) controlsRef.current = null;
+        if (runtimeRef.current === runtimeController) runtimeRef.current = null;
         if (container.contains(renderer.domElement)) container.replaceChildren();
       };
     }).catch((reason) => {
@@ -231,7 +350,7 @@ export const Model3DNode = memo(function Model3DNode({
       onSceneChange?.(node.id, null);
       dispose?.();
     };
-  }, [assetId, editable, node.id, onSceneChange, parsed.ok, projectId]);
+  }, [assetId, node.id, onSceneChange, parsed.ok, projectId]);
 
   if (!parsed.ok) {
     return <div className="model-3d-message is-error" role="alert"><strong>{componentLabels[node.type]}配置错误</strong><span>{parsed.message}</span></div>;

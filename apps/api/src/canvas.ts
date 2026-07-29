@@ -41,11 +41,20 @@ export type DecorationProps = {
   showSeconds: boolean;
 };
 
+export type Vector3Tuple = [number, number, number];
+
+export type ModelNodeTransform = {
+  position: Vector3Tuple;
+  rotation: Vector3Tuple;
+  scale: Vector3Tuple;
+};
+
 export type Model3DProps = {
   backgroundColor: string;
   autoRotate: boolean;
   rotationSpeed: number;
   showGrid: boolean;
+  transformOverrides: Record<string, ModelNodeTransform>;
 };
 
 export type CanvasNode = {
@@ -105,6 +114,7 @@ const DEFAULT_BACKGROUND = "#071525";
 const MAX_PATCH_NODES = 100;
 const MAX_POINTS = 32;
 const MAX_PROPS_BYTES = 16 * 1024;
+const MAX_MODEL_NODE_TRANSFORMS = 100;
 const identifierPattern = /^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,119}$/;
 const colorPattern = /^#[0-9a-fA-F]{6}$/;
 const encoder = new TextEncoder();
@@ -175,6 +185,74 @@ const requireColor = (value: unknown, label: string): string => {
     invalid("invalid_canvas_node", `${label} must be a six-digit hexadecimal color.`);
   }
   return color;
+};
+
+const requireVector3Tuple = (
+  value: unknown,
+  label: string,
+  minimum: number,
+  maximum: number,
+): Vector3Tuple => {
+  if (!Array.isArray(value) || value.length !== 3) {
+    invalid("invalid_canvas_node", `${label} must contain exactly three numbers.`);
+  }
+  const values = value as unknown[];
+  return [
+    requireNumber(values[0], `${label}[0]`, minimum, maximum),
+    requireNumber(values[1], `${label}[1]`, minimum, maximum),
+    requireNumber(values[2], `${label}[2]`, minimum, maximum),
+  ];
+};
+
+const requireModelNodeTransforms = (
+  value: unknown,
+): Record<string, ModelNodeTransform> => {
+  if (value === undefined) return {};
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    invalid("invalid_canvas_node", "props.transformOverrides must be a JSON object.");
+  }
+  const entries = Object.entries(value as Record<string, unknown>);
+  if (entries.length > MAX_MODEL_NODE_TRANSFORMS) {
+    invalid(
+      "invalid_canvas_node",
+      `props.transformOverrides cannot contain more than ${MAX_MODEL_NODE_TRANSFORMS} model nodes.`,
+    );
+  }
+
+  const result: Record<string, ModelNodeTransform> = {};
+  for (const [nodeName, rawTransform] of entries) {
+    if (nodeName.length === 0 || nodeName.length > 240 || nodeName !== nodeName.trim()) {
+      invalid(
+        "invalid_canvas_node",
+        "Model node names in props.transformOverrides must contain 1 to 240 characters without surrounding whitespace.",
+      );
+    }
+    const transform = requireObject(
+      rawTransform,
+      `props.transformOverrides[${JSON.stringify(nodeName)}]`,
+    );
+    result[nodeName] = {
+      position: requireVector3Tuple(
+        transform.position,
+        `props.transformOverrides[${JSON.stringify(nodeName)}].position`,
+        -1_000_000,
+        1_000_000,
+      ),
+      rotation: requireVector3Tuple(
+        transform.rotation,
+        `props.transformOverrides[${JSON.stringify(nodeName)}].rotation`,
+        -3_600,
+        3_600,
+      ),
+      scale: requireVector3Tuple(
+        transform.scale,
+        `props.transformOverrides[${JSON.stringify(nodeName)}].scale`,
+        0.001,
+        1_000,
+      ),
+    };
+  }
+  return result;
 };
 
 const requireAlignment = (value: unknown, label: string): DecorationProps["align"] => {
@@ -270,6 +348,7 @@ const validateNode = (value: unknown): CanvasNode => {
       autoRotate: requireBoolean(props.autoRotate, "props.autoRotate"),
       rotationSpeed: requireNumber(props.rotationSpeed, "props.rotationSpeed", 0, 5),
       showGrid: requireBoolean(props.showGrid, "props.showGrid"),
+      transformOverrides: requireModelNodeTransforms(props.transformOverrides),
     };
   }
 
@@ -396,20 +475,74 @@ export const applyCanvasPatch = async (
   userId: string,
   patch: CanvasPatch,
 ): Promise<CanvasDocument> => {
-  const modelAssetRefs = [...new Set(
-    patch.upsertNodes
-      .filter((node) => node.type === "model-3d")
-      .flatMap((node) => node.resourceRefs),
-  )];
+  const modelNodes = patch.upsertNodes.filter((node) => node.type === "model-3d");
+  const modelAssetRefs = [...new Set(modelNodes.flatMap((node) => node.resourceRefs))];
+  const duplicateNamesByAssetId = new Map<string, Set<string>>();
   for (const assetId of modelAssetRefs) {
     const row = await env.DB.prepare(
-      "SELECT id FROM model_assets WHERE id = ? AND project_id = ?",
-    ).bind(assetId, projectId).first<{ id: string }>();
+      "SELECT id, inspection_json FROM model_assets WHERE id = ? AND project_id = ?",
+    ).bind(assetId, projectId).first<{ id: string; inspection_json: string }>();
     if (!row) {
       throw new AppError(
         400,
         "invalid_model_asset_reference",
         `Model asset ${assetId} does not belong to project ${projectId}.`,
+      );
+    }
+    let inspection: unknown;
+    try {
+      inspection = JSON.parse(row.inspection_json);
+    } catch (error) {
+      throw new AppError(
+        500,
+        "invalid_model_asset_storage",
+        `Model asset ${assetId} has invalid inspection JSON: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+    if (!inspection || typeof inspection !== "object" || Array.isArray(inspection)) {
+      throw new AppError(
+        500,
+        "invalid_model_asset_storage",
+        `Model asset ${assetId} inspection is not a JSON object.`,
+      );
+    }
+    const inspectionObject = inspection as Record<string, unknown>;
+    if (
+      !Array.isArray(inspectionObject.duplicateNodeNames)
+      || inspectionObject.duplicateNodeNames.some((name) => typeof name !== "string")
+    ) {
+      throw new AppError(
+        500,
+        "invalid_model_asset_storage",
+        `Model asset ${assetId} inspection does not contain a valid duplicateNodeNames list.`,
+      );
+    }
+    duplicateNamesByAssetId.set(
+      assetId,
+      new Set(inspectionObject.duplicateNodeNames as string[]),
+    );
+  }
+
+  for (const node of modelNodes) {
+    const transformOverrides = (node.props as Model3DProps).transformOverrides;
+    const transformedNodeNames = Object.keys(transformOverrides);
+    if (transformedNodeNames.length === 0) continue;
+
+    const assetId = node.resourceRefs[0];
+    if (!assetId) {
+      throw new AppError(
+        400,
+        "model_transform_without_asset",
+        `Canvas node ${node.id} cannot store model node transforms without a model asset.`,
+      );
+    }
+    const duplicateNames = duplicateNamesByAssetId.get(assetId);
+    const duplicateTransformName = transformedNodeNames.find((name) => duplicateNames?.has(name));
+    if (duplicateTransformName) {
+      throw new AppError(
+        400,
+        "ambiguous_model_node_transform",
+        `Canvas node ${node.id} cannot transform duplicate model node name ${JSON.stringify(duplicateTransformName)}. Rename the model nodes and upload the model again.`,
       );
     }
   }

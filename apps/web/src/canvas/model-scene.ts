@@ -1,10 +1,12 @@
 import type { Object3D } from "three";
+import type { ModelNodeTransform } from "./types";
 
 export type ModelSceneNode = {
   path: string;
   name: string;
   objectType: string;
   isMesh: boolean;
+  transform: ModelNodeTransform;
   children: ModelSceneNode[];
 };
 
@@ -31,6 +33,15 @@ const toSceneNode = (
     name,
     objectType: object.type,
     isMesh: "isMesh" in object && object.isMesh === true,
+    transform: {
+      position: [object.position.x, object.position.y, object.position.z],
+      rotation: [
+        object.rotation.x * 180 / Math.PI,
+        object.rotation.y * 180 / Math.PI,
+        object.rotation.z * 180 / Math.PI,
+      ],
+      scale: [object.scale.x, object.scale.y, object.scale.z],
+    },
     children: object.children.map((child, index) =>
       toSceneNode(child, `${path}/${index}`, counts),
     ),

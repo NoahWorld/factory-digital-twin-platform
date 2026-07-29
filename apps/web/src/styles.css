@@ -1925,6 +1925,55 @@ input:focus {
   font-size: 0.62rem;
 }
 
+.model-transform-section {
+  gap: 12px;
+}
+
+.model-transform-fieldset {
+  display: grid;
+  min-width: 0;
+  gap: 7px;
+  padding: 0;
+  border: 0;
+}
+
+.model-transform-fieldset legend {
+  margin-bottom: 7px;
+  color: #8ca5b7;
+  font-size: 0.68rem;
+}
+
+.model-transform-axis-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.model-transform-axis-grid label {
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr);
+  align-items: center;
+  gap: 4px;
+}
+
+.model-transform-axis-grid label > span {
+  color: #5bc7e8;
+  font-size: 0.62rem;
+  font-weight: 700;
+}
+
+.model-transform-axis-grid input {
+  width: 100%;
+  padding-right: 4px;
+  padding-left: 6px;
+  font-variant-numeric: tabular-nums;
+}
+
+.model-transform-reset {
+  width: 100%;
+  justify-content: center;
+}
+
 .inspector-grid-two {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }

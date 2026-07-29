@@ -24,6 +24,8 @@ import {
   parseModel3DProps,
   type CanvasNode,
   type Model3DProps,
+  type ModelNodeTransform,
+  type Vector3Tuple,
 } from "./types";
 
 type Model3DInspectorProps = {
@@ -161,6 +163,48 @@ export function Model3DInspector({
 
   const updateProps = (patch: Partial<Model3DProps>) => {
     onNodeChange({ ...node, props: { ...parsed.value, ...patch } });
+  };
+
+  const selectedModelNodeName = selectedSceneNode?.name ?? "";
+  const selectedNameIsDuplicate = selectedModelNodeName.length > 0
+    && selectedAsset?.inspection.duplicateNodeNames.includes(selectedModelNodeName) === true;
+  const canConfigureSelectedNode = editable
+    && selectedModelNodeName.length > 0
+    && !selectedNameIsDuplicate;
+  const selectedTransformOverride = selectedModelNodeName
+    ? parsed.value.transformOverrides[selectedModelNodeName]
+    : undefined;
+  const selectedTransform = selectedTransformOverride ?? selectedSceneNode?.transform ?? null;
+
+  const updateSelectedTransform = (
+    field: keyof ModelNodeTransform,
+    axis: 0 | 1 | 2,
+    rawValue: string,
+  ) => {
+    if (!canConfigureSelectedNode || !selectedTransform || rawValue.trim() === "") return;
+    const value = Number(rawValue);
+    if (!Number.isFinite(value)) return;
+
+    const values = [...selectedTransform[field]] as Vector3Tuple;
+    values[axis] = value;
+    updateProps({
+      transformOverrides: {
+        ...parsed.value.transformOverrides,
+        [selectedModelNodeName]: {
+          position: [...selectedTransform.position] as Vector3Tuple,
+          rotation: [...selectedTransform.rotation] as Vector3Tuple,
+          scale: [...selectedTransform.scale] as Vector3Tuple,
+          [field]: values,
+        },
+      },
+    });
+  };
+
+  const resetSelectedTransform = () => {
+    if (!selectedModelNodeName || !selectedTransformOverride) return;
+    const nextOverrides = { ...parsed.value.transformOverrides };
+    delete nextOverrides[selectedModelNodeName];
+    updateProps({ transformOverrides: nextOverrides });
   };
 
   const chooseAsset = (assetId: string) => {
@@ -369,6 +413,68 @@ export function Model3DInspector({
               <span>等待模型渲染器返回实际场景层级…</span>
             </div>
           )}
+        </section>
+      ) : null}
+
+      {selectedSceneNode && selectedTransform ? (
+        <section className="inspector-section model-transform-section">
+          <div className="inspector-section-title">
+            <strong>节点变换</strong>
+            <span>
+              {selectedTransformOverride ? "已覆盖模型原值" : "模型原值"}
+              {" · "}
+              {Object.keys(parsed.value.transformOverrides).length}/100
+            </span>
+          </div>
+          {!selectedModelNodeName ? (
+            <p className="model-inspection-warning">
+              未命名节点只能临时选择，不能保存变换。请先在建模软件中设置唯一名称后重新导出。
+            </p>
+          ) : null}
+          {selectedNameIsDuplicate ? (
+            <p className="model-inspection-warning">
+              节点名“{selectedModelNodeName}”不唯一，无法确定持久化目标。请修正模型后重新导入。
+            </p>
+          ) : null}
+          {([
+            ["position", "位置", "-1000000", "1000000", "0.1"],
+            ["rotation", "旋转", "-3600", "3600", "1"],
+            ["scale", "缩放", "0.001", "1000", "0.01"],
+          ] as const).map(([field, label, min, max, step]) => (
+            <fieldset className="model-transform-fieldset" key={field}>
+              <legend>{label}{field === "rotation" ? "（度）" : ""}</legend>
+              <div className="model-transform-axis-grid">
+                {(["X", "Y", "Z"] as const).map((axisLabel, axis) => (
+                  <label key={axisLabel}>
+                    <span>{axisLabel}</span>
+                    <input
+                      aria-label={`${label} ${axisLabel}`}
+                      disabled={!canConfigureSelectedNode}
+                      max={max}
+                      min={min}
+                      onChange={(event) =>
+                        updateSelectedTransform(
+                          field,
+                          axis as 0 | 1 | 2,
+                          event.target.value,
+                        )}
+                      step={step}
+                      type="number"
+                      value={selectedTransform[field][axis]}
+                    />
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+          ))}
+          <button
+            className="secondary-button model-transform-reset"
+            disabled={!editable || !selectedTransformOverride}
+            onClick={resetSelectedTransform}
+            type="button"
+          >
+            重置为模型原值
+          </button>
         </section>
       ) : null}
 
