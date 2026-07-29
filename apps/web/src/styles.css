@@ -94,6 +94,26 @@ p {
   color: #dff5ff;
 }
 
+.icon-button {
+  display: inline-grid;
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
+  place-items: center;
+  padding: 0;
+  border-radius: 9px;
+}
+
+.icon-button svg {
+  width: 19px;
+  height: 19px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+}
+
 .loading-shell {
   display: grid;
   min-height: 100vh;
@@ -462,22 +482,13 @@ input:focus {
 
 .project-card h2 {
   align-self: end;
-  margin: 28px 0 8px;
+  margin: 28px 0 24px;
   font-size: 1.2rem;
-}
-
-.project-id {
-  overflow: hidden;
-  margin-bottom: 20px;
-  color: #6e8799;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.69rem;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .project-card footer {
   display: flex;
+  align-items: center;
   justify-content: space-between;
   gap: 8px;
   padding-top: 14px;
@@ -486,8 +497,28 @@ input:focus {
   font-size: 0.71rem;
 }
 
-.next-step {
+.project-card-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 7px;
+}
+
+.project-action {
+  width: 34px;
+  height: 34px;
+  flex-basis: 34px;
+  border: 1px solid #31526a;
   color: #73c8e7;
+  background: rgba(20, 54, 75, 0.62);
+  transition: border-color 160ms ease, color 160ms ease, background 160ms ease, transform 160ms ease;
+}
+
+.project-action:hover {
+  border-color: #73c8e7;
+  color: #bceeff;
+  background: rgba(32, 83, 109, 0.72);
+  transform: translateY(-1px);
 }
 
 .dialog-backdrop {
@@ -2774,11 +2805,15 @@ input:focus {
     flex-direction: column;
   }
 
-  .page-heading .primary-button {
-    width: 100%;
+  .page-heading .primary-button.icon-button {
+    width: 40px;
   }
 
   .project-card footer {
     display: grid;
+  }
+
+  .project-card-actions {
+    justify-content: start;
   }
 }

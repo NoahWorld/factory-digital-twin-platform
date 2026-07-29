@@ -73,6 +73,27 @@ function FormNotice({ error }: FormNoticeProps) {
   return error ? <p className="form-error">{error}</p> : null;
 }
 
+type ActionIconProps = {
+  name: "add" | "view";
+};
+
+function ActionIcon({ name }: ActionIconProps) {
+  if (name === "add") {
+    return (
+      <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24">
+        <path d="M12 5v14M5 12h14" />
+      </svg>
+    );
+  }
+
+  return (
+    <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24">
+      <path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6S2.5 12 2.5 12Z" />
+      <circle cx="12" cy="12" r="2.6" />
+    </svg>
+  );
+}
+
 type LoginFormProps = {
   onSuccess: (user: CurrentUser) => void;
 };
@@ -474,8 +495,14 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
             <p>创建并管理客户的 2D + 3D 数字孪生交付项目。</p>
           </div>
           {user.capabilities.canCreateProject ? (
-            <button className="primary-button" onClick={() => setShowCreateProject(true)} type="button">
-              <span>＋</span> 新建项目
+            <button
+              aria-label="新建项目"
+              className="primary-button icon-button"
+              onClick={() => setShowCreateProject(true)}
+              title="新建项目"
+              type="button"
+            >
+              <ActionIcon name="add" />
             </button>
           ) : null}
         </div>
@@ -500,8 +527,14 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
             <h2>还没有项目</h2>
             <p>从一个客户工厂开始，后续将为它配置模型、资产、数据和运行看板。</p>
             {user.capabilities.canCreateProject ? (
-              <button className="primary-button" onClick={() => setShowCreateProject(true)} type="button">
-                创建第一个项目
+              <button
+                aria-label="创建第一个项目"
+                className="primary-button icon-button"
+                onClick={() => setShowCreateProject(true)}
+                title="创建第一个项目"
+                type="button"
+              >
+                <ActionIcon name="add" />
               </button>
             ) : (
               <p className="permission-note">你当前只有查看权限，请联系平台管理员创建项目。</p>
@@ -520,10 +553,18 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
                   {project.projectRole ? <span>{projectRoleText[project.projectRole]}</span> : null}
                 </div>
                 <h2>{project.name}</h2>
-                <p className="project-id">ID · {project.id}</p>
                 <footer>
                   <span>更新于 {formatDate(project.updatedAt)}</span>
-                  <a className="next-step" href={`#/projects/${encodeURIComponent(project.id)}/canvas`}>打开 2D 画布 →</a>
+                  <div className="project-card-actions">
+                    <a
+                      aria-label={`打开 ${project.name} 的 2D 画布`}
+                      className="icon-button project-action"
+                      href={`#/projects/${encodeURIComponent(project.id)}/canvas`}
+                      title="打开 2D 画布"
+                    >
+                      <ActionIcon name="view" />
+                    </a>
+                  </div>
                 </footer>
               </article>
             ))}
