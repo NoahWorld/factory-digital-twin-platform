@@ -1,15 +1,10 @@
 import { memo, useEffect, useRef, useState } from "react";
-import type {
-  GridHelper,
-  Object3D,
-  PerspectiveCamera,
-  Scene,
-  WebGLRenderer,
-} from "three";
+import type { Object3D } from "three";
 import {
   componentLabels,
   parseModel3DProps,
   type CanvasNode,
+  type Model3DProps,
   type ModelNodeTransform,
 } from "./types";
 import { modelAssetContentUrl } from "./model-assets";
@@ -29,6 +24,7 @@ type LoadState =
   | { status: "error"; message: string };
 
 type ModelRuntime = {
+  applySceneSettings: (settings: Model3DProps) => void;
   applyTransforms: (overrides: Record<string, ModelNodeTransform>) => void;
 };
 
@@ -43,9 +39,8 @@ export const Model3DNode = memo(function Model3DNode({
 }: Model3DNodeProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const controlsRef = useRef<{ enabled: boolean } | null>(null);
-  const sceneRef = useRef<Scene | null>(null);
-  const gridRef = useRef<GridHelper | null>(null);
   const runtimeRef = useRef<ModelRuntime | null>(null);
+  const modelPropsRef = useRef<Model3DProps | null>(null);
   const settingsRef = useRef({
     autoRotate: true,
     rotationSpeed: 0.35,
@@ -54,9 +49,23 @@ export const Model3DNode = memo(function Model3DNode({
     node.resourceRefs[0] ? { status: "loading" } : { status: "empty" },
   );
   const parsed = parseModel3DProps(node.props);
+  modelPropsRef.current = parsed.ok ? parsed.value : null;
   const assetId = node.resourceRefs[0] ?? null;
   const transformOverridesSignature = parsed.ok
     ? JSON.stringify(parsed.value.transformOverrides)
+    : "";
+  const sceneSettingsSignature = parsed.ok
+    ? JSON.stringify([
+        parsed.value.backgroundColor,
+        parsed.value.backgroundOpacity,
+        parsed.value.environmentLightColor,
+        parsed.value.environmentLightIntensity,
+        parsed.value.keyLightColor,
+        parsed.value.keyLightIntensity,
+        parsed.value.cameraFov,
+        parsed.value.cameraView,
+        parsed.value.showGrid,
+      ])
     : "";
 
   useEffect(() => {
@@ -65,13 +74,28 @@ export const Model3DNode = memo(function Model3DNode({
       autoRotate: parsed.value.autoRotate,
       rotationSpeed: parsed.value.rotationSpeed,
     };
-    if (sceneRef.current) {
-      void import("three").then(({ Color }) => {
-        if (sceneRef.current) sceneRef.current.background = new Color(parsed.value.backgroundColor);
+  }, [
+    parsed.ok ? parsed.value.autoRotate : null,
+    parsed.ok ? parsed.value.rotationSpeed : null,
+  ]);
+
+  useEffect(() => {
+    if (!parsed.ok || !runtimeRef.current) return;
+    try {
+      runtimeRef.current.applySceneSettings(parsed.value);
+      setLoadState({ status: "ready" });
+    } catch (reason) {
+      console.error("Failed to apply 3D scene settings.", {
+        assetId,
+        canvasNodeId: node.id,
+        reason,
+      });
+      setLoadState({
+        status: "error",
+        message: `场景配置应用失败：${errorText(reason)}`,
       });
     }
-    if (gridRef.current) gridRef.current.visible = parsed.value.showGrid;
-  }, [parsed.ok ? parsed.value.autoRotate : null, parsed.ok ? parsed.value.backgroundColor : null, parsed.ok ? parsed.value.rotationSpeed : null, parsed.ok ? parsed.value.showGrid : null]);
+  }, [assetId, node.id, parsed.ok, sceneSettingsSignature]);
 
   useEffect(() => {
     if (controlsRef.current) controlsRef.current.enabled = !editable;
@@ -118,17 +142,33 @@ export const Model3DNode = memo(function Model3DNode({
       if (cancelled) return;
 
       const scene = new THREE.Scene();
-      scene.background = new THREE.Color(parsed.value.backgroundColor);
-      sceneRef.current = scene;
+      scene.background = null;
 
-      const camera = new THREE.PerspectiveCamera(42, 1, 0.01, 10000);
-      const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: "high-performance" });
+      const camera = new THREE.PerspectiveCamera(
+        parsed.value.cameraFov,
+        1,
+        0.01,
+        10000,
+      );
+      const renderer = new THREE.WebGLRenderer({
+        antialias: true,
+        alpha: true,
+        powerPreference: "high-performance",
+      });
       renderer.outputColorSpace = THREE.SRGBColorSpace;
       renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
       container.replaceChildren(renderer.domElement);
 
-      scene.add(new THREE.HemisphereLight(0xdaf4ff, 0x14202a, 2.1));
-      const keyLight = new THREE.DirectionalLight(0xffffff, 2.4);
+      const environmentLight = new THREE.HemisphereLight(
+        parsed.value.environmentLightColor,
+        0x14202a,
+        parsed.value.environmentLightIntensity,
+      );
+      scene.add(environmentLight);
+      const keyLight = new THREE.DirectionalLight(
+        parsed.value.keyLightColor,
+        parsed.value.keyLightIntensity,
+      );
       keyLight.position.set(4, 8, 6);
       scene.add(keyLight);
 
@@ -140,7 +180,6 @@ export const Model3DNode = memo(function Model3DNode({
 
       const grid = new THREE.GridHelper(10, 20, 0x2a7590, 0x163d50);
       grid.visible = parsed.value.showGrid;
-      gridRef.current = grid;
       scene.add(grid);
 
       let modelRoot: Object3D | null = null;
@@ -150,17 +189,48 @@ export const Model3DNode = memo(function Model3DNode({
 
       const fitCameraToModel = () => {
         if (modelRadius === null) return;
+        const settings = modelPropsRef.current;
+        if (!settings) {
+          throw new Error("当前 3D 场景配置不可用");
+        }
         const verticalHalfFov = THREE.MathUtils.degToRad(camera.fov / 2);
         const horizontalHalfFov = Math.atan(Math.tan(verticalHalfFov) * camera.aspect);
         const limitingHalfFov = Math.max(Math.min(verticalHalfFov, horizontalHalfFov), 0.01);
         // Fit the model's bounding sphere rather than its current AABB so it
         // remains fully visible at every auto-rotation angle.
         const distance = (modelRadius / Math.sin(limitingHalfFov)) * 1.15;
-        const viewDirection = new THREE.Vector3(1.35, 0.9, 1.65).normalize();
-        camera.position.copy(viewDirection.multiplyScalar(distance));
+        const viewDirection = settings.cameraView === "front"
+          ? new THREE.Vector3(0, 0.12, 1)
+          : settings.cameraView === "top"
+            ? new THREE.Vector3(0.001, 1, 0)
+            : new THREE.Vector3(1.35, 0.9, 1.65);
+        camera.up.set(
+          0,
+          settings.cameraView === "top" ? 0 : 1,
+          settings.cameraView === "top" ? -1 : 0,
+        );
+        camera.position.copy(viewDirection.normalize().multiplyScalar(distance));
         controls.target.set(0, 0, 0);
         controls.update();
       };
+
+      const applySceneSettings = (settings: Model3DProps) => {
+        renderer.setClearColor(settings.backgroundColor, settings.backgroundOpacity);
+        environmentLight.color.set(settings.environmentLightColor);
+        environmentLight.intensity = settings.environmentLightIntensity;
+        keyLight.color.set(settings.keyLightColor);
+        keyLight.intensity = settings.keyLightIntensity;
+        grid.visible = settings.showGrid;
+        camera.fov = settings.cameraFov;
+        camera.updateProjectionMatrix();
+        fitCameraToModel();
+      };
+
+      const initialSettings = modelPropsRef.current;
+      if (!initialSettings) {
+        throw new Error("3D 场景初始化时没有可用配置");
+      }
+      applySceneSettings(initialSettings);
 
       const resize = () => {
         const width = Math.max(container.clientWidth, 1);
@@ -284,9 +354,14 @@ export const Model3DNode = memo(function Model3DNode({
           };
 
           try {
-            applyTransforms(parsed.value.transformOverrides);
+            const latestSettings = modelPropsRef.current;
+            if (!latestSettings) {
+              throw new Error("模型加载完成时 3D 场景配置不可用");
+            }
+            applySceneSettings(latestSettings);
+            applyTransforms(latestSettings.transformOverrides);
           } catch (reason) {
-            console.error("Failed to initialize model node transforms.", {
+            console.error("Failed to initialize the 3D model scene.", {
               assetId,
               canvasNodeId: node.id,
               reason,
@@ -294,12 +369,12 @@ export const Model3DNode = memo(function Model3DNode({
             onSceneChange?.(node.id, null);
             setLoadState({
               status: "error",
-              message: `节点变换应用失败：${errorText(reason)}`,
+              message: `3D 场景初始化失败：${errorText(reason)}`,
             });
             return;
           }
 
-          runtimeController = { applyTransforms };
+          runtimeController = { applySceneSettings, applyTransforms };
           runtimeRef.current = runtimeController;
           onSceneChange?.(node.id, { assetId, ...sceneTree });
           setLoadState({ status: "ready" });
@@ -332,8 +407,6 @@ export const Model3DNode = memo(function Model3DNode({
         });
         renderer.dispose();
         renderer.forceContextLoss();
-        sceneRef.current = null;
-        gridRef.current = null;
         if (controlsRef.current === controls) controlsRef.current = null;
         if (runtimeRef.current === runtimeController) runtimeRef.current = null;
         if (container.contains(renderer.domElement)) container.replaceChildren();

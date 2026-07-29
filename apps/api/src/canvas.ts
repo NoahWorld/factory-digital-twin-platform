@@ -49,8 +49,17 @@ export type ModelNodeTransform = {
   scale: Vector3Tuple;
 };
 
+export type ModelCameraView = "isometric" | "front" | "top";
+
 export type Model3DProps = {
   backgroundColor: string;
+  backgroundOpacity: number;
+  environmentLightColor: string;
+  environmentLightIntensity: number;
+  keyLightColor: string;
+  keyLightIntensity: number;
+  cameraFov: number;
+  cameraView: ModelCameraView;
   autoRotate: boolean;
   rotationSpeed: number;
   showGrid: boolean;
@@ -185,6 +194,16 @@ const requireColor = (value: unknown, label: string): string => {
     invalid("invalid_canvas_node", `${label} must be a six-digit hexadecimal color.`);
   }
   return color;
+};
+
+const requireModelCameraView = (
+  value: unknown,
+  label: string,
+): ModelCameraView => {
+  if (value !== "isometric" && value !== "front" && value !== "top") {
+    invalid("invalid_canvas_node", `${label} must be isometric, front, or top.`);
+  }
+  return value as ModelCameraView;
 };
 
 const requireVector3Tuple = (
@@ -345,6 +364,32 @@ const validateNode = (value: unknown): CanvasNode => {
   } else {
     validatedProps = {
       backgroundColor: requireColor(props.backgroundColor, "props.backgroundColor"),
+      backgroundOpacity: props.backgroundOpacity === undefined
+        ? 1
+        : requireNumber(props.backgroundOpacity, "props.backgroundOpacity", 0, 1),
+      environmentLightColor: props.environmentLightColor === undefined
+        ? "#daf4ff"
+        : requireColor(props.environmentLightColor, "props.environmentLightColor"),
+      environmentLightIntensity: props.environmentLightIntensity === undefined
+        ? 2.1
+        : requireNumber(
+            props.environmentLightIntensity,
+            "props.environmentLightIntensity",
+            0,
+            10,
+          ),
+      keyLightColor: props.keyLightColor === undefined
+        ? "#ffffff"
+        : requireColor(props.keyLightColor, "props.keyLightColor"),
+      keyLightIntensity: props.keyLightIntensity === undefined
+        ? 2.4
+        : requireNumber(props.keyLightIntensity, "props.keyLightIntensity", 0, 10),
+      cameraFov: props.cameraFov === undefined
+        ? 42
+        : requireNumber(props.cameraFov, "props.cameraFov", 15, 90),
+      cameraView: props.cameraView === undefined
+        ? "isometric"
+        : requireModelCameraView(props.cameraView, "props.cameraView"),
       autoRotate: requireBoolean(props.autoRotate, "props.autoRotate"),
       rotationSpeed: requireNumber(props.rotationSpeed, "props.rotationSpeed", 0, 5),
       showGrid: requireBoolean(props.showGrid, "props.showGrid"),

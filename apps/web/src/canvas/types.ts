@@ -51,8 +51,17 @@ export type ModelNodeTransform = {
   scale: Vector3Tuple;
 };
 
+export type ModelCameraView = "isometric" | "front" | "top";
+
 export type Model3DProps = {
   backgroundColor: string;
+  backgroundOpacity: number;
+  environmentLightColor: string;
+  environmentLightIntensity: number;
+  keyLightColor: string;
+  keyLightIntensity: number;
+  cameraFov: number;
+  cameraView: ModelCameraView;
   autoRotate: boolean;
   rotationSpeed: number;
   showGrid: boolean;
@@ -213,6 +222,13 @@ const decorationDefaults: Record<DecorationNodeType, DecorationProps> = {
 const model3DDefaults: Record<Model3DNodeType, Model3DProps> = {
   "model-3d": {
     backgroundColor: "#071525",
+    backgroundOpacity: 1,
+    environmentLightColor: "#daf4ff",
+    environmentLightIntensity: 2.1,
+    keyLightColor: "#ffffff",
+    keyLightIntensity: 2.4,
+    cameraFov: 42,
+    cameraView: "isometric",
     autoRotate: true,
     rotationSpeed: 0.35,
     showGrid: true,
@@ -546,6 +562,60 @@ export const parseModel3DProps = (props: Record<string, unknown>): Model3DPropsR
   if (!isHexColor(props.backgroundColor)) {
     return { ok: false, message: "backgroundColor 必须是六位十六进制颜色" };
   }
+  const backgroundOpacity = props.backgroundOpacity === undefined ? 1 : props.backgroundOpacity;
+  if (
+    typeof backgroundOpacity !== "number"
+    || !Number.isFinite(backgroundOpacity)
+    || backgroundOpacity < 0
+    || backgroundOpacity > 1
+  ) {
+    return { ok: false, message: "backgroundOpacity 必须是 0–1 之间的数值" };
+  }
+  const environmentLightColor = props.environmentLightColor === undefined
+    ? "#daf4ff"
+    : props.environmentLightColor;
+  if (!isHexColor(environmentLightColor)) {
+    return { ok: false, message: "environmentLightColor 必须是六位十六进制颜色" };
+  }
+  const environmentLightIntensity = props.environmentLightIntensity === undefined
+    ? 2.1
+    : props.environmentLightIntensity;
+  if (
+    typeof environmentLightIntensity !== "number"
+    || !Number.isFinite(environmentLightIntensity)
+    || environmentLightIntensity < 0
+    || environmentLightIntensity > 10
+  ) {
+    return { ok: false, message: "environmentLightIntensity 必须是 0–10 之间的数值" };
+  }
+  const keyLightColor = props.keyLightColor === undefined ? "#ffffff" : props.keyLightColor;
+  if (!isHexColor(keyLightColor)) {
+    return { ok: false, message: "keyLightColor 必须是六位十六进制颜色" };
+  }
+  const keyLightIntensity = props.keyLightIntensity === undefined
+    ? 2.4
+    : props.keyLightIntensity;
+  if (
+    typeof keyLightIntensity !== "number"
+    || !Number.isFinite(keyLightIntensity)
+    || keyLightIntensity < 0
+    || keyLightIntensity > 10
+  ) {
+    return { ok: false, message: "keyLightIntensity 必须是 0–10 之间的数值" };
+  }
+  const cameraFov = props.cameraFov === undefined ? 42 : props.cameraFov;
+  if (
+    typeof cameraFov !== "number"
+    || !Number.isFinite(cameraFov)
+    || cameraFov < 15
+    || cameraFov > 90
+  ) {
+    return { ok: false, message: "cameraFov 必须是 15–90 之间的数值" };
+  }
+  const cameraView = props.cameraView === undefined ? "isometric" : props.cameraView;
+  if (cameraView !== "isometric" && cameraView !== "front" && cameraView !== "top") {
+    return { ok: false, message: "cameraView 必须是 isometric、front 或 top" };
+  }
   if (typeof props.autoRotate !== "boolean" || typeof props.showGrid !== "boolean") {
     return { ok: false, message: "autoRotate 与 showGrid 必须是布尔值" };
   }
@@ -564,6 +634,13 @@ export const parseModel3DProps = (props: Record<string, unknown>): Model3DPropsR
     ok: true,
     value: {
       backgroundColor: props.backgroundColor,
+      backgroundOpacity,
+      environmentLightColor,
+      environmentLightIntensity,
+      keyLightColor,
+      keyLightIntensity,
+      cameraFov,
+      cameraView,
       autoRotate: props.autoRotate,
       rotationSpeed: props.rotationSpeed,
       showGrid: props.showGrid,

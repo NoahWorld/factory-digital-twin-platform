@@ -1983,10 +1983,22 @@ input:focus {
   display: grid;
 }
 
-.inspector-grid-two input[type="color"] {
+.inspector-grid-two input[type="color"],
+.model-scene-settings input[type="color"] {
   width: 100%;
   height: 36px;
   padding: 3px;
+}
+
+.model-scene-settings .inspector-grid-two,
+.model-camera-settings .inspector-grid-two {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.model-camera-settings .inspector-grid-two label:last-child {
+  grid-column: 1 / -1;
 }
 
 .inspector-switches label {

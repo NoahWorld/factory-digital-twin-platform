@@ -165,6 +165,21 @@ export function Model3DInspector({
     onNodeChange({ ...node, props: { ...parsed.value, ...patch } });
   };
 
+  const updateNumberProp = (
+    field:
+      | "backgroundOpacity"
+      | "environmentLightIntensity"
+      | "keyLightIntensity"
+      | "cameraFov"
+      | "rotationSpeed",
+    rawValue: string,
+  ) => {
+    if (rawValue.trim() === "") return;
+    const value = Number(rawValue);
+    if (!Number.isFinite(value)) return;
+    updateProps({ [field]: value });
+  };
+
   const selectedModelNodeName = selectedSceneNode?.name ?? "";
   const selectedNameIsDuplicate = selectedModelNodeName.length > 0
     && selectedAsset?.inspection.duplicateNodeNames.includes(selectedModelNodeName) === true;
@@ -478,29 +493,127 @@ export function Model3DInspector({
         </section>
       ) : null}
 
-      <div className="inspector-section inspector-grid-two">
-        <label>
-          <span>背景色</span>
-          <input
-            disabled={!editable}
-            onChange={(event) => updateProps({ backgroundColor: event.target.value })}
-            type="color"
-            value={parsed.value.backgroundColor}
-          />
-        </label>
-        <label>
-          <span>旋转速度</span>
-          <input
-            disabled={!editable}
-            max="5"
-            min="0"
-            onChange={(event) => updateProps({ rotationSpeed: Number(event.target.value) })}
-            step="0.05"
-            type="number"
-            value={parsed.value.rotationSpeed}
-          />
-        </label>
-      </div>
+      <section className="inspector-section model-scene-settings">
+        <div className="inspector-section-title">
+          <strong>场景外观</strong>
+          <span>即时预览</span>
+        </div>
+        <div className="inspector-grid-two">
+          <label>
+            <span>背景色</span>
+            <input
+              disabled={!editable}
+              onChange={(event) => updateProps({ backgroundColor: event.target.value })}
+              type="color"
+              value={parsed.value.backgroundColor}
+            />
+          </label>
+          <label>
+            <span>背景透明度</span>
+            <input
+              disabled={!editable}
+              max="1"
+              min="0"
+              onChange={(event) => updateNumberProp("backgroundOpacity", event.target.value)}
+              step="0.05"
+              type="number"
+              value={parsed.value.backgroundOpacity}
+            />
+          </label>
+          <label>
+            <span>环境光颜色</span>
+            <input
+              disabled={!editable}
+              onChange={(event) => updateProps({ environmentLightColor: event.target.value })}
+              type="color"
+              value={parsed.value.environmentLightColor}
+            />
+          </label>
+          <label>
+            <span>环境光强度</span>
+            <input
+              disabled={!editable}
+              max="10"
+              min="0"
+              onChange={(event) =>
+                updateNumberProp("environmentLightIntensity", event.target.value)}
+              step="0.1"
+              type="number"
+              value={parsed.value.environmentLightIntensity}
+            />
+          </label>
+          <label>
+            <span>主光源颜色</span>
+            <input
+              disabled={!editable}
+              onChange={(event) => updateProps({ keyLightColor: event.target.value })}
+              type="color"
+              value={parsed.value.keyLightColor}
+            />
+          </label>
+          <label>
+            <span>主光源强度</span>
+            <input
+              disabled={!editable}
+              max="10"
+              min="0"
+              onChange={(event) => updateNumberProp("keyLightIntensity", event.target.value)}
+              step="0.1"
+              type="number"
+              value={parsed.value.keyLightIntensity}
+            />
+          </label>
+        </div>
+        <p className="inspector-help">
+          背景透明度设为 0，可让模型叠加在下方 2D 背景上。HDR 环境贴图将在资源管理模块中以资源 ID 接入。
+        </p>
+      </section>
+
+      <section className="inspector-section model-camera-settings">
+        <div className="inspector-section-title">
+          <strong>镜头与运动</strong>
+          <span>自动适配模型边界</span>
+        </div>
+        <div className="inspector-grid-two">
+          <label>
+            <span>初始视角</span>
+            <select
+              disabled={!editable}
+              onChange={(event) =>
+                updateProps({ cameraView: event.target.value as Model3DProps["cameraView"] })}
+              value={parsed.value.cameraView}
+            >
+              <option value="isometric">等距视角</option>
+              <option value="front">正面视角</option>
+              <option value="top">顶部视角</option>
+            </select>
+          </label>
+          <label>
+            <span>视野角度 FOV</span>
+            <input
+              disabled={!editable}
+              max="90"
+              min="15"
+              onChange={(event) => updateNumberProp("cameraFov", event.target.value)}
+              step="1"
+              type="number"
+              value={parsed.value.cameraFov}
+            />
+          </label>
+          <label>
+            <span>旋转速度</span>
+            <input
+              disabled={!editable}
+              max="5"
+              min="0"
+              onChange={(event) => updateNumberProp("rotationSpeed", event.target.value)}
+              step="0.05"
+              type="number"
+              value={parsed.value.rotationSpeed}
+            />
+          </label>
+        </div>
+      </section>
 
       <div className="inspector-section inspector-switches">
         <label>
