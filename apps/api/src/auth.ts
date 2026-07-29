@@ -14,8 +14,29 @@ export type Database = {
   batch: (statements: DatabaseStatement[]) => Promise<DatabaseResult[]>;
 };
 
+export type ObjectBody = {
+  body: ReadableStream;
+  size: number;
+  httpEtag: string;
+  writeHttpMetadata: (headers: Headers) => void;
+};
+
+export type ObjectBucket = {
+  put: (
+    key: string,
+    value: ArrayBuffer,
+    options: {
+      httpMetadata: { contentType: string };
+      customMetadata: Record<string, string>;
+    },
+  ) => Promise<unknown>;
+  get: (key: string) => Promise<ObjectBody | null>;
+  delete: (key: string) => Promise<void>;
+};
+
 export type AppEnv = {
   DB: Database;
+  MODEL_ASSETS: ObjectBucket;
   BOOTSTRAP_TOKEN?: string;
   SESSION_TTL_HOURS?: string;
 };

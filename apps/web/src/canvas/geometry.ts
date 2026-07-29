@@ -1,4 +1,4 @@
-import type { CanvasNode } from "./types";
+import { isSquareNodeType, minimumNodeSizes, type CanvasNode } from "./types";
 
 export type SnapTargets = { vertical: number[]; horizontal: number[] };
 export type SnappedPosition = {
@@ -9,9 +9,6 @@ export type SnappedPosition = {
 };
 
 export type ResizeDirection = "north-west" | "north-east" | "south-east" | "south-west";
-
-export const MIN_NODE_WIDTH = 240;
-export const MIN_NODE_HEIGHT = 160;
 
 const sortedUnique = (values: number[]): number[] =>
   [...new Set(values)].sort((left, right) => left - right);
@@ -104,6 +101,31 @@ export const resizeCanvasNode = (
   const north = direction === "north-west" || direction === "north-east";
   const fixedRight = Math.min(node.x + node.width, canvasWidth);
   const fixedBottom = Math.min(node.y + node.height, canvasHeight);
+  const minimumSize = minimumNodeSizes[node.type];
+
+  if (isSquareNodeType(node.type)) {
+    const horizontalChange = west ? -deltaX : deltaX;
+    const verticalChange = north ? -deltaY : deltaY;
+    const requestedChange = Math.abs(horizontalChange) >= Math.abs(verticalChange)
+      ? horizontalChange
+      : verticalChange;
+    const maximumSize = Math.min(
+      west ? fixedRight : canvasWidth - node.x,
+      north ? fixedBottom : canvasHeight - node.y,
+    );
+    const size = clamp(
+      Math.round(node.width + requestedChange),
+      Math.max(minimumSize.width, minimumSize.height),
+      maximumSize,
+    );
+    return {
+      ...node,
+      x: west ? fixedRight - size : node.x,
+      y: north ? fixedBottom - size : node.y,
+      width: size,
+      height: size,
+    };
+  }
 
   let x = node.x;
   let y = node.y;
@@ -111,17 +133,17 @@ export const resizeCanvasNode = (
   let height = node.height;
 
   if (west) {
-    x = clamp(Math.round(node.x + deltaX), 0, fixedRight - MIN_NODE_WIDTH);
+    x = clamp(Math.round(node.x + deltaX), 0, fixedRight - minimumSize.width);
     width = fixedRight - x;
   } else {
-    width = clamp(Math.round(node.width + deltaX), MIN_NODE_WIDTH, canvasWidth - node.x);
+    width = clamp(Math.round(node.width + deltaX), minimumSize.width, canvasWidth - node.x);
   }
 
   if (north) {
-    y = clamp(Math.round(node.y + deltaY), 0, fixedBottom - MIN_NODE_HEIGHT);
+    y = clamp(Math.round(node.y + deltaY), 0, fixedBottom - minimumSize.height);
     height = fixedBottom - y;
   } else {
-    height = clamp(Math.round(node.height + deltaY), MIN_NODE_HEIGHT, canvasHeight - node.y);
+    height = clamp(Math.round(node.height + deltaY), minimumSize.height, canvasHeight - node.y);
   }
 
   return { ...node, x, y, width, height };

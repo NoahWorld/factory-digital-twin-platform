@@ -1,7 +1,10 @@
 import { memo, useCallback, useEffect, useRef, useState, type DragEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { ChartNode } from "./ChartNode";
+import { DecorationNode } from "./DecorationNode";
 import { buildSnapTargets, resizeCanvasNode, snapNodePosition, type ResizeDirection, type SnapTargets, type SnappedPosition } from "./geometry";
-import { CANVAS_DRAG_TYPE, isCanvasNodeType, type CanvasDocument, type CanvasNode, type CanvasNodeType } from "./types";
+import { Model3DNode } from "./Model3DNode";
+import { ShapeNode } from "./ShapeNode";
+import { CANVAS_DRAG_TYPE, defaultNodeSizes, isCanvasNodeType, isDecorationNodeType, isModel3DNodeType, isShapeNodeType, type CanvasDocument, type CanvasNode, type CanvasNodeType } from "./types";
 
 type ActiveDrag = {
   kind: "drag";
@@ -34,6 +37,7 @@ type ActiveInteraction = ActiveDrag | ActiveResize;
 type CanvasNodeViewProps = {
   editable: boolean;
   node: CanvasNode;
+  projectId: string;
   selected: boolean;
   onPointerDown: (event: ReactPointerEvent<HTMLDivElement>, node: CanvasNode) => void;
   onResizePointerDown: (event: ReactPointerEvent<HTMLButtonElement>, node: CanvasNode, direction: ResizeDirection) => void;
@@ -46,17 +50,30 @@ const resizeHandles: Array<{ direction: ResizeDirection; label: string }> = [
   { direction: "south-west", label: "从左下角调整组件大小" },
 ];
 
-const CanvasNodeView = memo(function CanvasNodeView({ editable, node, selected, onPointerDown, onResizePointerDown }: CanvasNodeViewProps) {
+const hasGeometryChanged = (previous: CanvasNode, next: CanvasNode) => (
+  previous.x !== next.x
+  || previous.y !== next.y
+  || previous.width !== next.width
+  || previous.height !== next.height
+);
+
+const CanvasNodeView = memo(function CanvasNodeView({ editable, node, projectId, selected, onPointerDown, onResizePointerDown }: CanvasNodeViewProps) {
   return (
     <div
       aria-label={`${node.type} 组件`}
-      className={`canvas-node${selected ? " is-selected" : ""}${editable ? " is-editable" : ""}`}
+      className={`canvas-node${isShapeNodeType(node.type) ? " is-shape" : ""}${isDecorationNodeType(node.type) ? " is-decoration" : ""}${isModel3DNodeType(node.type) ? " is-model-3d" : ""}${selected ? " is-selected" : ""}${editable ? " is-editable" : ""}`}
       data-node-id={node.id}
       onPointerDown={editable ? (event) => onPointerDown(event, node) : undefined}
       role="group"
       style={{ height: node.height, transform: `translate3d(${node.x}px, ${node.y}px, 0)`, width: node.width, zIndex: node.zIndex }}
     >
-      <ChartNode node={node} />
+      {isShapeNodeType(node.type)
+        ? <ShapeNode node={node} />
+        : isDecorationNodeType(node.type)
+          ? <DecorationNode node={node} />
+          : isModel3DNodeType(node.type)
+            ? <Model3DNode editable={editable} node={node} projectId={projectId} />
+            : <ChartNode node={node} />}
       {editable ? <span className="canvas-node-drag-hint">拖动</span> : null}
       {editable && selected ? resizeHandles.map(({ direction, label }) => (
         <button
@@ -175,7 +192,7 @@ export function CanvasSurface({ document, editable, selectedNodeId, onCreateNode
       active.element.classList.remove("is-dragging", "is-resizing");
       activeInteractionRef.current = null;
       hideGuides();
-      onNodeChange(changedNode);
+      if (hasGeometryChanged(active.node, changedNode)) onNodeChange(changedNode);
     };
 
     window.addEventListener("pointermove", handlePointerMove);
@@ -244,8 +261,9 @@ export function CanvasSurface({ document, editable, selectedNodeId, onCreateNode
     if (!isCanvasNodeType(rawType)) return;
     const bounds = surfaceRef.current?.getBoundingClientRect();
     if (!bounds) return;
-    const x = Math.min(Math.max((event.clientX - bounds.left) / scaleRef.current - 260, 0), Math.max(document.width - 520, 0));
-    const y = Math.min(Math.max((event.clientY - bounds.top) / scaleRef.current - 30, 0), Math.max(document.height - 300, 0));
+    const size = defaultNodeSizes[rawType];
+    const x = Math.min(Math.max((event.clientX - bounds.left) / scaleRef.current - size.width / 2, 0), Math.max(document.width - size.width, 0));
+    const y = Math.min(Math.max((event.clientY - bounds.top) / scaleRef.current - size.height / 2, 0), Math.max(document.height - size.height, 0));
     onCreateNode(rawType, Math.round(x), Math.round(y));
   };
 
@@ -260,8 +278,8 @@ export function CanvasSurface({ document, editable, selectedNodeId, onCreateNode
           ref={surfaceRef}
           style={{ backgroundColor: document.backgroundColor, height: document.height, transform: `scale(${scale})`, width: document.width }}
         >
-          {document.nodes.map((node) => <CanvasNodeView editable={editable} key={node.id} node={node} onPointerDown={startPointerDrag} onResizePointerDown={startPointerResize} selected={node.id === selectedNodeId} />)}
-          {editable && document.nodes.length === 0 ? <div className="canvas-empty-hint"><span>↘</span><strong>从左侧拖入图表组件</strong><p>组件落入后可继续拖动，靠近画布或其他组件边缘时会自动吸附。</p></div> : null}
+          {document.nodes.map((node) => <CanvasNodeView editable={editable} key={node.id} node={node} onPointerDown={startPointerDrag} onResizePointerDown={startPointerResize} projectId={document.projectId} selected={node.id === selectedNodeId} />)}
+          {editable && document.nodes.length === 0 ? <div className="canvas-empty-hint"><span>↘</span><strong>从左侧拖入组件</strong><p>组件落入后可继续拖动，靠近画布或其他组件边缘时会自动吸附。</p></div> : null}
           <div className="canvas-guide canvas-guide-vertical" ref={verticalGuideRef} />
           <div className="canvas-guide canvas-guide-horizontal" ref={horizontalGuideRef} />
         </div>

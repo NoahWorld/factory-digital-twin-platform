@@ -10,7 +10,7 @@
 | 当前代码 | Cloudflare Hello World | 仅验证部署链路，尚无业务 API |
 | 自定义域名 | 未绑定 | 暂不需要 |
 | API Token / 密钥 | 未创建 | 暂不需要 |
-| R2 模型文件桶 | 未创建 | 等真实 GLB 体积和访问策略确认后决定 |
+| R2 模型文件桶 | 本地绑定已配置，远程未创建 | `MODEL_ASSETS` / `factory-digital-twin-model-assets`；远程部署前显式创建 |
 | D1 配置数据库 | `factory-digital-twin-config` | 已创建，UUID 为 `69d2f423-b115-4dfc-b347-41d70f214c67` |
 
 Cloudflare Workers 在这里充当临时的无服务器 API 入口，不等同于一台传统服务器。它适合先验证项目配置、数据网关和小流量展示接口；客户内网数据采集、持久化大数据、模型重处理等能力仍需后续服务器或客户现场部署承载。
@@ -20,7 +20,7 @@ Cloudflare Workers 在这里充当临时的无服务器 API 入口，不等同�
 - 不创建 Cloudflare API Token、Access Token、OAuth 凭证或服务密钥。
 - 不上传真实工厂模型、客户数据、接口样本或证书。
 - 不绑定正式域名，不设置生产路由，不接入支付项目。
-- 不创建 R2、KV、Queues、Durable Objects 等未被首个原型明确使用的资源。
+- R2 已被 3D 组件原型明确使用；远程桶只有在部署模型上传功能时才创建。KV、Queues、Durable Objects 等其余资源仍不提前创建。
 
 这样可以保持免费试验环境最小化，也避免把尚未确定的产品架构锁死在某个云厂商服务上。
 
@@ -46,7 +46,7 @@ P1 原型的 Worker 配置和 D1 迁移已纳入 `apps/api/`；云端数据库�
 1. 前端只读取 `PUBLIC_API_BASE_URL`，不把 `workers.dev` 域名写死在组件中。
 2. 后端路由、数据 schema、认证和错误格式必须与运行平台无关；Cloudflare Worker 和后续 Docker/Node 服务都实现同一 API 契约。
 3. 数据访问通过 repository/adapter 层。若以后使用 D1、PostgreSQL 或客户数据库，只替换适配器和迁移脚本。
-4. 模型文件通过对象存储抽象访问。首期若接入 R2，仍使用标准 S3 兼容/签名 URL 策略，便于迁移到 MinIO、阿里云 OSS 或客户现场对象存储。
+4. 模型文件通过对象存储抽象访问。Cloudflare 验证环境使用 R2；现场部署保持资源 ID、对象键与元数据契约，存储适配器替换为 MinIO/S3，禁止让画布节点依赖 R2 URL。
 5. WebSocket/SSE 消息统一为 `assetId + timestamp + values`；不可让前端依赖 Cloudflare 专属消息对象。
 6. 所有配置、数据库表和对象路径必须可导出，迁移要以脚本和版本化 schema 完成，不依赖控制台手工状态。
 

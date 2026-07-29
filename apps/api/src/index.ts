@@ -17,6 +17,11 @@ import {
   type AuthenticatedUser,
 } from "./auth";
 import { applyCanvasPatch, getCanvas, validateCanvasPatch } from "./canvas";
+import {
+  listModelAssets,
+  modelAssetContentResponse,
+  uploadModelAsset,
+} from "./model-assets";
 
 type ProjectStatus = "draft" | "published" | "archived";
 
@@ -269,6 +274,61 @@ const handleApiRequest = async (
     const body = await readJsonObject(request);
     const project = await createProject(env, user, validateProjectName(body.name));
     return json({ project: presentProject(project), requestId }, 201);
+  }
+
+  const modelAssetContentMatch = pathname.match(
+    /^\/api\/v1\/projects\/([^/]+)\/model-assets\/([^/]+)\/content$/,
+  );
+
+  if (method === "GET" && modelAssetContentMatch) {
+    const user = await getAuthenticatedUser(env, request);
+    const projectId = decodePathSegment(modelAssetContentMatch[1]);
+    await requireProjectAccess(env, user, projectId);
+    return modelAssetContentResponse(
+      request,
+      env,
+      projectId,
+      decodePathSegment(modelAssetContentMatch[2]),
+    );
+  }
+
+  const modelAssetsMatch = pathname.match(/^\/api\/v1\/projects\/([^/]+)\/model-assets$/);
+
+  if ((method === "GET" || method === "POST") && modelAssetsMatch) {
+    const startedAt = Date.now();
+    const user = await getAuthenticatedUser(env, request);
+    const projectId = decodePathSegment(modelAssetsMatch[1]);
+    const project = await requireProjectAccess(env, user, projectId);
+
+    if (method === "GET") {
+      return json({ modelAssets: await listModelAssets(env, projectId), requestId });
+    }
+
+    if (!canEditProject(user, project)) {
+      throw new AppError(403, "permission_denied", "You do not have permission to upload models to this project.");
+    }
+
+    const modelAsset = await uploadModelAsset(
+      request,
+      env,
+      projectId,
+      user.id,
+      url.searchParams.get("filename"),
+    );
+    console.log(JSON.stringify({
+      event: "model_asset_uploaded",
+      requestId,
+      projectId,
+      userId: user.id,
+      modelAssetId: modelAsset.id,
+      format: modelAsset.format,
+      byteSize: modelAsset.byteSize,
+      nodeCount: modelAsset.inspection.nodeCount,
+      meshCount: modelAsset.inspection.meshCount,
+      duplicateNodeNameCount: modelAsset.inspection.duplicateNodeNames.length,
+      durationMs: Date.now() - startedAt,
+    }));
+    return json({ modelAsset, requestId }, 201);
   }
 
   const canvasMatch = pathname.match(/^\/api\/v1\/projects\/([^/]+)\/canvas$/);

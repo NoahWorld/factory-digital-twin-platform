@@ -1,6 +1,52 @@
 import { AppError, type AppEnv, type DatabaseResult } from "./auth";
 
-export type CanvasNodeType = "line-chart" | "bar-chart";
+export type ChartNodeType = "line-chart" | "bar-chart";
+export type ShapeNodeType = "rectangle" | "circle";
+export type DecorationNodeType =
+  | "screen-title"
+  | "background-decoration"
+  | "datetime"
+  | "section-title"
+  | "card-background"
+  | "icon-background";
+export type Model3DNodeType = "model-3d";
+export type CanvasNodeType = ChartNodeType | ShapeNodeType | DecorationNodeType | Model3DNodeType;
+
+export type ChartProps = {
+  title: string;
+  categories: string[];
+  values: number[];
+  unit: string;
+  color: string;
+};
+
+export type ShapeProps = {
+  fillColor: string;
+  borderColor: string;
+  borderWidth: number;
+  borderRadius: number;
+  opacity: number;
+};
+
+export type DecorationProps = {
+  text: string;
+  subtitle: string;
+  textColor: string;
+  accentColor: string;
+  fillColor: string;
+  borderColor: string;
+  opacity: number;
+  align: "left" | "center" | "right";
+  showDate: boolean;
+  showSeconds: boolean;
+};
+
+export type Model3DProps = {
+  backgroundColor: string;
+  autoRotate: boolean;
+  rotationSpeed: number;
+  showGrid: boolean;
+};
 
 export type CanvasNode = {
   id: string;
@@ -10,13 +56,7 @@ export type CanvasNode = {
   width: number;
   height: number;
   zIndex: number;
-  props: {
-    title: string;
-    categories: string[];
-    values: number[];
-    unit: string;
-    color: string;
-  };
+  props: ChartProps | ShapeProps | DecorationProps | Model3DProps;
   resourceRefs: string[];
   dataBindingRefs: string[];
 };
@@ -68,6 +108,19 @@ const MAX_PROPS_BYTES = 16 * 1024;
 const identifierPattern = /^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,119}$/;
 const colorPattern = /^#[0-9a-fA-F]{6}$/;
 const encoder = new TextEncoder();
+const minimumNodeSizes: Record<CanvasNodeType, { width: number; height: number }> = {
+  "line-chart": { width: 240, height: 160 },
+  "bar-chart": { width: 240, height: 160 },
+  rectangle: { width: 240, height: 160 },
+  circle: { width: 240, height: 240 },
+  "screen-title": { width: 360, height: 72 },
+  "background-decoration": { width: 200, height: 72 },
+  datetime: { width: 220, height: 72 },
+  "section-title": { width: 160, height: 48 },
+  "card-background": { width: 160, height: 100 },
+  "icon-background": { width: 64, height: 64 },
+  "model-3d": { width: 360, height: 240 },
+};
 
 const invalid = (code: string, message: string): never => {
   throw new AppError(400, code, message);
@@ -109,6 +162,28 @@ const requireNonEmptyString = (value: unknown, label: string, maximum: number): 
   return text;
 };
 
+const requireBoolean = (value: unknown, label: string): boolean => {
+  if (typeof value !== "boolean") {
+    invalid("invalid_canvas_node", `${label} must be a boolean.`);
+  }
+  return value as boolean;
+};
+
+const requireColor = (value: unknown, label: string): string => {
+  const color = requireString(value, label, 7);
+  if (!colorPattern.test(color)) {
+    invalid("invalid_canvas_node", `${label} must be a six-digit hexadecimal color.`);
+  }
+  return color;
+};
+
+const requireAlignment = (value: unknown, label: string): DecorationProps["align"] => {
+  if (value !== "left" && value !== "center" && value !== "right") {
+    invalid("invalid_canvas_node", `${label} must be left, center, or right.`);
+  }
+  return value as DecorationProps["align"];
+};
+
 const requireStringArray = (value: unknown, label: string, identifiers = false): string[] => {
   if (!Array.isArray(value) || value.length > MAX_POINTS) {
     invalid("invalid_canvas_node", `${label} must contain at most ${MAX_POINTS} strings.`);
@@ -118,40 +193,107 @@ const requireStringArray = (value: unknown, label: string, identifiers = false):
     : requireNonEmptyString(item, `${label}[${index}]`, 80));
 };
 
+const isDecorationNodeType = (value: unknown): value is DecorationNodeType =>
+  value === "screen-title" ||
+  value === "background-decoration" ||
+  value === "datetime" ||
+  value === "section-title" ||
+  value === "card-background" ||
+  value === "icon-background";
+
+const isModel3DNodeType = (value: unknown): value is Model3DNodeType =>
+  value === "model-3d";
+
+const isCanvasNodeType = (value: unknown): value is CanvasNodeType =>
+  value === "line-chart" ||
+  value === "bar-chart" ||
+  value === "rectangle" ||
+  value === "circle" ||
+  isDecorationNodeType(value) ||
+  isModel3DNodeType(value);
+
 const validateNode = (value: unknown): CanvasNode => {
   const node = requireObject(value, "canvas node");
-  const type = node.type;
-  if (type !== "line-chart" && type !== "bar-chart") {
-    invalid("unsupported_canvas_node_type", "Only line-chart and bar-chart nodes are currently supported.");
+  const rawType = node.type;
+  if (!isCanvasNodeType(rawType)) {
+    invalid("unsupported_canvas_node_type", "The requested canvas node type is not in the approved component whitelist.");
   }
+  const type = rawType as CanvasNodeType;
 
   const props = requireObject(node.props, "canvas node props");
-  const categories = requireStringArray(props.categories, "props.categories");
-  if (categories.length < 2 || !Array.isArray(props.values) || props.values.length !== categories.length || props.values.length > MAX_POINTS) {
-    invalid("invalid_canvas_node", "props.values must contain one finite value for every category, with at least two points.");
-  }
-  const values = (props.values as unknown[]).map((item, index) => requireNumber(item, `props.values[${index}]`, -1_000_000_000, 1_000_000_000));
-  const color = requireString(props.color, "props.color", 7);
-  if (!colorPattern.test(color)) {
-    invalid("invalid_canvas_node", "props.color must be a six-digit hexadecimal color.");
-  }
+  let validatedProps: ChartProps | ShapeProps | DecorationProps | Model3DProps;
 
-  const validated: CanvasNode = {
-    id: requireIdentifier(node.id, "node.id"),
-    type: type as CanvasNodeType,
-    x: requireNumber(node.x, "node.x", -7680, 7680),
-    y: requireNumber(node.y, "node.y", -4320, 4320),
-    width: requireNumber(node.width, "node.width", 240, 3840),
-    height: requireNumber(node.height, "node.height", 160, 2160),
-    zIndex: requireNumber(node.zIndex, "node.zIndex", 0, 100000),
-    props: {
+  if (type === "line-chart" || type === "bar-chart") {
+    const categories = requireStringArray(props.categories, "props.categories");
+    if (categories.length < 2 || !Array.isArray(props.values) || props.values.length !== categories.length || props.values.length > MAX_POINTS) {
+      invalid("invalid_canvas_node", "props.values must contain one finite value for every category, with at least two points.");
+    }
+    const values = (props.values as unknown[]).map((item, index) => requireNumber(item, `props.values[${index}]`, -1_000_000_000, 1_000_000_000));
+    validatedProps = {
       title: requireNonEmptyString(props.title, "props.title", 120),
       categories,
       values,
       unit: requireString(props.unit, "props.unit", 24),
-      color,
-    },
-    resourceRefs: requireStringArray(node.resourceRefs, "node.resourceRefs", true),
+      color: requireColor(props.color, "props.color"),
+    };
+  } else if (type === "rectangle" || type === "circle") {
+    validatedProps = {
+      fillColor: requireColor(props.fillColor, "props.fillColor"),
+      borderColor: requireColor(props.borderColor, "props.borderColor"),
+      borderWidth: requireNumber(props.borderWidth, "props.borderWidth", 0, 20),
+      borderRadius: requireNumber(props.borderRadius, "props.borderRadius", 0, 200),
+      opacity: requireNumber(props.opacity, "props.opacity", 0.05, 1),
+    };
+  } else if (isDecorationNodeType(type)) {
+    const text = type === "background-decoration" || type === "card-background"
+      ? requireString(props.text, "props.text", 120)
+      : requireNonEmptyString(
+          props.text,
+          "props.text",
+          type === "icon-background" ? 4 : 120,
+        );
+    validatedProps = {
+      text,
+      subtitle: requireString(props.subtitle, "props.subtitle", 160),
+      textColor: requireColor(props.textColor, "props.textColor"),
+      accentColor: requireColor(props.accentColor, "props.accentColor"),
+      fillColor: requireColor(props.fillColor, "props.fillColor"),
+      borderColor: requireColor(props.borderColor, "props.borderColor"),
+      opacity: requireNumber(props.opacity, "props.opacity", 0.05, 1),
+      align: requireAlignment(props.align, "props.align"),
+      showDate: requireBoolean(props.showDate, "props.showDate"),
+      showSeconds: requireBoolean(props.showSeconds, "props.showSeconds"),
+    };
+  } else {
+    validatedProps = {
+      backgroundColor: requireColor(props.backgroundColor, "props.backgroundColor"),
+      autoRotate: requireBoolean(props.autoRotate, "props.autoRotate"),
+      rotationSpeed: requireNumber(props.rotationSpeed, "props.rotationSpeed", 0, 5),
+      showGrid: requireBoolean(props.showGrid, "props.showGrid"),
+    };
+  }
+
+  const minimumSize = minimumNodeSizes[type];
+  const width = requireNumber(node.width, "node.width", minimumSize.width, 3840);
+  const height = requireNumber(node.height, "node.height", minimumSize.height, 2160);
+  if ((type === "circle" || type === "icon-background") && Math.abs(width - height) > 0.001) {
+    invalid("invalid_canvas_node", "Square canvas nodes must keep a 1:1 width-to-height ratio.");
+  }
+  const resourceRefs = requireStringArray(node.resourceRefs, "node.resourceRefs", true);
+  if (type === "model-3d" && resourceRefs.length > 1) {
+    invalid("invalid_canvas_node", "A 3D model component can reference at most one model asset.");
+  }
+
+  const validated: CanvasNode = {
+    id: requireIdentifier(node.id, "node.id"),
+    type,
+    x: requireNumber(node.x, "node.x", -7680, 7680),
+    y: requireNumber(node.y, "node.y", -4320, 4320),
+    width,
+    height,
+    zIndex: requireNumber(node.zIndex, "node.zIndex", 0, 100000),
+    props: validatedProps,
+    resourceRefs,
     dataBindingRefs: requireStringArray(node.dataBindingRefs, "node.dataBindingRefs", true),
   };
 
@@ -254,6 +396,24 @@ export const applyCanvasPatch = async (
   userId: string,
   patch: CanvasPatch,
 ): Promise<CanvasDocument> => {
+  const modelAssetRefs = [...new Set(
+    patch.upsertNodes
+      .filter((node) => node.type === "model-3d")
+      .flatMap((node) => node.resourceRefs),
+  )];
+  for (const assetId of modelAssetRefs) {
+    const row = await env.DB.prepare(
+      "SELECT id FROM model_assets WHERE id = ? AND project_id = ?",
+    ).bind(assetId, projectId).first<{ id: string }>();
+    if (!row) {
+      throw new AppError(
+        400,
+        "invalid_model_asset_reference",
+        `Model asset ${assetId} does not belong to project ${projectId}.`,
+      );
+    }
+  }
+
   const now = new Date().toISOString();
   const statements = [
     env.DB.prepare(

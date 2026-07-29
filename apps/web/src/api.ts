@@ -16,6 +16,8 @@ export class ApiRequestError extends Error {
 
 const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
 
+export const apiUrl = (path: string): string => `${apiBaseUrl}${path}`;
+
 export async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
 
@@ -23,7 +25,7 @@ export async function request<T>(path: string, init: RequestInit = {}): Promise<
     headers.set("content-type", "application/json");
   }
 
-  const response = await fetch(`${apiBaseUrl}${path}`, {
+  const response = await fetch(apiUrl(path), {
     ...init,
     credentials: "include",
     headers,
