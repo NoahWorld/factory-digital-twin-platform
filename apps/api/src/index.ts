@@ -42,6 +42,11 @@ import {
   modelAssetContentResponse,
   uploadModelAsset,
 } from "./model-assets";
+import {
+  imageAssetContentResponse,
+  listImageAssets,
+  uploadImageAsset,
+} from "./image-assets";
 import { projectCoverResponse } from "./project-covers";
 
 type ProjectStatus = "draft" | "published" | "archived";
@@ -253,6 +258,7 @@ const updateProjectName = async (
 
 type ProjectDeletionResult = {
   deletedProjectId: string;
+  deletedImageObjectCount: number;
   deletedModelObjectCount: number;
   warning: string | null;
 };
@@ -261,8 +267,11 @@ const deleteProject = async (
   env: AppEnv,
   projectId: string,
 ): Promise<ProjectDeletionResult> => {
-  const objectRows = await env.DB.prepare(
+  const modelObjectRows = await env.DB.prepare(
     "SELECT object_key FROM model_assets WHERE project_id = ? ORDER BY object_key ASC",
+  ).bind(projectId).all<{ object_key: string }>();
+  const imageObjectRows = await env.DB.prepare(
+    "SELECT object_key FROM image_assets WHERE project_id = ? ORDER BY object_key ASC",
   ).bind(projectId).all<{ object_key: string }>();
 
   const results = await env.DB.batch([
@@ -277,6 +286,7 @@ const deleteProject = async (
     env.DB.prepare("DELETE FROM assets WHERE project_id = ?").bind(projectId),
     env.DB.prepare("DELETE FROM data_sources WHERE project_id = ?").bind(projectId),
     env.DB.prepare("DELETE FROM project_versions WHERE project_id = ?").bind(projectId),
+    env.DB.prepare("DELETE FROM image_assets WHERE project_id = ?").bind(projectId),
     env.DB.prepare("DELETE FROM model_assets WHERE project_id = ?").bind(projectId),
     env.DB.prepare("DELETE FROM project_canvases WHERE project_id = ?").bind(projectId),
     env.DB.prepare("DELETE FROM project_members WHERE project_id = ?").bind(projectId),
@@ -291,23 +301,34 @@ const deleteProject = async (
     );
   }
 
+  let deletedImageObjectCount = 0;
   let deletedModelObjectCount = 0;
   let warning: string | null = null;
-  const modelStorage = env.MODEL_ASSETS;
-  if (objectRows.results.length > 0 && !modelStorage) {
-    warning = `The project was deleted, but ${objectRows.results.length} model object(s) could not be removed because model storage is not configured.`;
-  } else if (modelStorage) {
+  const projectFiles = env.PROJECT_FILES;
+  const objectCount = modelObjectRows.results.length + imageObjectRows.results.length;
+  if (objectCount > 0 && !projectFiles) {
+    warning = `The project was deleted, but ${objectCount} project file object(s) could not be removed because PROJECT_FILES storage is not configured.`;
+  } else if (projectFiles) {
     try {
-      for (const row of objectRows.results) {
-        await modelStorage.delete(row.object_key);
+      for (const row of imageObjectRows.results) {
+        await projectFiles.delete(row.object_key);
+        deletedImageObjectCount += 1;
+      }
+      for (const row of modelObjectRows.results) {
+        await projectFiles.delete(row.object_key);
         deletedModelObjectCount += 1;
       }
     } catch (error) {
-      warning = `The project was deleted, but model object cleanup stopped after ${deletedModelObjectCount} of ${objectRows.results.length} object(s): ${error instanceof Error ? error.message : String(error)}`;
+      warning = `The project was deleted, but project file cleanup stopped after ${deletedImageObjectCount + deletedModelObjectCount} of ${objectCount} object(s): ${error instanceof Error ? error.message : String(error)}`;
     }
   }
 
-  return { deletedProjectId: projectId, deletedModelObjectCount, warning };
+  return {
+    deletedProjectId: projectId,
+    deletedImageObjectCount,
+    deletedModelObjectCount,
+    warning,
+  };
 };
 
 const handleApiRequest = async (
@@ -320,13 +341,13 @@ const handleApiRequest = async (
   const { pathname } = url;
 
   if (method === "GET" && pathname === "/health") {
-    const modelStorageConfigured = Boolean(env.MODEL_ASSETS);
+    const projectFileStorageConfigured = Boolean(env.PROJECT_FILES);
     return json({
-      status: modelStorageConfigured ? "ok" : "degraded",
+      status: projectFileStorageConfigured ? "ok" : "degraded",
       service: "factory-digital-twin-api",
       dependencies: {
         database: "configured",
-        modelStorage: modelStorageConfigured ? "configured" : "not_configured",
+        projectFileStorage: projectFileStorageConfigured ? "configured" : "not_configured",
       },
       timestamp: new Date().toISOString(),
       requestId,
@@ -464,6 +485,58 @@ const handleApiRequest = async (
       durationMs: Date.now() - startedAt,
     }));
     return json({ modelAsset, requestId }, 201);
+  }
+
+  const imageAssetContentMatch = pathname.match(
+    /^\/api\/v1\/projects\/([^/]+)\/image-assets\/([^/]+)\/content$/,
+  );
+
+  if (method === "GET" && imageAssetContentMatch) {
+    const user = await getAuthenticatedUser(env, request);
+    const projectId = decodePathSegment(imageAssetContentMatch[1]);
+    await requireProjectAccess(env, user, projectId);
+    return imageAssetContentResponse(
+      request,
+      env,
+      projectId,
+      decodePathSegment(imageAssetContentMatch[2]),
+    );
+  }
+
+  const imageAssetsMatch = pathname.match(/^\/api\/v1\/projects\/([^/]+)\/image-assets$/);
+
+  if ((method === "GET" || method === "POST") && imageAssetsMatch) {
+    const startedAt = Date.now();
+    const user = await getAuthenticatedUser(env, request);
+    const projectId = decodePathSegment(imageAssetsMatch[1]);
+    const project = await requireProjectAccess(env, user, projectId);
+
+    if (method === "GET") {
+      return json({ imageAssets: await listImageAssets(env, projectId), requestId });
+    }
+
+    if (!canEditProject(user, project)) {
+      throw new AppError(403, "permission_denied", "You do not have permission to upload images to this project.");
+    }
+
+    const imageAsset = await uploadImageAsset(
+      request,
+      env,
+      projectId,
+      user.id,
+      url.searchParams.get("filename"),
+    );
+    console.log(JSON.stringify({
+      event: "image_asset_uploaded",
+      requestId,
+      projectId,
+      userId: user.id,
+      imageAssetId: imageAsset.id,
+      format: imageAsset.format,
+      byteSize: imageAsset.byteSize,
+      durationMs: Date.now() - startedAt,
+    }));
+    return json({ imageAsset, requestId }, 201);
   }
 
   const assetsMatch = pathname.match(/^\/api\/v1\/projects\/([^/]+)\/assets$/);

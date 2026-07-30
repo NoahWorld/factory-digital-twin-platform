@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
+import { BasicNodeInspector } from "./BasicNodeInspector";
 import { DashboardNodeInspector } from "./DashboardNodeInspector";
 import {
   componentLabels,
+  isBasicNodeType,
   isDashboardNodeType,
   isDecorationNodeType,
   isModel3DNodeType,
@@ -23,6 +25,7 @@ type ComponentInspectorProps = {
   onModelEditorOpen?: (nodeId: string) => void;
   onNodeChange: (node: CanvasNode) => void;
   onValidationChange: (message: string | null) => void;
+  projectId: string;
 };
 
 function Model3DLaunchInspector({
@@ -478,6 +481,7 @@ export function ComponentInspector({
   onModelEditorOpen,
   onNodeChange,
   onValidationChange,
+  projectId,
 }: ComponentInspectorProps) {
   useEffect(() => {
     if (!node) onValidationChange(null);
@@ -492,7 +496,7 @@ export function ComponentInspector({
     if (!parsed.ok) {
       return <InvalidComponentInspector message={parsed.message} onValidationChange={onValidationChange} />;
     }
-    return <ValidShapeInspector editable={editable} node={node} onNodeChange={onNodeChange} onValidationChange={onValidationChange} props={parsed.value} />;
+    return <ValidShapeInspector editable={editable} node={node} onNodeChange={onNodeChange} onValidationChange={onValidationChange} projectId={projectId} props={parsed.value} />;
   }
 
   if (isDecorationNodeType(node.type)) {
@@ -500,7 +504,7 @@ export function ComponentInspector({
     if (!parsed.ok) {
       return <InvalidComponentInspector message={parsed.message} onValidationChange={onValidationChange} />;
     }
-    return <ValidDecorationInspector editable={editable} node={node} onNodeChange={onNodeChange} onValidationChange={onValidationChange} props={parsed.value} />;
+    return <ValidDecorationInspector editable={editable} node={node} onNodeChange={onNodeChange} onValidationChange={onValidationChange} projectId={projectId} props={parsed.value} />;
   }
 
   if (isDashboardNodeType(node.type)) {
@@ -510,6 +514,18 @@ export function ComponentInspector({
         node={node}
         onNodeChange={onNodeChange}
         onValidationChange={onValidationChange}
+      />
+    );
+  }
+
+  if (isBasicNodeType(node.type)) {
+    return (
+      <BasicNodeInspector
+        editable={editable}
+        node={node}
+        onNodeChange={onNodeChange}
+        onValidationChange={onValidationChange}
+        projectId={projectId}
       />
     );
   }
@@ -530,7 +546,7 @@ export function ComponentInspector({
     return <InvalidComponentInspector message={parsed.message} onValidationChange={onValidationChange} />;
   }
 
-  return <ValidChartInspector editable={editable} node={node} onNodeChange={onNodeChange} onValidationChange={onValidationChange} props={parsed.value} />;
+  return <ValidChartInspector editable={editable} node={node} onNodeChange={onNodeChange} onValidationChange={onValidationChange} projectId={projectId} props={parsed.value} />;
 }
 
 function InvalidComponentInspector({ message, onValidationChange }: { message: string; onValidationChange: (message: string | null) => void }) {

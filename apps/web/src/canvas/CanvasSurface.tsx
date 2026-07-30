@@ -1,4 +1,5 @@
 import { memo, useCallback, useEffect, useRef, useState, type CSSProperties, type DragEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { BasicNode } from "./BasicNode";
 import { ChartNode } from "./ChartNode";
 import { DashboardNode } from "./DashboardNode";
 import { DecorationNode } from "./DecorationNode";
@@ -6,7 +7,7 @@ import { buildSnapTargets, resizeCanvasNode, snapNodePosition, type ResizeDirect
 import { Model3DNode } from "./Model3DNode";
 import type { ModelSceneSnapshot } from "./model-scene";
 import { ShapeNode } from "./ShapeNode";
-import { CANVAS_DRAG_TYPE, defaultNodeSizes, isCanvasNodeType, isDashboardNodeType, isDecorationNodeType, isModel3DNodeType, isShapeNodeType, type CanvasDocument, type CanvasNode, type CanvasNodeType } from "./types";
+import { CANVAS_DRAG_TYPE, defaultNodeSizes, isBasicNodeType, isCanvasNodeType, isDashboardNodeType, isDecorationNodeType, isModel3DNodeType, isShapeNodeType, type CanvasDocument, type CanvasNode, type CanvasNodeType } from "./types";
 
 type ActiveDrag = {
   kind: "drag";
@@ -66,7 +67,7 @@ const CanvasNodeView = memo(function CanvasNodeView({ editable, node, onModelSce
   return (
     <div
       aria-label={`${node.type} 组件`}
-      className={`canvas-node${isShapeNodeType(node.type) ? " is-shape" : ""}${isDecorationNodeType(node.type) ? " is-decoration" : ""}${isDashboardNodeType(node.type) ? " is-dashboard" : ""}${isModel3DNodeType(node.type) ? " is-model-3d" : ""}${selected ? " is-selected" : ""}${editable ? " is-editable" : ""}`}
+      className={`canvas-node${isShapeNodeType(node.type) ? " is-shape" : ""}${isDecorationNodeType(node.type) ? " is-decoration" : ""}${isDashboardNodeType(node.type) ? " is-dashboard" : ""}${isBasicNodeType(node.type) ? " is-basic" : ""}${isModel3DNodeType(node.type) ? " is-model-3d" : ""}${selected ? " is-selected" : ""}${editable ? " is-editable" : ""}`}
       data-node-id={node.id}
       onPointerDown={editable ? (event) => onPointerDown(event, node) : undefined}
       role="group"
@@ -78,6 +79,8 @@ const CanvasNodeView = memo(function CanvasNodeView({ editable, node, onModelSce
           ? <DecorationNode node={node} />
           : isDashboardNodeType(node.type)
             ? <DashboardNode node={node} />
+          : isBasicNodeType(node.type)
+            ? <BasicNode editable={editable} node={node} projectId={projectId} />
           : isModel3DNodeType(node.type)
             ? (
                 <Model3DNode

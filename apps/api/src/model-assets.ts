@@ -65,15 +65,15 @@ const textDecoder = new TextDecoder();
 const asArray = (value: unknown): unknown[] => Array.isArray(value) ? value : [];
 
 const requireModelStorage = (env: AppEnv) => {
-  if (!env.MODEL_ASSETS) {
+  if (!env.PROJECT_FILES) {
     throw new AppError(
       503,
       "model_storage_not_configured",
-      "Model storage is not configured for this deployment. Enable the R2 subscription and restore the MODEL_ASSETS binding before uploading or loading models.",
+      "Project file storage is not configured for this deployment. Configure the PROJECT_FILES object-storage binding before uploading or loading models.",
     );
   }
 
-  return env.MODEL_ASSETS;
+  return env.PROJECT_FILES;
 };
 
 const validateFilename = (value: string | null): { filename: string; format: ModelFormat } => {

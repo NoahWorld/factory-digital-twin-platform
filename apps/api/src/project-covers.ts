@@ -1,12 +1,22 @@
 import {
+  type BasicAppearanceProps,
+  type ButtonProps,
   type CanvasDocument,
   type CanvasNode,
+  type CarouselProps,
   type ChartProps,
+  type CheckboxGroupProps,
   type DashboardBaseProps,
   type DecorationProps,
+  type ImageProps,
   type MetricCardProps,
   type Model3DProps,
+  type PlainTextProps,
+  type RadioGroupProps,
+  type SelectProps,
   type ShapeProps,
+  type SwitchProps,
+  type TextLinkProps,
 } from "./canvas";
 
 const COVER_WIDTH = 480;
@@ -152,6 +162,126 @@ const renderModel = (node: CanvasNode, canvas: CanvasDocument): string => {
   ].join("");
 };
 
+const renderImagePlaceholder = (
+  node: CanvasNode,
+  canvas: CanvasDocument,
+  props: ImageProps | CarouselProps,
+): string => {
+  const box = scaledBox(node, canvas);
+  const background = safeColor(props.backgroundColor, canvas.theme.surfaceColor);
+  const border = safeColor(props.borderColor, canvas.theme.borderColor);
+  const accent = safeColor(canvas.theme.accentColor, "#33c7ff");
+  const centerX = box.x + box.width / 2;
+  const centerY = box.y + box.height / 2;
+  const iconWidth = Math.max(12, Math.min(34, box.width * 0.22));
+  const iconHeight = Math.max(9, Math.min(25, box.height * 0.22));
+  const boundCount = node.resourceRefs.length;
+
+  return [
+    panel(node, canvas, background, border),
+    `<rect x="${(centerX - iconWidth / 2).toFixed(2)}" y="${(centerY - iconHeight / 2).toFixed(2)}" width="${iconWidth.toFixed(2)}" height="${iconHeight.toFixed(2)}" rx="2" fill="none" stroke="${accent}" stroke-width="1.2" stroke-opacity="0.82"/>`,
+    `<circle cx="${(centerX - iconWidth * 0.2).toFixed(2)}" cy="${(centerY - iconHeight * 0.18).toFixed(2)}" r="${Math.max(1.2, iconWidth * 0.06).toFixed(2)}" fill="${accent}" fill-opacity="0.9"/>`,
+    `<path d="M ${(centerX - iconWidth * 0.38).toFixed(2)} ${(centerY + iconHeight * 0.28).toFixed(2)} L ${(centerX - iconWidth * 0.08).toFixed(2)} ${(centerY - iconHeight * 0.02).toFixed(2)} L ${(centerX + iconWidth * 0.1).toFixed(2)} ${(centerY + iconHeight * 0.14).toFixed(2)} L ${(centerX + iconWidth * 0.34).toFixed(2)} ${(centerY - iconHeight * 0.12).toFixed(2)}" fill="none" stroke="${accent}" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>`,
+    boundCount > 0
+      ? `<text x="${(box.x + box.width - 6).toFixed(2)}" y="${(box.y + box.height - 6).toFixed(2)}" text-anchor="end" fill="${accent}" font-size="6">${boundCount}</text>`
+      : "",
+  ].join("");
+};
+
+const renderBasicAppearance = (
+  node: CanvasNode,
+  canvas: CanvasDocument,
+  props: BasicAppearanceProps,
+): { box: ReturnType<typeof scaledBox>; panelSvg: string; text: string; accent: string } => ({
+  box: scaledBox(node, canvas),
+  panelSvg: panel(
+    node,
+    canvas,
+    safeColor(props.fillColor, canvas.theme.surfaceColor),
+    safeColor(props.borderColor, canvas.theme.borderColor),
+  ),
+  text: safeColor(props.textColor, canvas.theme.textColor),
+  accent: safeColor(props.accentColor, canvas.theme.accentColor),
+});
+
+const renderBasic = (node: CanvasNode, canvas: CanvasDocument): string => {
+  if (node.type === "image" || node.type === "carousel") {
+    return renderImagePlaceholder(node, canvas, node.props as ImageProps | CarouselProps);
+  }
+
+  const props = node.props as BasicAppearanceProps;
+  const { box, panelSvg, text, accent } = renderBasicAppearance(node, canvas, props);
+
+  if (node.type === "plain-text") {
+    const textProps = node.props as PlainTextProps;
+    return [
+      panelSvg,
+      `<text x="${(box.x + 7).toFixed(2)}" y="${(box.y + box.height * 0.56).toFixed(2)}" fill="${text}" font-size="${Math.min(12, Math.max(6, box.height * 0.28)).toFixed(1)}" font-weight="${textProps.fontWeight}">${escapeXml(truncate(textProps.text, 54))}</text>`,
+    ].join("");
+  }
+
+  if (node.type === "text-link") {
+    const linkProps = node.props as TextLinkProps;
+    return [
+      panelSvg,
+      `<text x="${(box.x + 7).toFixed(2)}" y="${(box.y + box.height * 0.57).toFixed(2)}" fill="${accent}" font-size="${Math.min(11, Math.max(6, box.height * 0.3)).toFixed(1)}" font-weight="${linkProps.fontWeight}" text-decoration="${linkProps.underline ? "underline" : "none"}">${escapeXml(truncate(linkProps.text, 42))}</text>`,
+    ].join("");
+  }
+
+  if (node.type === "button") {
+    const buttonProps = node.props as ButtonProps;
+    return [
+      panelSvg,
+      `<rect x="${(box.x + 4).toFixed(2)}" y="${(box.y + 4).toFixed(2)}" width="${Math.max(1, box.width - 8).toFixed(2)}" height="${Math.max(1, box.height - 8).toFixed(2)}" rx="3" fill="${accent}" fill-opacity="${buttonProps.disabled ? "0.24" : "0.78"}"/>`,
+      `<text x="${(box.x + box.width / 2).toFixed(2)}" y="${(box.y + box.height * 0.58).toFixed(2)}" text-anchor="middle" fill="${text}" font-size="${Math.min(11, Math.max(6, box.height * 0.27)).toFixed(1)}" font-weight="${buttonProps.fontWeight}">${escapeXml(truncate(buttonProps.text, 32))}</text>`,
+    ].join("");
+  }
+
+  if (node.type === "switch") {
+    const switchProps = node.props as SwitchProps;
+    const trackWidth = Math.min(25, Math.max(14, box.width * 0.18));
+    const trackHeight = Math.min(12, Math.max(7, box.height * 0.26));
+    const trackX = box.x + box.width - trackWidth - 7;
+    const trackY = box.y + (box.height - trackHeight) / 2;
+    return [
+      panelSvg,
+      `<text x="${(box.x + 7).toFixed(2)}" y="${(box.y + box.height * 0.58).toFixed(2)}" fill="${text}" font-size="${Math.min(10, Math.max(6, box.height * 0.25)).toFixed(1)}">${escapeXml(truncate(switchProps.label, 28))}</text>`,
+      `<rect x="${trackX.toFixed(2)}" y="${trackY.toFixed(2)}" width="${trackWidth.toFixed(2)}" height="${trackHeight.toFixed(2)}" rx="${(trackHeight / 2).toFixed(2)}" fill="${switchProps.defaultChecked ? accent : safeColor(props.borderColor, canvas.theme.borderColor)}"/>`,
+      `<circle cx="${(switchProps.defaultChecked ? trackX + trackWidth - trackHeight / 2 : trackX + trackHeight / 2).toFixed(2)}" cy="${(trackY + trackHeight / 2).toFixed(2)}" r="${Math.max(2, trackHeight * 0.36).toFixed(2)}" fill="${text}"/>`,
+    ].join("");
+  }
+
+  if (node.type === "select") {
+    const selectProps = node.props as SelectProps;
+    const selected = selectProps.options.find((option) => option.value === selectProps.selectedValue)?.label
+      ?? selectProps.placeholder;
+    return [
+      panelSvg,
+      `<text x="${(box.x + 7).toFixed(2)}" y="${(box.y + 12).toFixed(2)}" fill="${text}" fill-opacity="0.7" font-size="6">${escapeXml(truncate(selectProps.label, 28))}</text>`,
+      `<text x="${(box.x + 7).toFixed(2)}" y="${(box.y + box.height - 8).toFixed(2)}" fill="${text}" font-size="7">${escapeXml(truncate(selected, 32))}</text>`,
+      `<path d="M ${(box.x + box.width - 12).toFixed(2)} ${(box.y + box.height * 0.55 - 2).toFixed(2)} l 3 3 l 3 -3" fill="none" stroke="${accent}" stroke-width="1.2"/>`,
+    ].join("");
+  }
+
+  const choiceProps = node.props as CheckboxGroupProps | RadioGroupProps;
+  const optionMarks = choiceProps.options.slice(0, 5).map((option, index) => {
+    const y = box.y + 18 + index * Math.min(12, Math.max(7, (box.height - 24) / 5));
+    const selected = node.type === "checkbox-group"
+      ? (choiceProps as CheckboxGroupProps).selectedValues.includes(option.value)
+      : (choiceProps as RadioGroupProps).selectedValue === option.value;
+    const mark = node.type === "radio-group"
+      ? `<circle cx="${(box.x + 10).toFixed(2)}" cy="${y.toFixed(2)}" r="3" fill="${selected ? accent : "none"}" stroke="${accent}" stroke-width="0.8"/>`
+      : `<rect x="${(box.x + 7).toFixed(2)}" y="${(y - 3).toFixed(2)}" width="6" height="6" rx="1" fill="${selected ? accent : "none"}" stroke="${accent}" stroke-width="0.8"/>`;
+    return `${mark}<text x="${(box.x + 17).toFixed(2)}" y="${(y + 2).toFixed(2)}" fill="${text}" font-size="6">${escapeXml(truncate(option.label, 28))}</text>`;
+  }).join("");
+
+  return [
+    panelSvg,
+    `<text x="${(box.x + 7).toFixed(2)}" y="${(box.y + 10).toFixed(2)}" fill="${text}" font-size="6" font-weight="700">${escapeXml(truncate(choiceProps.title, 30))}</text>`,
+    optionMarks,
+  ].join("");
+};
+
 const renderNode = (node: CanvasNode, canvas: CanvasDocument): string => {
   if (node.type === "rectangle" || node.type === "circle") return renderShape(node, canvas);
   if (node.type === "line-chart" || node.type === "bar-chart") return renderChart(node, canvas);
@@ -170,6 +300,17 @@ const renderNode = (node: CanvasNode, canvas: CanvasDocument): string => {
     || node.type === "status-grid"
   ) return renderDashboard(node, canvas);
   if (node.type === "model-3d") return renderModel(node, canvas);
+  if (
+    node.type === "plain-text"
+    || node.type === "text-link"
+    || node.type === "image"
+    || node.type === "carousel"
+    || node.type === "button"
+    || node.type === "switch"
+    || node.type === "checkbox-group"
+    || node.type === "radio-group"
+    || node.type === "select"
+  ) return renderBasic(node, canvas);
 
   const exhaustiveCheck: never = node.type;
   throw new Error(`Unsupported canvas node in project cover: ${exhaustiveCheck}`);

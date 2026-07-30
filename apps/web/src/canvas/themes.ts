@@ -1,4 +1,5 @@
 import {
+  isBasicNodeType,
   isChartNodeType,
   isDashboardNodeType,
   isDecorationNodeType,
@@ -66,6 +67,29 @@ export const applyCanvasThemeToNode = (
   }
 
   if (isDecorationNodeType(node.type) || isDashboardNodeType(node.type)) {
+    return {
+      ...node,
+      props: {
+        ...node.props,
+        textColor: theme.textColor,
+        accentColor: theme.accentColor,
+        fillColor: theme.surfaceColor,
+        borderColor: theme.borderColor,
+      },
+    };
+  }
+
+  if (isBasicNodeType(node.type)) {
+    if (node.type === "image" || node.type === "carousel") {
+      return {
+        ...node,
+        props: {
+          ...node.props,
+          backgroundColor: theme.surfaceColor,
+          borderColor: theme.borderColor,
+        },
+      };
+    }
     return {
       ...node,
       props: {

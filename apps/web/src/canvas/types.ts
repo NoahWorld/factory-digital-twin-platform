@@ -15,12 +15,23 @@ export type DashboardNodeType =
   | "radial-gauge"
   | "progress-list"
   | "status-grid";
+export type BasicNodeType =
+  | "plain-text"
+  | "text-link"
+  | "image"
+  | "carousel"
+  | "button"
+  | "switch"
+  | "checkbox-group"
+  | "radio-group"
+  | "select";
 export type CanvasNodeType =
   | ChartNodeType
   | ShapeNodeType
   | DecorationNodeType
   | Model3DNodeType
-  | DashboardNodeType;
+  | DashboardNodeType
+  | BasicNodeType;
 
 export type CanvasThemeMode = "dark" | "light" | "custom";
 
@@ -116,6 +127,101 @@ export type DashboardProps =
   | RadialGaugeProps
   | ProgressListProps
   | StatusGridProps;
+
+export type BasicOption = {
+  label: string;
+  value: string;
+};
+
+export type BasicAppearanceProps = {
+  textColor: string;
+  accentColor: string;
+  fillColor: string;
+  borderColor: string;
+  borderRadius: number;
+};
+
+export type PlainTextProps = BasicAppearanceProps & {
+  text: string;
+  align: TextAlign;
+  fontSize: number;
+  fontWeight: number;
+  scrollMode: "none" | "horizontal" | "vertical";
+  scrollDuration: number;
+};
+
+export type TextLinkProps = BasicAppearanceProps & {
+  text: string;
+  href: string;
+  align: TextAlign;
+  fontSize: number;
+  fontWeight: number;
+  openInNewTab: boolean;
+  underline: boolean;
+};
+
+export type ImageProps = {
+  alt: string;
+  fit: "contain" | "cover" | "fill";
+  backgroundColor: string;
+  borderColor: string;
+  borderRadius: number;
+};
+
+export type CarouselProps = ImageProps & {
+  autoplay: boolean;
+  interval: number;
+  showArrows: boolean;
+  showDots: boolean;
+};
+
+export type ButtonProps = BasicAppearanceProps & {
+  text: string;
+  href: string;
+  fontSize: number;
+  fontWeight: number;
+  openInNewTab: boolean;
+  disabled: boolean;
+};
+
+export type SwitchProps = BasicAppearanceProps & {
+  label: string;
+  defaultChecked: boolean;
+  onText: string;
+  offText: string;
+};
+
+export type CheckboxGroupProps = BasicAppearanceProps & {
+  title: string;
+  options: BasicOption[];
+  selectedValues: string[];
+  columns: number;
+};
+
+export type RadioGroupProps = BasicAppearanceProps & {
+  title: string;
+  options: BasicOption[];
+  selectedValue: string;
+  columns: number;
+};
+
+export type SelectProps = BasicAppearanceProps & {
+  label: string;
+  placeholder: string;
+  options: BasicOption[];
+  selectedValue: string;
+};
+
+export type BasicProps =
+  | PlainTextProps
+  | TextLinkProps
+  | ImageProps
+  | CarouselProps
+  | ButtonProps
+  | SwitchProps
+  | CheckboxGroupProps
+  | RadioGroupProps
+  | SelectProps;
 
 export type Vector3Tuple = [number, number, number];
 
@@ -372,6 +478,103 @@ const dashboardDefaults: Record<DashboardNodeType, DashboardProps> = {
   },
 };
 
+const basicAppearanceDefaults: BasicAppearanceProps = {
+  textColor: "#eafaff",
+  accentColor: "#55d8ff",
+  fillColor: "#0b2638",
+  borderColor: "#286783",
+  borderRadius: 10,
+};
+
+const basicDefaults: Record<BasicNodeType, BasicProps> = {
+  "plain-text": {
+    ...basicAppearanceDefaults,
+    text: "设备运行正常 · 当前产线效率 98.6%",
+    align: "left",
+    fontSize: 24,
+    fontWeight: 500,
+    scrollMode: "none",
+    scrollDuration: 12,
+  },
+  "text-link": {
+    ...basicAppearanceDefaults,
+    text: "查看生产详情",
+    href: "https://example.com",
+    align: "left",
+    fontSize: 22,
+    fontWeight: 600,
+    openInNewTab: true,
+    underline: true,
+  },
+  image: {
+    alt: "看板图片",
+    fit: "cover",
+    backgroundColor: "#071525",
+    borderColor: "#286783",
+    borderRadius: 10,
+  },
+  carousel: {
+    alt: "看板轮播图",
+    fit: "cover",
+    backgroundColor: "#071525",
+    borderColor: "#286783",
+    borderRadius: 10,
+    autoplay: true,
+    interval: 5,
+    showArrows: true,
+    showDots: true,
+  },
+  button: {
+    ...basicAppearanceDefaults,
+    text: "查看详情",
+    href: "",
+    fontSize: 20,
+    fontWeight: 600,
+    openInNewTab: false,
+    disabled: false,
+  },
+  switch: {
+    ...basicAppearanceDefaults,
+    label: "设备控制",
+    defaultChecked: true,
+    onText: "开启",
+    offText: "关闭",
+  },
+  "checkbox-group": {
+    ...basicAppearanceDefaults,
+    title: "展示区域",
+    options: [
+      { label: "生产", value: "production" },
+      { label: "能耗", value: "energy" },
+      { label: "告警", value: "alarm" },
+    ],
+    selectedValues: ["production", "energy"],
+    columns: 1,
+  },
+  "radio-group": {
+    ...basicAppearanceDefaults,
+    title: "时间范围",
+    options: [
+      { label: "今日", value: "today" },
+      { label: "本周", value: "week" },
+      { label: "本月", value: "month" },
+    ],
+    selectedValue: "today",
+    columns: 1,
+  },
+  select: {
+    ...basicAppearanceDefaults,
+    label: "选择产线",
+    placeholder: "请选择",
+    options: [
+      { label: "一号产线", value: "line-1" },
+      { label: "二号产线", value: "line-2" },
+      { label: "三号产线", value: "line-3" },
+    ],
+    selectedValue: "",
+  },
+};
+
 export const componentLabels: Record<CanvasNodeType, string> = {
   "line-chart": "折线图",
   "bar-chart": "柱状图",
@@ -388,6 +591,15 @@ export const componentLabels: Record<CanvasNodeType, string> = {
   "radial-gauge": "环形进度",
   "progress-list": "进度排行",
   "status-grid": "状态矩阵",
+  "plain-text": "纯文本",
+  "text-link": "文字超链接",
+  image: "图片",
+  carousel: "轮播图",
+  button: "按钮",
+  switch: "Switch",
+  "checkbox-group": "多选框",
+  "radio-group": "单选框",
+  select: "下拉菜单",
 };
 
 export const defaultNodeSizes: Record<CanvasNodeType, { width: number; height: number }> = {
@@ -406,6 +618,15 @@ export const defaultNodeSizes: Record<CanvasNodeType, { width: number; height: n
   "radial-gauge": { width: 320, height: 300 },
   "progress-list": { width: 420, height: 320 },
   "status-grid": { width: 480, height: 300 },
+  "plain-text": { width: 360, height: 84 },
+  "text-link": { width: 280, height: 64 },
+  image: { width: 420, height: 260 },
+  carousel: { width: 520, height: 300 },
+  button: { width: 200, height: 64 },
+  switch: { width: 260, height: 72 },
+  "checkbox-group": { width: 320, height: 170 },
+  "radio-group": { width: 320, height: 170 },
+  select: { width: 300, height: 82 },
 };
 
 export const minimumNodeSizes: Record<CanvasNodeType, { width: number; height: number }> = {
@@ -424,6 +645,15 @@ export const minimumNodeSizes: Record<CanvasNodeType, { width: number; height: n
   "radial-gauge": { width: 240, height: 220 },
   "progress-list": { width: 280, height: 220 },
   "status-grid": { width: 300, height: 200 },
+  "plain-text": { width: 160, height: 48 },
+  "text-link": { width: 160, height: 48 },
+  image: { width: 160, height: 100 },
+  carousel: { width: 240, height: 160 },
+  button: { width: 120, height: 48 },
+  switch: { width: 160, height: 48 },
+  "checkbox-group": { width: 200, height: 96 },
+  "radio-group": { width: 200, height: 96 },
+  select: { width: 180, height: 64 },
 };
 
 export const isChartNodeType = (value: string): value is ChartNodeType =>
@@ -448,6 +678,17 @@ export const isDashboardNodeType = (value: string): value is DashboardNodeType =
   value === "radial-gauge" ||
   value === "progress-list" ||
   value === "status-grid";
+
+export const isBasicNodeType = (value: string): value is BasicNodeType =>
+  value === "plain-text" ||
+  value === "text-link" ||
+  value === "image" ||
+  value === "carousel" ||
+  value === "button" ||
+  value === "switch" ||
+  value === "checkbox-group" ||
+  value === "radio-group" ||
+  value === "select";
 
 export const isBackgroundNodeType = (value: CanvasNodeType): boolean =>
   value === "background-decoration" || value === "card-background";
@@ -478,7 +719,14 @@ export const createCanvasNode = (
                 ? { ...defaults, items: defaults.items.map((item) => ({ ...item })) }
                 : { ...defaults };
             })()
-          : { ...model3DDefaults[type] };
+          : isBasicNodeType(type)
+            ? (() => {
+                const defaults = basicDefaults[type];
+                return "options" in defaults
+                  ? { ...defaults, options: defaults.options.map((option) => ({ ...option })) }
+                  : { ...defaults };
+              })()
+            : { ...model3DDefaults[type] };
 
   return {
     id: crypto.randomUUID(),
@@ -499,7 +747,8 @@ export const isCanvasNodeType = (value: string): value is CanvasNodeType =>
   isShapeNodeType(value) ||
   isDecorationNodeType(value) ||
   isModel3DNodeType(value) ||
-  isDashboardNodeType(value);
+  isDashboardNodeType(value) ||
+  isBasicNodeType(value);
 
 export type DashboardPropsResult =
   | { ok: true; value: DashboardProps }
@@ -815,6 +1064,340 @@ export const parseDecorationProps = (
       align: props.align,
       showDate: props.showDate,
       showSeconds: props.showSeconds,
+    },
+  };
+};
+
+export type BasicPropsResult =
+  | { ok: true; value: BasicProps }
+  | { ok: false; message: string };
+
+const parseBasicAppearance = (
+  props: Record<string, unknown>,
+): { ok: true; value: BasicAppearanceProps } | { ok: false; message: string } => {
+  if (
+    !isHexColor(props.textColor) ||
+    !isHexColor(props.accentColor) ||
+    !isHexColor(props.fillColor) ||
+    !isHexColor(props.borderColor)
+  ) {
+    return { ok: false, message: "所有颜色字段都必须是六位十六进制颜色" };
+  }
+  if (
+    typeof props.borderRadius !== "number" ||
+    !Number.isFinite(props.borderRadius) ||
+    props.borderRadius < 0 ||
+    props.borderRadius > 100
+  ) {
+    return { ok: false, message: "borderRadius 必须是 0–100 之间的数值" };
+  }
+  return {
+    ok: true,
+    value: {
+      textColor: props.textColor,
+      accentColor: props.accentColor,
+      fillColor: props.fillColor,
+      borderColor: props.borderColor,
+      borderRadius: props.borderRadius,
+    },
+  };
+};
+
+const parseBasicTextStyle = (
+  props: Record<string, unknown>,
+): { ok: true; value: { fontSize: number; fontWeight: number } } | { ok: false; message: string } => {
+  if (
+    typeof props.fontSize !== "number" ||
+    !Number.isFinite(props.fontSize) ||
+    props.fontSize < 10 ||
+    props.fontSize > 120
+  ) {
+    return { ok: false, message: "fontSize 必须是 10–120 之间的数值" };
+  }
+  if (
+    typeof props.fontWeight !== "number" ||
+    !Number.isInteger(props.fontWeight) ||
+    props.fontWeight < 100 ||
+    props.fontWeight > 900
+  ) {
+    return { ok: false, message: "fontWeight 必须是 100–900 之间的整数" };
+  }
+  return { ok: true, value: { fontSize: props.fontSize, fontWeight: props.fontWeight } };
+};
+
+const isSafeHttpUrl = (value: string): boolean => {
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
+};
+
+const parseBasicOptions = (
+  value: unknown,
+): { ok: true; value: BasicOption[] } | { ok: false; message: string } => {
+  if (!Array.isArray(value) || value.length < 1 || value.length > 24) {
+    return { ok: false, message: "options 必须包含 1–24 个选项" };
+  }
+  const options: BasicOption[] = [];
+  const values = new Set<string>();
+  for (const [index, rawOption] of value.entries()) {
+    if (!rawOption || typeof rawOption !== "object" || Array.isArray(rawOption)) {
+      return { ok: false, message: `options[${index}] 必须是对象` };
+    }
+    const option = rawOption as Record<string, unknown>;
+    if (
+      typeof option.label !== "string" ||
+      option.label.trim().length === 0 ||
+      option.label.length > 80 ||
+      typeof option.value !== "string" ||
+      option.value.trim().length === 0 ||
+      option.value.length > 80
+    ) {
+      return { ok: false, message: `options[${index}] 的名称和值必须是 1–80 个字符` };
+    }
+    if (values.has(option.value)) {
+      return { ok: false, message: `options[${index}].value 不能重复` };
+    }
+    values.add(option.value);
+    options.push({ label: option.label, value: option.value });
+  }
+  return { ok: true, value: options };
+};
+
+export const parseBasicProps = (
+  type: BasicNodeType,
+  props: Record<string, unknown>,
+): BasicPropsResult => {
+  if (type === "image" || type === "carousel") {
+    if (
+      typeof props.alt !== "string" ||
+      props.alt.length > 160 ||
+      (props.fit !== "contain" && props.fit !== "cover" && props.fit !== "fill") ||
+      !isHexColor(props.backgroundColor) ||
+      !isHexColor(props.borderColor) ||
+      typeof props.borderRadius !== "number" ||
+      !Number.isFinite(props.borderRadius) ||
+      props.borderRadius < 0 ||
+      props.borderRadius > 100
+    ) {
+      return { ok: false, message: "图片替代文字、填充方式、颜色或圆角配置无效" };
+    }
+    const imageProps: ImageProps = {
+      alt: props.alt,
+      fit: props.fit,
+      backgroundColor: props.backgroundColor,
+      borderColor: props.borderColor,
+      borderRadius: props.borderRadius,
+    };
+    if (type === "image") return { ok: true, value: imageProps };
+    if (
+      typeof props.autoplay !== "boolean" ||
+      typeof props.interval !== "number" ||
+      !Number.isFinite(props.interval) ||
+      props.interval < 2 ||
+      props.interval > 60 ||
+      typeof props.showArrows !== "boolean" ||
+      typeof props.showDots !== "boolean"
+    ) {
+      return { ok: false, message: "轮播图自动播放、间隔或指示器配置无效" };
+    }
+    return {
+      ok: true,
+      value: {
+        ...imageProps,
+        autoplay: props.autoplay,
+        interval: props.interval,
+        showArrows: props.showArrows,
+        showDots: props.showDots,
+      },
+    };
+  }
+
+  const appearance = parseBasicAppearance(props);
+  if (!appearance.ok) return appearance;
+
+  if (type === "plain-text" || type === "text-link" || type === "button") {
+    const textStyle = parseBasicTextStyle(props);
+    if (!textStyle.ok) return textStyle;
+    if (
+      typeof props.text !== "string" ||
+      props.text.trim().length === 0 ||
+      props.text.length > (type === "plain-text" ? 1000 : 120)
+    ) {
+      return { ok: false, message: "text 不能为空且长度不能超过当前组件限制" };
+    }
+    if (type === "plain-text") {
+      if (
+        (props.align !== "left" && props.align !== "center" && props.align !== "right") ||
+        (props.scrollMode !== "none" && props.scrollMode !== "horizontal" && props.scrollMode !== "vertical") ||
+        typeof props.scrollDuration !== "number" ||
+        !Number.isFinite(props.scrollDuration) ||
+        props.scrollDuration < 3 ||
+        props.scrollDuration > 120
+      ) {
+        return { ok: false, message: "文本对齐、滚动方向或滚动时长配置无效" };
+      }
+      return {
+        ok: true,
+        value: {
+          ...appearance.value,
+          ...textStyle.value,
+          text: props.text,
+          align: props.align,
+          scrollMode: props.scrollMode,
+          scrollDuration: props.scrollDuration,
+        },
+      };
+    }
+    if (
+      typeof props.href !== "string" ||
+      props.href.length > 2048 ||
+      (type === "text-link" && !isSafeHttpUrl(props.href)) ||
+      (type === "button" && props.href.length > 0 && !isSafeHttpUrl(props.href)) ||
+      typeof props.openInNewTab !== "boolean"
+    ) {
+      return { ok: false, message: "链接必须是有效的 http 或 https 地址" };
+    }
+    if (type === "text-link") {
+      if (
+        (props.align !== "left" && props.align !== "center" && props.align !== "right") ||
+        typeof props.underline !== "boolean"
+      ) {
+        return { ok: false, message: "链接的对齐或下划线配置无效" };
+      }
+      return {
+        ok: true,
+        value: {
+          ...appearance.value,
+          ...textStyle.value,
+          text: props.text,
+          href: props.href,
+          align: props.align,
+          openInNewTab: props.openInNewTab,
+          underline: props.underline,
+        },
+      };
+    }
+    if (typeof props.disabled !== "boolean") {
+      return { ok: false, message: "disabled 必须是布尔值" };
+    }
+    return {
+      ok: true,
+      value: {
+        ...appearance.value,
+        ...textStyle.value,
+        text: props.text,
+        href: props.href,
+        openInNewTab: props.openInNewTab,
+        disabled: props.disabled,
+      },
+    };
+  }
+
+  if (type === "switch") {
+    if (
+      typeof props.label !== "string" ||
+      props.label.length > 120 ||
+      typeof props.defaultChecked !== "boolean" ||
+      typeof props.onText !== "string" ||
+      props.onText.length > 24 ||
+      typeof props.offText !== "string" ||
+      props.offText.length > 24
+    ) {
+      return { ok: false, message: "Switch 的标签、默认状态或状态文字配置无效" };
+    }
+    return {
+      ok: true,
+      value: {
+        ...appearance.value,
+        label: props.label,
+        defaultChecked: props.defaultChecked,
+        onText: props.onText,
+        offText: props.offText,
+      },
+    };
+  }
+
+  const options = parseBasicOptions(props.options);
+  if (!options.ok) return options;
+  const optionValues = new Set(options.value.map((option) => option.value));
+
+  if (type === "checkbox-group") {
+    if (
+      !Array.isArray(props.selectedValues) ||
+      !props.selectedValues.every((value) => typeof value === "string" && optionValues.has(value)) ||
+      new Set(props.selectedValues).size !== props.selectedValues.length
+    ) {
+      return { ok: false, message: "selectedValues 必须是不重复且存在于 options 中的值" };
+    }
+    if (
+      typeof props.title !== "string" ||
+      props.title.length > 120 ||
+      typeof props.columns !== "number" ||
+      !Number.isInteger(props.columns) ||
+      props.columns < 1 ||
+      props.columns > 4
+    ) {
+      return { ok: false, message: "多选框标题或列数配置无效" };
+    }
+    return {
+      ok: true,
+      value: {
+        ...appearance.value,
+        title: props.title,
+        options: options.value,
+        selectedValues: props.selectedValues as string[],
+        columns: props.columns,
+      },
+    };
+  }
+
+  if (
+    typeof props.selectedValue !== "string" ||
+    (props.selectedValue.length > 0 && !optionValues.has(props.selectedValue))
+  ) {
+    return { ok: false, message: "selectedValue 必须为空或存在于 options 中" };
+  }
+  if (type === "radio-group") {
+    if (
+      typeof props.title !== "string" ||
+      props.title.length > 120 ||
+      typeof props.columns !== "number" ||
+      !Number.isInteger(props.columns) ||
+      props.columns < 1 ||
+      props.columns > 4
+    ) {
+      return { ok: false, message: "单选框标题或列数配置无效" };
+    }
+    return {
+      ok: true,
+      value: {
+        ...appearance.value,
+        title: props.title,
+        options: options.value,
+        selectedValue: props.selectedValue,
+        columns: props.columns,
+      },
+    };
+  }
+  if (
+    typeof props.label !== "string" ||
+    props.label.length > 120 ||
+    typeof props.placeholder !== "string" ||
+    props.placeholder.length > 80
+  ) {
+    return { ok: false, message: "下拉菜单标签或占位文字配置无效" };
+  }
+  return {
+    ok: true,
+    value: {
+      ...appearance.value,
+      label: props.label,
+      placeholder: props.placeholder,
+      options: options.value,
+      selectedValue: props.selectedValue,
     },
   };
 };

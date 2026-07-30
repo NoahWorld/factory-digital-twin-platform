@@ -14,12 +14,23 @@ export type DashboardNodeType =
   | "radial-gauge"
   | "progress-list"
   | "status-grid";
+export type BasicNodeType =
+  | "plain-text"
+  | "text-link"
+  | "image"
+  | "carousel"
+  | "button"
+  | "switch"
+  | "checkbox-group"
+  | "radio-group"
+  | "select";
 export type Model3DNodeType = "model-3d";
 export type CanvasNodeType =
   | ChartNodeType
   | ShapeNodeType
   | DecorationNodeType
   | DashboardNodeType
+  | BasicNodeType
   | Model3DNodeType;
 
 export type CanvasThemeMode = "dark" | "light" | "custom";
@@ -115,6 +126,101 @@ export type DashboardProps =
   | ProgressListProps
   | StatusGridProps;
 
+export type BasicOption = {
+  label: string;
+  value: string;
+};
+
+export type BasicAppearanceProps = {
+  textColor: string;
+  accentColor: string;
+  fillColor: string;
+  borderColor: string;
+  borderRadius: number;
+};
+
+export type PlainTextProps = BasicAppearanceProps & {
+  text: string;
+  align: "left" | "center" | "right";
+  fontSize: number;
+  fontWeight: number;
+  scrollMode: "none" | "horizontal" | "vertical";
+  scrollDuration: number;
+};
+
+export type TextLinkProps = BasicAppearanceProps & {
+  text: string;
+  href: string;
+  align: "left" | "center" | "right";
+  fontSize: number;
+  fontWeight: number;
+  openInNewTab: boolean;
+  underline: boolean;
+};
+
+export type ImageProps = {
+  alt: string;
+  fit: "contain" | "cover" | "fill";
+  backgroundColor: string;
+  borderColor: string;
+  borderRadius: number;
+};
+
+export type CarouselProps = ImageProps & {
+  autoplay: boolean;
+  interval: number;
+  showArrows: boolean;
+  showDots: boolean;
+};
+
+export type ButtonProps = BasicAppearanceProps & {
+  text: string;
+  href: string;
+  fontSize: number;
+  fontWeight: number;
+  openInNewTab: boolean;
+  disabled: boolean;
+};
+
+export type SwitchProps = BasicAppearanceProps & {
+  label: string;
+  defaultChecked: boolean;
+  onText: string;
+  offText: string;
+};
+
+export type CheckboxGroupProps = BasicAppearanceProps & {
+  title: string;
+  options: BasicOption[];
+  selectedValues: string[];
+  columns: number;
+};
+
+export type RadioGroupProps = BasicAppearanceProps & {
+  title: string;
+  options: BasicOption[];
+  selectedValue: string;
+  columns: number;
+};
+
+export type SelectProps = BasicAppearanceProps & {
+  label: string;
+  placeholder: string;
+  options: BasicOption[];
+  selectedValue: string;
+};
+
+export type BasicProps =
+  | PlainTextProps
+  | TextLinkProps
+  | ImageProps
+  | CarouselProps
+  | ButtonProps
+  | SwitchProps
+  | CheckboxGroupProps
+  | RadioGroupProps
+  | SelectProps;
+
 export type Vector3Tuple = [number, number, number];
 
 export type ModelNodeTransform = {
@@ -155,7 +261,7 @@ export type CanvasNode = {
   width: number;
   height: number;
   zIndex: number;
-  props: ChartProps | ShapeProps | DecorationProps | DashboardProps | Model3DProps;
+  props: ChartProps | ShapeProps | DecorationProps | DashboardProps | BasicProps | Model3DProps;
   resourceRefs: string[];
   dataBindingRefs: string[];
 };
@@ -240,6 +346,15 @@ const minimumNodeSizes: Record<CanvasNodeType, { width: number; height: number }
   "progress-list": { width: 280, height: 220 },
   "status-grid": { width: 300, height: 200 },
   "model-3d": { width: 360, height: 240 },
+  "plain-text": { width: 160, height: 48 },
+  "text-link": { width: 160, height: 48 },
+  image: { width: 160, height: 100 },
+  carousel: { width: 240, height: 160 },
+  button: { width: 120, height: 48 },
+  switch: { width: 160, height: 48 },
+  "checkbox-group": { width: 200, height: 96 },
+  "radio-group": { width: 200, height: 96 },
+  select: { width: 180, height: 64 },
 };
 
 const invalid = (code: string, message: string): never => {
@@ -488,6 +603,63 @@ const requireDashboardBase = (props: Record<string, unknown>): DashboardBaseProp
   sample: requireBoolean(props.sample, "props.sample"),
 });
 
+const requireBasicAppearance = (props: Record<string, unknown>): BasicAppearanceProps => ({
+  textColor: requireColor(props.textColor, "props.textColor"),
+  accentColor: requireColor(props.accentColor, "props.accentColor"),
+  fillColor: requireColor(props.fillColor, "props.fillColor"),
+  borderColor: requireColor(props.borderColor, "props.borderColor"),
+  borderRadius: requireNumber(props.borderRadius, "props.borderRadius", 0, 100),
+});
+
+const requireFontWeight = (value: unknown, label: string): number => {
+  const fontWeight = requireNumber(value, label, 100, 900);
+  if (!Number.isInteger(fontWeight)) {
+    invalid("invalid_canvas_node", `${label} must be an integer.`);
+  }
+  return fontWeight;
+};
+
+const requireSafeHttpUrl = (
+  value: unknown,
+  label: string,
+  allowEmpty: boolean,
+): string => {
+  const url = allowEmpty
+    ? requireString(value, label, 2048)
+    : requireNonEmptyString(value, label, 2048);
+  if (url.length === 0 && allowEmpty) return url;
+  const parsed = (() => {
+    try {
+      return new URL(url);
+    } catch {
+      throw new AppError(400, "invalid_canvas_node", `${label} must be a valid HTTP or HTTPS URL.`);
+    }
+  })();
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    invalid("invalid_canvas_node", `${label} must use the HTTP or HTTPS protocol.`);
+  }
+  return url;
+};
+
+const requireBasicOptions = (value: unknown): BasicOption[] => {
+  if (!Array.isArray(value) || value.length < 1 || value.length > 24) {
+    invalid("invalid_canvas_node", "props.options must contain between 1 and 24 options.");
+  }
+  const values = new Set<string>();
+  return (value as unknown[]).map((rawOption, index) => {
+    const option = requireObject(rawOption, `props.options[${index}]`);
+    const optionValue = requireNonEmptyString(option.value, `props.options[${index}].value`, 80);
+    if (values.has(optionValue)) {
+      invalid("invalid_canvas_node", `props.options[${index}].value must be unique.`);
+    }
+    values.add(optionValue);
+    return {
+      label: requireNonEmptyString(option.label, `props.options[${index}].label`, 80),
+      value: optionValue,
+    };
+  });
+};
+
 const requireStringArray = (value: unknown, label: string, identifiers = false): string[] => {
   if (!Array.isArray(value) || value.length > MAX_POINTS) {
     invalid("invalid_canvas_node", `${label} must contain at most ${MAX_POINTS} strings.`);
@@ -514,6 +686,17 @@ const isDashboardNodeType = (value: unknown): value is DashboardNodeType =>
   value === "progress-list" ||
   value === "status-grid";
 
+const isBasicNodeType = (value: unknown): value is BasicNodeType =>
+  value === "plain-text" ||
+  value === "text-link" ||
+  value === "image" ||
+  value === "carousel" ||
+  value === "button" ||
+  value === "switch" ||
+  value === "checkbox-group" ||
+  value === "radio-group" ||
+  value === "select";
+
 const isCanvasNodeType = (value: unknown): value is CanvasNodeType =>
   value === "line-chart" ||
   value === "bar-chart" ||
@@ -521,6 +704,7 @@ const isCanvasNodeType = (value: unknown): value is CanvasNodeType =>
   value === "circle" ||
   isDecorationNodeType(value) ||
   isDashboardNodeType(value) ||
+  isBasicNodeType(value) ||
   isModel3DNodeType(value);
 
 const validateNode = (value: unknown): CanvasNode => {
@@ -532,7 +716,7 @@ const validateNode = (value: unknown): CanvasNode => {
   const type = rawType as CanvasNodeType;
 
   const props = requireObject(node.props, "canvas node props");
-  let validatedProps: ChartProps | ShapeProps | DecorationProps | DashboardProps | Model3DProps;
+  let validatedProps: ChartProps | ShapeProps | DecorationProps | DashboardProps | BasicProps | Model3DProps;
 
   if (type === "line-chart" || type === "bar-chart") {
     const categories = requireStringArray(props.categories, "props.categories");
@@ -635,6 +819,138 @@ const validateNode = (value: unknown): CanvasNode => {
       });
       validatedProps = { ...base, columns, items };
     }
+  } else if (isBasicNodeType(type)) {
+    if (type === "image" || type === "carousel") {
+      if (props.fit !== "contain" && props.fit !== "cover" && props.fit !== "fill") {
+        invalid("invalid_canvas_node", "props.fit must be contain, cover, or fill.");
+      }
+      const imageProps: ImageProps = {
+        alt: requireString(props.alt, "props.alt", 160),
+        fit: props.fit as ImageProps["fit"],
+        backgroundColor: requireColor(props.backgroundColor, "props.backgroundColor"),
+        borderColor: requireColor(props.borderColor, "props.borderColor"),
+        borderRadius: requireNumber(props.borderRadius, "props.borderRadius", 0, 100),
+      };
+      validatedProps = type === "image"
+        ? imageProps
+        : {
+            ...imageProps,
+            autoplay: requireBoolean(props.autoplay, "props.autoplay"),
+            interval: requireNumber(props.interval, "props.interval", 2, 60),
+            showArrows: requireBoolean(props.showArrows, "props.showArrows"),
+            showDots: requireBoolean(props.showDots, "props.showDots"),
+          };
+    } else {
+      const appearance = requireBasicAppearance(props);
+      if (type === "plain-text" || type === "text-link" || type === "button") {
+        const fontSize = requireNumber(props.fontSize, "props.fontSize", 10, 120);
+        const fontWeight = requireFontWeight(props.fontWeight, "props.fontWeight");
+        const text = requireNonEmptyString(
+          props.text,
+          "props.text",
+          type === "plain-text" ? 1000 : 120,
+        );
+        if (type === "plain-text") {
+          if (
+            props.scrollMode !== "none" &&
+            props.scrollMode !== "horizontal" &&
+            props.scrollMode !== "vertical"
+          ) {
+            invalid("invalid_canvas_node", "props.scrollMode must be none, horizontal, or vertical.");
+          }
+          validatedProps = {
+            ...appearance,
+            text,
+            align: requireAlignment(props.align, "props.align"),
+            fontSize,
+            fontWeight,
+            scrollMode: props.scrollMode as PlainTextProps["scrollMode"],
+            scrollDuration: requireNumber(props.scrollDuration, "props.scrollDuration", 3, 120),
+          };
+        } else if (type === "text-link") {
+          validatedProps = {
+            ...appearance,
+            text,
+            href: requireSafeHttpUrl(props.href, "props.href", false),
+            align: requireAlignment(props.align, "props.align"),
+            fontSize,
+            fontWeight,
+            openInNewTab: requireBoolean(props.openInNewTab, "props.openInNewTab"),
+            underline: requireBoolean(props.underline, "props.underline"),
+          };
+        } else {
+          validatedProps = {
+            ...appearance,
+            text,
+            href: requireSafeHttpUrl(props.href, "props.href", true),
+            fontSize,
+            fontWeight,
+            openInNewTab: requireBoolean(props.openInNewTab, "props.openInNewTab"),
+            disabled: requireBoolean(props.disabled, "props.disabled"),
+          };
+        }
+      } else if (type === "switch") {
+        validatedProps = {
+          ...appearance,
+          label: requireString(props.label, "props.label", 120),
+          defaultChecked: requireBoolean(props.defaultChecked, "props.defaultChecked"),
+          onText: requireString(props.onText, "props.onText", 24),
+          offText: requireString(props.offText, "props.offText", 24),
+        };
+      } else {
+        const options = requireBasicOptions(props.options);
+        const optionValues = new Set(options.map((option) => option.value));
+        if (type === "checkbox-group") {
+          const selectedValues = requireStringArray(
+            props.selectedValues,
+            "props.selectedValues",
+          );
+          if (
+            new Set(selectedValues).size !== selectedValues.length ||
+            selectedValues.some((value) => !optionValues.has(value))
+          ) {
+            invalid("invalid_canvas_node", "props.selectedValues must contain unique values from props.options.");
+          }
+          const columns = requireNumber(props.columns, "props.columns", 1, 4);
+          if (!Number.isInteger(columns)) {
+            invalid("invalid_canvas_node", "props.columns must be an integer.");
+          }
+          validatedProps = {
+            ...appearance,
+            title: requireString(props.title, "props.title", 120),
+            options,
+            selectedValues,
+            columns,
+          };
+        } else {
+          const selectedValue = requireString(props.selectedValue, "props.selectedValue", 80);
+          if (selectedValue.length > 0 && !optionValues.has(selectedValue)) {
+            invalid("invalid_canvas_node", "props.selectedValue must be empty or match a value from props.options.");
+          }
+          if (type === "radio-group") {
+            const columns = requireNumber(props.columns, "props.columns", 1, 4);
+            if (!Number.isInteger(columns)) {
+              invalid("invalid_canvas_node", "props.columns must be an integer.");
+            }
+            validatedProps = {
+              ...appearance,
+              title: requireString(props.title, "props.title", 120),
+              options,
+              selectedValue,
+              columns,
+            };
+          } else {
+            validatedProps = {
+              ...appearance,
+              label: requireString(props.label, "props.label", 120),
+              placeholder: requireString(props.placeholder, "props.placeholder", 80),
+              options,
+              selectedValue,
+            };
+          }
+        }
+      }
+    }
   } else {
     validatedProps = {
       backgroundColor: requireColor(props.backgroundColor, "props.backgroundColor"),
@@ -681,6 +997,20 @@ const validateNode = (value: unknown): CanvasNode => {
   const resourceRefs = requireStringArray(node.resourceRefs, "node.resourceRefs", true);
   if (type === "model-3d" && resourceRefs.length > 1) {
     invalid("invalid_canvas_node", "A 3D model component can reference at most one model asset.");
+  }
+  if (type === "image" && resourceRefs.length > 1) {
+    invalid("invalid_canvas_node", "An image component can reference at most one image asset.");
+  }
+  if (type === "carousel" && resourceRefs.length > 12) {
+    invalid("invalid_canvas_node", "A carousel component can reference at most 12 image assets.");
+  }
+  if (
+    isBasicNodeType(type) &&
+    type !== "image" &&
+    type !== "carousel" &&
+    resourceRefs.length > 0
+  ) {
+    invalid("invalid_canvas_node", "This basic component type does not accept resource references.");
   }
 
   const validated: CanvasNode = {
@@ -882,6 +1212,24 @@ export const applyCanvasPatch = async (
         400,
         "ambiguous_model_node_appearance",
         `Canvas node ${node.id} cannot configure the appearance of duplicate model node name ${JSON.stringify(duplicateAppearanceName)}. Rename the model nodes and upload the model again.`,
+      );
+    }
+  }
+
+  const imageAssetRefs = [...new Set(
+    patch.upsertNodes
+      .filter((node) => node.type === "image" || node.type === "carousel")
+      .flatMap((node) => node.resourceRefs),
+  )];
+  for (const assetId of imageAssetRefs) {
+    const imageAsset = await env.DB.prepare(
+      "SELECT id FROM image_assets WHERE id = ? AND project_id = ?",
+    ).bind(assetId, projectId).first<{ id: string }>();
+    if (!imageAsset) {
+      throw new AppError(
+        400,
+        "invalid_image_asset_reference",
+        `Image asset ${assetId} does not belong to project ${projectId}.`,
       );
     }
   }
