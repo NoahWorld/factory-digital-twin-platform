@@ -7,11 +7,12 @@
 | 临时 API 运行环境 | Cloudflare Workers 免费计划 | 已创建并公网验证 |
 | Worker 名称 | `factory-digital-twin-api` | 已创建 |
 | 临时访问地址 | `https://factory-digital-twin-api.resetshi.workers.dev/` | 已返回 HTTP 200 |
-| 当前代码 | Cloudflare Hello World | 仅验证部署链路，尚无业务 API |
+| 当前代码 | Vite 产品页、配置台与 Worker 业务 API | 已同域发布；公网浏览器渲染与深层 SPA 路由已验证 |
 | 自定义域名 | 未绑定 | 暂不需要 |
 | API Token / 密钥 | 未创建 | 暂不需要 |
+| `BOOTSTRAP_TOKEN` | 尚未设置 | 首个管理员提交会返回 `503 bootstrap_not_configured`，设置前不创建默认账号 |
 | R2 模型文件桶 | 本地可模拟，远程账号尚未启用 R2 订阅 | 远程暂不声明 `MODEL_ASSETS`；模型接口明确返回 503 |
-| D1 配置数据库 | `factory-digital-twin-config` | 已创建，UUID 为 `69d2f423-b115-4dfc-b347-41d70f214c67` |
+| D1 配置数据库 | `factory-digital-twin-config` | 已创建；UUID 为 `69d2f423-b115-4dfc-b347-41d70f214c67`；0001–0008 已于 2026-07-30 全部应用 |
 
 Cloudflare Workers 在这里充当临时的无服务器 API 入口，不等同于一台传统服务器。当前部署由同一 Worker 域名提供 Vite 静态前端和 `/api`，保持登录 Cookie 同源。它适合先验证项目配置、数据网关和小流量展示接口；客户内网数据采集、持久化大数据、模型重处理等能力仍需后续服务器或客户现场部署承载。
 
@@ -26,7 +27,7 @@ Cloudflare Workers 在这里充当临时的无服务器 API 入口，不等同�
 
 ## 首个原型需要接入的内容
 
-P1 原型的 Worker 配置和 D1 迁移已纳入 `apps/api/`；云端数据库尚未执行业务表迁移。后续只通过仓库中的迁移脚本变更 schema，不在 Cloudflare 控制台中手工维护代码或表结构。当前最小接口为：
+P1 原型的 Worker 配置和 D1 迁移已纳入 `apps/api/`，云端数据库已经执行 0001–0008。后续只通过仓库中的迁移脚本变更 schema，不在 Cloudflare 控制台中手工维护代码或表结构。当前最小接口为：
 
 | 接口 | 用途 | 备注 |
 | --- | --- | --- |
@@ -50,7 +51,7 @@ P1 原型的 Worker 配置和 D1 迁移已纳入 `apps/api/`；云端数据库�
 1. 前端只读取 `PUBLIC_API_BASE_URL`，不把 `workers.dev` 域名写死在组件中。
 2. 后端路由、数据 schema、认证和错误格式必须与运行平台无关；Cloudflare Worker 和后续 Docker/Node 服务都实现同一 API 契约。
 3. 数据访问通过 repository/adapter 层。若以后使用 D1、PostgreSQL 或客户数据库，只替换适配器和迁移脚本。
-4. 模型文件通过对象存储抽象访问。Cloudflare 验证环境使用 R2；现场部署保持资源 ID、对象键与元数据契约，存储适配器替换为 MinIO/S3，禁止让画布节点依赖 R2 URL。
+4. 模型文件通过对象存储抽象访问。Cloudflare 验证环境启用模型存储时使用 R2；当前 R2 未开通，接口明确降级。现场部署保持资源 ID、对象键与元数据契约，存储适配器替换为 MinIO/S3，禁止让画布节点依赖 R2 URL。
 5. WebSocket/SSE 消息统一为 `assetId + timestamp + values`；不可让前端依赖 Cloudflare 专属消息对象。
 6. 所有配置、数据库表和对象路径必须可导出，迁移要以脚本和版本化 schema 完成，不依赖控制台手工状态。
 

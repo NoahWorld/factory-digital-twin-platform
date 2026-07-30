@@ -3,6 +3,7 @@
   "name": "factory-digital-twin-api",
   "main": "src/index.ts",
   "compatibility_date": "2026-07-15",
+  "preview_urls": false,
   "observability": {
     "enabled": true
   },

@@ -13,6 +13,7 @@ apps/
 当前 Cloudflare 资源：
 
 - Worker：`factory-digital-twin-api`
+- 公网地址：`https://factory-digital-twin-api.resetshi.workers.dev/`
 - D1：`factory-digital-twin-config`
 - D1 UUID：`69d2f423-b115-4dfc-b347-41d70f214c67`
 - R2 目标绑定：`MODEL_ASSETS` → `factory-digital-twin-model-assets`（本地可直接模拟；当前账号尚未启用 R2 订阅，远程云验证环境暂不绑定）
@@ -75,13 +76,13 @@ pnpm check
 pnpm build
 ```
 
-本地数据库迁移包括 `0001_initial.sql`（项目、资产与数据配置）、`0002_access_control.sql`（用户、角色、会话与项目成员）、`0003_canvas_foundation.sql`（画布元数据与组件节点）、`0004_canvas_shape_nodes.sql`（基础图形）、`0005_canvas_decoration_nodes.sql`（大屏点缀组件）、`0006_model_assets_and_3d_node.sql`（模型资源与 3D 组件）、`0007_dashboard_components.sql`（指标卡、环形进度、进度排行与状态矩阵）和 `0008_canvas_themes.sql`（画布主题元数据）。云端 D1 尚未执行这些业务迁移。模型上传还要求账号先在 Cloudflare 控制台完成 R2 订阅开通，再创建 R2 桶：
+数据库迁移包括 `0001_initial.sql`（项目、资产与数据配置）、`0002_access_control.sql`（用户、角色、会话与项目成员）、`0003_canvas_foundation.sql`（画布元数据与组件节点）、`0004_canvas_shape_nodes.sql`（基础图形）、`0005_canvas_decoration_nodes.sql`（大屏点缀组件）、`0006_model_assets_and_3d_node.sql`（模型资源与 3D 组件）、`0007_dashboard_components.sql`（指标卡、环形进度、进度排行与状态矩阵）和 `0008_canvas_themes.sql`（画布主题元数据）。云端 D1 已于 2026-07-30 应用全部 8 个迁移；后续新增迁移仍必须通过仓库脚本显式执行。模型上传还要求账号先在 Cloudflare 控制台完成 R2 订阅开通，再创建 R2 桶：
 
 ```bash
 npx wrangler r2 bucket create factory-digital-twin-model-assets
 ```
 
-然后显式运行迁移：
+创建新迁移后显式应用：
 
 ```bash
 pnpm --filter @factory-twin/api db:migrate:remote
@@ -89,6 +90,6 @@ pnpm --filter @factory-twin/api db:migrate:remote
 
 账号未启用 R2 时，云验证配置不声明 `MODEL_ASSETS` 绑定：页面、身份、项目、模板与 2D 画布仍可部署，但 `/health` 明确返回 `degraded`，模型上传与读取返回 `503 model_storage_not_configured`。不得把模型改存 D1 或用假成功绕过这一限制。
 
-然后在 Cloudflare Worker 的受控密钥配置中设置 `BOOTSTRAP_TOKEN`，构建前端并部署 Worker。不要创建默认账号，也不要在源码、迁移或前端中写入任何密码或真实令牌。
+当前公网环境尚未设置 `BOOTSTRAP_TOKEN`，所以首个管理员提交会明确返回 `503 bootstrap_not_configured`；公开产品页和初始化表单可以访问，但必须先在 Cloudflare Worker 的受控密钥配置中设置该令牌，才能创建唯一的首个管理员。不要创建默认账号，也不要在源码、迁移或前端中写入任何密码或真实令牌。
 
 产品范围、数据约束与开发规则见 [AGENTS.md](./AGENTS.md) 和 [启动准备方案](./工厂数字孪生平台-启动准备与首期方案.md)。
