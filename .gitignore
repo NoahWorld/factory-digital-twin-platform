@@ -1,5 +1,9 @@
-node_modules/
-dist/
+# Workspace dependencies and generated bundles (including Three.js chunks).
+# Do not add a trailing slash: this also ignores temporary workspace symlinks.
+node_modules
+dist
+.vite/
+
 .wrangler/
 .dev.vars
 .env
