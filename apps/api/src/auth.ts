@@ -86,7 +86,10 @@ export class AppError extends Error {
 }
 
 const encoder = new TextEncoder();
-const DEFAULT_PASSWORD_ITERATIONS = 310_000;
+// Cloudflare Workers Web Crypto rejects PBKDF2 iteration counts above 100,000.
+// Each user record stores its own count so a future runtime/algorithm migration
+// can remain explicit instead of silently changing existing password records.
+const DEFAULT_PASSWORD_ITERATIONS = 100_000;
 const DEFAULT_SESSION_TTL_HOURS = 24;
 const SESSION_COOKIE_NAME = "factory_twin_session";
 
