@@ -10,7 +10,7 @@
 | 当前代码 | Vite 产品页、配置台与 Worker 业务 API | 已同域发布；公网浏览器渲染与深层 SPA 路由已验证 |
 | 自定义域名 | 未绑定 | 暂不需要 |
 | API Token / 密钥 | 未创建 | 暂不需要 |
-| `BOOTSTRAP_TOKEN` | 尚未设置 | 首个管理员提交会返回 `503 bootstrap_not_configured`，设置前不创建默认账号 |
+| `BOOTSTRAP_TOKEN` | 已于 2026-07-30 设置 | 值只保存在 Worker 受控密钥中，不写入仓库；用于创建唯一的首个管理员 |
 | R2 模型文件桶 | 本地可模拟，远程账号尚未启用 R2 订阅 | 远程暂不声明 `MODEL_ASSETS`；模型接口明确返回 503 |
 | D1 配置数据库 | `factory-digital-twin-config` | 已创建；UUID 为 `69d2f423-b115-4dfc-b347-41d70f214c67`；0001–0008 已于 2026-07-30 全部应用 |
 

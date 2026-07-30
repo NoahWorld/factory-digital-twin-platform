@@ -90,6 +90,6 @@ pnpm --filter @factory-twin/api db:migrate:remote
 
 账号未启用 R2 时，云验证配置不声明 `MODEL_ASSETS` 绑定：页面、身份、项目、模板与 2D 画布仍可部署，但 `/health` 明确返回 `degraded`，模型上传与读取返回 `503 model_storage_not_configured`。不得把模型改存 D1 或用假成功绕过这一限制。
 
-当前公网环境尚未设置 `BOOTSTRAP_TOKEN`，所以首个管理员提交会明确返回 `503 bootstrap_not_configured`；公开产品页和初始化表单可以访问，但必须先在 Cloudflare Worker 的受控密钥配置中设置该令牌，才能创建唯一的首个管理员。不要创建默认账号，也不要在源码、迁移或前端中写入任何密码或真实令牌。
+当前公网环境已设置 `BOOTSTRAP_TOKEN`，值只保存在 Cloudflare Worker 的受控密钥配置中，不进入仓库或前端。数据库还没有用户时，可以使用该令牌创建唯一的首个管理员；创建完成后初始化接口会自动关闭。不要创建默认账号，也不要在源码、迁移或前端中写入任何密码或真实令牌。
 
 产品范围、数据约束与开发规则见 [AGENTS.md](./AGENTS.md) 和 [启动准备方案](./工厂数字孪生平台-启动准备与首期方案.md)。
