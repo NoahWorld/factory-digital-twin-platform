@@ -15,7 +15,7 @@ apps/
 - Worker：`factory-digital-twin-api`
 - D1：`factory-digital-twin-config`
 - D1 UUID：`69d2f423-b115-4dfc-b347-41d70f214c67`
-- R2 绑定：`MODEL_ASSETS` → `factory-digital-twin-model-assets`（本地可直接模拟；远程桶尚未创建）
+- R2 目标绑定：`MODEL_ASSETS` → `factory-digital-twin-model-assets`（本地可直接模拟；当前账号尚未启用 R2 订阅，远程云验证环境暂不绑定）
 
 ## 已实现的第一期基础能力
 
@@ -60,6 +60,8 @@ pnpm dev:web
 
 本地前端通过 Vite 代理以同源方式访问 `/api`，从而能正确使用 HttpOnly 会话 Cookie。正式部署也应让前端与 API 位于同一站点或经同一反向代理暴露；不要把 `workers.dev` 域名写进组件代码。
 
+当前 Cloudflare 验证环境由同一个 Worker 同域承载 Vite 静态前端与 `/api`。先构建 `apps/web/dist`，再从 `apps/api` 部署 Worker；Wrangler 会上传前端静态资源，并只让 `/api/*` 和 `/health` 优先进入 Worker 代码。
+
 如需在单独的同源 API 网关下运行，可在 `apps/web/.env.local` 设置 API 基地址：
 
 ```dotenv
@@ -73,7 +75,7 @@ pnpm check
 pnpm build
 ```
 
-本地数据库迁移包括 `0001_initial.sql`（项目、资产与数据配置）、`0002_access_control.sql`（用户、角色、会话与项目成员）、`0003_canvas_foundation.sql`（画布元数据与组件节点）、`0004_canvas_shape_nodes.sql`（基础图形）、`0005_canvas_decoration_nodes.sql`（大屏点缀组件）、`0006_model_assets_and_3d_node.sql`（模型资源与 3D 组件）、`0007_dashboard_components.sql`（指标卡、环形进度、进度排行与状态矩阵）和 `0008_canvas_themes.sql`（画布主题元数据）。云端 D1 尚未执行这些业务迁移。远程部署前先创建 R2 桶：
+本地数据库迁移包括 `0001_initial.sql`（项目、资产与数据配置）、`0002_access_control.sql`（用户、角色、会话与项目成员）、`0003_canvas_foundation.sql`（画布元数据与组件节点）、`0004_canvas_shape_nodes.sql`（基础图形）、`0005_canvas_decoration_nodes.sql`（大屏点缀组件）、`0006_model_assets_and_3d_node.sql`（模型资源与 3D 组件）、`0007_dashboard_components.sql`（指标卡、环形进度、进度排行与状态矩阵）和 `0008_canvas_themes.sql`（画布主题元数据）。云端 D1 尚未执行这些业务迁移。模型上传还要求账号先在 Cloudflare 控制台完成 R2 订阅开通，再创建 R2 桶：
 
 ```bash
 npx wrangler r2 bucket create factory-digital-twin-model-assets
@@ -85,6 +87,8 @@ npx wrangler r2 bucket create factory-digital-twin-model-assets
 pnpm --filter @factory-twin/api db:migrate:remote
 ```
 
-然后在 Cloudflare Worker 的受控密钥配置中设置 `BOOTSTRAP_TOKEN`，再部署 API。不要创建默认账号，也不要在源码、迁移或前端中写入任何密码或真实令牌。
+账号未启用 R2 时，云验证配置不声明 `MODEL_ASSETS` 绑定：页面、身份、项目、模板与 2D 画布仍可部署，但 `/health` 明确返回 `degraded`，模型上传与读取返回 `503 model_storage_not_configured`。不得把模型改存 D1 或用假成功绕过这一限制。
+
+然后在 Cloudflare Worker 的受控密钥配置中设置 `BOOTSTRAP_TOKEN`，构建前端并部署 Worker。不要创建默认账号，也不要在源码、迁移或前端中写入任何密码或真实令牌。
 
 产品范围、数据约束与开发规则见 [AGENTS.md](./AGENTS.md) 和 [启动准备方案](./工厂数字孪生平台-启动准备与首期方案.md)。

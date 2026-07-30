@@ -64,6 +64,18 @@ const textDecoder = new TextDecoder();
 
 const asArray = (value: unknown): unknown[] => Array.isArray(value) ? value : [];
 
+const requireModelStorage = (env: AppEnv) => {
+  if (!env.MODEL_ASSETS) {
+    throw new AppError(
+      503,
+      "model_storage_not_configured",
+      "Model storage is not configured for this deployment. Enable the R2 subscription and restore the MODEL_ASSETS binding before uploading or loading models.",
+    );
+  }
+
+  return env.MODEL_ASSETS;
+};
+
 const validateFilename = (value: string | null): { filename: string; format: ModelFormat } => {
   if (!value) {
     throw new AppError(400, "missing_model_filename", "Model uploads require a filename query parameter.");
@@ -254,6 +266,7 @@ export const uploadModelAsset = async (
   userId: string,
   rawFilename: string | null,
 ): Promise<ModelAsset> => {
+  const modelStorage = requireModelStorage(env);
   const { filename, format } = validateFilename(rawFilename);
   const contentLength = Number(request.headers.get("content-length"));
   if (Number.isFinite(contentLength) && contentLength > MAX_MODEL_BYTES) {
@@ -276,7 +289,7 @@ export const uploadModelAsset = async (
   const contentType = format === "glb" ? "model/gltf-binary" : "model/gltf+json";
   const now = new Date().toISOString();
 
-  await env.MODEL_ASSETS.put(objectKey, buffer, {
+  await modelStorage.put(objectKey, buffer, {
     httpMetadata: { contentType },
     customMetadata: { assetId, projectId, sha256, originalFilename: filename },
   });
@@ -300,7 +313,7 @@ export const uploadModelAsset = async (
       now,
     ).run();
   } catch (error) {
-    await env.MODEL_ASSETS.delete(objectKey);
+    await modelStorage.delete(objectKey);
     throw new AppError(
       500,
       "model_asset_metadata_write_failed",
@@ -327,8 +340,9 @@ export const modelAssetContentResponse = async (
   projectId: string,
   assetId: string,
 ): Promise<Response> => {
+  const modelStorage = requireModelStorage(env);
   const row = await getModelAssetRow(env, projectId, assetId);
-  const object = await env.MODEL_ASSETS.get(row.object_key);
+  const object = await modelStorage.get(row.object_key);
   if (!object) {
     throw new AppError(500, "model_asset_object_missing", `Model asset ${assetId} exists in D1 but its object is missing from storage.`);
   }

@@ -293,13 +293,18 @@ const deleteProject = async (
 
   let deletedModelObjectCount = 0;
   let warning: string | null = null;
-  try {
-    for (const row of objectRows.results) {
-      await env.MODEL_ASSETS.delete(row.object_key);
-      deletedModelObjectCount += 1;
+  const modelStorage = env.MODEL_ASSETS;
+  if (objectRows.results.length > 0 && !modelStorage) {
+    warning = `The project was deleted, but ${objectRows.results.length} model object(s) could not be removed because model storage is not configured.`;
+  } else if (modelStorage) {
+    try {
+      for (const row of objectRows.results) {
+        await modelStorage.delete(row.object_key);
+        deletedModelObjectCount += 1;
+      }
+    } catch (error) {
+      warning = `The project was deleted, but model object cleanup stopped after ${deletedModelObjectCount} of ${objectRows.results.length} object(s): ${error instanceof Error ? error.message : String(error)}`;
     }
-  } catch (error) {
-    warning = `The project was deleted, but model object cleanup stopped after ${deletedModelObjectCount} of ${objectRows.results.length} object(s): ${error instanceof Error ? error.message : String(error)}`;
   }
 
   return { deletedProjectId: projectId, deletedModelObjectCount, warning };
@@ -315,9 +320,14 @@ const handleApiRequest = async (
   const { pathname } = url;
 
   if (method === "GET" && pathname === "/health") {
+    const modelStorageConfigured = Boolean(env.MODEL_ASSETS);
     return json({
-      status: "ok",
+      status: modelStorageConfigured ? "ok" : "degraded",
       service: "factory-digital-twin-api",
+      dependencies: {
+        database: "configured",
+        modelStorage: modelStorageConfigured ? "configured" : "not_configured",
+      },
       timestamp: new Date().toISOString(),
       requestId,
     });

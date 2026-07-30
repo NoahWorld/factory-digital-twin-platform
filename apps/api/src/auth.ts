@@ -36,7 +36,7 @@ export type ObjectBucket = {
 
 export type AppEnv = {
   DB: Database;
-  MODEL_ASSETS: ObjectBucket;
+  MODEL_ASSETS?: ObjectBucket;
   BOOTSTRAP_TOKEN?: string;
   SESSION_TTL_HOURS?: string;
 };

@@ -10,17 +10,17 @@
 | 当前代码 | Cloudflare Hello World | 仅验证部署链路，尚无业务 API |
 | 自定义域名 | 未绑定 | 暂不需要 |
 | API Token / 密钥 | 未创建 | 暂不需要 |
-| R2 模型文件桶 | 本地绑定已配置，远程未创建 | `MODEL_ASSETS` / `factory-digital-twin-model-assets`；远程部署前显式创建 |
+| R2 模型文件桶 | 本地可模拟，远程账号尚未启用 R2 订阅 | 远程暂不声明 `MODEL_ASSETS`；模型接口明确返回 503 |
 | D1 配置数据库 | `factory-digital-twin-config` | 已创建，UUID 为 `69d2f423-b115-4dfc-b347-41d70f214c67` |
 
-Cloudflare Workers 在这里充当临时的无服务器 API 入口，不等同于一台传统服务器。它适合先验证项目配置、数据网关和小流量展示接口；客户内网数据采集、持久化大数据、模型重处理等能力仍需后续服务器或客户现场部署承载。
+Cloudflare Workers 在这里充当临时的无服务器 API 入口，不等同于一台传统服务器。当前部署由同一 Worker 域名提供 Vite 静态前端和 `/api`，保持登录 Cookie 同源。它适合先验证项目配置、数据网关和小流量展示接口；客户内网数据采集、持久化大数据、模型重处理等能力仍需后续服务器或客户现场部署承载。
 
 ## 当前阶段不创建的资源
 
 - 不创建 Cloudflare API Token、Access Token、OAuth 凭证或服务密钥。
 - 不上传真实工厂模型、客户数据、接口样本或证书。
 - 不绑定正式域名，不设置生产路由，不接入支付项目。
-- R2 已被 3D 组件原型明确使用；远程桶只有在部署模型上传功能时才创建。KV、Queues、Durable Objects 等其余资源仍不提前创建。
+- R2 已被 3D 组件原型明确使用；启用 R2 需要在 Cloudflare 完成订阅结账流程，因此未得到明确计费授权前不代替用户开通。远程未绑定期间，健康检查标为 `degraded`，模型接口明确返回 `503 model_storage_not_configured`，不得改存 D1 或伪装成功。KV、Queues、Durable Objects 等其余资源仍不提前创建。
 
 这样可以保持免费试验环境最小化，也避免把尚未确定的产品架构锁死在某个云厂商服务上。
 

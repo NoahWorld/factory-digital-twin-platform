@@ -6,18 +6,20 @@
   "observability": {
     "enabled": true
   },
+  "assets": {
+    "directory": "../web/dist",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": [
+      "/api/*",
+      "/health"
+    ]
+  },
   "d1_databases": [
     {
       "binding": "DB",
       "database_name": "factory-digital-twin-config",
       "database_id": "69d2f423-b115-4dfc-b347-41d70f214c67",
       "migrations_dir": "migrations"
-    }
-  ],
-  "r2_buckets": [
-    {
-      "binding": "MODEL_ASSETS",
-      "bucket_name": "factory-digital-twin-model-assets"
     }
   ]
 }
