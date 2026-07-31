@@ -4449,24 +4449,6 @@ input:focus {
   color: var(--product-text);
 }
 
-.product-version-switch {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  padding: 7px 10px;
-  border: 1px solid rgba(180, 240, 104, 0.24);
-  color: var(--product-green);
-  font-size: 0.7rem;
-  font-weight: 760;
-  letter-spacing: 0.04em;
-  transition: border-color 160ms ease, background 160ms ease;
-}
-
-.product-version-switch:hover {
-  border-color: var(--product-green);
-  background: rgba(180, 240, 104, 0.08);
-}
-
 .product-nav-entry {
   display: inline-flex;
   min-height: 42px;
@@ -6393,7 +6375,6 @@ input:focus {
   gap: 10px;
 }
 
-.industrial-version-switch,
 .industrial-platform-entry {
   display: inline-flex;
   min-height: 42px;
@@ -6401,24 +6382,6 @@ input:focus {
   justify-content: center;
   font-size: 0.72rem;
   font-weight: 780;
-}
-
-.industrial-version-switch {
-  gap: 10px;
-  padding: 0 15px;
-  border: 1px solid var(--industrial-line);
-  color: var(--industrial-muted);
-  background: rgba(29, 31, 27, 0.82);
-}
-
-.industrial-version-switch i {
-  color: var(--industrial-amber);
-  font-style: normal;
-}
-
-.industrial-version-switch:hover {
-  border-color: var(--industrial-line-strong);
-  color: var(--industrial-text);
 }
 
 .industrial-platform-entry {
@@ -7477,6 +7440,279 @@ input:focus {
   line-height: 1.75;
 }
 
+.industrial-architecture {
+  width: 100%;
+  padding-right: max(28px, calc((100vw - 1500px) / 2));
+  padding-left: max(28px, calc((100vw - 1500px) / 2));
+  border-top: 1px solid var(--industrial-line);
+  background:
+    linear-gradient(rgba(209, 214, 199, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(209, 214, 199, 0.035) 1px, transparent 1px),
+    #151713;
+  background-size: 28px 28px;
+}
+
+.industrial-architecture-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  gap: 22px;
+}
+
+.industrial-architecture-card {
+  border: 1px solid var(--industrial-line-strong);
+  background: rgba(31, 34, 28, 0.96);
+  box-shadow: 10px 10px 0 rgba(0, 0, 0, 0.15);
+}
+
+.industrial-architecture-card > header {
+  display: flex;
+  min-height: 100px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 22px 24px;
+  border-bottom: 1px solid var(--industrial-line);
+  background: #282b24;
+}
+
+.industrial-architecture-card > header > div {
+  display: grid;
+  gap: 7px;
+}
+
+.industrial-architecture-card > header span {
+  color: var(--industrial-orange);
+  font-size: 0.5rem;
+  font-weight: 900;
+  letter-spacing: 0.14em;
+}
+
+.industrial-architecture-card > header h3 {
+  margin: 0;
+  font-size: 1.55rem;
+  letter-spacing: -0.03em;
+}
+
+.industrial-architecture-card > header > small {
+  padding: 7px 9px;
+  border: 1px solid var(--industrial-line);
+  color: var(--industrial-muted);
+  font-size: 0.45rem;
+  font-weight: 850;
+  letter-spacing: 0.12em;
+}
+
+.industrial-architecture-diagram {
+  display: grid;
+  align-content: start;
+  min-height: 630px;
+  padding: 26px;
+}
+
+.industrial-arch-node,
+.industrial-arch-layer,
+.industrial-arch-module-grid > div,
+.industrial-arch-split > div,
+.industrial-storage-row > div {
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 5px;
+  border: 1px solid var(--industrial-line);
+  text-align: center;
+}
+
+.industrial-arch-node,
+.industrial-arch-layer {
+  min-height: 76px;
+  padding: 12px;
+  background: #292c25;
+}
+
+.industrial-arch-node-primary {
+  border-color: rgba(255, 106, 26, 0.68);
+  background: #321c10;
+}
+
+.industrial-architecture-diagram small {
+  color: var(--industrial-orange);
+  font-size: 0.44rem;
+  font-weight: 900;
+  letter-spacing: 0.13em;
+}
+
+.industrial-architecture-diagram strong {
+  color: var(--industrial-text);
+  font-size: 0.78rem;
+}
+
+.industrial-architecture-diagram span {
+  color: var(--industrial-muted);
+  font-size: 0.56rem;
+  line-height: 1.45;
+}
+
+.industrial-arch-arrow {
+  display: grid;
+  min-height: 38px;
+  place-items: center;
+  color: var(--industrial-amber);
+  font-size: 0.82rem;
+}
+
+.industrial-arch-module-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.industrial-arch-module-grid > div {
+  min-height: 74px;
+  background:
+    linear-gradient(135deg, rgba(243, 181, 63, 0.05), transparent 60%),
+    #242720;
+}
+
+.industrial-arch-layer {
+  border-color: rgba(243, 181, 63, 0.42);
+  background: #25271f;
+}
+
+.industrial-arch-layer strong {
+  color: var(--industrial-amber);
+}
+
+.industrial-arch-split {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.industrial-arch-split > div {
+  min-height: 78px;
+  padding: 10px;
+  background: #1b1e19;
+}
+
+.industrial-architecture-card > footer {
+  display: flex;
+  min-height: 66px;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 20px;
+  border-top: 1px solid var(--industrial-line);
+  background: #191b17;
+}
+
+.industrial-architecture-card > footer > span {
+  padding: 6px 8px;
+  border: 1px solid var(--industrial-line);
+  color: var(--industrial-muted);
+  font-size: 0.5rem;
+}
+
+.industrial-onsite-diagram {
+  min-height: 630px;
+}
+
+.industrial-gateway-layer {
+  border-color: rgba(255, 106, 26, 0.42);
+}
+
+.industrial-arch-branch {
+  position: relative;
+  display: grid;
+  min-height: 42px;
+  grid-template-columns: 1fr 1fr;
+  align-items: end;
+  justify-items: center;
+  color: var(--industrial-amber);
+  font-size: 0.7rem;
+}
+
+.industrial-arch-branch i {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 50%;
+  height: 23px;
+  border-right: 1px solid var(--industrial-line-strong);
+  border-bottom: 1px solid var(--industrial-line-strong);
+  border-left: 1px solid var(--industrial-line-strong);
+  transform: translateX(-50%);
+}
+
+.industrial-service-split {
+  margin-top: 0;
+}
+
+.industrial-service-split > div {
+  min-height: 94px;
+}
+
+.industrial-service-split > div:first-child {
+  border-color: rgba(243, 181, 63, 0.4);
+}
+
+.industrial-service-split > div > span {
+  max-width: 180px;
+}
+
+.industrial-storage-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.industrial-storage-row > div {
+  min-height: 86px;
+  padding: 9px;
+  background: #242720;
+}
+
+.industrial-field-source {
+  display: flex;
+  min-height: 54px;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  margin-top: 8px;
+  border: 1px dashed var(--industrial-line-strong);
+  background: rgba(17, 19, 16, 0.5);
+}
+
+.industrial-field-source i {
+  width: 5px;
+  height: 5px;
+  background: var(--industrial-orange);
+  transform: rotate(45deg);
+}
+
+.industrial-architecture-card > footer.industrial-migration-map {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.industrial-migration-map > span {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  text-align: center;
+}
+
+.industrial-migration-map small {
+  color: var(--industrial-orange);
+  font-size: 0.43rem;
+}
+
+.industrial-migration-map i {
+  color: var(--industrial-amber);
+  font-style: normal;
+}
+
 .industrial-deployment {
   position: relative;
   display: grid;
@@ -7758,6 +7994,15 @@ input:focus {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
+  .industrial-architecture-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .industrial-architecture-card {
+    width: min(100%, 780px);
+    justify-self: center;
+  }
+
   .industrial-stage-list li:nth-child(4) {
     border-left: 1px solid var(--industrial-line-strong);
   }
@@ -7803,14 +8048,8 @@ input:focus {
   }
 
   .industrial-brand small,
-  .industrial-version-switch span,
   .industrial-platform-entry {
     display: none;
-  }
-
-  .industrial-version-switch {
-    width: 40px;
-    padding: 0;
   }
 
   .industrial-hero {
@@ -7975,6 +8214,52 @@ input:focus {
 
   .industrial-stage-progress i {
     top: 14px;
+  }
+
+  .industrial-architecture {
+    width: 100%;
+    padding-right: 17px;
+    padding-left: 17px;
+  }
+
+  .industrial-architecture-card > header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .industrial-architecture-diagram {
+    min-height: auto;
+    padding: 16px;
+  }
+
+  .industrial-arch-module-grid,
+  .industrial-arch-split {
+    grid-template-columns: 1fr;
+  }
+
+  .industrial-arch-branch {
+    display: none;
+  }
+
+  .industrial-service-split {
+    gap: 8px;
+  }
+
+  .industrial-storage-row,
+  .industrial-architecture-card > footer.industrial-migration-map {
+    grid-template-columns: 1fr;
+  }
+
+  .industrial-field-source {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 7px;
+    padding: 12px;
+    text-align: center;
+  }
+
+  .industrial-field-source i {
+    align-self: center;
   }
 
   .industrial-deployment {

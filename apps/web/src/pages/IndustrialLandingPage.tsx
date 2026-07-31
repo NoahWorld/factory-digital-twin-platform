@@ -141,13 +141,9 @@ function IndustrialLandingPage() {
         <div className="industrial-nav-links">
           <button onClick={() => scrollToIndustrialSection("industrial-modules")} type="button">核心模块</button>
           <button onClick={() => scrollToIndustrialSection("industrial-flow")} type="button">交付工序</button>
-          <button onClick={() => scrollToIndustrialSection("industrial-deployment")} type="button">部署架构</button>
+          <button onClick={() => scrollToIndustrialSection("industrial-architecture")} type="button">技术架构</button>
         </div>
         <div className="industrial-nav-actions">
-          <a className="industrial-version-switch" href="#/">
-            <span>查看原版</span>
-            <i aria-hidden="true">↗</i>
-          </a>
           <a className="industrial-platform-entry" href="#/projects">
             进入平台
             <span aria-hidden="true">→</span>
@@ -297,9 +293,121 @@ function IndustrialLandingPage() {
         </ol>
       </section>
 
+      <section className="industrial-section industrial-architecture" id="industrial-architecture">
+        <header className="industrial-section-heading">
+          <div>
+            <span>SECTION / 04</span>
+            <p>TECHNICAL ARCHITECTURE</p>
+          </div>
+          <h2>从前端到客户现场</h2>
+          <p>前端保持同一套应用与接口契约，当前云端资源作为开发验证适配器，现场部署时替换运行与存储基础设施。</p>
+        </header>
+
+        <div className="industrial-architecture-grid">
+          <article className="industrial-architecture-card">
+            <header>
+              <div>
+                <span>ARCH / FRONTEND</span>
+                <h3>前端应用架构</h3>
+              </div>
+              <small>REACT APPLICATION</small>
+            </header>
+            <div className="industrial-architecture-diagram industrial-frontend-diagram">
+              <div className="industrial-arch-node industrial-arch-node-primary">
+                <small>CLIENT</small>
+                <strong>浏览器</strong>
+                <span>交付人员配置 / 客户只读查看</span>
+              </div>
+              <div className="industrial-arch-arrow" aria-hidden="true">↓</div>
+              <div className="industrial-arch-module-grid">
+                <div><small>PUBLIC</small><strong>产品介绍</strong></div>
+                <div><small>WORKSPACE</small><strong>项目配置台</strong></div>
+                <div><small>2D</small><strong>看板画布</strong></div>
+                <div><small>3D</small><strong>模型编辑器</strong></div>
+              </div>
+              <div className="industrial-arch-arrow" aria-hidden="true">↓</div>
+              <div className="industrial-arch-layer">
+                <strong>React + TypeScript</strong>
+                <span>组件 Schema · 路由 · 状态 · API Client</span>
+              </div>
+              <div className="industrial-arch-split">
+                <div>
+                  <small>BUILD</small>
+                  <strong>Vite 静态资源</strong>
+                </div>
+                <div>
+                  <small>CONTRACT</small>
+                  <strong>同源 /api</strong>
+                </div>
+              </div>
+            </div>
+            <footer>
+              <span>页面按需加载</span>
+              <span>模型与图片仅保存资源 ID</span>
+              <span>2D / 3D 共享 assetId</span>
+            </footer>
+          </article>
+
+          <article className="industrial-architecture-card industrial-onsite-card">
+            <header>
+              <div>
+                <span>ARCH / ON-PREMISE</span>
+                <h3>客户现场部署架构</h3>
+              </div>
+              <small>DOCKERIZED SERVICES</small>
+            </header>
+            <div className="industrial-architecture-diagram industrial-onsite-diagram">
+              <div className="industrial-arch-node industrial-arch-node-primary">
+                <small>LOCAL CLIENT</small>
+                <strong>客户内网浏览器</strong>
+                <span>无需访问公有云</span>
+              </div>
+              <div className="industrial-arch-arrow" aria-hidden="true">↓</div>
+              <div className="industrial-arch-layer industrial-gateway-layer">
+                <strong>Nginx / Caddy</strong>
+                <span>HTTPS · 静态前端 · /api 反向代理</span>
+              </div>
+              <div className="industrial-arch-branch" aria-hidden="true">
+                <i />
+                <span>↓</span>
+                <span>↓</span>
+              </div>
+              <div className="industrial-arch-split industrial-service-split">
+                <div>
+                  <small>APPLICATION</small>
+                  <strong>Node.js API</strong>
+                  <span>身份 · 项目 · 版本 · 数据网关</span>
+                </div>
+                <div>
+                  <small>FRONTEND</small>
+                  <strong>静态 Web</strong>
+                  <span>同一份 React 构建产物</span>
+                </div>
+              </div>
+              <div className="industrial-arch-arrow" aria-hidden="true">↓</div>
+              <div className="industrial-storage-row">
+                <div><small>DATABASE</small><strong>PostgreSQL</strong><span>配置与权限</span></div>
+                <div><small>OBJECT</small><strong>MinIO</strong><span>模型与图片</span></div>
+                <div><small>CONNECTOR</small><strong>数据网关</strong><span>REST / WebSocket</span></div>
+              </div>
+              <div className="industrial-field-source">
+                <span>客户业务 API</span>
+                <i />
+                <span>MES / ERP / IoT 平台</span>
+              </div>
+            </div>
+            <footer className="industrial-migration-map">
+              <span><small>当前</small> Worker <i>→</i> Node.js API</span>
+              <span><small>当前</small> D1 <i>→</i> PostgreSQL</span>
+              <span><small>当前</small> R2 <i>→</i> MinIO</span>
+            </footer>
+          </article>
+        </div>
+      </section>
+
       <section className="industrial-section industrial-deployment" id="industrial-deployment">
         <div className="industrial-deployment-copy">
-          <span>SECTION / 04 — DEPLOYMENT</span>
+          <span>SECTION / 05 — DEPLOYMENT</span>
           <h2>工具用于交付，<br />系统落在客户需要的位置。</h2>
           <p>
             当前可以在受控云环境中快速开发和验证；正式项目可将前端、API、数据库与对象存储适配到客户服务器或内网。
