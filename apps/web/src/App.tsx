@@ -11,6 +11,23 @@ import { TemplatesPage } from "./pages/TemplatesPage";
 
 const Model3DEditorPage = lazy(() => import("./pages/Model3DEditorPage"));
 const ProductLandingPage = lazy(() => import("./pages/ProductLandingPage"));
+const IndustrialLandingPage = lazy(() => import("./pages/IndustrialLandingPage"));
+
+type ProductLandingVariant = "original" | "industrial";
+
+function getProductLandingVariant(): ProductLandingVariant | null {
+  const hash = window.location.hash;
+
+  if (hash === "" || hash === "#/") {
+    return "original";
+  }
+
+  if (hash === "#/industrial") {
+    return "industrial";
+  }
+
+  return null;
+}
 
 type Capability = {
   canCreateProject: boolean;
@@ -894,8 +911,8 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
 }
 
 export function App() {
-  const [showProductLanding, setShowProductLanding] = useState(
-    () => window.location.hash === "" || window.location.hash === "#/",
+  const [productLandingVariant, setProductLandingVariant] = useState<ProductLandingVariant | null>(
+    getProductLandingVariant,
   );
   const [initializing, setInitializing] = useState(true);
   const [setupRequired, setSetupRequired] = useState(false);
@@ -904,7 +921,7 @@ export function App() {
 
   useEffect(() => {
     const updatePublicRoute = () => {
-      setShowProductLanding(window.location.hash === "" || window.location.hash === "#/");
+      setProductLandingVariant(getProductLandingVariant());
     };
 
     window.addEventListener("hashchange", updatePublicRoute);
@@ -912,7 +929,7 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    if (showProductLanding) {
+    if (productLandingVariant) {
       return;
     }
 
@@ -957,7 +974,7 @@ export function App() {
     return () => {
       active = false;
     };
-  }, [showProductLanding]);
+  }, [productLandingVariant]);
 
   const authenticated = (nextUser: CurrentUser) => {
     setSetupRequired(false);
@@ -973,10 +990,10 @@ export function App() {
     }
   };
 
-  if (showProductLanding) {
+  if (productLandingVariant) {
     return (
       <Suspense fallback={<main className="loading-shell"><h1>正在打开产品介绍…</h1></main>}>
-        <ProductLandingPage />
+        {productLandingVariant === "industrial" ? <IndustrialLandingPage /> : <ProductLandingPage />}
       </Suspense>
     );
   }

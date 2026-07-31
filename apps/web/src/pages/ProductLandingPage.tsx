@@ -158,6 +158,10 @@ function ProductLandingPage() {
           <button onClick={() => scrollToSection("capabilities")} type="button">产品能力</button>
           <button onClick={() => scrollToSection("workflow")} type="button">交付流程</button>
           <button onClick={() => scrollToSection("deployment")} type="button">部署方式</button>
+          <a className="product-version-switch" href="#/industrial">
+            工业风版本
+            <span aria-hidden="true">↗</span>
+          </a>
         </div>
         <a className="product-nav-entry" href="#/projects">
           进入平台
