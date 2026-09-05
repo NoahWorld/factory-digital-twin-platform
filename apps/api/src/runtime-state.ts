@@ -24,6 +24,7 @@ export type AssetRuntimeState = {
     id: string;
     name: string;
     collectedAt: string;
+    sourceTimestamp: string | null;
     durationMs: number;
   }>;
   pollAfterSeconds: number;
@@ -82,15 +83,19 @@ const parseJsonPath = (path: string): JsonPathToken[] => {
   return tokens;
 };
 
-const resolveJsonPath = (payload: unknown, binding: AssetDataBinding): unknown => {
+const resolveJsonPath = (
+  payload: unknown,
+  path: string,
+  context: string,
+): unknown => {
   let current = payload;
-  for (const token of parseJsonPath(binding.sourcePath)) {
+  for (const token of parseJsonPath(path)) {
     if (typeof token === "number") {
       if (!Array.isArray(current) || token >= current.length) {
         throw new AppError(
           422,
           "source_path_not_found",
-          `Binding ${binding.id} cannot resolve array index ${token} from ${binding.sourcePath}.`,
+          `${context} cannot resolve array index ${token} from ${path}.`,
         );
       }
       current = current[token];
@@ -106,12 +111,53 @@ const resolveJsonPath = (payload: unknown, binding: AssetDataBinding): unknown =
       throw new AppError(
         422,
         "source_path_not_found",
-        `Binding ${binding.id} cannot resolve field ${token} from ${binding.sourcePath}.`,
+        `${context} cannot resolve field ${token} from ${path}.`,
       );
     }
     current = (current as Record<string, unknown>)[token];
   }
   return current;
+};
+
+const sourceTimestamp = (
+  payload: unknown,
+  source: DataSource,
+  config: RestPollingConfig,
+  staleAfterSeconds: number,
+): string | null => {
+  if (!config.timestampPath) return null;
+  const value = resolveJsonPath(
+    payload,
+    config.timestampPath,
+    `Data source ${source.id} timestampPath`,
+  );
+  if (typeof value !== "string" || !Number.isFinite(Date.parse(value))) {
+    throw new AppError(
+      422,
+      "source_timestamp_invalid",
+      `Data source ${source.id} timestampPath must resolve to an ISO-compatible timestamp string.`,
+    );
+  }
+
+  const timestampMs = Date.parse(value);
+  const now = Date.now();
+  const futureToleranceMs = 5 * 60 * 1000;
+  if (timestampMs > now + futureToleranceMs) {
+    throw new AppError(
+      502,
+      "data_source_timestamp_in_future",
+      `Data source ${source.id} timestamp is more than 300 seconds ahead of the server clock.`,
+    );
+  }
+  const staleForSeconds = Math.max(0, Math.floor((now - timestampMs) / 1000));
+  if (staleForSeconds > staleAfterSeconds) {
+    throw new AppError(
+      502,
+      "data_source_stale",
+      `Data source ${source.id} timestamp is ${staleForSeconds} seconds old; the configured limit is ${staleAfterSeconds} seconds.`,
+    );
+  }
+  return new Date(timestampMs).toISOString();
 };
 
 const validateMetricValue = (
@@ -293,7 +339,21 @@ export const collectAssetRuntimeState = async (
         );
       }
       const fetched = await fetchJson(source, config, requestId);
-      return { source, config, bindings: sourceBindings, ...fetched };
+      const staleAfterSeconds = Math.min(
+        ...sourceBindings.map((binding) => binding.staleAfterSeconds),
+      );
+      return {
+        source,
+        config,
+        bindings: sourceBindings,
+        sourceTimestamp: sourceTimestamp(
+          fetched.payload,
+          source,
+          config,
+          staleAfterSeconds,
+        ),
+        ...fetched,
+      };
     }),
   );
 
@@ -305,10 +365,18 @@ export const collectAssetRuntimeState = async (
       id: result.source.id,
       name: result.source.name,
       collectedAt: result.collectedAt,
+      sourceTimestamp: result.sourceTimestamp,
       durationMs: result.durationMs,
     });
     for (const binding of result.bindings) {
-      const value = validateMetricValue(binding, resolveJsonPath(result.payload, binding));
+      const value = validateMetricValue(
+        binding,
+        resolveJsonPath(
+          result.payload,
+          binding.sourcePath,
+          `Binding ${binding.id}`,
+        ),
+      );
       values[binding.metricKey] = value;
       metrics.push({
         bindingId: binding.id,
@@ -323,8 +391,11 @@ export const collectAssetRuntimeState = async (
   }
 
   const timestamp = sources.reduce(
-    (latest, source) => source.collectedAt > latest ? source.collectedAt : latest,
-    sources[0]!.collectedAt,
+    (latest, source) => {
+      const timestamp = source.sourceTimestamp ?? source.collectedAt;
+      return timestamp > latest ? timestamp : latest;
+    },
+    sources[0]!.sourceTimestamp ?? sources[0]!.collectedAt,
   );
   return {
     asset: {

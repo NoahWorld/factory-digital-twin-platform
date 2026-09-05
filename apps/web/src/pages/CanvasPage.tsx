@@ -259,7 +259,17 @@ export function CanvasPage({ initialTemplateId, mode, projectId }: CanvasPagePro
   const selectedDeviceStatus = deviceVisualStatus(selectedRuntimeConnection);
   const runtimeConnectionList = Object.values(runtimeConnections);
   const offlineDeviceCount = runtimeConnectionList.filter((state) => state.status === "offline").length;
+  const staleDeviceCount = runtimeConnectionList.filter(
+    (state) => state.status === "offline" && state.errorCode === "data_source_stale",
+  ).length;
+  const disconnectedDeviceCount = offlineDeviceCount - staleDeviceCount;
   const liveDeviceCount = runtimeConnectionList.filter((state) => state.status === "live").length;
+  const selectedRuntimeIsStale = selectedRuntimeConnection?.errorCode === "data_source_stale";
+  const offlineSummary = staleDeviceCount > 0 && disconnectedDeviceCount > 0
+    ? `数据异常 ${offlineDeviceCount} 台（陈旧 ${staleDeviceCount} / 失联 ${disconnectedDeviceCount}）`
+    : staleDeviceCount > 0
+      ? `数据陈旧 ${staleDeviceCount} 台`
+      : `数据失联 ${disconnectedDeviceCount} 台`;
 
   const markNodeDirty = useCallback((nodeId: string) => {
     dirtyNodeIdsRef.current.add(nodeId);
@@ -543,7 +553,7 @@ export function CanvasPage({ initialTemplateId, mode, projectId }: CanvasPagePro
         {mode === "preview" ? (
           <>
             <div
-              className={`runtime-status-banner${runtimeSetupError ? " is-error" : offlineDeviceCount > 0 ? " is-offline" : liveDeviceCount > 0 ? " is-live" : " is-loading"}`}
+              className={`runtime-status-banner${runtimeSetupError ? " is-error" : offlineDeviceCount > 0 ? staleDeviceCount === offlineDeviceCount ? " is-stale" : " is-offline" : liveDeviceCount > 0 ? " is-live" : " is-loading"}`}
               role={runtimeSetupError || offlineDeviceCount > 0 ? "alert" : "status"}
             >
               <strong>REST 模拟采集</strong>
@@ -553,7 +563,7 @@ export function CanvasPage({ initialTemplateId, mode, projectId }: CanvasPagePro
                   : runtimeSetupError
                     ? `⚠ ${runtimeSetupError}`
                     : offlineDeviceCount > 0
-                      ? `🔴 数据失联 ${offlineDeviceCount} 台 · 正在重连（第 ${Math.max(...runtimeConnectionList.map((state) => state.failureCount))} 次）`
+                      ? `${staleDeviceCount === offlineDeviceCount ? "🟠" : "🔴"} ${offlineSummary} · 正在重连（第 ${Math.max(...runtimeConnectionList.map((state) => state.failureCount))} 次）`
                       : liveDeviceCount > 0
                         ? `🟢 在线 ${liveDeviceCount} 台 · 字段映射与 3D 状态已生效`
                         : "🟡 正在连接设备数据…"}
@@ -574,9 +584,9 @@ export function CanvasPage({ initialTemplateId, mode, projectId }: CanvasPagePro
                   </div>
                   <button aria-label="关闭设备详情" onClick={() => setSelectedRuntimeAssetId(null)} type="button">×</button>
                 </header>
-                <div className={`runtime-device-state is-${selectedDeviceStatus}`}>
+                <div className={`runtime-device-state is-${selectedDeviceStatus}${selectedRuntimeIsStale ? " is-stale" : ""}`}>
                   <i aria-hidden="true" />
-                  <strong>{deviceVisualStatusLabel[selectedDeviceStatus]}</strong>
+                  <strong>{selectedRuntimeIsStale ? "数据陈旧" : deviceVisualStatusLabel[selectedDeviceStatus]}</strong>
                   <span>{selectedRuntimeConnection?.status === "offline" ? `重连第 ${selectedRuntimeConnection.failureCount} 次` : "实时状态"}</span>
                 </div>
                 <dl className="runtime-device-meta">
@@ -585,8 +595,8 @@ export function CanvasPage({ initialTemplateId, mode, projectId }: CanvasPagePro
                   <div><dt>最近成功</dt><dd>{formatRuntimeTime(selectedRuntimeConnection?.lastSuccessAt)}</dd></div>
                 </dl>
                 {selectedRuntimeConnection?.status === "offline" ? (
-                  <div className="runtime-offline-alert" role="alert">
-                    <strong>设备数据已失联</strong>
+                  <div className={`runtime-offline-alert${selectedRuntimeIsStale ? " is-stale" : ""}`} role="alert">
+                    <strong>{selectedRuntimeIsStale ? "设备数据已陈旧" : "设备数据已失联"}</strong>
                     <p>{selectedRuntimeConnection.errorMessage ?? "采集请求失败。"}</p>
                     <small>最后数据保留用于排查，不代表当前实时值。</small>
                   </div>

@@ -4180,6 +4180,16 @@ input:focus {
   color: #68e5a4;
 }
 
+.runtime-status-banner.is-stale {
+  border-color: rgba(246, 195, 68, 0.52);
+  color: #fff0bf;
+  background: rgba(51, 39, 8, 0.94);
+}
+
+.runtime-status-banner.is-stale strong {
+  color: #f6c344;
+}
+
 .runtime-status-banner.is-offline,
 .runtime-status-banner.is-error {
   border-color: rgba(255, 77, 95, 0.54);
@@ -4298,6 +4308,7 @@ input:focus {
 .runtime-device-state.is-warning { --runtime-state-color: #f6c344; }
 .runtime-device-state.is-alarm,
 .runtime-device-state.is-offline { --runtime-state-color: #ff5a68; }
+.runtime-device-state.is-stale { --runtime-state-color: #f6c344; }
 .runtime-device-state.is-loading { --runtime-state-color: #5ad8ff; }
 
 .runtime-device-meta {
@@ -4353,6 +4364,20 @@ input:focus {
 .runtime-offline-alert small {
   color: #dca1a8;
   font-size: 0.6rem;
+}
+
+.runtime-offline-alert.is-stale {
+  border-color: rgba(246, 195, 68, 0.4);
+  color: #fff0bf;
+  background: rgba(73, 54, 7, 0.5);
+}
+
+.runtime-offline-alert.is-stale strong {
+  color: #f6c344;
+}
+
+.runtime-offline-alert.is-stale small {
+  color: #dac789;
 }
 
 .runtime-metric-section {

@@ -8,6 +8,7 @@ export type RestPollingConfig = {
   url: string;
   intervalSeconds: number;
   timeoutMs: number;
+  timestampPath: string | null;
   credentialRef: string | null;
 };
 
@@ -57,6 +58,7 @@ const REST_CONFIG_FIELDS = new Set([
   "url",
   "intervalSeconds",
   "timeoutMs",
+  "timestampPath",
   "credentialRef",
 ]);
 const WEBSOCKET_CONFIG_FIELDS = new Set([
@@ -152,6 +154,26 @@ const validateCredentialRef = (value: unknown): string | null => {
   return credentialRef;
 };
 
+const validateTimestampPath = (value: unknown): string | null => {
+  if (value === null || value === undefined || value === "") return null;
+  if (typeof value !== "string") {
+    throw new AppError(
+      400,
+      "invalid_data_source_timestamp_path",
+      "REST timestampPath must be a string or null.",
+    );
+  }
+  const path = value.trim();
+  if (path.length > 256 || (path !== "$" && !path.startsWith("$.") && !path.startsWith("$["))) {
+    throw new AppError(
+      400,
+      "invalid_data_source_timestamp_path",
+      "REST timestampPath must be a JSON path starting with $ and contain at most 256 characters.",
+    );
+  }
+  return path;
+};
+
 const validateConnectionUrl = (
   value: unknown,
   protocols: string[],
@@ -226,6 +248,7 @@ const validateConfig = (
         3600,
       ),
       timeoutMs: validateInteger(config.timeoutMs, "config.timeoutMs", 500, 30_000),
+      timestampPath: validateTimestampPath(config.timestampPath),
       credentialRef: validateCredentialRef(config.credentialRef),
     };
   }

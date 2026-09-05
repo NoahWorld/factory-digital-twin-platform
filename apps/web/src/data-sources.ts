@@ -4,6 +4,7 @@ export type RestPollingConfig = {
   url: string;
   intervalSeconds: number;
   timeoutMs: number;
+  timestampPath: string | null;
   credentialRef: string | null;
 };
 

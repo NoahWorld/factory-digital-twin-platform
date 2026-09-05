@@ -9,6 +9,7 @@ if (!Number.isInteger(port) || port < 1 || port > 65535) {
 const allowedStates = new Set(["running", "stopped", "warning", "alarm"]);
 const device = {
   alarmLevel: 0,
+  fixedTimestamp: null,
   outage: false,
   sequence: 0,
   status: "running",
@@ -46,6 +47,7 @@ const server = createServer(async (request, response) => {
       responseStatus = 200;
       writeJson(response, responseStatus, {
         deviceId: "DEVICE-001",
+        fixedTimestamp: device.fixedTimestamp,
         outage: device.outage,
         status: "ok",
       });
@@ -65,7 +67,7 @@ const server = createServer(async (request, response) => {
       responseStatus = 200;
       writeJson(response, responseStatus, {
         deviceId: "DEVICE-001",
-        timestamp: new Date().toISOString(),
+        timestamp: device.fixedTimestamp ?? new Date().toISOString(),
         values: {
           alarmLevel: device.alarmLevel,
           pressure: Number((101.2 + Math.cos(device.sequence / 4) * 1.4).toFixed(1)),
@@ -87,6 +89,26 @@ const server = createServer(async (request, response) => {
       device.outage = false;
       responseStatus = 200;
       writeJson(response, responseStatus, { deviceId: "DEVICE-001", outage: false });
+      return;
+    }
+
+    if (request.method === "POST" && url.pathname === "/control/stale") {
+      device.fixedTimestamp = new Date(Date.now() - 30_000).toISOString();
+      responseStatus = 200;
+      writeJson(response, responseStatus, {
+        deviceId: "DEVICE-001",
+        fixedTimestamp: device.fixedTimestamp,
+      });
+      return;
+    }
+
+    if (request.method === "POST" && url.pathname === "/control/fresh") {
+      device.fixedTimestamp = null;
+      responseStatus = 200;
+      writeJson(response, responseStatus, {
+        deviceId: "DEVICE-001",
+        fixedTimestamp: null,
+      });
       return;
     }
 

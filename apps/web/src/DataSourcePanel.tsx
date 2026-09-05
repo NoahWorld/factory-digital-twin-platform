@@ -22,6 +22,7 @@ type DataSourceDraft = {
   url: string;
   intervalSeconds: string;
   timeoutMs: string;
+  timestampPath: string;
   heartbeatSeconds: string;
   reconnectMaxSeconds: string;
   credentialRef: string;
@@ -34,6 +35,7 @@ const emptyDraft = (): DataSourceDraft => ({
   url: "",
   intervalSeconds: "10",
   timeoutMs: "5000",
+  timestampPath: "",
   heartbeatSeconds: "30",
   reconnectMaxSeconds: "60",
   credentialRef: "",
@@ -50,6 +52,9 @@ const draftFromSource = (source: ProjectDataSource): DataSourceDraft => ({
   timeoutMs: source.sourceType === "rest_polling"
     ? String(source.config.timeoutMs)
     : "5000",
+  timestampPath: source.sourceType === "rest_polling"
+    ? source.config.timestampPath ?? ""
+    : "",
   heartbeatSeconds: source.sourceType === "websocket"
     ? String(source.config.heartbeatSeconds)
     : "30",
@@ -129,6 +134,7 @@ export function DataSourcePanel({
             url: draft.url,
             intervalSeconds: requiredInteger(draft.intervalSeconds, "轮询周期"),
             timeoutMs: requiredInteger(draft.timeoutMs, "请求超时"),
+            timestampPath: draft.timestampPath || null,
             credentialRef: draft.credentialRef || null,
           }
         : {
@@ -316,6 +322,20 @@ export function DataSourcePanel({
                       type="number"
                       value={draft.timeoutMs}
                     />
+                  </label>
+                  <label className="is-wide">
+                    <span>数据时间戳路径（建议配置）</span>
+                    <input
+                      disabled={formDisabled}
+                      maxLength={256}
+                      onChange={(event) => setDraft((current) => ({
+                        ...current,
+                        timestampPath: event.target.value,
+                      }))}
+                      placeholder="例如：$.timestamp"
+                      value={draft.timestampPath}
+                    />
+                    <small>用于识别接口仍返回 200、但现场数据已停止更新的情况。</small>
                   </label>
                 </>
               ) : (

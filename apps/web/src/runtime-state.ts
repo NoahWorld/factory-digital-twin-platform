@@ -19,6 +19,7 @@ export type AssetRuntimeState = {
     id: string;
     name: string;
     collectedAt: string;
+    sourceTimestamp: string | null;
     durationMs: number;
   }>;
   pollAfterSeconds: number;

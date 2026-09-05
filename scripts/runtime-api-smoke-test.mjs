@@ -236,6 +236,7 @@ try {
       config: {
         credentialRef: null,
         intervalSeconds: 2,
+        timestampPath: "$.timestamp",
         timeoutMs: 1500,
         url: `${mockBase}/device/DEVICE-001`,
       },
@@ -286,6 +287,21 @@ try {
     throw new Error(`Warning runtime state was not mapped correctly: ${JSON.stringify(warning.body)}`);
   }
 
+  await controlDevice("/control/stale");
+  const stale = await call(
+    `/api/v1/projects/${projectId}/assets/${assetRecordId}/runtime-state`,
+    {},
+    502,
+  );
+  if (stale.body?.error !== "data_source_stale" || typeof stale.body?.requestId !== "string") {
+    throw new Error(`Stale response did not expose the expected error and requestId: ${JSON.stringify(stale.body)}`);
+  }
+  await controlDevice("/control/fresh");
+  const fresh = await call(`/api/v1/projects/${projectId}/assets/${assetRecordId}/runtime-state`);
+  if (fresh.body?.runtimeState?.values?.status !== "warning") {
+    throw new Error(`Fresh runtime state did not recover after stale data: ${JSON.stringify(fresh.body)}`);
+  }
+
   await controlDevice("/control/outage");
   const outage = await call(
     `/api/v1/projects/${projectId}/assets/${assetRecordId}/runtime-state`,
@@ -304,6 +320,8 @@ try {
       "self-contained GLTF upload and 3D canvas binding",
       "running state",
       "warning state",
+      "HTTP 200 with stale source timestamp surfaced as data_source_stale",
+      "fresh timestamp recovery",
       "HTTP 503 surfaced as data_source_http_error",
     ],
     event: "runtime_api_smoke_test_passed",
@@ -315,6 +333,7 @@ try {
 } finally {
   try {
     await controlDevice("/control/recover");
+    await controlDevice("/control/fresh");
     await controlDevice("/control/state", { status: "running" });
   } catch (error) {
     console.error(JSON.stringify({
