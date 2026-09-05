@@ -1,5 +1,6 @@
+import { useState } from "react";
 import { CanvasTemplateGallery } from "../canvas/CanvasTemplateGallery";
-import type { CanvasTemplateId } from "../canvas/templates";
+import { canvasTemplates, type CanvasTemplateId } from "../canvas/templates";
 
 type TemplatesPageProps = {
   canCreateProject: boolean;
@@ -10,12 +11,18 @@ export function TemplatesPage({
   canCreateProject,
   onCreateFromTemplate,
 }: TemplatesPageProps) {
+  const templateCategories = ["全部", ...new Set(canvasTemplates.map((template) => template.category))];
+  const [activeCategory, setActiveCategory] = useState("全部");
+  const visibleTemplateIds = canvasTemplates
+    .filter((template) => activeCategory === "全部" || template.category === activeCategory)
+    .map((template) => template.id);
+
   return (
     <section className="workspace-content templates-content" id="templates">
       <div className="page-heading">
         <div>
-          <p className="eyebrow">Dashboard templates</p>
-          <h1>大屏模板</h1>
+          <p className="eyebrow">Industry template library</p>
+          <h1>行业模板库</h1>
           <p>选择行业大屏骨架，创建一个全新项目后继续编辑。</p>
         </div>
       </div>
@@ -39,11 +46,37 @@ export function TemplatesPage({
         <span>进入新项目画布后可编辑所有组件；首次保存画布后，项目列表会自动生成封面。</span>
       </div>
 
+      <div className="template-category-toolbar">
+        <div>
+          <strong>场景分类</strong>
+          <span>先筛选交付方向，再选择可编辑模板。</span>
+        </div>
+        <div aria-label="行业模板分类" className="template-category-actions" role="group">
+          {templateCategories.map((category) => (
+            <button
+              aria-pressed={activeCategory === category}
+              className={activeCategory === category ? "is-active" : undefined}
+              key={category}
+              onClick={() => setActiveCategory(category)}
+              type="button"
+            >
+              {category}
+              <span>
+                {category === "全部"
+                  ? canvasTemplates.length
+                  : canvasTemplates.filter((template) => template.category === category).length}
+              </span>
+            </button>
+          ))}
+        </div>
+      </div>
+
       <CanvasTemplateGallery
         actionLabel="用模板创建项目"
         className="template-page-gallery"
         editable={canCreateProject}
         onApply={onCreateFromTemplate}
+        visibleTemplateIds={visibleTemplateIds}
       />
     </section>
   );

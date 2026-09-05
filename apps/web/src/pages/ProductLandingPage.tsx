@@ -1,3 +1,5 @@
+import { useState, type CSSProperties } from "react";
+
 const capabilityCards = [
   {
     number: "01",
@@ -75,6 +77,68 @@ const templates = [
   { code: "SUPPLY", name: "装备保障", color: "violet" },
 ] as const;
 
+const industryCaseCategories = ["全部场景", "工业制造", "能源电力", "园区运营", "仓储物流", "水务环保", "数据中心"] as const;
+
+type IndustryCaseCategory = Exclude<(typeof industryCaseCategories)[number], "全部场景">;
+
+const industryCases = [
+  {
+    code: "MFG-01",
+    category: "工业制造",
+    title: "智慧工厂生产运营中心",
+    description: "把产线节拍、设备状态、质量与能耗放进同一交付视图，异常可从大屏定位到具体资产。",
+    tags: ["产线总览", "设备联动", "OEE"],
+    tone: "cyan",
+  },
+  {
+    code: "ENG-02",
+    category: "能源电力",
+    title: "厂区能源与安全监控",
+    description: "统一查看水、电、气、碳排与重点区域告警，用 3D 空间位置承接安全事件和处置状态。",
+    tags: ["能耗分析", "安全告警", "区域定位"],
+    tone: "amber",
+  },
+  {
+    code: "PARK-03",
+    category: "园区运营",
+    title: "工业园区综合态势",
+    description: "围绕楼宇、道路、人员、车辆和告警组织园区运行信息，兼顾日常运营与应急指挥。",
+    tags: ["园区总览", "事件处置", "空间导航"],
+    tone: "green",
+  },
+  {
+    code: "LOG-04",
+    category: "仓储物流",
+    title: "仓储物流调度看板",
+    description: "联动库区、货位、车辆与任务状态，快速形成面向调度人员的 2D 指标和 3D 场景组合。",
+    tags: ["库位状态", "车辆调度", "任务跟踪"],
+    tone: "violet",
+  },
+  {
+    code: "WTR-05",
+    category: "水务环保",
+    title: "水处理设施运行监控",
+    description: "以泵站、池体和管线资产为主线，展示水质、流量、液位及设备失联等关键运行状态。",
+    tags: ["工艺流程", "指标监测", "失联提示"],
+    tone: "blue",
+  },
+  {
+    code: "IDC-06",
+    category: "数据中心",
+    title: "机房基础设施态势",
+    description: "将机柜、供配电、温湿度与容量指标关联到空间对象，支持巡检、告警定位和运行汇报。",
+    tags: ["机柜资产", "容量管理", "环境告警"],
+    tone: "rose",
+  },
+] as const satisfies ReadonlyArray<{
+  code: string;
+  category: IndustryCaseCategory;
+  title: string;
+  description: string;
+  tags: readonly string[];
+  tone: string;
+}>;
+
 function scrollToSection(id: string) {
   document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
@@ -144,6 +208,11 @@ function HeroProductVisual() {
 }
 
 function ProductLandingPage() {
+  const [activeIndustry, setActiveIndustry] = useState<(typeof industryCaseCategories)[number]>("全部场景");
+  const visibleIndustryCases = activeIndustry === "全部场景"
+    ? industryCases
+    : industryCases.filter((item) => item.category === activeIndustry);
+
   return (
     <main className="product-landing">
       <nav aria-label="产品宣传页导航" className="product-nav">
@@ -156,6 +225,7 @@ function ProductLandingPage() {
         </a>
         <div className="product-nav-links">
           <button onClick={() => scrollToSection("capabilities")} type="button">产品能力</button>
+          <button onClick={() => scrollToSection("industry-cases")} type="button">行业场景</button>
           <button onClick={() => scrollToSection("workflow")} type="button">交付流程</button>
           <button onClick={() => scrollToSection("deployment")} type="button">部署方式</button>
         </div>
@@ -322,9 +392,57 @@ function ProductLandingPage() {
         </ol>
       </section>
 
+      <section className="product-section product-cases" id="industry-cases">
+        <div className="product-section-heading">
+          <div>
+            <p className="product-section-index">04 / DELIVERY SCENARIOS</p>
+            <h2>行业场景，不从空白开始</h2>
+          </div>
+          <p>
+            以下内容是可交付场景示例，不代表已经落地的客户项目。它们用于说明行业入口、信息结构与 2D + 3D 组合方式。
+          </p>
+        </div>
+
+        <div aria-label="行业场景筛选" className="product-industry-filters" role="group">
+          {industryCaseCategories.map((category) => (
+            <button
+              aria-pressed={activeIndustry === category}
+              className={activeIndustry === category ? "is-active" : undefined}
+              key={category}
+              onClick={() => setActiveIndustry(category)}
+              type="button"
+            >
+              {category}
+            </button>
+          ))}
+        </div>
+
+        <div aria-live="polite" className="product-case-grid">
+          {visibleIndustryCases.map((item) => (
+            <article className={`product-case-card product-case-${item.tone}`} key={item.code}>
+              <div aria-hidden="true" className="product-case-visual">
+                <div className="product-case-visual-grid" />
+                <div className="product-case-model"><i /><i /><i /><i /></div>
+                <div className="product-case-metrics"><i /><i /><i /></div>
+                <span>{item.code}</span>
+              </div>
+              <div className="product-case-copy">
+                <span>{item.category} · 交付场景示例</span>
+                <h3>{item.title}</h3>
+                <p>{item.description}</p>
+                <ul>
+                  {item.tags.map((tag) => <li key={tag}>{tag}</li>)}
+                </ul>
+                <a href="#/templates">浏览可用模板 <span aria-hidden="true">→</span></a>
+              </div>
+            </article>
+          ))}
+        </div>
+      </section>
+
       <section className="product-section product-templates">
         <div className="product-template-intro">
-          <p className="product-section-index">04 / REUSABLE TEMPLATES</p>
+          <p className="product-section-index">05 / REUSABLE TEMPLATES</p>
           <h2>行业场景，开箱即改</h2>
           <p>内置模板不是不可变的成品，而是可继续编辑、换色和绑定项目数据的交付起点。</p>
           <a href="#/templates">进入模板中心 <span aria-hidden="true">→</span></a>
@@ -356,7 +474,7 @@ function ProductLandingPage() {
       <section className="product-section product-advantages">
         <div className="product-section-heading">
           <div>
-            <p className="product-section-index">05 / WHY FACTORY TWIN</p>
+            <p className="product-section-index">06 / WHY FACTORY TWIN</p>
             <h2>为真实交付而设计</h2>
           </div>
           <p>配置工具服务交付人员，运行页面服务客户现场。边界清楚，部署方式也更灵活。</p>
@@ -374,7 +492,7 @@ function ProductLandingPage() {
 
       <section className="product-section product-deployment" id="deployment">
         <div className="product-deployment-copy">
-          <p className="product-section-index">06 / DEPLOYMENT</p>
+          <p className="product-section-index">07 / DEPLOYMENT</p>
           <h2>部署到客户需要的地方</h2>
           <p>
             对数据边界敏感的项目，可将前端、API 与配置数据库部署在客户服务器或内网环境；需要公网协作时，也可以使用受控云环境完成交付验证。
@@ -434,4 +552,3 @@ function ProductLandingPage() {
 }
 
 export default ProductLandingPage;
-import type { CSSProperties } from "react";

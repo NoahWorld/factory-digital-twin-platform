@@ -5,6 +5,7 @@ type CanvasTemplateGalleryProps = {
   className?: string;
   editable: boolean;
   onApply: (templateId: CanvasTemplateId) => void;
+  visibleTemplateIds?: readonly CanvasTemplateId[];
 };
 
 export function CanvasTemplateGallery({
@@ -12,10 +13,16 @@ export function CanvasTemplateGallery({
   className = "",
   editable,
   onApply,
+  visibleTemplateIds,
 }: CanvasTemplateGalleryProps) {
+  const visibleIdSet = visibleTemplateIds ? new Set(visibleTemplateIds) : null;
+  const visibleTemplates = visibleIdSet
+    ? canvasTemplates.filter((template) => visibleIdSet.has(template.id))
+    : canvasTemplates;
+
   return (
     <div className={`template-gallery${className ? ` ${className}` : ""}`}>
-      {canvasTemplates.map((template) => (
+      {visibleTemplates.map((template) => (
         <article className={`template-card is-${template.theme}`} key={template.id}>
           <div aria-hidden="true" className="template-card-preview">
             <span className="template-preview-title" />
