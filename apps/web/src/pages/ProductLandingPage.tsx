@@ -1,4 +1,6 @@
 import { useState, type CSSProperties } from "react";
+import { CanvasTemplatePreview } from "../canvas/CanvasTemplatePreview";
+import { getCanvasTemplate, type CanvasTemplateId } from "../canvas/templates";
 
 const capabilityCards = [
   {
@@ -70,74 +72,27 @@ const productAdvantages = [
   },
 ] as const;
 
-const templates = [
-  { code: "MRO", name: "装备修理", color: "cyan" },
-  { code: "OPS", name: "生产运营", color: "green" },
-  { code: "ENERGY", name: "能耗安全", color: "amber" },
-  { code: "SUPPLY", name: "装备保障", color: "violet" },
-] as const;
+const featuredTemplateIds = [
+  "production-operations",
+  "industrial-park-operations",
+  "warehouse-logistics",
+  "water-treatment-operations",
+] as const satisfies readonly CanvasTemplateId[];
+
+const featuredTemplates = featuredTemplateIds.map(getCanvasTemplate);
 
 const industryCaseCategories = ["全部场景", "工业制造", "能源电力", "园区运营", "仓储物流", "水务环保", "数据中心"] as const;
 
-type IndustryCaseCategory = Exclude<(typeof industryCaseCategories)[number], "全部场景">;
+const industryTemplateIds = [
+  "production-operations",
+  "energy-safety",
+  "industrial-park-operations",
+  "warehouse-logistics",
+  "water-treatment-operations",
+  "data-center-infrastructure",
+] as const satisfies readonly CanvasTemplateId[];
 
-const industryCases = [
-  {
-    code: "MFG-01",
-    category: "工业制造",
-    title: "智慧工厂生产运营中心",
-    description: "把产线节拍、设备状态、质量与能耗放进同一交付视图，异常可从大屏定位到具体资产。",
-    tags: ["产线总览", "设备联动", "OEE"],
-    tone: "cyan",
-  },
-  {
-    code: "ENG-02",
-    category: "能源电力",
-    title: "厂区能源与安全监控",
-    description: "统一查看水、电、气、碳排与重点区域告警，用 3D 空间位置承接安全事件和处置状态。",
-    tags: ["能耗分析", "安全告警", "区域定位"],
-    tone: "amber",
-  },
-  {
-    code: "PARK-03",
-    category: "园区运营",
-    title: "工业园区综合态势",
-    description: "围绕楼宇、道路、人员、车辆和告警组织园区运行信息，兼顾日常运营与应急指挥。",
-    tags: ["园区总览", "事件处置", "空间导航"],
-    tone: "green",
-  },
-  {
-    code: "LOG-04",
-    category: "仓储物流",
-    title: "仓储物流调度看板",
-    description: "联动库区、货位、车辆与任务状态，快速形成面向调度人员的 2D 指标和 3D 场景组合。",
-    tags: ["库位状态", "车辆调度", "任务跟踪"],
-    tone: "violet",
-  },
-  {
-    code: "WTR-05",
-    category: "水务环保",
-    title: "水处理设施运行监控",
-    description: "以泵站、池体和管线资产为主线，展示水质、流量、液位及设备失联等关键运行状态。",
-    tags: ["工艺流程", "指标监测", "失联提示"],
-    tone: "blue",
-  },
-  {
-    code: "IDC-06",
-    category: "数据中心",
-    title: "机房基础设施态势",
-    description: "将机柜、供配电、温湿度与容量指标关联到空间对象，支持巡检、告警定位和运行汇报。",
-    tags: ["机柜资产", "容量管理", "环境告警"],
-    tone: "rose",
-  },
-] as const satisfies ReadonlyArray<{
-  code: string;
-  category: IndustryCaseCategory;
-  title: string;
-  description: string;
-  tags: readonly string[];
-  tone: string;
-}>;
+const industryCases = industryTemplateIds.map(getCanvasTemplate);
 
 function scrollToSection(id: string) {
   document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -399,7 +354,7 @@ function ProductLandingPage() {
             <h2>行业场景，不从空白开始</h2>
           </div>
           <p>
-            以下内容是可交付场景示例，不代表已经落地的客户项目。它们用于说明行业入口、信息结构与 2D + 3D 组合方式。
+            每个行业入口都对应一份可创建项目、保存并继续编辑的 1920 × 1080 画布模板。下方预览直接读取真实画布节点；初始数值明确标为示例，接入现场数据后即可替换。
           </p>
         </div>
 
@@ -419,21 +374,23 @@ function ProductLandingPage() {
 
         <div aria-live="polite" className="product-case-grid">
           {visibleIndustryCases.map((item) => (
-            <article className={`product-case-card product-case-${item.tone}`} key={item.code}>
-              <div aria-hidden="true" className="product-case-visual">
-                <div className="product-case-visual-grid" />
-                <div className="product-case-model"><i /><i /><i /><i /></div>
-                <div className="product-case-metrics"><i /><i /><i /></div>
-                <span>{item.code}</span>
+            <article
+              className="product-case-card"
+              key={item.id}
+              style={{ "--case-accent": item.canvasTheme.accentColor } as CSSProperties}
+            >
+              <div className="product-case-visual">
+                <CanvasTemplatePreview templateId={item.id} />
+                <span>{item.code} · 1920 × 1080</span>
               </div>
               <div className="product-case-copy">
-                <span>{item.category} · 交付场景示例</span>
-                <h3>{item.title}</h3>
+                <span>{item.category} · 可编辑真实模板</span>
+                <h3>{item.name}</h3>
                 <p>{item.description}</p>
                 <ul>
                   {item.tags.map((tag) => <li key={tag}>{tag}</li>)}
                 </ul>
-                <a href="#/templates">浏览可用模板 <span aria-hidden="true">→</span></a>
+                <a href="#/templates">使用这个模板 <span aria-hidden="true">→</span></a>
               </div>
             </article>
           ))}
@@ -448,23 +405,23 @@ function ProductLandingPage() {
           <a href="#/templates">进入模板中心 <span aria-hidden="true">→</span></a>
         </div>
         <div className="product-template-stack">
-          {templates.map((template, index) => (
+          {featuredTemplates.map((template, index) => (
             <article
-              className={`product-template-card product-template-${template.color}`}
-              key={template.code}
-              style={{ "--template-index": index } as CSSProperties}
+              className="product-template-card"
+              key={template.id}
+              style={{
+                "--template-accent": template.canvasTheme.accentColor,
+                "--template-index": index,
+              } as CSSProperties}
             >
               <header>
                 <span>{template.code}</span>
                 <i />
               </header>
-              <div className="product-template-preview">
-                <span /><span /><span />
-                <div><i /><i /><i /><i /></div>
-              </div>
+              <CanvasTemplatePreview className="product-template-preview" templateId={template.id} />
               <footer>
                 <strong>{template.name}</strong>
-                <span>可编辑模板</span>
+                <span>真实画布 · 可编辑</span>
               </footer>
             </article>
           ))}
