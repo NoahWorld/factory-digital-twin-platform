@@ -8,7 +8,7 @@ import { canvasRoutePath, modelEditorRoutePath, projectCanvasPath } from "../can
 import { TemplateDialog } from "../canvas/TemplateDialog";
 import { getCanvasTemplate, instantiateCanvasTemplate, type CanvasTemplateId } from "../canvas/templates";
 import { ThemeDialog } from "../canvas/ThemeDialog";
-import { applyCanvasThemeToNode, applyCanvasThemeToNodes, canvasThemeLabels } from "../canvas/themes";
+import { applyCanvasThemeToNode, applyCanvasThemeToNodes, canvasThemePresetLabels } from "../canvas/themes";
 import { CANVAS_DRAG_TYPE, componentLabels, createCanvasNode, isBackgroundNodeType, isModel3DNodeType, type CanvasDocument, type CanvasNode, type CanvasNodeType, type CanvasPatchResponse, type CanvasResponse, type CanvasTheme, type ModelNodeAppearance } from "../canvas/types";
 import { DataSourcePanel } from "../DataSourcePanel";
 import { assetRuntimeStatePath, deviceVisualStatus, deviceVisualStatusLabel, type AssetRuntimeStateResponse, type DeviceVisualStatus, type RuntimeAssetConnection, type RuntimeMetricValue } from "../runtime-state";
@@ -436,7 +436,7 @@ export function CanvasPage({ initialTemplateId, mode, projectId }: CanvasPagePro
     setDocument({ ...document, nodes: nextNodes, theme });
     setSaveError(null);
     setThemeNotice(
-      `已切换为${canvasThemeLabels[theme.mode]}主题，联动更新 ${themedNodes.length} 个非 3D 组件；3D 组件保持不变。`,
+      `已切换为${canvasThemePresetLabels[theme.presetId]}主题，联动更新 ${themedNodes.length} 个非 3D 组件；3D 组件保持不变。`,
     );
     setDirty(true);
     setShowThemes(false);
@@ -468,7 +468,7 @@ export function CanvasPage({ initialTemplateId, mode, projectId }: CanvasPagePro
     <main className={`canvas-page canvas-page-${mode}`}>
       <header className="canvas-toolbar">
         <div className="canvas-toolbar-title"><a aria-label="返回项目列表" className="canvas-back-link" href="#/projects">←</a><div><span>{mode === "edit" ? "2D 画布" : "可视化预览"}</span><strong>{projectName}</strong></div></div>
-        <div className="canvas-document-meta"><span>{document.width} × {document.height}</span><span>{canvasThemeLabels[document.theme.mode]}主题</span><span>版本 {document.revision}</span>{mode === "edit" ? <span className={dirty ? "is-dirty" : "is-saved"}>{dirty ? "有未保存更改" : "已保存"}</span> : null}</div>
+        <div className="canvas-document-meta"><span>{document.width} × {document.height}</span><span>{canvasThemePresetLabels[document.theme.presetId]}</span><span>版本 {document.revision}</span>{mode === "edit" ? <span className={dirty ? "is-dirty" : "is-saved"}>{dirty ? "有未保存更改" : "已保存"}</span> : null}</div>
         <div className="canvas-toolbar-actions">
           {mode === "edit" ? <>
             <button className="secondary-button compact-button" disabled={!canEdit || saving} onClick={() => setShowTemplates(true)} type="button">模板</button>
@@ -538,12 +538,13 @@ export function CanvasPage({ initialTemplateId, mode, projectId }: CanvasPagePro
             <button aria-label="圆形，固定比例缩放" className="palette-item palette-circle" disabled={!canEdit || saving} draggable={canEdit && !saving} onDragStart={(event) => startPaletteDrag(event, "circle")} title="圆形 · 固定比例缩放" type="button"><span className="palette-icon" aria-hidden="true"><i className="palette-shape-icon is-circle" /></span><span><strong>圆形</strong><small>固定比例缩放</small></span><span className="palette-drag-mark">⋮⋮</span></button>
           </section>
           <section aria-labelledby="palette-decorations-title" className="palette-group is-decoration">
-            <h3 className="palette-group-title" id="palette-decorations-title"><span>界面点缀</span><em>6</em></h3>
+            <h3 className="palette-group-title" id="palette-decorations-title"><span>界面点缀</span><em>7</em></h3>
             <button aria-label="大屏标题，主标题与英文副标题" className="palette-item palette-screen-title" disabled={!canEdit || saving} draggable={canEdit && !saving} onDragStart={(event) => startPaletteDrag(event, "screen-title")} title="大屏标题 · 主标题与英文副标题" type="button"><span className="palette-icon" aria-hidden="true">T</span><span><strong>大屏标题</strong><small>主标题与英文副标题</small></span><span className="palette-drag-mark">⋮⋮</span></button>
             <button aria-label="背景点缀，网格与科技光环" className="palette-item palette-background-decoration" disabled={!canEdit || saving} draggable={canEdit && !saving} onDragStart={(event) => startPaletteDrag(event, "background-decoration")} title="背景点缀 · 网格与科技光环" type="button"><span className="palette-icon" aria-hidden="true">◇</span><span><strong>背景点缀</strong><small>网格与科技光环</small></span><span className="palette-drag-mark">⋮⋮</span></button>
             <button aria-label="时间日期，实时日期与时钟" className="palette-item palette-datetime" disabled={!canEdit || saving} draggable={canEdit && !saving} onDragStart={(event) => startPaletteDrag(event, "datetime")} title="时间日期 · 实时日期与时钟" type="button"><span className="palette-icon" aria-hidden="true">◷</span><span><strong>时间日期</strong><small>实时日期与时钟</small></span><span className="palette-drag-mark">⋮⋮</span></button>
             <button aria-label="标题，看板区块标题" className="palette-item palette-section-title" disabled={!canEdit || saving} draggable={canEdit && !saving} onDragStart={(event) => startPaletteDrag(event, "section-title")} title="标题 · 看板区块标题" type="button"><span className="palette-icon" aria-hidden="true">▰</span><span><strong>标题</strong><small>看板区块标题</small></span><span className="palette-drag-mark">⋮⋮</span></button>
             <button aria-label="小卡片背景，轻量面板底框" className="palette-item palette-card-background" disabled={!canEdit || saving} draggable={canEdit && !saving} onDragStart={(event) => startPaletteDrag(event, "card-background")} title="小卡片背景 · 轻量面板底框" type="button"><span className="palette-icon" aria-hidden="true">▣</span><span><strong>小卡片背景</strong><small>轻量面板底框</small></span><span className="palette-drag-mark">⋮⋮</span></button>
+            <button aria-label="科技面板，可配置标题与五种边框风格" className="palette-item palette-panel-frame" disabled={!canEdit || saving} draggable={canEdit && !saving} onDragStart={(event) => startPaletteDrag(event, "panel-frame")} title="科技面板 · 五种边框样式" type="button"><span className="palette-icon" aria-hidden="true">⌗</span><span><strong>科技面板</strong><small>标题与科技边框</small></span><span className="palette-drag-mark">⋮⋮</span></button>
             <button aria-label="小图标背景，固定比例图标底座" className="palette-item palette-icon-background" disabled={!canEdit || saving} draggable={canEdit && !saving} onDragStart={(event) => startPaletteDrag(event, "icon-background")} title="小图标背景 · 固定比例图标底座" type="button"><span className="palette-icon" aria-hidden="true">◆</span><span><strong>小图标背景</strong><small>固定比例图标底座</small></span><span className="palette-drag-mark">⋮⋮</span></button>
           </section>
           <div className="palette-note"><strong>资源分离</strong><p>模型文件独立存储；画布节点只保存配置、资源 ID 与数据绑定 ID。</p></div>

@@ -5,12 +5,14 @@ import {
   isDashboardNodeType,
   isDecorationNodeType,
   isModel3DNodeType,
+  isPanelFrameNodeType,
   isShapeNodeType,
   parseBasicProps,
   parseChartProps,
   parseDashboardProps,
   parseDecorationProps,
   parseModel3DProps,
+  parsePanelFrameProps,
   parseShapeProps,
   type CanvasNode,
   type AlarmListProps,
@@ -38,12 +40,20 @@ type CanvasTemplatePreviewProps = {
   templateId: CanvasTemplateId;
 };
 
+const isTemplateBackdropNode = (node: CanvasNode) => (
+  node.type === "rectangle"
+  && node.x <= 0
+  && node.y <= 0
+  && node.width >= 1920
+  && node.height >= 1080
+);
+
 const nodePosition = (node: CanvasNode): CSSProperties => ({
   left: `${(node.x / 1920) * 100}%`,
   top: `${(node.y / 1080) * 100}%`,
   width: `${(node.width / 1920) * 100}%`,
   height: `${(node.height / 1080) * 100}%`,
-  zIndex: node.zIndex,
+  zIndex: isTemplateBackdropNode(node) ? 0 : node.zIndex + 2,
 });
 
 const invalidNode = (node: CanvasNode, message: string) => (
@@ -294,6 +304,27 @@ function renderNode(node: CanvasNode): ReactNode {
     return <div className={`template-preview-decoration is-${node.type}`} style={style}>{props.text}</div>;
   }
 
+  if (isPanelFrameNodeType(node.type)) {
+    const parsed = parsePanelFrameProps(node.props);
+    if (!parsed.ok) return invalidNode(node, parsed.message);
+    const props = parsed.value;
+    return (
+      <div
+        className="template-preview-panel-frame"
+        data-style={props.style}
+        style={{
+          "--preview-accent": props.accentColor,
+          "--preview-border": props.borderColor,
+          "--preview-surface": props.fillColor,
+          "--preview-text": props.textColor,
+          opacity: props.opacity,
+        } as PreviewStyle}
+      >
+        {props.showHeader ? <header><strong>{props.title}</strong><small>{props.subtitle}</small></header> : null}
+      </div>
+    );
+  }
+
   if (isChartNodeType(node.type)) {
     const parsed = parseChartProps(node.type, node.props);
     if (!parsed.ok) return invalidNode(node, parsed.message);
@@ -340,15 +371,19 @@ export function CanvasTemplatePreview({ className = "", templateId }: CanvasTemp
     <div
       aria-label={`${template.name}真实画布缩略预览`}
       className={`template-canvas-preview${className ? ` ${className}` : ""}`}
+      data-font={template.canvasTheme.fontFamily}
+      data-pattern={template.canvasTheme.backgroundPattern}
       role="img"
       style={{
         "--preview-accent": template.canvasTheme.accentColor,
         "--preview-border": template.canvasTheme.borderColor,
+        "--preview-radius": `${template.canvasTheme.panelRadius}px`,
         "--preview-surface": template.canvasTheme.surfaceColor,
         "--preview-text": template.canvasTheme.textColor,
         backgroundColor: template.canvasTheme.backgroundColor,
       } as PreviewStyle}
     >
+      <div aria-hidden="true" className="template-canvas-theme-pattern" />
       {nodes.map((node) => (
         <div className={`template-canvas-preview-node is-${node.type}`} key={node.id} style={nodePosition(node)}>
           {renderNode(node)}

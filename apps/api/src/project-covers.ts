@@ -13,6 +13,7 @@ import {
   type ImageProps,
   type MetricCardProps,
   type Model3DProps,
+  type PanelFrameProps,
   type PlainTextProps,
   type RadioGroupProps,
   type ProgressListProps,
@@ -66,7 +67,34 @@ const panel = (
   opacity = 0.94,
 ): string => {
   const box = scaledBox(node, canvas);
-  return `<rect x="${box.x.toFixed(2)}" y="${box.y.toFixed(2)}" width="${box.width.toFixed(2)}" height="${box.height.toFixed(2)}" rx="3" fill="${fill}" fill-opacity="${Math.min(Math.max(opacity, 0), 1).toFixed(2)}" stroke="${border}" stroke-width="0.8"/>`;
+  const radius = Math.min(10, Math.max(0, canvas.theme.panelRadius * 0.25));
+  return `<rect x="${box.x.toFixed(2)}" y="${box.y.toFixed(2)}" width="${box.width.toFixed(2)}" height="${box.height.toFixed(2)}" rx="${radius.toFixed(2)}" fill="${fill}" fill-opacity="${Math.min(Math.max(opacity, 0), 1).toFixed(2)}" stroke="${border}" stroke-width="0.8"/>`;
+};
+
+const renderPanelFrame = (node: CanvasNode, canvas: CanvasDocument): string => {
+  const props = node.props as PanelFrameProps;
+  const box = scaledBox(node, canvas);
+  const fill = safeColor(props.fillColor, canvas.theme.surfaceColor);
+  const border = safeColor(props.borderColor, canvas.theme.borderColor);
+  const accent = safeColor(props.accentColor, canvas.theme.accentColor);
+  const text = safeColor(props.textColor, canvas.theme.textColor);
+  const corner = Math.min(box.width / 3, box.height / 3, Math.max(3, props.cornerSize * COVER_WIDTH / canvas.width));
+  const headerHeight = Math.min(box.height, props.headerHeight * COVER_HEIGHT / canvas.height);
+  const outline = panel(node, canvas, fill, border, props.opacity);
+  const corners = props.style === "corners" || props.style === "neon"
+    ? [
+        `M ${box.x.toFixed(2)} ${(box.y + corner).toFixed(2)} V ${box.y.toFixed(2)} H ${(box.x + corner).toFixed(2)}`,
+        `M ${(box.x + box.width - corner).toFixed(2)} ${box.y.toFixed(2)} H ${(box.x + box.width).toFixed(2)} V ${(box.y + corner).toFixed(2)}`,
+        `M ${box.x.toFixed(2)} ${(box.y + box.height - corner).toFixed(2)} V ${(box.y + box.height).toFixed(2)} H ${(box.x + corner).toFixed(2)}`,
+        `M ${(box.x + box.width - corner).toFixed(2)} ${(box.y + box.height).toFixed(2)} H ${(box.x + box.width).toFixed(2)} V ${(box.y + box.height - corner).toFixed(2)}`,
+      ].map((path) => `<path d="${path}" fill="none" stroke="${accent}" stroke-width="1.8"/>`).join("")
+    : "";
+  const header = props.showHeader ? [
+    `<rect x="${(box.x + 7).toFixed(2)}" y="${(box.y + 7).toFixed(2)}" width="2" height="${Math.max(4, headerHeight - 14).toFixed(2)}" fill="${accent}"/>`,
+    `<text x="${(box.x + 14).toFixed(2)}" y="${(box.y + Math.max(12, headerHeight * 0.5)).toFixed(2)}" fill="${text}" font-size="7" font-weight="700">${escapeXml(truncate(props.title, 34))}</text>`,
+    `<line x1="${(box.x + 14).toFixed(2)}" x2="${(box.x + box.width - 7).toFixed(2)}" y1="${(box.y + headerHeight).toFixed(2)}" y2="${(box.y + headerHeight).toFixed(2)}" stroke="${border}" stroke-width="0.8"/>`,
+  ].join("") : "";
+  return outline + corners + header;
 };
 
 const renderShape = (node: CanvasNode, canvas: CanvasDocument): string => {
@@ -380,6 +408,7 @@ const renderNode = (node: CanvasNode, canvas: CanvasDocument): string => {
     || node.type === "card-background"
     || node.type === "icon-background"
   ) return renderDecoration(node, canvas);
+  if (node.type === "panel-frame") return renderPanelFrame(node, canvas);
   if (
     node.type === "metric-card"
     || node.type === "radial-gauge"
@@ -411,17 +440,32 @@ export const renderProjectCoverSvg = (
   canvas: CanvasDocument,
 ): string => {
   const background = safeColor(canvas.theme.backgroundColor, "#071525");
-  const nodes = [...canvas.nodes]
+  const pattern = canvas.theme.backgroundPattern;
+  const patternMarkup = pattern === "none"
+    ? ""
+    : pattern === "dots"
+      ? `<pattern id="canvas-pattern" width="12" height="12" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r="0.7" fill="${safeColor(canvas.theme.borderColor, "#286783")}" fill-opacity="0.3"/></pattern>`
+      : `<pattern id="canvas-pattern" width="${pattern === "circuit" ? 30 : 20}" height="${pattern === "circuit" ? 30 : 20}" patternUnits="userSpaceOnUse"><path d="M 0 0 H ${pattern === "circuit" ? 18 : 20} M 0 0 V ${pattern === "circuit" ? 12 : 20}${pattern === "circuit" ? " M 18 0 V 8 H 26" : ""}" fill="none" stroke="${safeColor(canvas.theme.borderColor, "#286783")}" stroke-width="0.55" stroke-opacity="0.28"/></pattern>`;
+  const sortedNodes = [...canvas.nodes]
     .sort((left, right) => left.zIndex - right.zIndex || left.id.localeCompare(right.id))
-    .slice(0, MAX_RENDERED_NODES)
-    .map((node) => renderNode(node, canvas))
-    .join("");
+    .slice(0, MAX_RENDERED_NODES);
+  const isBackdropNode = (node: CanvasNode) => (
+    node.type === "rectangle"
+    && node.x <= 0
+    && node.y <= 0
+    && node.width >= canvas.width
+    && node.height >= canvas.height
+  );
+  const backdropNodes = sortedNodes.filter(isBackdropNode).map((node) => renderNode(node, canvas)).join("");
+  const contentNodes = sortedNodes.filter((node) => !isBackdropNode(node)).map((node) => renderNode(node, canvas)).join("");
 
   return [
     `<svg xmlns="http://www.w3.org/2000/svg" width="${COVER_WIDTH}" height="${COVER_HEIGHT}" viewBox="0 0 ${COVER_WIDTH} ${COVER_HEIGHT}" role="img" aria-label="项目画布缩略图">`,
+    `<defs>${patternMarkup}<clipPath id="canvas-cover-clip"><rect width="${COVER_WIDTH}" height="${COVER_HEIGHT}"/></clipPath></defs>`,
     `<rect width="${COVER_WIDTH}" height="${COVER_HEIGHT}" fill="${background}"/>`,
-    `<g clip-path="url(#canvas-cover-clip)">${nodes}</g>`,
-    `<defs><clipPath id="canvas-cover-clip"><rect width="${COVER_WIDTH}" height="${COVER_HEIGHT}"/></clipPath></defs>`,
+    `<g clip-path="url(#canvas-cover-clip)">${backdropNodes}</g>`,
+    pattern === "none" ? "" : `<rect width="${COVER_WIDTH}" height="${COVER_HEIGHT}" fill="url(#canvas-pattern)"/>`,
+    `<g clip-path="url(#canvas-cover-clip)">${contentNodes}</g>`,
     "</svg>",
   ].join("");
 };

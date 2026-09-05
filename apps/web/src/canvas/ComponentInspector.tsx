@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { BasicNodeInspector } from "./BasicNodeInspector";
 import { DashboardNodeInspector } from "./DashboardNodeInspector";
+import { PanelFrameInspector } from "./PanelFrameInspector";
 import {
   componentLabels,
   isBasicNodeType,
@@ -8,6 +9,7 @@ import {
   isDashboardNodeType,
   isDecorationNodeType,
   isModel3DNodeType,
+  isPanelFrameNodeType,
   isShapeNodeType,
   parseChartProps,
   parseDecorationProps,
@@ -516,6 +518,17 @@ export function ComponentInspector({
       return <InvalidComponentInspector message={parsed.message} onValidationChange={onValidationChange} />;
     }
     return <ValidDecorationInspector editable={editable} node={node} onNodeChange={onNodeChange} onValidationChange={onValidationChange} projectId={projectId} props={parsed.value} />;
+  }
+
+  if (isPanelFrameNodeType(node.type)) {
+    return (
+      <PanelFrameInspector
+        editable={editable}
+        node={node}
+        onNodeChange={onNodeChange}
+        onValidationChange={onValidationChange}
+      />
+    );
   }
 
   if (isDashboardNodeType(node.type)) {
