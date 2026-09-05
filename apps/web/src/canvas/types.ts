@@ -15,6 +15,7 @@ export type DecorationNodeType =
   | "section-title"
   | "card-background"
   | "icon-background";
+export type PanelFrameNodeType = "panel-frame";
 export type Model3DNodeType = "model-3d";
 export type DashboardNodeType =
   | "metric-card"
@@ -39,14 +40,29 @@ export type CanvasNodeType =
   | ChartNodeType
   | ShapeNodeType
   | DecorationNodeType
+  | PanelFrameNodeType
   | Model3DNodeType
   | DashboardNodeType
   | BasicNodeType;
 
 export type CanvasThemeMode = "dark" | "light" | "custom";
+export type CanvasThemePresetId =
+  | "deep-blue"
+  | "steel-orange"
+  | "energy-green"
+  | "command-gold"
+  | "light-industrial"
+  | "custom";
+export type CanvasBackgroundPattern = "none" | "grid" | "dots" | "circuit";
+export type CanvasFontFamily = "system" | "industrial" | "data";
 
 export type CanvasTheme = {
   mode: CanvasThemeMode;
+  presetId: CanvasThemePresetId;
+  backgroundPattern: CanvasBackgroundPattern;
+  fontFamily: CanvasFontFamily;
+  glowIntensity: number;
+  panelRadius: number;
   backgroundColor: string;
   surfaceColor: string;
   textColor: string;
@@ -83,6 +99,23 @@ export type DecorationProps = {
   align: TextAlign;
   showDate: boolean;
   showSeconds: boolean;
+};
+
+export type PanelFrameStyle = "outline" | "corners" | "cut" | "glass" | "neon";
+
+export type PanelFrameProps = {
+  title: string;
+  subtitle: string;
+  showHeader: boolean;
+  style: PanelFrameStyle;
+  textColor: string;
+  accentColor: string;
+  fillColor: string;
+  borderColor: string;
+  opacity: number;
+  glowStrength: number;
+  headerHeight: number;
+  cornerSize: number;
 };
 
 export type DashboardTone = "normal" | "warning" | "danger" | "offline";
@@ -489,6 +522,23 @@ const decorationDefaults: Record<DecorationNodeType, DecorationProps> = {
   },
 };
 
+const panelFrameDefaults: Record<PanelFrameNodeType, PanelFrameProps> = {
+  "panel-frame": {
+    title: "设备运行概览",
+    subtitle: "REAL-TIME OPERATIONS",
+    showHeader: true,
+    style: "corners",
+    textColor: "#eafaff",
+    accentColor: "#55d8ff",
+    fillColor: "#0b2638",
+    borderColor: "#286783",
+    opacity: 0.88,
+    glowStrength: 0.55,
+    headerHeight: 54,
+    cornerSize: 24,
+  },
+};
+
 const model3DDefaults: Record<Model3DNodeType, Model3DProps> = {
   "model-3d": {
     backgroundColor: "#071525",
@@ -730,6 +780,7 @@ export const componentLabels: Record<CanvasNodeType, string> = {
   "section-title": "标题",
   "card-background": "小卡片背景",
   "icon-background": "小图标背景",
+  "panel-frame": "科技面板",
   "model-3d": "3D 模型",
   "metric-card": "指标卡",
   "radial-gauge": "环形进度",
@@ -765,6 +816,7 @@ export const defaultNodeSizes: Record<CanvasNodeType, { width: number; height: n
   "section-title": { width: 300, height: 64 },
   "card-background": { width: 360, height: 220 },
   "icon-background": { width: 96, height: 96 },
+  "panel-frame": { width: 560, height: 340 },
   "model-3d": { width: 720, height: 460 },
   "metric-card": { width: 280, height: 150 },
   "radial-gauge": { width: 320, height: 300 },
@@ -800,6 +852,7 @@ export const minimumNodeSizes: Record<CanvasNodeType, { width: number; height: n
   "section-title": { width: 160, height: 48 },
   "card-background": { width: 160, height: 100 },
   "icon-background": { width: 64, height: 64 },
+  "panel-frame": { width: 260, height: 180 },
   "model-3d": { width: 360, height: 240 },
   "metric-card": { width: 200, height: 120 },
   "radial-gauge": { width: 240, height: 220 },
@@ -839,6 +892,9 @@ export const isDecorationNodeType = (value: string): value is DecorationNodeType
   value === "card-background" ||
   value === "icon-background";
 
+export const isPanelFrameNodeType = (value: string): value is PanelFrameNodeType =>
+  value === "panel-frame";
+
 export const isModel3DNodeType = (value: string): value is Model3DNodeType =>
   value === "model-3d";
 
@@ -864,7 +920,7 @@ export const isBasicNodeType = (value: string): value is BasicNodeType =>
   value === "select";
 
 export const isBackgroundNodeType = (value: CanvasNodeType): boolean =>
-  value === "background-decoration" || value === "card-background";
+  value === "background-decoration" || value === "card-background" || isPanelFrameNodeType(value);
 
 export const isSquareNodeType = (value: CanvasNodeType): boolean =>
   value === "circle" || value === "icon-background";
@@ -885,6 +941,8 @@ export const createCanvasNode = (
       ? { ...shapeDefaults[type] }
       : isDecorationNodeType(type)
         ? { ...decorationDefaults[type] }
+        : isPanelFrameNodeType(type)
+          ? { ...panelFrameDefaults[type] }
         : isDashboardNodeType(type)
           ? (() => {
               const defaults = dashboardDefaults[type];
@@ -927,6 +985,7 @@ export const isCanvasNodeType = (value: string): value is CanvasNodeType =>
   isChartNodeType(value) ||
   isShapeNodeType(value) ||
   isDecorationNodeType(value) ||
+  isPanelFrameNodeType(value) ||
   isModel3DNodeType(value) ||
   isDashboardNodeType(value) ||
   isBasicNodeType(value);
@@ -1400,6 +1459,71 @@ export const parseDecorationProps = (
       align: props.align,
       showDate: props.showDate,
       showSeconds: props.showSeconds,
+    },
+  };
+};
+
+export type PanelFramePropsResult =
+  | { ok: true; value: PanelFrameProps }
+  | { ok: false; message: string };
+
+export const parsePanelFrameProps = (
+  props: Record<string, unknown>,
+): PanelFramePropsResult => {
+  if (typeof props.title !== "string" || props.title.trim().length === 0 || props.title.length > 120) {
+    return { ok: false, message: "title 必须是 1–120 个字符的文本" };
+  }
+  if (typeof props.subtitle !== "string" || props.subtitle.length > 160) {
+    return { ok: false, message: "subtitle 必须是不超过 160 个字符的文本" };
+  }
+  if (typeof props.showHeader !== "boolean") {
+    return { ok: false, message: "showHeader 必须是布尔值" };
+  }
+  if (
+    props.style !== "outline" &&
+    props.style !== "corners" &&
+    props.style !== "cut" &&
+    props.style !== "glass" &&
+    props.style !== "neon"
+  ) {
+    return { ok: false, message: "style 必须是 outline、corners、cut、glass 或 neon" };
+  }
+  if (
+    !isHexColor(props.textColor) ||
+    !isHexColor(props.accentColor) ||
+    !isHexColor(props.fillColor) ||
+    !isHexColor(props.borderColor)
+  ) {
+    return { ok: false, message: "所有颜色字段都必须是六位十六进制颜色" };
+  }
+  if (typeof props.opacity !== "number" || !Number.isFinite(props.opacity) || props.opacity < 0.05 || props.opacity > 1) {
+    return { ok: false, message: "opacity 必须是 0.05–1 之间的数值" };
+  }
+  if (typeof props.glowStrength !== "number" || !Number.isFinite(props.glowStrength) || props.glowStrength < 0 || props.glowStrength > 1) {
+    return { ok: false, message: "glowStrength 必须是 0–1 之间的数值" };
+  }
+  if (typeof props.headerHeight !== "number" || !Number.isFinite(props.headerHeight) || props.headerHeight < 32 || props.headerHeight > 80) {
+    return { ok: false, message: "headerHeight 必须是 32–80 之间的数值" };
+  }
+  if (typeof props.cornerSize !== "number" || !Number.isFinite(props.cornerSize) || props.cornerSize < 8 || props.cornerSize > 48) {
+    return { ok: false, message: "cornerSize 必须是 8–48 之间的数值" };
+  }
+
+  return {
+    ok: true,
+    value: {
+      title: props.title,
+      subtitle: props.subtitle,
+      showHeader: props.showHeader,
+      style: props.style,
+      textColor: props.textColor,
+      accentColor: props.accentColor,
+      fillColor: props.fillColor,
+      borderColor: props.borderColor,
+      opacity: props.opacity,
+      glowStrength: props.glowStrength,
+      headerHeight: props.headerHeight,
+      cornerSize: props.cornerSize,
     },
   };
 };

@@ -15,6 +15,7 @@ export type DecorationNodeType =
   | "section-title"
   | "card-background"
   | "icon-background";
+export type PanelFrameNodeType = "panel-frame";
 export type DashboardNodeType =
   | "metric-card"
   | "radial-gauge"
@@ -39,14 +40,29 @@ export type CanvasNodeType =
   | ChartNodeType
   | ShapeNodeType
   | DecorationNodeType
+  | PanelFrameNodeType
   | DashboardNodeType
   | BasicNodeType
   | Model3DNodeType;
 
 export type CanvasThemeMode = "dark" | "light" | "custom";
+export type CanvasThemePresetId =
+  | "deep-blue"
+  | "steel-orange"
+  | "energy-green"
+  | "command-gold"
+  | "light-industrial"
+  | "custom";
+export type CanvasBackgroundPattern = "none" | "grid" | "dots" | "circuit";
+export type CanvasFontFamily = "system" | "industrial" | "data";
 
 export type CanvasTheme = {
   mode: CanvasThemeMode;
+  presetId: CanvasThemePresetId;
+  backgroundPattern: CanvasBackgroundPattern;
+  fontFamily: CanvasFontFamily;
+  glowIntensity: number;
+  panelRadius: number;
   backgroundColor: string;
   surfaceColor: string;
   textColor: string;
@@ -81,6 +97,23 @@ export type DecorationProps = {
   align: "left" | "center" | "right";
   showDate: boolean;
   showSeconds: boolean;
+};
+
+export type PanelFrameStyle = "outline" | "corners" | "cut" | "glass" | "neon";
+
+export type PanelFrameProps = {
+  title: string;
+  subtitle: string;
+  showHeader: boolean;
+  style: PanelFrameStyle;
+  textColor: string;
+  accentColor: string;
+  fillColor: string;
+  borderColor: string;
+  opacity: number;
+  glowStrength: number;
+  headerHeight: number;
+  cornerSize: number;
 };
 
 export type DashboardTone = "normal" | "warning" | "danger" | "offline";
@@ -308,7 +341,7 @@ export type CanvasNode = {
   width: number;
   height: number;
   zIndex: number;
-  props: ChartProps | ShapeProps | DecorationProps | DashboardProps | BasicProps | Model3DProps;
+  props: ChartProps | ShapeProps | DecorationProps | PanelFrameProps | DashboardProps | BasicProps | Model3DProps;
   resourceRefs: string[];
   dataBindingRefs: string[];
 };
@@ -336,6 +369,11 @@ type CanvasRow = {
   height: number;
   background_color: string;
   theme_mode: CanvasThemeMode;
+  theme_preset_id: CanvasThemePresetId;
+  theme_background_pattern: CanvasBackgroundPattern;
+  theme_font_family: CanvasFontFamily;
+  theme_glow_intensity: number;
+  theme_panel_radius: number;
   theme_surface_color: string;
   theme_text_color: string;
   theme_accent_color: string;
@@ -361,11 +399,16 @@ const DEFAULT_WIDTH = 1920;
 const DEFAULT_HEIGHT = 1080;
 const DEFAULT_THEME: CanvasTheme = {
   mode: "dark",
-  backgroundColor: "#071525",
-  surfaceColor: "#0b2638",
-  textColor: "#eafaff",
+  presetId: "deep-blue",
+  backgroundPattern: "circuit",
+  fontFamily: "industrial",
+  glowIntensity: 0.65,
+  panelRadius: 6,
+  backgroundColor: "#04131f",
+  surfaceColor: "#08273b",
+  textColor: "#e9f8ff",
   accentColor: "#55d8ff",
-  borderColor: "#286783",
+  borderColor: "#276f8d",
 };
 const MAX_PATCH_NODES = 100;
 const MAX_POINTS = 32;
@@ -395,6 +438,7 @@ const minimumNodeSizes: Record<CanvasNodeType, { width: number; height: number }
   "section-title": { width: 160, height: 48 },
   "card-background": { width: 160, height: 100 },
   "icon-background": { width: 64, height: 64 },
+  "panel-frame": { width: 260, height: 180 },
   "metric-card": { width: 200, height: 120 },
   "radial-gauge": { width: 240, height: 220 },
   "progress-list": { width: 280, height: 220 },
@@ -475,14 +519,46 @@ const validateCanvasTheme = (value: unknown): CanvasTheme => {
   if (theme.mode !== "dark" && theme.mode !== "light" && theme.mode !== "custom") {
     invalid("invalid_canvas_theme", "theme.mode must be dark, light, or custom.");
   }
+  if (
+    theme.presetId !== "deep-blue" &&
+    theme.presetId !== "steel-orange" &&
+    theme.presetId !== "energy-green" &&
+    theme.presetId !== "command-gold" &&
+    theme.presetId !== "light-industrial" &&
+    theme.presetId !== "custom"
+  ) {
+    invalid("invalid_canvas_theme", "theme.presetId is not a supported theme preset.");
+  }
+  if (
+    theme.backgroundPattern !== "none" &&
+    theme.backgroundPattern !== "grid" &&
+    theme.backgroundPattern !== "dots" &&
+    theme.backgroundPattern !== "circuit"
+  ) {
+    invalid("invalid_canvas_theme", "theme.backgroundPattern must be none, grid, dots, or circuit.");
+  }
+  if (theme.fontFamily !== "system" && theme.fontFamily !== "industrial" && theme.fontFamily !== "data") {
+    invalid("invalid_canvas_theme", "theme.fontFamily must be system, industrial, or data.");
+  }
   const requireThemeColor = (color: unknown, label: string): string => {
     if (typeof color !== "string" || !colorPattern.test(color)) {
       invalid("invalid_canvas_theme", `${label} must be a six-digit hexadecimal color.`);
     }
     return color as string;
   };
+  const requireThemeNumber = (number: unknown, label: string, minimum: number, maximum: number): number => {
+    if (typeof number !== "number" || !Number.isFinite(number) || number < minimum || number > maximum) {
+      invalid("invalid_canvas_theme", `${label} must be a finite number between ${minimum} and ${maximum}.`);
+    }
+    return number as number;
+  };
   return {
     mode: theme.mode as CanvasThemeMode,
+    presetId: theme.presetId as CanvasThemePresetId,
+    backgroundPattern: theme.backgroundPattern as CanvasBackgroundPattern,
+    fontFamily: theme.fontFamily as CanvasFontFamily,
+    glowIntensity: requireThemeNumber(theme.glowIntensity, "theme.glowIntensity", 0, 1),
+    panelRadius: requireThemeNumber(theme.panelRadius, "theme.panelRadius", 0, 24),
     backgroundColor: requireThemeColor(theme.backgroundColor, "theme.backgroundColor"),
     surfaceColor: requireThemeColor(theme.surfaceColor, "theme.surfaceColor"),
     textColor: requireThemeColor(theme.textColor, "theme.textColor"),
@@ -495,6 +571,11 @@ const presentStoredTheme = (row: CanvasRow): CanvasTheme => {
   try {
     return validateCanvasTheme({
       mode: row.theme_mode,
+      presetId: row.theme_preset_id,
+      backgroundPattern: row.theme_background_pattern,
+      fontFamily: row.theme_font_family,
+      glowIntensity: row.theme_glow_intensity,
+      panelRadius: row.theme_panel_radius,
       backgroundColor: row.background_color,
       surfaceColor: row.theme_surface_color,
       textColor: row.theme_text_color,
@@ -735,6 +816,9 @@ const isDecorationNodeType = (value: unknown): value is DecorationNodeType =>
   value === "card-background" ||
   value === "icon-background";
 
+const isPanelFrameNodeType = (value: unknown): value is PanelFrameNodeType =>
+  value === "panel-frame";
+
 const isModel3DNodeType = (value: unknown): value is Model3DNodeType =>
   value === "model-3d";
 
@@ -769,6 +853,7 @@ const isCanvasNodeType = (value: unknown): value is CanvasNodeType =>
   value === "rectangle" ||
   value === "circle" ||
   isDecorationNodeType(value) ||
+  isPanelFrameNodeType(value) ||
   isDashboardNodeType(value) ||
   isBasicNodeType(value) ||
   isModel3DNodeType(value);
@@ -782,7 +867,7 @@ const validateNode = (value: unknown): CanvasNode => {
   const type = rawType as CanvasNodeType;
 
   const props = requireObject(node.props, "canvas node props");
-  let validatedProps: ChartProps | ShapeProps | DecorationProps | DashboardProps | BasicProps | Model3DProps | null = null;
+  let validatedProps: ChartProps | ShapeProps | DecorationProps | PanelFrameProps | DashboardProps | BasicProps | Model3DProps | null = null;
 
   if (
     type === "line-chart" ||
@@ -836,6 +921,30 @@ const validateNode = (value: unknown): CanvasNode => {
       align: requireAlignment(props.align, "props.align"),
       showDate: requireBoolean(props.showDate, "props.showDate"),
       showSeconds: requireBoolean(props.showSeconds, "props.showSeconds"),
+    };
+  } else if (isPanelFrameNodeType(type)) {
+    if (
+      props.style !== "outline" &&
+      props.style !== "corners" &&
+      props.style !== "cut" &&
+      props.style !== "glass" &&
+      props.style !== "neon"
+    ) {
+      invalid("invalid_canvas_node", "props.style must be outline, corners, cut, glass, or neon.");
+    }
+    validatedProps = {
+      title: requireNonEmptyString(props.title, "props.title", 120),
+      subtitle: requireString(props.subtitle, "props.subtitle", 160),
+      showHeader: requireBoolean(props.showHeader, "props.showHeader"),
+      style: props.style as PanelFrameStyle,
+      textColor: requireColor(props.textColor, "props.textColor"),
+      accentColor: requireColor(props.accentColor, "props.accentColor"),
+      fillColor: requireColor(props.fillColor, "props.fillColor"),
+      borderColor: requireColor(props.borderColor, "props.borderColor"),
+      opacity: requireNumber(props.opacity, "props.opacity", 0.05, 1),
+      glowStrength: requireNumber(props.glowStrength, "props.glowStrength", 0, 1),
+      headerHeight: requireNumber(props.headerHeight, "props.headerHeight", 32, 80),
+      cornerSize: requireNumber(props.cornerSize, "props.cornerSize", 8, 48),
     };
   } else if (isDashboardNodeType(type)) {
     const base = requireDashboardBase(props);
@@ -1249,8 +1358,9 @@ const presentStoredNode = (row: CanvasNodeRow): CanvasNode => {
 
 export const getCanvas = async (env: AppEnv, projectId: string): Promise<CanvasDocument> => {
   const canvas = await env.DB.prepare(
-    `SELECT project_id, width, height, background_color, theme_mode, theme_surface_color,
-       theme_text_color, theme_accent_color, theme_border_color, revision, updated_at
+    `SELECT project_id, width, height, background_color, theme_mode, theme_preset_id,
+       theme_background_pattern, theme_font_family, theme_glow_intensity, theme_panel_radius,
+       theme_surface_color, theme_text_color, theme_accent_color, theme_border_color, revision, updated_at
      FROM project_canvases WHERE project_id = ?`,
   ).bind(projectId).first<CanvasRow>();
   if (!canvas) {
@@ -1391,15 +1501,22 @@ export const applyCanvasPatch = async (
   const statements = [
     env.DB.prepare(
       `INSERT OR IGNORE INTO project_canvases
-       (project_id, width, height, background_color, theme_mode, theme_surface_color,
-        theme_text_color, theme_accent_color, theme_border_color, revision, updated_by_user_id, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
+       (project_id, width, height, background_color, theme_mode, theme_preset_id,
+        theme_background_pattern, theme_font_family, theme_glow_intensity, theme_panel_radius,
+        theme_surface_color, theme_text_color, theme_accent_color, theme_border_color,
+        revision, updated_by_user_id, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
     ).bind(
       projectId,
       DEFAULT_WIDTH,
       DEFAULT_HEIGHT,
       DEFAULT_THEME.backgroundColor,
       DEFAULT_THEME.mode,
+      DEFAULT_THEME.presetId,
+      DEFAULT_THEME.backgroundPattern,
+      DEFAULT_THEME.fontFamily,
+      DEFAULT_THEME.glowIntensity,
+      DEFAULT_THEME.panelRadius,
       DEFAULT_THEME.surfaceColor,
       DEFAULT_THEME.textColor,
       DEFAULT_THEME.accentColor,
@@ -1446,13 +1563,20 @@ export const applyCanvasPatch = async (
   statements.push(patch.theme
     ? env.DB.prepare(
       `UPDATE project_canvases SET
-         background_color = ?, theme_mode = ?, theme_surface_color = ?,
-         theme_text_color = ?, theme_accent_color = ?, theme_border_color = ?,
+         background_color = ?, theme_mode = ?, theme_preset_id = ?,
+         theme_background_pattern = ?, theme_font_family = ?, theme_glow_intensity = ?,
+         theme_panel_radius = ?, theme_surface_color = ?, theme_text_color = ?,
+         theme_accent_color = ?, theme_border_color = ?,
          revision = revision + 1, updated_by_user_id = ?, updated_at = ?
        WHERE project_id = ? AND revision = ?`,
     ).bind(
       patch.theme.backgroundColor,
       patch.theme.mode,
+      patch.theme.presetId,
+      patch.theme.backgroundPattern,
+      patch.theme.fontFamily,
+      patch.theme.glowIntensity,
+      patch.theme.panelRadius,
       patch.theme.surfaceColor,
       patch.theme.textColor,
       patch.theme.accentColor,

@@ -6,8 +6,9 @@ import { DecorationNode } from "./DecorationNode";
 import { buildSnapTargets, resizeCanvasNode, snapNodePosition, type ResizeDirection, type SnapTargets, type SnappedPosition } from "./geometry";
 import { Model3DNode } from "./Model3DNode";
 import type { ModelSceneSnapshot } from "./model-scene";
+import { PanelFrameNode } from "./PanelFrameNode";
 import { ShapeNode } from "./ShapeNode";
-import { CANVAS_DRAG_TYPE, defaultNodeSizes, isBasicNodeType, isCanvasNodeType, isDashboardNodeType, isDecorationNodeType, isModel3DNodeType, isShapeNodeType, type CanvasDocument, type CanvasNode, type CanvasNodeType, type ModelNodeAppearance } from "./types";
+import { CANVAS_DRAG_TYPE, defaultNodeSizes, isBasicNodeType, isCanvasNodeType, isDashboardNodeType, isDecorationNodeType, isModel3DNodeType, isPanelFrameNodeType, isShapeNodeType, type CanvasDocument, type CanvasNode, type CanvasNodeType, type ModelNodeAppearance } from "./types";
 
 type ActiveDrag = {
   kind: "drag";
@@ -47,6 +48,7 @@ type CanvasNodeViewProps = {
   runtimeAppearanceOverrides: Record<string, ModelNodeAppearance>;
   selected: boolean;
   selectedModelSceneNodePath: string | null;
+  renderZIndex: number;
   onPointerDown: (event: ReactPointerEvent<HTMLDivElement>, node: CanvasNode) => void;
   onResizePointerDown: (event: ReactPointerEvent<HTMLButtonElement>, node: CanvasNode, direction: ResizeDirection) => void;
 };
@@ -65,20 +67,22 @@ const hasGeometryChanged = (previous: CanvasNode, next: CanvasNode) => (
   || previous.height !== next.height
 );
 
-const CanvasNodeView = memo(function CanvasNodeView({ editable, modelInteractionEnabled, node, onModelSceneChange, onModelSceneNodeSelect, projectId, runtimeAppearanceOverrides, selected, selectedModelSceneNodePath, onPointerDown, onResizePointerDown }: CanvasNodeViewProps) {
+const CanvasNodeView = memo(function CanvasNodeView({ editable, modelInteractionEnabled, node, onModelSceneChange, onModelSceneNodeSelect, projectId, renderZIndex, runtimeAppearanceOverrides, selected, selectedModelSceneNodePath, onPointerDown, onResizePointerDown }: CanvasNodeViewProps) {
   return (
     <div
       aria-label={`${node.type} 组件`}
-      className={`canvas-node${isShapeNodeType(node.type) ? " is-shape" : ""}${isDecorationNodeType(node.type) ? " is-decoration" : ""}${isDashboardNodeType(node.type) ? " is-dashboard" : ""}${isBasicNodeType(node.type) ? " is-basic" : ""}${isModel3DNodeType(node.type) ? " is-model-3d" : ""}${selected ? " is-selected" : ""}${editable ? " is-editable" : ""}`}
+      className={`canvas-node${isShapeNodeType(node.type) ? " is-shape" : ""}${isDecorationNodeType(node.type) ? " is-decoration" : ""}${isPanelFrameNodeType(node.type) ? " is-panel-frame" : ""}${isDashboardNodeType(node.type) ? " is-dashboard" : ""}${isBasicNodeType(node.type) ? " is-basic" : ""}${isModel3DNodeType(node.type) ? " is-model-3d" : ""}${selected ? " is-selected" : ""}${editable ? " is-editable" : ""}`}
       data-node-id={node.id}
       onPointerDown={editable ? (event) => onPointerDown(event, node) : undefined}
       role="group"
-      style={{ height: node.height, transform: `translate3d(${node.x}px, ${node.y}px, 0)`, width: node.width, zIndex: node.zIndex }}
+      style={{ height: node.height, transform: `translate3d(${node.x}px, ${node.y}px, 0)`, width: node.width, zIndex: renderZIndex }}
     >
       {isShapeNodeType(node.type)
         ? <ShapeNode node={node} />
         : isDecorationNodeType(node.type)
           ? <DecorationNode node={node} />
+          : isPanelFrameNodeType(node.type)
+            ? <PanelFrameNode node={node} />
           : isDashboardNodeType(node.type)
             ? <DashboardNode node={node} />
           : isBasicNodeType(node.type)
@@ -125,6 +129,14 @@ type CanvasSurfaceProps = {
   selectedModelSceneNodePath: string | null;
 };
 
+const isCanvasBackdropNode = (node: CanvasNode, document: CanvasDocument) => (
+  node.type === "rectangle"
+  && node.x <= 0
+  && node.y <= 0
+  && node.width >= document.width
+  && node.height >= document.height
+);
+
 export function CanvasSurface({ document, editable, modelInteractionEnabled = false, selectedNodeId, selectedModelSceneNodePath, onCreateNode, onModelSceneChange, onModelSceneNodeSelect, onNodeChange, onSelectNode, runtimeAppearanceOverrides = {} }: CanvasSurfaceProps) {
   const viewportRef = useRef<HTMLDivElement>(null);
   const surfaceRef = useRef<HTMLDivElement>(null);
@@ -138,6 +150,8 @@ export function CanvasSurface({ document, editable, modelInteractionEnabled = fa
     "--canvas-theme-accent": document.theme.accentColor,
     "--canvas-theme-background": document.theme.backgroundColor,
     "--canvas-theme-border": document.theme.borderColor,
+    "--canvas-theme-glow": document.theme.glowIntensity,
+    "--canvas-theme-panel-radius": `${document.theme.panelRadius}px`,
     "--canvas-theme-surface": document.theme.surfaceColor,
     "--canvas-theme-text": document.theme.textColor,
     backgroundColor: document.theme.backgroundColor,
@@ -311,6 +325,8 @@ export function CanvasSurface({ document, editable, modelInteractionEnabled = fa
       <div className="canvas-scale-frame" style={{ height: document.height * scale, width: document.width * scale }}>
         <div
           className={`canvas-surface${editable ? " is-editable" : " is-preview"}`}
+          data-font={document.theme.fontFamily}
+          data-pattern={document.theme.backgroundPattern}
           data-theme={document.theme.mode}
           onClick={(event) => { if (event.target === event.currentTarget) onSelectNode(null); }}
           onDragOver={allowDrop}
@@ -318,6 +334,7 @@ export function CanvasSurface({ document, editable, modelInteractionEnabled = fa
           ref={surfaceRef}
           style={surfaceStyle}
         >
+          <div aria-hidden="true" className="canvas-theme-pattern" />
           {document.nodes.map((node) => (
             <CanvasNodeView
               editable={editable}
@@ -329,6 +346,7 @@ export function CanvasSurface({ document, editable, modelInteractionEnabled = fa
               onPointerDown={startPointerDrag}
               onResizePointerDown={startPointerResize}
               projectId={document.projectId}
+              renderZIndex={isCanvasBackdropNode(node, document) ? 0 : node.zIndex + 2}
               runtimeAppearanceOverrides={runtimeAppearanceOverrides}
               selected={node.id === selectedNodeId}
               selectedModelSceneNodePath={
