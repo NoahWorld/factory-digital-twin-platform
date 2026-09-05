@@ -13,9 +13,14 @@ import {
   parseModel3DProps,
   parseShapeProps,
   type CanvasNode,
+  type AlarmListProps,
+  type ChartNodeType,
   type ChartProps,
+  type DataTableProps,
+  type EventTimelineProps,
   type ProgressListProps,
   type RadialGaugeProps,
+  type RankingListProps,
   type StatusGridProps,
 } from "./types";
 import { getCanvasTemplate, instantiateCanvasTemplate, type CanvasTemplateId } from "./templates";
@@ -60,7 +65,9 @@ function previewDateTime(showDate: boolean, showSeconds: boolean) {
   return { date, time };
 }
 
-function PreviewChart({ props, type }: { props: ChartProps; type: "line-chart" | "bar-chart" }) {
+const previewChartColors = ["#46e3b7", "#55d8ff", "#ffbd59", "#a78bfa", "#ff6b7a", "#5aa0ff"];
+
+function PreviewChart({ props, type }: { props: ChartProps; type: ChartNodeType }) {
   const minimum = Math.min(...props.values, 0);
   const maximum = Math.max(...props.values, 1);
   const range = maximum - minimum || 1;
@@ -70,6 +77,39 @@ function PreviewChart({ props, type }: { props: ChartProps; type: "line-chart" |
     return `${x},${y}`;
   }).join(" ");
 
+  if (type === "pie-chart" || type === "donut-chart") {
+    const total = props.values.reduce((sum, value) => sum + value, 0);
+    let offset = 0;
+    const stops = props.values.map((value, index) => {
+      const start = offset;
+      offset += value / total * 100;
+      return `${index === 0 ? props.color : previewChartColors[index % previewChartColors.length]} ${start}% ${offset}%`;
+    });
+    return (
+      <div className="template-preview-chart">
+        <header><span>{props.title}</span><strong>{total}{props.unit}</strong></header>
+        <div className={`template-preview-pie is-${type}`} style={{ background: `conic-gradient(${stops.join(",")})` }} />
+      </div>
+    );
+  }
+
+  if (type === "radar-chart") {
+    const cx = 50;
+    const cy = 24;
+    const radius = 19;
+    const maximum = Math.max(...props.values, 1);
+    const radarPoints = props.values.map((value, index) => {
+      const angle = -Math.PI / 2 + index * Math.PI * 2 / props.values.length;
+      return `${cx + Math.cos(angle) * radius * value / maximum},${cy + Math.sin(angle) * radius * value / maximum}`;
+    }).join(" ");
+    return (
+      <div className="template-preview-chart">
+        <header><span>{props.title}</span><strong>{Math.round(props.values.reduce((sum, value) => sum + value, 0) / props.values.length)}{props.unit}</strong></header>
+        <svg aria-hidden="true" viewBox="0 0 100 48"><circle cx="50" cy="24" fill="none" r="19" /><polygon fill={props.color} opacity="0.4" points={radarPoints} stroke={props.color} /></svg>
+      </div>
+    );
+  }
+
   return (
     <div className="template-preview-chart">
       <header><span>{props.title}</span><strong>{props.values.at(-1)}{props.unit}</strong></header>
@@ -77,8 +117,11 @@ function PreviewChart({ props, type }: { props: ChartProps; type: "line-chart" |
         <line x1="1" x2="99" y1="44" y2="44" />
         <line x1="1" x2="99" y1="25" y2="25" />
         <line x1="1" x2="99" y1="6" y2="6" />
-        {type === "line-chart" ? (
-          <polyline fill="none" points={points} stroke={props.color} strokeLinecap="round" strokeLinejoin="round" />
+        {type === "line-chart" || type === "area-chart" ? (
+          <>
+            {type === "area-chart" ? <polygon fill={props.color} opacity="0.22" points={`2,44 ${points} 98,44`} /> : null}
+            <polyline fill="none" points={points} stroke={props.color} strokeLinecap="round" strokeLinejoin="round" />
+          </>
         ) : props.values.map((value, index) => {
           const barWidth = 76 / props.values.length;
           const height = Math.max(((value - minimum) / range) * 38, 2);
@@ -154,17 +197,62 @@ function PreviewDashboard({ node }: { node: CanvasNode }) {
     );
   }
 
-  const statusProps = props as StatusGridProps;
-  return (
-    <div className="template-preview-dashboard" style={style}>
-      <span>{statusProps.title}</span>
-      <div className="template-preview-status-grid" style={{ gridTemplateColumns: `repeat(${statusProps.columns}, 1fr)` }}>
-        {statusProps.items.slice(0, 6).map((item, index) => (
-          <i className={`is-${item.tone}`} key={`${item.label}-${index}`} title={`${item.label}：${item.value}`} />
-        ))}
+  if (node.type === "ranking-list") {
+    const ranking = props as RankingListProps;
+    const maximum = Math.max(...ranking.items.map((item) => item.value), 1);
+    return (
+      <div className="template-preview-dashboard" style={style}>
+        <span>{ranking.title}</span>
+        <div className="template-preview-progress-list">
+          {ranking.items.slice(0, 4).map((item, index) => <div key={`${item.label}-${index}`}><small>{index + 1}. {item.label}</small><i><b style={{ width: `${item.value / maximum * 100}%` }} /></i></div>)}
+        </div>
       </div>
-    </div>
-  );
+    );
+  }
+
+  if (node.type === "alarm-list") {
+    const alarms = props as AlarmListProps;
+    return (
+      <div className="template-preview-dashboard" style={style}>
+        <span>{alarms.title}</span>
+        <div className="template-preview-event-list">{alarms.items.slice(0, 5).map((item, index) => <i className={`is-${item.tone}`} key={index}><b>{item.time}</b><small>{item.source}</small></i>)}</div>
+      </div>
+    );
+  }
+
+  if (node.type === "data-table") {
+    const table = props as DataTableProps;
+    return (
+      <div className="template-preview-dashboard" style={style}>
+        <span>{table.title}</span>
+        <div className="template-preview-table"><b>{table.columns.join(" · ")}</b>{table.rows.slice(0, 4).map((row, index) => <small key={index}>{row.join(" · ")}</small>)}</div>
+      </div>
+    );
+  }
+
+  if (node.type === "event-timeline") {
+    const timeline = props as EventTimelineProps;
+    return (
+      <div className="template-preview-dashboard" style={style}>
+        <span>{timeline.title}</span>
+        <div className="template-preview-event-list">{timeline.items.slice(0, 5).map((item, index) => <i className={`is-${item.tone}`} key={index}><b>{item.time}</b><small>{item.title}</small></i>)}</div>
+      </div>
+    );
+  }
+
+  if (node.type === "status-grid") {
+    const statusProps = props as StatusGridProps;
+    return (
+      <div className="template-preview-dashboard" style={style}>
+        <span>{statusProps.title}</span>
+        <div className="template-preview-status-grid" style={{ gridTemplateColumns: `repeat(${statusProps.columns}, 1fr)` }}>
+          {statusProps.items.slice(0, 6).map((item, index) => <i className={`is-${item.tone}`} key={`${item.label}-${index}`} title={`${item.label}：${item.value}`} />)}
+        </div>
+      </div>
+    );
+  }
+
+  throw new Error(`PreviewDashboard received unhandled node type: ${node.type}`);
 }
 
 function renderNode(node: CanvasNode): ReactNode {
@@ -207,7 +295,7 @@ function renderNode(node: CanvasNode): ReactNode {
   }
 
   if (isChartNodeType(node.type)) {
-    const parsed = parseChartProps(node.props);
+    const parsed = parseChartProps(node.type, node.props);
     if (!parsed.ok) return invalidNode(node, parsed.message);
     return <PreviewChart props={parsed.value} type={node.type} />;
   }

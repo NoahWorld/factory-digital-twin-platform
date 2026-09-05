@@ -1,5 +1,6 @@
 import {
   type BasicAppearanceProps,
+  type AlarmListProps,
   type ButtonProps,
   type CanvasDocument,
   type CanvasNode,
@@ -7,16 +8,21 @@ import {
   type ChartProps,
   type CheckboxGroupProps,
   type DashboardBaseProps,
+  type DataTableProps,
   type DecorationProps,
   type ImageProps,
   type MetricCardProps,
   type Model3DProps,
   type PlainTextProps,
   type RadioGroupProps,
+  type ProgressListProps,
+  type RankingListProps,
   type SelectProps,
   type ShapeProps,
   type SwitchProps,
+  type StatusGridProps,
   type TextLinkProps,
+  type EventTimelineProps,
 } from "./canvas";
 
 const COVER_WIDTH = 480;
@@ -90,17 +96,45 @@ const renderChart = (node: CanvasNode, canvas: CanvasDocument): string => {
   const values = props.values.slice(0, 16);
   const maximum = Math.max(...values.map((value) => Math.abs(finite(value))), 1);
 
-  const marks = node.type === "bar-chart"
-    ? values.map((value, index) => {
+  let marks: string;
+  if (node.type === "bar-chart") {
+    marks = values.map((value, index) => {
       const slot = contentWidth / Math.max(values.length, 1);
       const height = Math.max(1, Math.abs(finite(value)) / maximum * contentHeight);
       return `<rect x="${(contentX + slot * index + slot * 0.2).toFixed(2)}" y="${(contentY + contentHeight - height).toFixed(2)}" width="${Math.max(1, slot * 0.6).toFixed(2)}" height="${height.toFixed(2)}" rx="1" fill="${color}" fill-opacity="0.86"/>`;
-    }).join("")
-    : `<polyline points="${values.map((value, index) => {
+    }).join("");
+  } else if (node.type === "pie-chart" || node.type === "donut-chart") {
+    const total = Math.max(values.reduce((sum, value) => sum + Math.max(finite(value), 0), 0), 1);
+    const centerX = box.x + box.width / 2;
+    const centerY = box.y + box.height * 0.58;
+    const radius = Math.max(3, Math.min(box.width, box.height) * 0.2);
+    const circumference = Math.PI * 2 * radius;
+    let offset = 0;
+    const colors = [color, "#55d8ff", "#ffbd59", "#a78bfa", "#ff6b7a", "#5aa0ff"];
+    marks = values.map((value, index) => {
+      const length = Math.max(finite(value), 0) / total * circumference;
+      const circle = `<circle cx="${centerX.toFixed(2)}" cy="${centerY.toFixed(2)}" r="${radius.toFixed(2)}" fill="none" stroke="${colors[index % colors.length]}" stroke-width="${(node.type === "pie-chart" ? radius : radius * 0.42).toFixed(2)}" stroke-dasharray="${length.toFixed(2)} ${(circumference - length).toFixed(2)}" stroke-dashoffset="${(-offset).toFixed(2)}" transform="rotate(-90 ${centerX.toFixed(2)} ${centerY.toFixed(2)})"/>`;
+      offset += length;
+      return circle;
+    }).join("");
+  } else if (node.type === "radar-chart") {
+    const centerX = box.x + box.width / 2;
+    const centerY = box.y + box.height * 0.58;
+    const radius = Math.max(4, Math.min(box.width, box.height) * 0.24);
+    const points = values.map((value, index) => {
+      const angle = -Math.PI / 2 + index * Math.PI * 2 / values.length;
+      const valueRadius = Math.abs(finite(value)) / maximum * radius;
+      return `${(centerX + Math.cos(angle) * valueRadius).toFixed(2)},${(centerY + Math.sin(angle) * valueRadius).toFixed(2)}`;
+    }).join(" ");
+    marks = `<polygon points="${points}" fill="${color}" fill-opacity="0.28" stroke="${color}" stroke-width="1.5"/>`;
+  } else {
+    const points = values.map((value, index) => {
       const x = contentX + (values.length <= 1 ? 0 : index / (values.length - 1) * contentWidth);
       const y = contentY + contentHeight - Math.abs(finite(value)) / maximum * contentHeight;
       return `${x.toFixed(2)},${y.toFixed(2)}`;
-    }).join(" ")}" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`;
+    }).join(" ");
+    marks = `${node.type === "area-chart" ? `<polygon points="${contentX.toFixed(2)},${(contentY + contentHeight).toFixed(2)} ${points} ${(contentX + contentWidth).toFixed(2)},${(contentY + contentHeight).toFixed(2)}" fill="${color}" fill-opacity="0.2"/>` : ""}<polyline points="${points}" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`;
+  }
 
   return [
     panel(node, canvas, canvas.theme.surfaceColor, canvas.theme.borderColor),
@@ -134,14 +168,60 @@ const renderDashboard = (node: CanvasNode, canvas: CanvasDocument): string => {
   const text = safeColor(props.textColor, canvas.theme.textColor);
   const accent = safeColor(props.accentColor, canvas.theme.accentColor);
   const metric = node.type === "metric-card" ? node.props as MetricCardProps : null;
+  const contentTop = box.y + 24;
+  const contentHeight = Math.max(box.height - 30, 4);
+  let body: string;
+
+  if (metric) {
+    body = `<text x="${(box.x + 7).toFixed(2)}" y="${(box.y + Math.min(box.height - 8, 36)).toFixed(2)}" fill="${text}" font-size="${Math.min(16, Math.max(9, box.height * 0.28)).toFixed(1)}" font-weight="800">${escapeXml(truncate(`${metric.value}${metric.unit}`, 18))}</text>`;
+  } else if (node.type === "progress-list" || node.type === "ranking-list") {
+    const items = node.type === "progress-list"
+      ? (node.props as ProgressListProps).items.map((item) => ({ label: item.label, value: item.value, maximum: item.maximum }))
+      : (() => {
+          const ranking = (node.props as RankingListProps).items;
+          const maximum = Math.max(...ranking.map((item) => item.value), 1);
+          return ranking.map((item) => ({ label: item.label, value: item.value, maximum }));
+        })();
+    body = items.slice(0, 6).map((item, index) => {
+      const rowHeight = contentHeight / Math.min(items.length, 6);
+      const y = contentTop + index * rowHeight;
+      const width = Math.max(1, (box.width - 18) * Math.min(Math.max(item.value / item.maximum, 0), 1));
+      return `<text x="${(box.x + 7).toFixed(2)}" y="${(y + 5).toFixed(2)}" fill="${text}" font-size="5">${escapeXml(truncate(item.label, 18))}</text><rect x="${(box.x + 7).toFixed(2)}" y="${(y + 8).toFixed(2)}" width="${Math.max(1, box.width - 14).toFixed(2)}" height="2" fill="${border}" fill-opacity="0.5"/><rect x="${(box.x + 7).toFixed(2)}" y="${(y + 8).toFixed(2)}" width="${width.toFixed(2)}" height="2" fill="${accent}"/>`;
+    }).join("");
+  } else if (node.type === "status-grid") {
+    const status = node.props as StatusGridProps;
+    const cellWidth = Math.max(4, (box.width - 14) / status.columns);
+    body = status.items.slice(0, 12).map((item, index) => {
+      const x = box.x + 7 + index % status.columns * cellWidth;
+      const y = contentTop + Math.floor(index / status.columns) * 10;
+      const toneColor = item.tone === "danger" ? "#ff6b7a" : item.tone === "warning" ? "#ffbd59" : item.tone === "offline" ? "#74808a" : accent;
+      return `<circle cx="${(x + 3).toFixed(2)}" cy="${(y + 3).toFixed(2)}" r="2" fill="${toneColor}"/><text x="${(x + 7).toFixed(2)}" y="${(y + 5).toFixed(2)}" fill="${text}" font-size="4.5">${escapeXml(truncate(item.label, 8))}</text>`;
+    }).join("");
+  } else if (node.type === "alarm-list" || node.type === "event-timeline") {
+    const items = node.type === "alarm-list"
+      ? (node.props as AlarmListProps).items.map((item) => ({ time: item.time, label: item.source, tone: item.tone }))
+      : (node.props as EventTimelineProps).items.map((item) => ({ time: item.time, label: item.title, tone: item.tone }));
+    body = items.slice(0, 7).map((item, index) => {
+      const y = contentTop + index * Math.max(7, contentHeight / Math.min(items.length, 7));
+      const toneColor = item.tone === "danger" ? "#ff6b7a" : item.tone === "warning" ? "#ffbd59" : item.tone === "offline" ? "#74808a" : accent;
+      return `<circle cx="${(box.x + 9).toFixed(2)}" cy="${(y + 2).toFixed(2)}" r="1.8" fill="${toneColor}"/><text x="${(box.x + 14).toFixed(2)}" y="${(y + 4).toFixed(2)}" fill="${text}" font-size="5">${escapeXml(truncate(`${item.time}  ${item.label}`, 34))}</text>`;
+    }).join("");
+  } else if (node.type === "data-table") {
+    const table = node.props as DataTableProps;
+    const rowHeight = Math.max(6, contentHeight / Math.min(table.rows.length + 1, 7));
+    const columnWidth = Math.max(5, (box.width - 14) / table.columns.length);
+    const header = table.columns.map((column, index) => `<text x="${(box.x + 7 + index * columnWidth).toFixed(2)}" y="${(contentTop + 5).toFixed(2)}" fill="${accent}" font-size="4.5" font-weight="700">${escapeXml(truncate(column, 8))}</text>`).join("");
+    const rows = table.rows.slice(0, 6).map((row, rowIndex) => row.map((cell, columnIndex) => `<text x="${(box.x + 7 + columnIndex * columnWidth).toFixed(2)}" y="${(contentTop + (rowIndex + 1) * rowHeight + 5).toFixed(2)}" fill="${text}" fill-opacity="0.78" font-size="4.5">${escapeXml(truncate(cell, 8))}</text>`).join("")).join("");
+    body = header + rows;
+  } else {
+    body = `<circle cx="${(box.x + box.width / 2).toFixed(2)}" cy="${(box.y + box.height * 0.62).toFixed(2)}" r="${Math.max(4, Math.min(box.width, box.height) * 0.17).toFixed(2)}" fill="none" stroke="${accent}" stroke-width="3" stroke-dasharray="22 8"/>`;
+  }
 
   return [
     panel(node, canvas, fill, border),
     `<rect x="${(box.x + 7).toFixed(2)}" y="${(box.y + 7).toFixed(2)}" width="${Math.max(8, box.width * 0.18).toFixed(2)}" height="2" rx="1" fill="${accent}"/>`,
     `<text x="${(box.x + 7).toFixed(2)}" y="${(box.y + 17).toFixed(2)}" fill="${text}" fill-opacity="0.78" font-size="6">${escapeXml(truncate(props.title, 26))}</text>`,
-    metric
-      ? `<text x="${(box.x + 7).toFixed(2)}" y="${(box.y + Math.min(box.height - 8, 36)).toFixed(2)}" fill="${text}" font-size="${Math.min(16, Math.max(9, box.height * 0.28)).toFixed(1)}" font-weight="800">${escapeXml(truncate(`${metric.value}${metric.unit}`, 18))}</text>`
-      : `<circle cx="${(box.x + box.width / 2).toFixed(2)}" cy="${(box.y + box.height * 0.62).toFixed(2)}" r="${Math.max(4, Math.min(box.width, box.height) * 0.17).toFixed(2)}" fill="none" stroke="${accent}" stroke-width="3" stroke-dasharray="22 8"/>`,
+    body,
   ].join("");
 };
 
@@ -284,7 +364,14 @@ const renderBasic = (node: CanvasNode, canvas: CanvasDocument): string => {
 
 const renderNode = (node: CanvasNode, canvas: CanvasDocument): string => {
   if (node.type === "rectangle" || node.type === "circle") return renderShape(node, canvas);
-  if (node.type === "line-chart" || node.type === "bar-chart") return renderChart(node, canvas);
+  if (
+    node.type === "line-chart"
+    || node.type === "bar-chart"
+    || node.type === "area-chart"
+    || node.type === "pie-chart"
+    || node.type === "donut-chart"
+    || node.type === "radar-chart"
+  ) return renderChart(node, canvas);
   if (
     node.type === "screen-title"
     || node.type === "background-decoration"
@@ -298,6 +385,10 @@ const renderNode = (node: CanvasNode, canvas: CanvasDocument): string => {
     || node.type === "radial-gauge"
     || node.type === "progress-list"
     || node.type === "status-grid"
+    || node.type === "ranking-list"
+    || node.type === "alarm-list"
+    || node.type === "data-table"
+    || node.type === "event-timeline"
   ) return renderDashboard(node, canvas);
   if (node.type === "model-3d") return renderModel(node, canvas);
   if (

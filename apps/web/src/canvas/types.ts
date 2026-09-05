@@ -1,6 +1,12 @@
 export const CANVAS_DRAG_TYPE = "application/x-factory-twin-component";
 
-export type ChartNodeType = "line-chart" | "bar-chart";
+export type ChartNodeType =
+  | "line-chart"
+  | "bar-chart"
+  | "area-chart"
+  | "pie-chart"
+  | "donut-chart"
+  | "radar-chart";
 export type ShapeNodeType = "rectangle" | "circle";
 export type DecorationNodeType =
   | "screen-title"
@@ -14,7 +20,11 @@ export type DashboardNodeType =
   | "metric-card"
   | "radial-gauge"
   | "progress-list"
-  | "status-grid";
+  | "status-grid"
+  | "ranking-list"
+  | "alarm-list"
+  | "data-table"
+  | "event-timeline";
 export type BasicNodeType =
   | "plain-text"
   | "text-link"
@@ -122,11 +132,56 @@ export type StatusGridProps = DashboardBaseProps & {
   items: StatusGridItem[];
 };
 
+export type RankingTrend = "up" | "down" | "flat";
+
+export type RankingListItem = {
+  label: string;
+  value: number;
+  unit: string;
+  trend: RankingTrend;
+};
+
+export type RankingListProps = DashboardBaseProps & {
+  items: RankingListItem[];
+};
+
+export type AlarmListItem = {
+  time: string;
+  source: string;
+  message: string;
+  tone: DashboardTone;
+};
+
+export type AlarmListProps = DashboardBaseProps & {
+  items: AlarmListItem[];
+};
+
+export type DataTableProps = DashboardBaseProps & {
+  columns: string[];
+  rows: string[][];
+  highlightColumn: number;
+};
+
+export type TimelineItem = {
+  time: string;
+  title: string;
+  detail: string;
+  tone: DashboardTone;
+};
+
+export type EventTimelineProps = DashboardBaseProps & {
+  items: TimelineItem[];
+};
+
 export type DashboardProps =
   | MetricCardProps
   | RadialGaugeProps
   | ProgressListProps
-  | StatusGridProps;
+  | StatusGridProps
+  | RankingListProps
+  | AlarmListProps
+  | DataTableProps
+  | EventTimelineProps;
 
 export type BasicOption = {
   label: string;
@@ -312,6 +367,34 @@ const chartDefaults: Record<ChartNodeType, ChartProps> = {
     unit: "件",
     color: "#46e3b7",
   },
+  "area-chart": {
+    title: "24 小时综合能耗",
+    categories: ["00:00", "04:00", "08:00", "12:00", "16:00", "20:00", "24:00"],
+    values: [42, 36, 58, 82, 74, 61, 48],
+    unit: "MWh",
+    color: "#55d8ff",
+  },
+  "pie-chart": {
+    title: "设备状态分布",
+    categories: ["运行", "待机", "预警", "离线"],
+    values: [68, 18, 9, 5],
+    unit: "台",
+    color: "#46e3b7",
+  },
+  "donut-chart": {
+    title: "能源消费构成",
+    categories: ["生产用电", "动力用电", "照明", "其他"],
+    values: [56, 24, 12, 8],
+    unit: "%",
+    color: "#55d8ff",
+  },
+  "radar-chart": {
+    title: "产线综合能力",
+    categories: ["产能", "质量", "交付", "能效", "安全", "维护"],
+    values: [92, 88, 84, 76, 96, 81],
+    unit: "分",
+    color: "#a78bfa",
+  },
 };
 
 const shapeDefaults: Record<ShapeNodeType, ShapeProps> = {
@@ -476,6 +559,63 @@ const dashboardDefaults: Record<DashboardNodeType, DashboardProps> = {
     borderColor: "#286783",
     sample: true,
   },
+  "ranking-list": {
+    title: "产线实时产量排行",
+    items: [
+      { label: "四号产线", value: 1286, unit: "件", trend: "up" },
+      { label: "一号产线", value: 1168, unit: "件", trend: "up" },
+      { label: "二号产线", value: 1085, unit: "件", trend: "flat" },
+      { label: "三号产线", value: 964, unit: "件", trend: "down" },
+    ],
+    textColor: "#eafaff",
+    accentColor: "#55d8ff",
+    fillColor: "#0b2638",
+    borderColor: "#286783",
+    sample: true,
+  },
+  "alarm-list": {
+    title: "实时告警",
+    items: [
+      { time: "14:26:08", source: "冲压机 A-03", message: "主轴温度超过预警阈值", tone: "warning" },
+      { time: "14:18:31", source: "装配线 B", message: "工位 07 安全门开启", tone: "danger" },
+      { time: "13:55:02", source: "空压站", message: "2 号机组通信中断", tone: "offline" },
+    ],
+    textColor: "#eafaff",
+    accentColor: "#ffbd59",
+    fillColor: "#0b2638",
+    borderColor: "#286783",
+    sample: true,
+  },
+  "data-table": {
+    title: "设备运行明细",
+    columns: ["设备", "状态", "负载", "产量"],
+    rows: [
+      ["冲压机 A-01", "运行", "78%", "326 件"],
+      ["冲压机 A-02", "待机", "12%", "285 件"],
+      ["装配线 B-01", "运行", "91%", "418 件"],
+      ["包装线 C-01", "预警", "64%", "192 件"],
+    ],
+    highlightColumn: 1,
+    textColor: "#eafaff",
+    accentColor: "#46e3b7",
+    fillColor: "#0b2638",
+    borderColor: "#286783",
+    sample: true,
+  },
+  "event-timeline": {
+    title: "生产事件时间线",
+    items: [
+      { time: "14:30", title: "批次切换完成", detail: "工单 WO-260905-08 已上线", tone: "normal" },
+      { time: "14:18", title: "安全门告警", detail: "装配线 B · 工位 07", tone: "danger" },
+      { time: "13:42", title: "质量抽检通过", detail: "抽检 20 件，合格率 100%", tone: "normal" },
+      { time: "13:10", title: "设备进入待机", detail: "冲压机 A-02 等待物料", tone: "warning" },
+    ],
+    textColor: "#eafaff",
+    accentColor: "#55d8ff",
+    fillColor: "#0b2638",
+    borderColor: "#286783",
+    sample: true,
+  },
 };
 
 const basicAppearanceDefaults: BasicAppearanceProps = {
@@ -578,6 +718,10 @@ const basicDefaults: Record<BasicNodeType, BasicProps> = {
 export const componentLabels: Record<CanvasNodeType, string> = {
   "line-chart": "折线图",
   "bar-chart": "柱状图",
+  "area-chart": "面积图",
+  "pie-chart": "饼图",
+  "donut-chart": "环形图",
+  "radar-chart": "雷达图",
   rectangle: "矩形",
   circle: "圆形",
   "screen-title": "大屏标题",
@@ -591,6 +735,10 @@ export const componentLabels: Record<CanvasNodeType, string> = {
   "radial-gauge": "环形进度",
   "progress-list": "进度排行",
   "status-grid": "状态矩阵",
+  "ranking-list": "数据排名",
+  "alarm-list": "实时告警",
+  "data-table": "业务表格",
+  "event-timeline": "事件时间线",
   "plain-text": "纯文本",
   "text-link": "文字超链接",
   image: "图片",
@@ -605,6 +753,10 @@ export const componentLabels: Record<CanvasNodeType, string> = {
 export const defaultNodeSizes: Record<CanvasNodeType, { width: number; height: number }> = {
   "line-chart": { width: 520, height: 300 },
   "bar-chart": { width: 520, height: 300 },
+  "area-chart": { width: 520, height: 300 },
+  "pie-chart": { width: 420, height: 320 },
+  "donut-chart": { width: 420, height: 320 },
+  "radar-chart": { width: 440, height: 360 },
   rectangle: { width: 360, height: 220 },
   circle: { width: 260, height: 260 },
   "screen-title": { width: 760, height: 110 },
@@ -618,6 +770,10 @@ export const defaultNodeSizes: Record<CanvasNodeType, { width: number; height: n
   "radial-gauge": { width: 320, height: 300 },
   "progress-list": { width: 420, height: 320 },
   "status-grid": { width: 480, height: 300 },
+  "ranking-list": { width: 440, height: 340 },
+  "alarm-list": { width: 520, height: 360 },
+  "data-table": { width: 620, height: 360 },
+  "event-timeline": { width: 460, height: 360 },
   "plain-text": { width: 360, height: 84 },
   "text-link": { width: 280, height: 64 },
   image: { width: 420, height: 260 },
@@ -632,6 +788,10 @@ export const defaultNodeSizes: Record<CanvasNodeType, { width: number; height: n
 export const minimumNodeSizes: Record<CanvasNodeType, { width: number; height: number }> = {
   "line-chart": { width: 240, height: 160 },
   "bar-chart": { width: 240, height: 160 },
+  "area-chart": { width: 240, height: 160 },
+  "pie-chart": { width: 240, height: 200 },
+  "donut-chart": { width: 240, height: 200 },
+  "radar-chart": { width: 260, height: 220 },
   rectangle: { width: 240, height: 160 },
   circle: { width: 240, height: 240 },
   "screen-title": { width: 360, height: 72 },
@@ -645,6 +805,10 @@ export const minimumNodeSizes: Record<CanvasNodeType, { width: number; height: n
   "radial-gauge": { width: 240, height: 220 },
   "progress-list": { width: 280, height: 220 },
   "status-grid": { width: 300, height: 200 },
+  "ranking-list": { width: 300, height: 220 },
+  "alarm-list": { width: 320, height: 220 },
+  "data-table": { width: 360, height: 220 },
+  "event-timeline": { width: 320, height: 240 },
   "plain-text": { width: 160, height: 48 },
   "text-link": { width: 160, height: 48 },
   image: { width: 160, height: 100 },
@@ -657,7 +821,12 @@ export const minimumNodeSizes: Record<CanvasNodeType, { width: number; height: n
 };
 
 export const isChartNodeType = (value: string): value is ChartNodeType =>
-  value === "line-chart" || value === "bar-chart";
+  value === "line-chart" ||
+  value === "bar-chart" ||
+  value === "area-chart" ||
+  value === "pie-chart" ||
+  value === "donut-chart" ||
+  value === "radar-chart";
 
 export const isShapeNodeType = (value: string): value is ShapeNodeType =>
   value === "rectangle" || value === "circle";
@@ -677,7 +846,11 @@ export const isDashboardNodeType = (value: string): value is DashboardNodeType =
   value === "metric-card" ||
   value === "radial-gauge" ||
   value === "progress-list" ||
-  value === "status-grid";
+  value === "status-grid" ||
+  value === "ranking-list" ||
+  value === "alarm-list" ||
+  value === "data-table" ||
+  value === "event-timeline";
 
 export const isBasicNodeType = (value: string): value is BasicNodeType =>
   value === "plain-text" ||
@@ -715,9 +888,17 @@ export const createCanvasNode = (
         : isDashboardNodeType(type)
           ? (() => {
               const defaults = dashboardDefaults[type];
-              return "items" in defaults
-                ? { ...defaults, items: defaults.items.map((item) => ({ ...item })) }
-                : { ...defaults };
+              if ("items" in defaults) {
+                return { ...defaults, items: defaults.items.map((item) => ({ ...item })) };
+              }
+              if ("rows" in defaults) {
+                return {
+                  ...defaults,
+                  columns: [...defaults.columns],
+                  rows: defaults.rows.map((row) => [...row]),
+                };
+              }
+              return { ...defaults };
             })()
           : isBasicNodeType(type)
             ? (() => {
@@ -892,50 +1073,183 @@ export const parseDashboardProps = (
     return { ok: true, value: { ...base.value, items } };
   }
 
-  if (
-    typeof props.columns !== "number" ||
-    !Number.isInteger(props.columns) ||
-    props.columns < 1 ||
-    props.columns > 6
-  ) {
-    return { ok: false, message: "columns 必须是 1–6 之间的整数" };
-  }
-  if (!Array.isArray(props.items) || props.items.length < 1 || props.items.length > 24) {
-    return { ok: false, message: "items 必须包含 1–24 项状态数据" };
-  }
-  const items: StatusGridItem[] = [];
-  for (const [index, rawItem] of props.items.entries()) {
-    if (!rawItem || typeof rawItem !== "object" || Array.isArray(rawItem)) {
-      return { ok: false, message: `items[${index}] 必须是对象` };
-    }
-    const item = rawItem as Record<string, unknown>;
+  if (type === "status-grid") {
     if (
-      typeof item.label !== "string" ||
-      item.label.trim().length === 0 ||
-      item.label.length > 80 ||
-      typeof item.value !== "string" ||
-      item.value.length > 80
+      typeof props.columns !== "number" ||
+      !Number.isInteger(props.columns) ||
+      props.columns < 1 ||
+      props.columns > 6
     ) {
-      return { ok: false, message: `items[${index}] 的名称或状态值无效` };
+      return { ok: false, message: "columns 必须是 1–6 之间的整数" };
+    }
+    if (!Array.isArray(props.items) || props.items.length < 1 || props.items.length > 24) {
+      return { ok: false, message: "items 必须包含 1–24 项状态数据" };
+    }
+    const items: StatusGridItem[] = [];
+    for (const [index, rawItem] of props.items.entries()) {
+      if (!rawItem || typeof rawItem !== "object" || Array.isArray(rawItem)) {
+        return { ok: false, message: `items[${index}] 必须是对象` };
+      }
+      const item = rawItem as Record<string, unknown>;
+      if (
+        typeof item.label !== "string" ||
+        item.label.trim().length === 0 ||
+        item.label.length > 80 ||
+        typeof item.value !== "string" ||
+        item.value.length > 80
+      ) {
+        return { ok: false, message: `items[${index}] 的名称或状态值无效` };
+      }
+      if (
+        item.tone !== "normal" &&
+        item.tone !== "warning" &&
+        item.tone !== "danger" &&
+        item.tone !== "offline"
+      ) {
+        return { ok: false, message: `items[${index}].tone 不受支持` };
+      }
+      items.push({ label: item.label, value: item.value, tone: item.tone });
+    }
+    return { ok: true, value: { ...base.value, columns: props.columns, items } };
+  }
+
+  if (type === "ranking-list") {
+    if (!Array.isArray(props.items) || props.items.length < 1 || props.items.length > 12) {
+      return { ok: false, message: "items 必须包含 1–12 项排名数据" };
+    }
+    const items: RankingListItem[] = [];
+    for (const [index, rawItem] of props.items.entries()) {
+      if (!rawItem || typeof rawItem !== "object" || Array.isArray(rawItem)) {
+        return { ok: false, message: `items[${index}] 必须是对象` };
+      }
+      const item = rawItem as Record<string, unknown>;
+      if (
+        typeof item.label !== "string" ||
+        item.label.trim().length === 0 ||
+        item.label.length > 80 ||
+        typeof item.unit !== "string" ||
+        item.unit.length > 24
+      ) {
+        return { ok: false, message: `items[${index}] 的名称或单位无效` };
+      }
+      const value = parseDashboardNumber(item.value, `items[${index}].value`);
+      if (!value.ok) return value;
+      if (item.trend !== "up" && item.trend !== "down" && item.trend !== "flat") {
+        return { ok: false, message: `items[${index}].trend 不受支持` };
+      }
+      items.push({ label: item.label, value: value.value, unit: item.unit, trend: item.trend });
+    }
+    return { ok: true, value: { ...base.value, items } };
+  }
+
+  if (type === "alarm-list") {
+    if (!Array.isArray(props.items) || props.items.length < 1 || props.items.length > 20) {
+      return { ok: false, message: "items 必须包含 1–20 条告警" };
+    }
+    const items: AlarmListItem[] = [];
+    for (const [index, rawItem] of props.items.entries()) {
+      if (!rawItem || typeof rawItem !== "object" || Array.isArray(rawItem)) {
+        return { ok: false, message: `items[${index}] 必须是对象` };
+      }
+      const item = rawItem as Record<string, unknown>;
+      if (
+        typeof item.time !== "string" || item.time.trim().length === 0 || item.time.length > 32 ||
+        typeof item.source !== "string" || item.source.trim().length === 0 || item.source.length > 80 ||
+        typeof item.message !== "string" || item.message.trim().length === 0 || item.message.length > 240
+      ) {
+        return { ok: false, message: `items[${index}] 的时间、来源或告警内容无效` };
+      }
+      if (
+        item.tone !== "normal" && item.tone !== "warning" &&
+        item.tone !== "danger" && item.tone !== "offline"
+      ) {
+        return { ok: false, message: `items[${index}].tone 不受支持` };
+      }
+      items.push({ time: item.time, source: item.source, message: item.message, tone: item.tone });
+    }
+    return { ok: true, value: { ...base.value, items } };
+  }
+
+  if (type === "data-table") {
+    if (
+      !Array.isArray(props.columns) ||
+      props.columns.length < 2 ||
+      props.columns.length > 8 ||
+      !props.columns.every((column) => typeof column === "string" && column.trim().length > 0 && column.length <= 80)
+    ) {
+      return { ok: false, message: "columns 必须包含 2–8 个非空列名" };
+    }
+    if (!Array.isArray(props.rows) || props.rows.length < 1 || props.rows.length > 20) {
+      return { ok: false, message: "rows 必须包含 1–20 行数据" };
+    }
+    const rows: string[][] = [];
+    for (const [rowIndex, rawRow] of props.rows.entries()) {
+      if (
+        !Array.isArray(rawRow) || rawRow.length !== props.columns.length ||
+        !rawRow.every((cell) => typeof cell === "string" && cell.length <= 120)
+      ) {
+        return { ok: false, message: `rows[${rowIndex}] 必须与列数一致，单元格不超过 120 个字符` };
+      }
+      rows.push([...rawRow] as string[]);
     }
     if (
-      item.tone !== "normal" &&
-      item.tone !== "warning" &&
-      item.tone !== "danger" &&
-      item.tone !== "offline"
+      typeof props.highlightColumn !== "number" ||
+      !Number.isInteger(props.highlightColumn) ||
+      props.highlightColumn < -1 ||
+      props.highlightColumn >= props.columns.length
     ) {
-      return { ok: false, message: `items[${index}].tone 不受支持` };
+      return { ok: false, message: "highlightColumn 必须是 -1 或有效列下标" };
     }
-    items.push({ label: item.label, value: item.value, tone: item.tone });
+    return {
+      ok: true,
+      value: {
+        ...base.value,
+        columns: [...props.columns] as string[],
+        rows,
+        highlightColumn: props.highlightColumn,
+      },
+    };
   }
-  return { ok: true, value: { ...base.value, columns: props.columns, items } };
+
+  if (type === "event-timeline") {
+    if (!Array.isArray(props.items) || props.items.length < 1 || props.items.length > 20) {
+      return { ok: false, message: "items 必须包含 1–20 条事件" };
+    }
+    const items: TimelineItem[] = [];
+    for (const [index, rawItem] of props.items.entries()) {
+      if (!rawItem || typeof rawItem !== "object" || Array.isArray(rawItem)) {
+        return { ok: false, message: `items[${index}] 必须是对象` };
+      }
+      const item = rawItem as Record<string, unknown>;
+      if (
+        typeof item.time !== "string" || item.time.trim().length === 0 || item.time.length > 32 ||
+        typeof item.title !== "string" || item.title.trim().length === 0 || item.title.length > 120 ||
+        typeof item.detail !== "string" || item.detail.length > 240
+      ) {
+        return { ok: false, message: `items[${index}] 的时间、标题或详情无效` };
+      }
+      if (
+        item.tone !== "normal" && item.tone !== "warning" &&
+        item.tone !== "danger" && item.tone !== "offline"
+      ) {
+        return { ok: false, message: `items[${index}].tone 不受支持` };
+      }
+      items.push({ time: item.time, title: item.title, detail: item.detail, tone: item.tone });
+    }
+    return { ok: true, value: { ...base.value, items } };
+  }
+
+  return { ok: false, message: `不支持的看板组件类型：${type}` };
 };
 
 export type ChartPropsResult =
   | { ok: true; value: ChartProps }
   | { ok: false; message: string };
 
-export const parseChartProps = (props: Record<string, unknown>): ChartPropsResult => {
+export const parseChartProps = (
+  type: ChartNodeType,
+  props: Record<string, unknown>,
+): ChartPropsResult => {
   if (typeof props.title !== "string" || props.title.trim().length === 0 || props.title.length > 120) {
     return { ok: false, message: "title 必须是 1–120 个字符的文本" };
   }
@@ -948,8 +1262,30 @@ export const parseChartProps = (props: Record<string, unknown>): ChartPropsResul
     return { ok: false, message: "values 必须是有限数值数组" };
   }
 
-  if (props.categories.length !== props.values.length || props.values.length < 2) {
-    return { ok: false, message: "categories 与 values 数量必须一致，且至少包含 2 项" };
+  const minimumPoints = type === "radar-chart" ? 3 : 2;
+  if (
+    props.categories.length !== props.values.length ||
+    props.values.length < minimumPoints ||
+    props.values.length > 32
+  ) {
+    return {
+      ok: false,
+      message: `categories 与 values 数量必须一致，且包含 ${minimumPoints}–32 项`,
+    };
+  }
+
+  if (
+    (type === "pie-chart" || type === "donut-chart" || type === "radar-chart") &&
+    props.values.some((value) => value < 0)
+  ) {
+    return { ok: false, message: `${componentLabels[type]}的数据不能为负数` };
+  }
+
+  if (
+    (type === "pie-chart" || type === "donut-chart") &&
+    props.values.every((value) => value === 0)
+  ) {
+    return { ok: false, message: `${componentLabels[type]}的数据总和必须大于 0` };
   }
 
   if (typeof props.unit !== "string" || props.unit.length > 24 || typeof props.color !== "string" || !/^#[0-9a-fA-F]{6}$/.test(props.color)) {
