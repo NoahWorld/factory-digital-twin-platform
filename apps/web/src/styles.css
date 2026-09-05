@@ -3273,7 +3273,25 @@ input:focus {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 18px;
   margin-bottom: 20px;
+}
+
+.data-source-test-actions {
+  display: grid;
+  justify-items: end;
+  gap: 5px;
+}
+
+.data-source-test-actions button {
+  min-height: 34px;
+  padding: 7px 12px;
+  font-size: 0.68rem;
+}
+
+.data-source-test-actions small {
+  color: #b69b69;
+  font-size: 0.6rem;
 }
 
 .data-source-form-grid {
@@ -3310,6 +3328,180 @@ input:focus {
   color: #789baa;
   font-size: 0.68rem;
   line-height: 1.55;
+}
+
+.data-source-probe-error,
+.data-source-probe-result {
+  margin-top: 14px;
+  border-radius: 9px;
+}
+
+.data-source-probe-error {
+  padding: 12px 14px;
+  border: 1px solid rgba(255, 118, 118, 0.3);
+  color: #ffb3b3;
+  background: rgba(87, 28, 37, 0.3);
+}
+
+.data-source-probe-error p {
+  margin: 5px 0 0;
+  font-size: 0.7rem;
+  line-height: 1.5;
+}
+
+.data-source-probe-result {
+  overflow: hidden;
+  border: 1px solid rgba(112, 217, 179, 0.28);
+  background: rgba(11, 31, 35, 0.8);
+}
+
+.data-source-probe-result > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 13px 14px;
+  border-bottom: 1px solid rgba(112, 217, 179, 0.14);
+  background: rgba(31, 76, 67, 0.28);
+}
+
+.data-source-probe-result > header div {
+  display: grid;
+  gap: 3px;
+}
+
+.data-source-probe-result > header span {
+  color: #70d9b3;
+  font-size: 0.55rem;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+}
+
+.data-source-probe-result > header strong {
+  color: #d8fff0;
+  font-size: 0.76rem;
+}
+
+.data-source-probe-result > header em {
+  color: #70d9b3;
+  font-size: 0.64rem;
+  font-style: normal;
+  white-space: nowrap;
+}
+
+.data-source-probe-result dl {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px;
+  margin: 0;
+  background: rgba(112, 217, 179, 0.1);
+}
+
+.data-source-probe-result dl > div {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+  padding: 10px 12px;
+  background: #0b1b20;
+}
+
+.data-source-probe-result dl > div:last-child {
+  grid-column: 1 / -1;
+}
+
+.data-source-probe-result dt {
+  color: #6f9189;
+  font-size: 0.58rem;
+}
+
+.data-source-probe-result dd {
+  overflow: hidden;
+  margin: 0;
+  color: #c7e9df;
+  font-size: 0.68rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.data-source-discovered-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 14px 8px;
+}
+
+.data-source-discovered-heading strong {
+  color: #d8e9e4;
+  font-size: 0.7rem;
+}
+
+.data-source-discovered-heading span {
+  color: #66827d;
+  font-size: 0.58rem;
+}
+
+.data-source-discovered-fields {
+  max-height: 230px;
+  margin: 0 10px 10px;
+  overflow: auto;
+  border: 1px solid rgba(142, 171, 178, 0.12);
+  border-radius: 6px;
+}
+
+.data-source-discovered-fields > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) 62px minmax(0, 1fr);
+  gap: 9px;
+  align-items: center;
+  padding: 7px 9px;
+  border-bottom: 1px solid rgba(142, 171, 178, 0.09);
+}
+
+.data-source-discovered-fields > div:last-child {
+  border-bottom: 0;
+}
+
+.data-source-discovered-fields code,
+.data-source-discovered-fields strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.data-source-discovered-fields code {
+  color: #68cbe9;
+  font-size: 0.62rem;
+}
+
+.data-source-discovered-fields span {
+  color: #7c9692;
+  font-size: 0.58rem;
+}
+
+.data-source-discovered-fields strong {
+  color: #d8e9e4;
+  font-size: 0.62rem;
+  font-weight: 550;
+}
+
+.data-source-discovered-empty,
+.data-source-discovered-warning {
+  margin: 0 10px 10px;
+  padding: 9px 10px;
+  border-radius: 6px;
+  font-size: 0.62rem;
+  line-height: 1.5;
+}
+
+.data-source-discovered-empty {
+  color: #718c86;
+  background: rgba(14, 34, 37, 0.7);
+}
+
+.data-source-discovered-warning {
+  color: #d5b878;
+  background: rgba(91, 66, 23, 0.24);
 }
 
 .data-source-form-error,
@@ -3360,6 +3552,16 @@ input:focus {
   .data-source-list {
     border-right: 0;
     border-bottom: 1px solid rgba(142, 171, 178, 0.12);
+  }
+
+  .data-source-form-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .data-source-test-actions {
+    width: 100%;
+    justify-items: stretch;
   }
 
   .data-source-form-grid {

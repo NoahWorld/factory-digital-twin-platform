@@ -4,6 +4,10 @@ import { AppError, type AppEnv } from "./auth";
 import { getDataSource, type DataSource, type RestPollingConfig } from "./data-sources";
 
 const MAX_RESPONSE_BYTES = 256 * 1024;
+const MAX_DISCOVERED_FIELDS = 200;
+const MAX_DISCOVERY_DEPTH = 8;
+const MAX_DISCOVERED_ARRAY_ITEMS = 10;
+const MAX_SAMPLE_STRING_LENGTH = 160;
 
 export type RuntimeMetricValue = number | string | boolean;
 
@@ -29,6 +33,21 @@ export type AssetRuntimeState = {
   }>;
   pollAfterSeconds: number;
   staleAfterSeconds: number;
+};
+
+export type RestDataSourceProbe = {
+  dataSource: Pick<DataSource, "id" | "name" | "sourceType">;
+  collectedAt: string;
+  sourceTimestamp: string | null;
+  sourceAgeSeconds: number | null;
+  durationMs: number;
+  responseBytes: number;
+  fields: Array<{
+    path: string;
+    valueType: "number" | "string" | "boolean" | "null";
+    sample: number | string | boolean | null;
+  }>;
+  fieldsTruncated: boolean;
 };
 
 type JsonPathToken = string | number;
@@ -119,13 +138,14 @@ const resolveJsonPath = (
   return current;
 };
 
-const sourceTimestamp = (
+const inspectSourceTimestamp = (
   payload: unknown,
   source: DataSource,
   config: RestPollingConfig,
-  staleAfterSeconds: number,
-): string | null => {
-  if (!config.timestampPath) return null;
+): { sourceTimestamp: string | null; sourceAgeSeconds: number | null } => {
+  if (!config.timestampPath) {
+    return { sourceTimestamp: null, sourceAgeSeconds: null };
+  }
   const value = resolveJsonPath(
     payload,
     config.timestampPath,
@@ -149,15 +169,98 @@ const sourceTimestamp = (
       `Data source ${source.id} timestamp is more than 300 seconds ahead of the server clock.`,
     );
   }
-  const staleForSeconds = Math.max(0, Math.floor((now - timestampMs) / 1000));
-  if (staleForSeconds > staleAfterSeconds) {
+  return {
+    sourceTimestamp: new Date(timestampMs).toISOString(),
+    sourceAgeSeconds: Math.max(0, Math.floor((now - timestampMs) / 1000)),
+  };
+};
+
+const sourceTimestamp = (
+  payload: unknown,
+  source: DataSource,
+  config: RestPollingConfig,
+  staleAfterSeconds: number,
+): string | null => {
+  const inspected = inspectSourceTimestamp(payload, source, config);
+  if (
+    inspected.sourceAgeSeconds !== null
+    && inspected.sourceAgeSeconds > staleAfterSeconds
+  ) {
     throw new AppError(
       502,
       "data_source_stale",
-      `Data source ${source.id} timestamp is ${staleForSeconds} seconds old; the configured limit is ${staleAfterSeconds} seconds.`,
+      `Data source ${source.id} timestamp is ${inspected.sourceAgeSeconds} seconds old; the configured limit is ${staleAfterSeconds} seconds.`,
     );
   }
-  return new Date(timestampMs).toISOString();
+  return inspected.sourceTimestamp;
+};
+
+const sampleValue = (value: string): string => value.length > MAX_SAMPLE_STRING_LENGTH
+  ? `${value.slice(0, MAX_SAMPLE_STRING_LENGTH)}…`
+  : value;
+
+const objectPath = (parentPath: string, key: string): string | null => {
+  if (key.length === 0 || key.includes("\\") || key.includes("'") || /[\u0000-\u001f\u007f]/.test(key)) {
+    return null;
+  }
+  return /^[^.[\]\s]+$/.test(key)
+    ? `${parentPath}.${key}`
+    : `${parentPath}['${key}']`;
+};
+
+const discoverScalarFields = (
+  payload: unknown,
+): Pick<RestDataSourceProbe, "fields" | "fieldsTruncated"> => {
+  const fields: RestDataSourceProbe["fields"] = [];
+  let fieldsTruncated = false;
+
+  const visit = (value: unknown, path: string, depth: number): void => {
+    if (fields.length >= MAX_DISCOVERED_FIELDS) {
+      fieldsTruncated = true;
+      return;
+    }
+    if (value === null) {
+      fields.push({ path, valueType: "null", sample: null });
+      return;
+    }
+    if (typeof value === "string") {
+      fields.push({ path, valueType: "string", sample: sampleValue(value) });
+      return;
+    }
+    if (typeof value === "number" && Number.isFinite(value)) {
+      fields.push({ path, valueType: "number", sample: value });
+      return;
+    }
+    if (typeof value === "boolean") {
+      fields.push({ path, valueType: "boolean", sample: value });
+      return;
+    }
+    if (depth >= MAX_DISCOVERY_DEPTH) {
+      fieldsTruncated = true;
+      return;
+    }
+    if (Array.isArray(value)) {
+      if (value.length > MAX_DISCOVERED_ARRAY_ITEMS) fieldsTruncated = true;
+      value.slice(0, MAX_DISCOVERED_ARRAY_ITEMS).forEach((item, index) => {
+        visit(item, `${path}[${index}]`, depth + 1);
+      });
+      return;
+    }
+    if (typeof value === "object") {
+      for (const [key, child] of Object.entries(value)) {
+        const childPath = objectPath(path, key);
+        if (childPath === null) {
+          fieldsTruncated = true;
+          continue;
+        }
+        visit(child, childPath, depth + 1);
+        if (fields.length >= MAX_DISCOVERED_FIELDS) break;
+      }
+    }
+  };
+
+  visit(payload, "$", 0);
+  return { fields, fieldsTruncated };
 };
 
 const validateMetricValue = (
@@ -209,8 +312,11 @@ const requireRestConfig = (source: DataSource): RestPollingConfig => {
   return source.config;
 };
 
-const readLimitedText = async (response: Response, sourceId: string): Promise<string> => {
-  if (!response.body) return "";
+const readLimitedText = async (
+  response: Response,
+  sourceId: string,
+): Promise<{ text: string; byteSize: number }> => {
+  if (!response.body) return { text: "", byteSize: 0 };
   const reader = response.body.getReader();
   const chunks: Uint8Array[] = [];
   let totalBytes = 0;
@@ -234,14 +340,19 @@ const readLimitedText = async (response: Response, sourceId: string): Promise<st
     body.set(chunk, offset);
     offset += chunk.byteLength;
   }
-  return new TextDecoder().decode(body);
+  return { text: new TextDecoder().decode(body), byteSize: totalBytes };
 };
 
 const fetchJson = async (
   source: DataSource,
   config: RestPollingConfig,
   requestId: string,
-): Promise<{ payload: unknown; collectedAt: string; durationMs: number }> => {
+): Promise<{
+  payload: unknown;
+  collectedAt: string;
+  durationMs: number;
+  responseBytes: number;
+}> => {
   if (config.credentialRef) {
     throw new AppError(
       501,
@@ -270,7 +381,7 @@ const fetchJson = async (
     if (Number.isFinite(declaredLength) && declaredLength > MAX_RESPONSE_BYTES) {
       throw new AppError(502, "data_source_response_too_large", `Data source ${source.id} declared more than ${MAX_RESPONSE_BYTES} response bytes.`);
     }
-    const text = await readLimitedText(response, source.id);
+    const { text, byteSize } = await readLimitedText(response, source.id);
     let payload: unknown;
     try {
       payload = JSON.parse(text);
@@ -281,6 +392,7 @@ const fetchJson = async (
       payload,
       collectedAt: new Date().toISOString(),
       durationMs: Date.now() - startedAt,
+      responseBytes: byteSize,
     };
   } catch (error) {
     if (error instanceof AppError) throw error;
@@ -297,12 +409,10 @@ const fetchJson = async (
   }
 };
 
-export const collectAssetRuntimeState = async (
+const requireAllowedRestSource = (
   env: AppEnv,
-  projectId: string,
-  assetRecordId: string,
-  requestId: string,
-): Promise<AssetRuntimeState> => {
+  source: DataSource,
+): RestPollingConfig => {
   if (env.RUNTIME_POLLING_ENABLED !== "true") {
     throw new AppError(503, "runtime_polling_disabled", "REST runtime polling is disabled on this server.");
   }
@@ -310,7 +420,50 @@ export const collectAssetRuntimeState = async (
   if (allowedHosts.size === 0) {
     throw new AppError(503, "runtime_allowed_hosts_missing", "REST runtime polling requires at least one explicitly allowed host.");
   }
+  const config = requireRestConfig(source);
+  const url = new URL(config.url);
+  if (!allowedHosts.has(url.host.toLowerCase())) {
+    throw new AppError(
+      403,
+      "runtime_data_source_host_not_allowed",
+      `Data source ${source.id} host is not in RUNTIME_ALLOWED_HOSTS.`,
+    );
+  }
+  return config;
+};
 
+export const probeRestDataSource = async (
+  env: AppEnv,
+  projectId: string,
+  dataSourceId: string,
+  requestId: string,
+): Promise<RestDataSourceProbe> => {
+  const source = await getDataSource(env, projectId, dataSourceId);
+  const config = requireAllowedRestSource(env, source);
+  const fetched = await fetchJson(source, config, requestId);
+  const timestamp = inspectSourceTimestamp(fetched.payload, source, config);
+  const discovery = discoverScalarFields(fetched.payload);
+  return {
+    dataSource: {
+      id: source.id,
+      name: source.name,
+      sourceType: source.sourceType,
+    },
+    collectedAt: fetched.collectedAt,
+    sourceTimestamp: timestamp.sourceTimestamp,
+    sourceAgeSeconds: timestamp.sourceAgeSeconds,
+    durationMs: fetched.durationMs,
+    responseBytes: fetched.responseBytes,
+    ...discovery,
+  };
+};
+
+export const collectAssetRuntimeState = async (
+  env: AppEnv,
+  projectId: string,
+  assetRecordId: string,
+  requestId: string,
+): Promise<AssetRuntimeState> => {
   const [asset, bindings] = await Promise.all([
     getAsset(env, projectId, assetRecordId),
     listAssetDataBindings(env, projectId, assetRecordId),
@@ -329,15 +482,7 @@ export const collectAssetRuntimeState = async (
   const sourceResults = await Promise.all(
     [...bindingGroups.entries()].map(async ([dataSourceId, sourceBindings]) => {
       const source = await getDataSource(env, projectId, dataSourceId);
-      const config = requireRestConfig(source);
-      const url = new URL(config.url);
-      if (!allowedHosts.has(url.host.toLowerCase())) {
-        throw new AppError(
-          403,
-          "runtime_data_source_host_not_allowed",
-          `Data source ${source.id} host is not in RUNTIME_ALLOWED_HOSTS.`,
-        );
-      }
+      const config = requireAllowedRestSource(env, source);
       const fetched = await fetchJson(source, config, requestId);
       const staleAfterSeconds = Math.min(
         ...sourceBindings.map((binding) => binding.staleAfterSeconds),

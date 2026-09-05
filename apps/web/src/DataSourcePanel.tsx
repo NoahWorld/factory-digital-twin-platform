@@ -1,12 +1,15 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { errorMessage, request } from "./api";
 import {
+  dataSourceProbePath,
   dataSourcePath,
   dataSourcesPath,
   type DataSourceListResponse,
   type DataSourceResponse,
   type DataSourceType,
   type ProjectDataSource,
+  type RestDataSourceProbe,
+  type RestDataSourceProbeResponse,
 } from "./data-sources";
 
 type DataSourcePanelProps = {
@@ -77,6 +80,19 @@ const requiredInteger = (value: string, label: string): number => {
   return parsed;
 };
 
+const draftsMatch = (left: DataSourceDraft, right: DataSourceDraft): boolean =>
+  (Object.keys(left) as Array<keyof DataSourceDraft>).every((key) => left[key] === right[key]);
+
+const formatBytes = (value: number): string => value < 1024
+  ? `${value} B`
+  : `${(value / 1024).toFixed(1)} KiB`;
+
+const formatSample = (value: number | string | boolean | null): string => {
+  if (value === null) return "null";
+  if (typeof value === "string") return JSON.stringify(value);
+  return String(value);
+};
+
 export function DataSourcePanel({
   editable,
   onClose,
@@ -88,7 +104,15 @@ export function DataSourcePanel({
   const [saveError, setSaveError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [probing, setProbing] = useState(false);
+  const [probeError, setProbeError] = useState<string | null>(null);
+  const [probeResult, setProbeResult] = useState<RestDataSourceProbe | null>(null);
   const [draft, setDraft] = useState<DataSourceDraft>(emptyDraft);
+
+  useEffect(() => {
+    setProbeError(null);
+    setProbeResult(null);
+  }, [draft]);
 
   useEffect(() => {
     let active = true;
@@ -119,6 +143,24 @@ export function DataSourcePanel({
     setDraft(emptyDraft());
     setSaveError(null);
     setNotice(null);
+  };
+
+  const probeSource = async () => {
+    if (!draft.id || draft.sourceType !== "rest_polling" || probing) return;
+    setProbing(true);
+    setProbeError(null);
+    setProbeResult(null);
+    try {
+      const result = await request<RestDataSourceProbeResponse>(
+        dataSourceProbePath(projectId, draft.id),
+        { method: "POST" },
+      );
+      setProbeResult(result.probe);
+    } catch (reason) {
+      setProbeError(errorMessage(reason));
+    } finally {
+      setProbing(false);
+    }
   };
 
   const save = async (event: FormEvent<HTMLFormElement>) => {
@@ -173,6 +215,17 @@ export function DataSourcePanel({
   };
 
   const formDisabled = !editable || saving || loading || Boolean(loadError);
+  const selectedSource = draft.id
+    ? dataSources.find((source) => source.id === draft.id) ?? null
+    : null;
+  const hasUnsavedChanges = selectedSource
+    ? !draftsMatch(draft, draftFromSource(selectedSource))
+    : false;
+  const probeDisabled = formDisabled
+    || probing
+    || draft.sourceType !== "rest_polling"
+    || !draft.id
+    || hasUnsavedChanges;
 
   return (
     <div aria-modal="true" className="data-source-panel-backdrop" role="dialog">
@@ -238,6 +291,18 @@ export function DataSourcePanel({
               <div>
                 <span>{draft.id ? "Edit connection" : "New connection"}</span>
                 <h3>{draft.id ? "编辑数据源" : "新建数据源"}</h3>
+              </div>
+              <div className="data-source-test-actions">
+                <button
+                  className="secondary-button"
+                  disabled={probeDisabled}
+                  onClick={() => void probeSource()}
+                  type="button"
+                >
+                  {probing ? "测试中…" : "测试连接并发现字段"}
+                </button>
+                {draft.id && hasUnsavedChanges ? <small>请先保存修改</small> : null}
+                {draft.sourceType === "websocket" ? <small>WebSocket 执行尚未开放</small> : null}
               </div>
             </div>
 
@@ -395,6 +460,58 @@ export function DataSourcePanel({
                 账号、Token 与 API Key 必须由服务端密钥存储按引用提供，不能写进 URL、前端配置或 Git。
               </p>
             </div>
+            {probeError ? (
+              <div className="data-source-probe-error" role="alert">
+                <strong>连接测试失败</strong>
+                <p>{probeError}</p>
+              </div>
+            ) : null}
+            {probeResult ? (
+              <section className="data-source-probe-result" aria-label="数据源测试结果">
+                <header>
+                  <div>
+                    <span>Connection verified</span>
+                    <strong>连接成功，已发现 {probeResult.fields.length} 个标量字段</strong>
+                  </div>
+                  <em>● 可访问</em>
+                </header>
+                <dl>
+                  <div><dt>请求耗时</dt><dd>{probeResult.durationMs} ms</dd></div>
+                  <div><dt>响应大小</dt><dd>{formatBytes(probeResult.responseBytes)}</dd></div>
+                  <div><dt>采集时间</dt><dd>{new Date(probeResult.collectedAt).toLocaleTimeString("zh-CN", { hour12: false })}</dd></div>
+                  <div>
+                    <dt>源数据时间</dt>
+                    <dd>
+                      {probeResult.sourceTimestamp
+                        ? `${new Date(probeResult.sourceTimestamp).toLocaleString("zh-CN", { hour12: false })}（${probeResult.sourceAgeSeconds ?? 0} 秒前）`
+                        : "未配置时间戳路径"}
+                    </dd>
+                  </div>
+                </dl>
+                <div className="data-source-discovered-heading">
+                  <strong>可映射字段</strong>
+                  <span>复制下列 JSON 路径到资产指标映射</span>
+                </div>
+                {probeResult.fields.length > 0 ? (
+                  <div className="data-source-discovered-fields">
+                    {probeResult.fields.map((field) => (
+                      <div key={field.path}>
+                        <code>{field.path}</code>
+                        <span>{field.valueType}</span>
+                        <strong title={formatSample(field.sample)}>{formatSample(field.sample)}</strong>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="data-source-discovered-empty">响应中没有可映射的标量字段。</p>
+                )}
+                {probeResult.fieldsTruncated ? (
+                  <p className="data-source-discovered-warning">
+                    响应字段过多或嵌套过深，仅展示前 {probeResult.fields.length} 个可安全映射的字段。
+                  </p>
+                ) : null}
+              </section>
+            ) : null}
             {saveError ? <p className="data-source-form-error" role="alert">{saveError}</p> : null}
             {notice ? <p className="data-source-form-notice" role="status">{notice}</p> : null}
             {!editable ? <p className="data-source-readonly">当前项目只有查看权限。</p> : null}

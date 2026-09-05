@@ -48,7 +48,7 @@ import {
   uploadImageAsset,
 } from "./image-assets";
 import { projectCoverResponse } from "./project-covers";
-import { collectAssetRuntimeState } from "./runtime-state";
+import { collectAssetRuntimeState, probeRestDataSource } from "./runtime-state";
 
 type ProjectStatus = "draft" | "published" | "archived";
 
@@ -794,6 +794,59 @@ const handleApiRequest = async (
   const dataSourceMatch = pathname.match(
     /^\/api\/v1\/projects\/([^/]+)\/data-sources\/([^/]+)$/,
   );
+
+  const dataSourceProbeMatch = pathname.match(
+    /^\/api\/v1\/projects\/([^/]+)\/data-sources\/([^/]+)\/test$/,
+  );
+
+  if (method === "POST" && dataSourceProbeMatch) {
+    const startedAt = Date.now();
+    const user = await getAuthenticatedUser(env, request);
+    const projectId = decodePathSegment(dataSourceProbeMatch[1]);
+    const dataSourceId = decodePathSegment(dataSourceProbeMatch[2]);
+    const project = await requireProjectAccess(env, user, projectId);
+    if (!canEditProject(user, project)) {
+      throw new AppError(
+        403,
+        "permission_denied",
+        "You do not have permission to test data sources in this project.",
+      );
+    }
+
+    try {
+      const probe = await probeRestDataSource(
+        env,
+        projectId,
+        dataSourceId,
+        requestId,
+      );
+      console.log(JSON.stringify({
+        event: "data_source_test_succeeded",
+        requestId,
+        projectId,
+        userId: user.id,
+        dataSourceId,
+        responseBytes: probe.responseBytes,
+        fieldCount: probe.fields.length,
+        fieldsTruncated: probe.fieldsTruncated,
+        sourceAgeSeconds: probe.sourceAgeSeconds,
+        durationMs: Date.now() - startedAt,
+      }));
+      return json({ probe, requestId });
+    } catch (error) {
+      console.error(JSON.stringify({
+        event: "data_source_test_failed",
+        requestId,
+        projectId,
+        userId: user.id,
+        dataSourceId,
+        errorCode: error instanceof AppError ? error.code : "unhandled_error",
+        error: error instanceof Error ? error.message : String(error),
+        durationMs: Date.now() - startedAt,
+      }));
+      throw error;
+    }
+  }
 
   if (method === "PATCH" && dataSourceMatch) {
     const startedAt = Date.now();

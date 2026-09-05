@@ -43,8 +43,31 @@ export type DataSourceResponse = {
   requestId: string;
 };
 
+export type RestDataSourceProbe = {
+  dataSource: Pick<ProjectDataSource, "id" | "name" | "sourceType">;
+  collectedAt: string;
+  sourceTimestamp: string | null;
+  sourceAgeSeconds: number | null;
+  durationMs: number;
+  responseBytes: number;
+  fields: Array<{
+    path: string;
+    valueType: "number" | "string" | "boolean" | "null";
+    sample: number | string | boolean | null;
+  }>;
+  fieldsTruncated: boolean;
+};
+
+export type RestDataSourceProbeResponse = {
+  probe: RestDataSourceProbe;
+  requestId: string;
+};
+
 export const dataSourcesPath = (projectId: string): string =>
   `/api/v1/projects/${encodeURIComponent(projectId)}/data-sources`;
 
 export const dataSourcePath = (projectId: string, dataSourceId: string): string =>
   `${dataSourcesPath(projectId)}/${encodeURIComponent(dataSourceId)}`;
+
+export const dataSourceProbePath = (projectId: string, dataSourceId: string): string =>
+  `${dataSourcePath(projectId, dataSourceId)}/test`;

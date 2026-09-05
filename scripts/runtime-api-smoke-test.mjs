@@ -248,6 +248,24 @@ try {
   const dataSourceId = sourceResponse.body?.dataSource?.id;
   if (typeof dataSourceId !== "string") throw new Error("Data source creation response omitted dataSource.id.");
 
+  const probe = await call(
+    `/api/v1/projects/${projectId}/data-sources/${dataSourceId}/test`,
+    { method: "POST" },
+  );
+  const discoveredPaths = new Set(
+    probe.body?.probe?.fields?.map((field) => field.path),
+  );
+  if (
+    probe.body?.probe?.dataSource?.id !== dataSourceId
+    || probe.body?.probe?.sourceTimestamp === null
+    || probe.body?.probe?.fieldsTruncated !== false
+    || !discoveredPaths.has("$.deviceId")
+    || !discoveredPaths.has("$.values.status")
+    || !discoveredPaths.has("$.values.temperature")
+  ) {
+    throw new Error(`REST data source probe did not discover the expected fields: ${JSON.stringify(probe.body)}`);
+  }
+
   const bindings = [
     ["status", "$.values.status", "string", null],
     ["temperature", "$.values.temperature", "number", "°C"],
@@ -303,6 +321,17 @@ try {
   }
 
   await controlDevice("/control/outage");
+  const failedProbe = await call(
+    `/api/v1/projects/${projectId}/data-sources/${dataSourceId}/test`,
+    { method: "POST" },
+    502,
+  );
+  if (
+    failedProbe.body?.error !== "data_source_http_error"
+    || typeof failedProbe.body?.requestId !== "string"
+  ) {
+    throw new Error(`Failed REST probe did not expose the expected error and requestId: ${JSON.stringify(failedProbe.body)}`);
+  }
   const outage = await call(
     `/api/v1/projects/${projectId}/assets/${assetRecordId}/runtime-state`,
     {},
@@ -315,6 +344,8 @@ try {
   console.log(JSON.stringify({
     checks: [
       "authenticated runtime endpoint",
+      "REST connection test and bounded field discovery",
+      "REST connection test failure context",
       "REST response collection",
       "strict four-field mapping",
       "self-contained GLTF upload and 3D canvas binding",
