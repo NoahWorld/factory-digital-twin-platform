@@ -4,6 +4,7 @@ import { DashboardNodeInspector } from "./DashboardNodeInspector";
 import {
   componentLabels,
   isBasicNodeType,
+  isChartNodeType,
   isDashboardNodeType,
   isDecorationNodeType,
   isModel3DNodeType,
@@ -126,14 +127,15 @@ const toDraft = (props: ChartProps): ChartDraft => ({
   values: props.values.map(String),
 });
 
-const validateDraft = (draft: ChartDraft): DraftResult => {
+const validateDraft = (nodeType: import("./types").ChartNodeType, draft: ChartDraft): DraftResult => {
   const title = draft.title.trim();
   if (!title) return { ok: false, message: "图表标题不能为空。" };
   if (title.length > 120) return { ok: false, message: "图表标题不能超过 120 个字符。" };
   if (draft.unit.length > 24) return { ok: false, message: "单位不能超过 24 个字符。" };
   if (!/^#[0-9a-fA-F]{6}$/.test(draft.color)) return { ok: false, message: "请选择有效的六位十六进制颜色。" };
-  if (draft.categories.length < 2 || draft.categories.length > MAX_POINTS) {
-    return { ok: false, message: `数据项必须为 2–${MAX_POINTS} 条。` };
+  const minimumPoints = nodeType === "radar-chart" ? 3 : 2;
+  if (draft.categories.length < minimumPoints || draft.categories.length > MAX_POINTS) {
+    return { ok: false, message: `数据项必须为 ${minimumPoints}–${MAX_POINTS} 条。` };
   }
 
   const categories = draft.categories.map((category) => category.trim());
@@ -146,13 +148,21 @@ const validateDraft = (draft: ChartDraft): DraftResult => {
     return { ok: false, message: "数值必须在 -10 亿到 10 亿之间。" };
   }
 
-  return {
-    ok: true,
-    props: { title, unit: draft.unit, color: draft.color, categories, values },
-  };
+  const parsed = parseChartProps(nodeType, {
+    title,
+    unit: draft.unit,
+    color: draft.color,
+    categories,
+    values,
+  });
+  return parsed.ok ? { ok: true, props: parsed.value } : { ok: false, message: parsed.message };
 };
 
 function ValidChartInspector({ editable, node, props, onNodeChange, onValidationChange }: ComponentInspectorProps & { node: CanvasNode; props: ChartProps }) {
+  if (!isChartNodeType(node.type)) {
+    throw new Error(`ValidChartInspector received unsupported node type: ${node.type}`);
+  }
+  const nodeType = node.type;
   const [draft, setDraft] = useState<ChartDraft>(() => toDraft(props));
   const propsSignature = JSON.stringify([props.title, props.unit, props.color, props.categories, props.values]);
 
@@ -160,7 +170,7 @@ function ValidChartInspector({ editable, node, props, onNodeChange, onValidation
     setDraft(toDraft(props));
   }, [node.id, propsSignature]);
 
-  const validation = useMemo(() => validateDraft(draft), [draft]);
+  const validation = useMemo(() => validateDraft(nodeType, draft), [draft, nodeType]);
 
   useEffect(() => {
     onValidationChange(validation.ok ? null : validation.message);
@@ -168,7 +178,7 @@ function ValidChartInspector({ editable, node, props, onNodeChange, onValidation
 
   const changeDraft = (nextDraft: ChartDraft) => {
     setDraft(nextDraft);
-    const result = validateDraft(nextDraft);
+    const result = validateDraft(nodeType, nextDraft);
     if (result.ok) onNodeChange({ ...node, props: result.props });
   };
 
@@ -189,7 +199,8 @@ function ValidChartInspector({ editable, node, props, onNodeChange, onValidation
   };
 
   const removePoint = (index: number) => {
-    if (draft.categories.length <= 2) return;
+    const minimumPoints = nodeType === "radar-chart" ? 3 : 2;
+    if (draft.categories.length <= minimumPoints) return;
     changeDraft({
       ...draft,
       categories: draft.categories.filter((_, itemIndex) => itemIndex !== index),
@@ -222,7 +233,7 @@ function ValidChartInspector({ editable, node, props, onNodeChange, onValidation
             <div className="inspector-data-row" key={index}>
               <input aria-label={`第 ${index + 1} 条分类`} disabled={!editable} maxLength={80} onChange={(event) => updatePoint(index, "category", event.target.value)} value={category} />
               <input aria-label={`第 ${index + 1} 条数值`} disabled={!editable} inputMode="decimal" onChange={(event) => updatePoint(index, "value", event.target.value)} type="number" value={draft.values[index]} />
-              <button aria-label={`删除第 ${index + 1} 条数据`} className="inspector-remove-point" disabled={!editable || draft.categories.length <= 2} onClick={() => removePoint(index)} type="button">×</button>
+              <button aria-label={`删除第 ${index + 1} 条数据`} className="inspector-remove-point" disabled={!editable || draft.categories.length <= (nodeType === "radar-chart" ? 3 : 2)} onClick={() => removePoint(index)} type="button">×</button>
             </div>
           ))}
         </div>
@@ -541,7 +552,11 @@ export function ComponentInspector({
     );
   }
 
-  const parsed = parseChartProps(node.props);
+  if (!isChartNodeType(node.type)) {
+    return <InvalidComponentInspector message={`不支持的组件类型：${node.type}`} onValidationChange={onValidationChange} />;
+  }
+
+  const parsed = parseChartProps(node.type, node.props);
   if (!parsed.ok) {
     return <InvalidComponentInspector message={parsed.message} onValidationChange={onValidationChange} />;
   }

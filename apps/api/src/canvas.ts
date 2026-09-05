@@ -1,6 +1,12 @@
 import { AppError, type AppEnv, type DatabaseResult } from "./auth";
 
-export type ChartNodeType = "line-chart" | "bar-chart";
+export type ChartNodeType =
+  | "line-chart"
+  | "bar-chart"
+  | "area-chart"
+  | "pie-chart"
+  | "donut-chart"
+  | "radar-chart";
 export type ShapeNodeType = "rectangle" | "circle";
 export type DecorationNodeType =
   | "screen-title"
@@ -13,7 +19,11 @@ export type DashboardNodeType =
   | "metric-card"
   | "radial-gauge"
   | "progress-list"
-  | "status-grid";
+  | "status-grid"
+  | "ranking-list"
+  | "alarm-list"
+  | "data-table"
+  | "event-timeline";
 export type BasicNodeType =
   | "plain-text"
   | "text-link"
@@ -120,11 +130,48 @@ export type StatusGridProps = DashboardBaseProps & {
   items: StatusGridItem[];
 };
 
+export type RankingListItem = {
+  label: string;
+  value: number;
+  unit: string;
+  trend: "up" | "down" | "flat";
+};
+
+export type RankingListProps = DashboardBaseProps & { items: RankingListItem[] };
+
+export type AlarmListItem = {
+  time: string;
+  source: string;
+  message: string;
+  tone: DashboardTone;
+};
+
+export type AlarmListProps = DashboardBaseProps & { items: AlarmListItem[] };
+
+export type DataTableProps = DashboardBaseProps & {
+  columns: string[];
+  rows: string[][];
+  highlightColumn: number;
+};
+
+export type TimelineItem = {
+  time: string;
+  title: string;
+  detail: string;
+  tone: DashboardTone;
+};
+
+export type EventTimelineProps = DashboardBaseProps & { items: TimelineItem[] };
+
 export type DashboardProps =
   | MetricCardProps
   | RadialGaugeProps
   | ProgressListProps
-  | StatusGridProps;
+  | StatusGridProps
+  | RankingListProps
+  | AlarmListProps
+  | DataTableProps
+  | EventTimelineProps;
 
 export type BasicOption = {
   label: string;
@@ -327,12 +374,19 @@ const MAX_MODEL_NODE_TRANSFORMS = 100;
 const MAX_MODEL_NODE_APPEARANCES = 100;
 const MAX_PROGRESS_ITEMS = 12;
 const MAX_STATUS_ITEMS = 24;
+const MAX_STREAM_ITEMS = 20;
+const MAX_TABLE_COLUMNS = 8;
+const MAX_TABLE_ROWS = 20;
 const identifierPattern = /^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,119}$/;
 const colorPattern = /^#[0-9a-fA-F]{6}$/;
 const encoder = new TextEncoder();
 const minimumNodeSizes: Record<CanvasNodeType, { width: number; height: number }> = {
   "line-chart": { width: 240, height: 160 },
   "bar-chart": { width: 240, height: 160 },
+  "area-chart": { width: 240, height: 160 },
+  "pie-chart": { width: 240, height: 200 },
+  "donut-chart": { width: 240, height: 200 },
+  "radar-chart": { width: 260, height: 220 },
   rectangle: { width: 240, height: 160 },
   circle: { width: 240, height: 240 },
   "screen-title": { width: 360, height: 72 },
@@ -345,6 +399,10 @@ const minimumNodeSizes: Record<CanvasNodeType, { width: number; height: number }
   "radial-gauge": { width: 240, height: 220 },
   "progress-list": { width: 280, height: 220 },
   "status-grid": { width: 300, height: 200 },
+  "ranking-list": { width: 300, height: 220 },
+  "alarm-list": { width: 320, height: 220 },
+  "data-table": { width: 360, height: 220 },
+  "event-timeline": { width: 320, height: 240 },
   "model-3d": { width: 360, height: 240 },
   "plain-text": { width: 160, height: 48 },
   "text-link": { width: 160, height: 48 },
@@ -684,7 +742,11 @@ const isDashboardNodeType = (value: unknown): value is DashboardNodeType =>
   value === "metric-card" ||
   value === "radial-gauge" ||
   value === "progress-list" ||
-  value === "status-grid";
+  value === "status-grid" ||
+  value === "ranking-list" ||
+  value === "alarm-list" ||
+  value === "data-table" ||
+  value === "event-timeline";
 
 const isBasicNodeType = (value: unknown): value is BasicNodeType =>
   value === "plain-text" ||
@@ -700,6 +762,10 @@ const isBasicNodeType = (value: unknown): value is BasicNodeType =>
 const isCanvasNodeType = (value: unknown): value is CanvasNodeType =>
   value === "line-chart" ||
   value === "bar-chart" ||
+  value === "area-chart" ||
+  value === "pie-chart" ||
+  value === "donut-chart" ||
+  value === "radar-chart" ||
   value === "rectangle" ||
   value === "circle" ||
   isDecorationNodeType(value) ||
@@ -716,14 +782,26 @@ const validateNode = (value: unknown): CanvasNode => {
   const type = rawType as CanvasNodeType;
 
   const props = requireObject(node.props, "canvas node props");
-  let validatedProps: ChartProps | ShapeProps | DecorationProps | DashboardProps | BasicProps | Model3DProps;
+  let validatedProps: ChartProps | ShapeProps | DecorationProps | DashboardProps | BasicProps | Model3DProps | null = null;
 
-  if (type === "line-chart" || type === "bar-chart") {
+  if (
+    type === "line-chart" ||
+    type === "bar-chart" ||
+    type === "area-chart" ||
+    type === "pie-chart" ||
+    type === "donut-chart" ||
+    type === "radar-chart"
+  ) {
     const categories = requireStringArray(props.categories, "props.categories");
-    if (categories.length < 2 || !Array.isArray(props.values) || props.values.length !== categories.length || props.values.length > MAX_POINTS) {
-      invalid("invalid_canvas_node", "props.values must contain one finite value for every category, with at least two points.");
+    const minimumPoints = type === "radar-chart" ? 3 : 2;
+    if (categories.length < minimumPoints || !Array.isArray(props.values) || props.values.length !== categories.length || props.values.length > MAX_POINTS) {
+      invalid("invalid_canvas_node", `props.values must contain one finite value for every category, with ${minimumPoints} to ${MAX_POINTS} points.`);
     }
-    const values = (props.values as unknown[]).map((item, index) => requireNumber(item, `props.values[${index}]`, -1_000_000_000, 1_000_000_000));
+    const nonNegative = type === "pie-chart" || type === "donut-chart" || type === "radar-chart";
+    const values = (props.values as unknown[]).map((item, index) => requireNumber(item, `props.values[${index}]`, nonNegative ? 0 : -1_000_000_000, 1_000_000_000));
+    if ((type === "pie-chart" || type === "donut-chart") && values.every((item) => item === 0)) {
+      invalid("invalid_canvas_node", "Pie and donut chart values must have a total greater than zero.");
+    }
     validatedProps = {
       title: requireNonEmptyString(props.title, "props.title", 120),
       categories,
@@ -801,7 +879,7 @@ const validateNode = (value: unknown): CanvasNode => {
         };
       });
       validatedProps = { ...base, items };
-    } else {
+    } else if (type === "status-grid") {
       const columns = requireNumber(props.columns, "props.columns", 1, 6);
       if (!Number.isInteger(columns)) {
         invalid("invalid_canvas_node", "props.columns must be an integer.");
@@ -818,6 +896,72 @@ const validateNode = (value: unknown): CanvasNode => {
         };
       });
       validatedProps = { ...base, columns, items };
+    } else if (type === "ranking-list") {
+      if (!Array.isArray(props.items) || props.items.length < 1 || props.items.length > MAX_PROGRESS_ITEMS) {
+        invalid("invalid_canvas_node", `props.items must contain between 1 and ${MAX_PROGRESS_ITEMS} ranking items.`);
+      }
+      const items = (props.items as unknown[]).map((rawItem, index): RankingListItem => {
+        const item = requireObject(rawItem, `props.items[${index}]`);
+        if (item.trend !== "up" && item.trend !== "down" && item.trend !== "flat") {
+          invalid("invalid_canvas_node", `props.items[${index}].trend must be up, down, or flat.`);
+        }
+        return {
+          label: requireNonEmptyString(item.label, `props.items[${index}].label`, 80),
+          value: requireNumber(item.value, `props.items[${index}].value`, 0, 1_000_000_000),
+          unit: requireString(item.unit, `props.items[${index}].unit`, 24),
+          trend: item.trend as RankingListItem["trend"],
+        };
+      });
+      validatedProps = { ...base, items };
+    } else if (type === "alarm-list") {
+      if (!Array.isArray(props.items) || props.items.length < 1 || props.items.length > MAX_STREAM_ITEMS) {
+        invalid("invalid_canvas_node", `props.items must contain between 1 and ${MAX_STREAM_ITEMS} alarm items.`);
+      }
+      const items = (props.items as unknown[]).map((rawItem, index): AlarmListItem => {
+        const item = requireObject(rawItem, `props.items[${index}]`);
+        return {
+          time: requireNonEmptyString(item.time, `props.items[${index}].time`, 32),
+          source: requireNonEmptyString(item.source, `props.items[${index}].source`, 80),
+          message: requireNonEmptyString(item.message, `props.items[${index}].message`, 240),
+          tone: requireDashboardTone(item.tone, `props.items[${index}].tone`),
+        };
+      });
+      validatedProps = { ...base, items };
+    } else if (type === "data-table") {
+      const columns = requireStringArray(props.columns, "props.columns");
+      if (columns.length < 2 || columns.length > MAX_TABLE_COLUMNS) {
+        invalid("invalid_canvas_node", `props.columns must contain between 2 and ${MAX_TABLE_COLUMNS} columns.`);
+      }
+      if (!Array.isArray(props.rows) || props.rows.length < 1 || props.rows.length > MAX_TABLE_ROWS) {
+        invalid("invalid_canvas_node", `props.rows must contain between 1 and ${MAX_TABLE_ROWS} rows.`);
+      }
+      const rows = (props.rows as unknown[]).map((rawRow, rowIndex): string[] => {
+        if (!Array.isArray(rawRow) || rawRow.length !== columns.length) {
+          invalid("invalid_canvas_node", `props.rows[${rowIndex}] must contain exactly ${columns.length} cells.`);
+        }
+        return (rawRow as unknown[]).map((cell, columnIndex) => requireString(cell, `props.rows[${rowIndex}][${columnIndex}]`, 120));
+      });
+      const highlightColumn = requireNumber(props.highlightColumn, "props.highlightColumn", -1, columns.length - 1);
+      if (!Number.isInteger(highlightColumn)) {
+        invalid("invalid_canvas_node", "props.highlightColumn must be an integer.");
+      }
+      validatedProps = { ...base, columns, rows, highlightColumn };
+    } else if (type === "event-timeline") {
+      if (!Array.isArray(props.items) || props.items.length < 1 || props.items.length > MAX_STREAM_ITEMS) {
+        invalid("invalid_canvas_node", `props.items must contain between 1 and ${MAX_STREAM_ITEMS} timeline items.`);
+      }
+      const items = (props.items as unknown[]).map((rawItem, index): TimelineItem => {
+        const item = requireObject(rawItem, `props.items[${index}]`);
+        return {
+          time: requireNonEmptyString(item.time, `props.items[${index}].time`, 32),
+          title: requireNonEmptyString(item.title, `props.items[${index}].title`, 120),
+          detail: requireString(item.detail, `props.items[${index}].detail`, 240),
+          tone: requireDashboardTone(item.tone, `props.items[${index}].tone`),
+        };
+      });
+      validatedProps = { ...base, items };
+    } else {
+      invalid("unsupported_canvas_node_type", `Dashboard node type ${type} is not implemented.`);
     }
   } else if (isBasicNodeType(type)) {
     if (type === "image" || type === "carousel") {
@@ -988,6 +1132,15 @@ const validateNode = (value: unknown): CanvasNode => {
     };
   }
 
+  const acceptedProps = validatedProps;
+  if (acceptedProps === null) {
+    throw new AppError(
+      400,
+      "unsupported_canvas_node_type",
+      `Canvas node type ${type} does not have a property validator.`,
+    );
+  }
+
   const minimumSize = minimumNodeSizes[type];
   const width = requireNumber(node.width, "node.width", minimumSize.width, 3840);
   const height = requireNumber(node.height, "node.height", minimumSize.height, 2160);
@@ -1021,7 +1174,7 @@ const validateNode = (value: unknown): CanvasNode => {
     width,
     height,
     zIndex: requireNumber(node.zIndex, "node.zIndex", 0, 100000),
-    props: validatedProps,
+    props: acceptedProps,
     resourceRefs,
     dataBindingRefs: requireStringArray(node.dataBindingRefs, "node.dataBindingRefs", true),
   };
