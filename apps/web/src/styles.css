@@ -841,6 +841,7 @@ input:focus {
 }
 
 .canvas-workbench {
+  position: relative;
   display: grid;
   grid-row: 3;
   min-height: 0;
@@ -4136,6 +4137,303 @@ input:focus {
 .canvas-page-preview .canvas-viewport {
   padding: 16px;
   background: #030912;
+}
+
+.runtime-status-banner {
+  position: absolute;
+  z-index: 20;
+  top: 18px;
+  left: 50%;
+  display: flex;
+  max-width: min(760px, calc(100% - 48px));
+  align-items: center;
+  gap: 12px;
+  padding: 9px 14px;
+  border: 1px solid rgba(90, 216, 255, 0.28);
+  border-radius: 8px;
+  color: #d8f6ff;
+  background: rgba(5, 20, 32, 0.92);
+  box-shadow: 0 10px 34px rgba(0, 0, 0, 0.36);
+  font-size: 0.76rem;
+  line-height: 1.45;
+  transform: translateX(-50%);
+  backdrop-filter: blur(12px);
+}
+
+.runtime-status-banner strong {
+  flex: 0 0 auto;
+  color: #7de2ff;
+  letter-spacing: 0.04em;
+}
+
+.runtime-status-banner span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.runtime-status-banner.is-live {
+  border-color: rgba(53, 208, 127, 0.4);
+}
+
+.runtime-status-banner.is-live strong {
+  color: #68e5a4;
+}
+
+.runtime-status-banner.is-offline,
+.runtime-status-banner.is-error {
+  border-color: rgba(255, 77, 95, 0.54);
+  color: #ffd4d8;
+  background: rgba(53, 11, 19, 0.94);
+}
+
+.runtime-status-banner.is-offline strong,
+.runtime-status-banner.is-error strong {
+  color: #ff8e9a;
+}
+
+.runtime-selection-message {
+  position: absolute;
+  z-index: 21;
+  bottom: 24px;
+  left: 50%;
+  display: flex;
+  max-width: min(620px, calc(100% - 48px));
+  align-items: center;
+  gap: 16px;
+  padding: 10px 12px 10px 16px;
+  border: 1px solid rgba(246, 195, 68, 0.46);
+  border-radius: 8px;
+  color: #ffeab3;
+  background: rgba(54, 42, 10, 0.94);
+  box-shadow: 0 10px 34px rgba(0, 0, 0, 0.4);
+  font-size: 0.76rem;
+  transform: translateX(-50%);
+}
+
+.runtime-selection-message button,
+.runtime-detail-panel header button {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid rgba(122, 170, 193, 0.3);
+  border-radius: 6px;
+  color: #b8d2df;
+  background: rgba(5, 22, 34, 0.72);
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.runtime-detail-panel {
+  position: absolute;
+  z-index: 22;
+  top: 72px;
+  right: 24px;
+  width: min(360px, calc(100% - 48px));
+  max-height: calc(100% - 96px);
+  padding: 18px;
+  overflow-y: auto;
+  border: 1px solid rgba(90, 216, 255, 0.28);
+  border-radius: 12px;
+  color: #e8f7fc;
+  background:
+    linear-gradient(145deg, rgba(13, 44, 62, 0.96), rgba(5, 18, 29, 0.98));
+  box-shadow: 0 20px 58px rgba(0, 0, 0, 0.58);
+  backdrop-filter: blur(16px);
+}
+
+.runtime-detail-panel > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid rgba(90, 216, 255, 0.18);
+}
+
+.runtime-detail-panel .eyebrow {
+  color: #62d9ff;
+  font-size: 0.58rem;
+  font-weight: 760;
+  letter-spacing: 0.18em;
+}
+
+.runtime-detail-panel h2 {
+  margin: 5px 0 0;
+  font-size: 1.05rem;
+}
+
+.runtime-device-state {
+  --runtime-state-color: #8492a6;
+  display: grid;
+  grid-template-columns: 10px 1fr auto;
+  align-items: center;
+  gap: 9px;
+  margin-top: 14px;
+  padding: 11px 12px;
+  border: 1px solid color-mix(in srgb, var(--runtime-state-color) 42%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--runtime-state-color) 10%, rgba(7, 22, 34, 0.88));
+}
+
+.runtime-device-state i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--runtime-state-color);
+  box-shadow: 0 0 12px var(--runtime-state-color);
+}
+
+.runtime-device-state strong {
+  color: var(--runtime-state-color);
+  font-size: 0.85rem;
+}
+
+.runtime-device-state span {
+  color: #8da9b7;
+  font-size: 0.64rem;
+}
+
+.runtime-device-state.is-running { --runtime-state-color: #35d07f; }
+.runtime-device-state.is-warning { --runtime-state-color: #f6c344; }
+.runtime-device-state.is-alarm,
+.runtime-device-state.is-offline { --runtime-state-color: #ff5a68; }
+.runtime-device-state.is-loading { --runtime-state-color: #5ad8ff; }
+
+.runtime-device-meta {
+  display: grid;
+  gap: 8px;
+  margin: 14px 0 0;
+}
+
+.runtime-device-meta div {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: 78px minmax(0, 1fr);
+  gap: 12px;
+  padding-bottom: 7px;
+  border-bottom: 1px solid rgba(100, 146, 168, 0.12);
+}
+
+.runtime-device-meta dt {
+  color: #7594a4;
+  font-size: 0.65rem;
+}
+
+.runtime-device-meta dd {
+  overflow: hidden;
+  margin: 0;
+  color: #cbe3ed;
+  font-size: 0.68rem;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.runtime-offline-alert {
+  margin-top: 14px;
+  padding: 12px;
+  border: 1px solid rgba(255, 77, 95, 0.38);
+  border-radius: 8px;
+  color: #ffd6da;
+  background: rgba(75, 12, 22, 0.52);
+}
+
+.runtime-offline-alert strong {
+  color: #ff8994;
+  font-size: 0.78rem;
+}
+
+.runtime-offline-alert p {
+  margin: 5px 0;
+  font-size: 0.67rem;
+  line-height: 1.5;
+}
+
+.runtime-offline-alert small {
+  color: #dca1a8;
+  font-size: 0.6rem;
+}
+
+.runtime-metric-section {
+  margin-top: 16px;
+}
+
+.runtime-section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.runtime-section-heading h3 {
+  margin: 0;
+  font-size: 0.76rem;
+}
+
+.runtime-section-heading span {
+  color: #f6c344;
+  font-size: 0.6rem;
+}
+
+.runtime-metric-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.runtime-metric-card {
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid rgba(90, 216, 255, 0.15);
+  border-radius: 8px;
+  background: rgba(7, 28, 42, 0.72);
+}
+
+.runtime-metric-card > span {
+  display: block;
+  overflow: hidden;
+  color: #87a8b7;
+  font-size: 0.62rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.runtime-metric-card > strong {
+  display: block;
+  overflow: hidden;
+  margin-top: 6px;
+  color: #f0fbff;
+  font-size: 1rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.runtime-metric-card > strong small {
+  margin-left: 3px;
+  color: #79d8f3;
+  font-size: 0.58rem;
+}
+
+.runtime-metric-card code {
+  display: block;
+  overflow: hidden;
+  margin-top: 5px;
+  color: #57798a;
+  font-size: 0.55rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.runtime-empty-metrics {
+  margin: 10px 0 0;
+  padding: 14px;
+  border: 1px dashed rgba(90, 216, 255, 0.2);
+  border-radius: 8px;
+  color: #7896a6;
+  font-size: 0.68rem;
+  text-align: center;
 }
 
 .model-editor-page {

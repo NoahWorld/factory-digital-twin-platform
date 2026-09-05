@@ -48,6 +48,7 @@ import {
   uploadImageAsset,
 } from "./image-assets";
 import { projectCoverResponse } from "./project-covers";
+import { collectAssetRuntimeState } from "./runtime-state";
 
 type ProjectStatus = "draft" | "published" | "archived";
 
@@ -601,6 +602,48 @@ const handleApiRequest = async (
       durationMs: Date.now() - startedAt,
     }));
     return json({ asset, requestId });
+  }
+
+  const assetRuntimeStateMatch = pathname.match(
+    /^\/api\/v1\/projects\/([^/]+)\/assets\/([^/]+)\/runtime-state$/,
+  );
+
+  if (method === "GET" && assetRuntimeStateMatch) {
+    const startedAt = Date.now();
+    const user = await getAuthenticatedUser(env, request);
+    const projectId = decodePathSegment(assetRuntimeStateMatch[1]);
+    const assetRecordId = decodePathSegment(assetRuntimeStateMatch[2]);
+    await requireProjectAccess(env, user, projectId);
+    try {
+      const runtimeState = await collectAssetRuntimeState(
+        env,
+        projectId,
+        assetRecordId,
+        requestId,
+      );
+      console.log(JSON.stringify({
+        event: "asset_runtime_collected",
+        requestId,
+        projectId,
+        assetRecordId,
+        assetId: runtimeState.asset.assetId,
+        metricCount: runtimeState.metrics.length,
+        sourceCount: runtimeState.sources.length,
+        durationMs: Date.now() - startedAt,
+      }));
+      return json({ runtimeState, requestId });
+    } catch (error) {
+      console.error(JSON.stringify({
+        event: "asset_runtime_collection_failed",
+        requestId,
+        projectId,
+        assetRecordId,
+        errorCode: error instanceof AppError ? error.code : "unhandled_error",
+        error: error instanceof Error ? error.message : String(error),
+        durationMs: Date.now() - startedAt,
+      }));
+      throw error;
+    }
   }
 
   const assetDataBindingsMatch = pathname.match(

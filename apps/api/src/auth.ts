@@ -38,6 +38,8 @@ export type AppEnv = {
   DB: Database;
   PROJECT_FILES?: ObjectBucket;
   BOOTSTRAP_TOKEN?: string;
+  RUNTIME_ALLOWED_HOSTS?: string;
+  RUNTIME_POLLING_ENABLED?: string;
   SESSION_TTL_HOURS?: string;
 };
 

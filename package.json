@@ -5,8 +5,10 @@
   "description": "Factory digital twin delivery platform with 2D and 3D dashboards.",
   "packageManager": "pnpm@10.0.0",
   "scripts": {
+    "dev:mock": "node scripts/mock-device-server.mjs",
     "dev:web": "pnpm --filter @factory-twin/web dev",
     "dev:api": "pnpm --filter @factory-twin/api dev",
+    "smoke:runtime": "node scripts/runtime-api-smoke-test.mjs",
     "build": "pnpm --recursive run build",
     "check": "pnpm --recursive run check"
   }

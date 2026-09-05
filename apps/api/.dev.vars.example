@@ -2,3 +2,7 @@
 # Generate a long random value; never commit the real value.
 BOOTSTRAP_TOKEN=replace-this-with-a-long-random-bootstrap-token
 SESSION_TTL_HOURS=24
+# Local vertical-slice REST collector. Keep disabled in public deployments unless
+# every upstream host has been reviewed and explicitly allowlisted.
+RUNTIME_POLLING_ENABLED=true
+RUNTIME_ALLOWED_HOSTS=127.0.0.1:8790

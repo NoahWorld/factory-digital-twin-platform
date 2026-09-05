@@ -20,11 +20,13 @@ import { buildModelSceneTree, type ModelSceneSnapshot } from "./model-scene";
 type Model3DNodeProps = {
   cameraControlsEnabled?: boolean;
   editable: boolean;
+  interactive?: boolean;
   interactionHint?: string;
   node: CanvasNode;
   onSceneChange?: (canvasNodeId: string, snapshot: ModelSceneSnapshot | null) => void;
   onSceneNodeSelect: (canvasNodeId: string, sceneNodePath: string | null) => void;
   projectId: string;
+  runtimeAppearanceOverrides?: Record<string, ModelNodeAppearance>;
   selectedSceneNodePath: string | null;
 };
 
@@ -56,17 +58,21 @@ const errorText = (reason: unknown): string =>
 export const Model3DNode = memo(function Model3DNode({
   cameraControlsEnabled,
   editable,
-  interactionHint = "点击对象选中 · 拖动可移动组件",
+  interactive = false,
+  interactionHint,
   node,
   onSceneChange,
   onSceneNodeSelect,
   projectId,
+  runtimeAppearanceOverrides = {},
   selectedSceneNodePath,
 }: Model3DNodeProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const controlsRef = useRef<{ enabled: boolean } | null>(null);
   const runtimeRef = useRef<ModelRuntime | null>(null);
   const modelPropsRef = useRef<Model3DProps | null>(null);
+  const runtimeAppearanceOverridesRef = useRef(runtimeAppearanceOverrides);
+  runtimeAppearanceOverridesRef.current = runtimeAppearanceOverrides;
   const pointerStartRef = useRef<{
     clientX: number;
     clientY: number;
@@ -84,11 +90,15 @@ export const Model3DNode = memo(function Model3DNode({
   const parsed = parseModel3DProps(node.props);
   modelPropsRef.current = parsed.ok ? parsed.value : null;
   const assetId = node.resourceRefs[0] ?? null;
+  const resolvedInteractionHint = interactionHint
+    ?? (interactive && !editable
+      ? "点击设备查看 2D 详情 · 拖动旋转视角"
+      : "点击对象选中 · 拖动可移动组件");
   const transformOverridesSignature = parsed.ok
     ? JSON.stringify(parsed.value.transformOverrides)
     : "";
   const appearanceOverridesSignature = parsed.ok
-    ? JSON.stringify(parsed.value.appearanceOverrides)
+    ? JSON.stringify([parsed.value.appearanceOverrides, runtimeAppearanceOverrides])
     : "";
   const sceneSettingsSignature = parsed.ok
     ? JSON.stringify([
@@ -160,7 +170,10 @@ export const Model3DNode = memo(function Model3DNode({
   useEffect(() => {
     if (!parsed.ok || !runtimeRef.current) return;
     try {
-      runtimeRef.current.applyAppearances(parsed.value.appearanceOverrides);
+      runtimeRef.current.applyAppearances({
+        ...parsed.value.appearanceOverrides,
+        ...runtimeAppearanceOverridesRef.current,
+      });
       setLoadState({ status: "ready" });
     } catch (reason) {
       console.error("Failed to apply model node appearances.", {
@@ -493,27 +506,32 @@ export const Model3DNode = memo(function Model3DNode({
             try {
               for (const { appearance, object } of targets) {
                 object.visible = appearance.visible;
-                const materialOwner = object as MaterialObject;
-                const originalMaterial = originalMaterials.get(materialOwner);
-                if (!originalMaterial) continue;
+                object.traverse((descendant) => {
+                  const materialOwner = descendant as MaterialObject;
+                  const originalMaterial = originalMaterials.get(materialOwner);
+                  if (!originalMaterial) return;
 
-                const originalsForObject = Array.isArray(originalMaterial)
-                  ? originalMaterial
-                  : [originalMaterial];
-                const clones = originalsForObject.map((material) => {
-                  const clone = material.clone();
-                  const colorMaterial = clone as ColorMaterial;
-                  colorMaterial.color?.set(appearance.color);
-                  clone.opacity = appearance.opacity;
-                  clone.transparent = appearance.opacity < 1 || material.transparent;
-                  clone.depthWrite = appearance.opacity < 1 ? false : material.depthWrite;
-                  clone.needsUpdate = true;
-                  return clone;
-                });
-                materialOwner.material = Array.isArray(originalMaterial) ? clones : clones[0]!;
-                activeMaterialClones.set(materialOwner, {
-                  clones,
-                  original: originalMaterial,
+                  activeMaterialClones.get(materialOwner)?.clones.forEach(
+                    (material) => material.dispose(),
+                  );
+                  const originalsForObject = Array.isArray(originalMaterial)
+                    ? originalMaterial
+                    : [originalMaterial];
+                  const clones = originalsForObject.map((material) => {
+                    const clone = material.clone();
+                    const colorMaterial = clone as ColorMaterial;
+                    colorMaterial.color?.set(appearance.color);
+                    clone.opacity = appearance.opacity;
+                    clone.transparent = appearance.opacity < 1 || material.transparent;
+                    clone.depthWrite = appearance.opacity < 1 ? false : material.depthWrite;
+                    clone.needsUpdate = true;
+                    return clone;
+                  });
+                  materialOwner.material = Array.isArray(originalMaterial) ? clones : clones[0]!;
+                  activeMaterialClones.set(materialOwner, {
+                    clones,
+                    original: originalMaterial,
+                  });
                 });
               }
             } catch (reason) {
@@ -586,7 +604,10 @@ export const Model3DNode = memo(function Model3DNode({
             }
             applySceneSettings(latestSettings);
             applyTransforms(latestSettings.transformOverrides);
-            applyAppearances(latestSettings.appearanceOverrides);
+            applyAppearances({
+              ...latestSettings.appearanceOverrides,
+              ...runtimeAppearanceOverridesRef.current,
+            });
             applySelection(selectedSceneNodePathRef.current);
           } catch (reason) {
             console.error("Failed to initialize the 3D model scene.", {
@@ -664,7 +685,7 @@ export const Model3DNode = memo(function Model3DNode({
   }, [assetId, cameraControlsEnabled, node.id, onSceneChange, parsed.ok, projectId]);
 
   const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (!editable || event.button !== 0) return;
+    if ((!editable && !interactive) || event.button !== 0) return;
     pointerStartRef.current = {
       clientX: event.clientX,
       clientY: event.clientY,
@@ -675,7 +696,7 @@ export const Model3DNode = memo(function Model3DNode({
   const handlePointerUp = (event: ReactPointerEvent<HTMLDivElement>) => {
     const start = pointerStartRef.current;
     pointerStartRef.current = null;
-    if (!editable || !start || start.pointerId !== event.pointerId) return;
+    if ((!editable && !interactive) || !start || start.pointerId !== event.pointerId) return;
     if (Math.hypot(event.clientX - start.clientX, event.clientY - start.clientY) > 4) {
       return;
     }
@@ -718,7 +739,7 @@ export const Model3DNode = memo(function Model3DNode({
       {loadState.status === "empty" ? <div className="model-3d-message"><strong>尚未绑定模型</strong><span>在右侧属性面板导入 GLB 或 GLTF</span></div> : null}
       {loadState.status === "loading" ? <div className="model-3d-message"><span className="model-loading-spinner" /><strong>正在加载 3D 模型</strong></div> : null}
       {loadState.status === "error" ? <div className="model-3d-message is-error" role="alert"><strong>3D 模型不可用</strong><span>{loadState.message}</span></div> : null}
-      {loadState.status === "ready" && editable ? <span className="model-3d-edit-hint">{interactionHint}</span> : null}
+      {loadState.status === "ready" && (editable || interactive) ? <span className="model-3d-edit-hint">{resolvedInteractionHint}</span> : null}
     </div>
   );
 });

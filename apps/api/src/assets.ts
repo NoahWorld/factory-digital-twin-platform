@@ -222,6 +222,12 @@ const getAssetRow = async (
   return row;
 };
 
+export const getAsset = async (
+  env: AppEnv,
+  projectId: string,
+  recordId: string,
+): Promise<Asset> => presentAsset(await getAssetRow(env, projectId, recordId));
+
 const assertNoAssetConflicts = async (
   env: AppEnv,
   projectId: string,
