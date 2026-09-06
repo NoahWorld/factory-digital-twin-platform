@@ -1,14 +1,18 @@
 import type {
+  AlarmListItem,
   CanvasNode,
   CanvasNodeType,
   CanvasTheme,
+  ChartNodeType,
   ChartProps,
   DashboardBaseProps,
   DecorationProps,
   Model3DProps,
   ProgressListItem,
+  RankingListItem,
   ShapeProps,
   StatusGridItem,
+  TimelineItem,
 } from "./types";
 
 export type CanvasTemplateId =
@@ -21,6 +25,16 @@ export type CanvasTemplateId =
   | "water-treatment-operations"
   | "data-center-infrastructure";
 
+export type CanvasTemplateShowcase = {
+  title: string;
+  organization: string;
+  location: string;
+  site: string;
+  deliveryForm: string;
+  badge: "虚构演示";
+  dataLabel: "模拟数据";
+};
+
 export type CanvasTemplate = {
   id: CanvasTemplateId;
   code: string;
@@ -31,6 +45,90 @@ export type CanvasTemplate = {
   canvasTheme: CanvasTheme;
   componentSummary: string;
   tags: readonly string[];
+  showcase: CanvasTemplateShowcase;
+};
+
+const canvasTemplateShowcases: Record<CanvasTemplateId, CanvasTemplateShowcase> = {
+  "equipment-maintenance": {
+    title: "北辰装备 · 西安装备检修保障看板",
+    organization: "北辰装备（虚构）",
+    location: "陕西 · 西安",
+    site: "综合维修保障中心",
+    deliveryForm: "2D 检修驾驶舱 · 流程与质量闭环",
+    badge: "虚构演示",
+    dataLabel: "模拟数据",
+  },
+  "equipment-support": {
+    title: "启岳装备 · 洛阳综合保障态势看板",
+    organization: "启岳装备（虚构）",
+    location: "河南 · 洛阳",
+    site: "车辆与装备保障场",
+    deliveryForm: "2D 指标区 · 3D 场区主视图",
+    badge: "虚构演示",
+    dataLabel: "模拟数据",
+  },
+  "production-operations": {
+    title: "江城智装 · 武汉智能装备态势看板",
+    organization: "江城智装（虚构）",
+    location: "湖北 · 武汉",
+    site: "智能装备总装一号车间",
+    deliveryForm: "2D 生产驾驶舱 · 设备状态联动",
+    badge: "虚构演示",
+    dataLabel: "模拟数据",
+  },
+  "energy-safety": {
+    title: "皖江新材 · 合肥工厂能源安全看板",
+    organization: "皖江新材（虚构）",
+    location: "安徽 · 合肥",
+    site: "新材料生产基地",
+    deliveryForm: "能源驾驶舱 · 安全告警联动",
+    badge: "虚构演示",
+    dataLabel: "模拟数据",
+  },
+  "industrial-park-operations": {
+    title: "云港智谷 · 苏州园区综合运营看板",
+    organization: "云港智谷（虚构）",
+    location: "江苏 · 苏州",
+    site: "智能制造产业园",
+    deliveryForm: "2D 运营指标 · 3D 园区主视图",
+    badge: "虚构演示",
+    dataLabel: "模拟数据",
+  },
+  "warehouse-logistics": {
+    title: "东海链仓 · 宁波智慧物流调度看板",
+    organization: "东海链仓（虚构）",
+    location: "浙江 · 宁波",
+    site: "区域智能仓配中心",
+    deliveryForm: "仓储驾驶舱 · 月台与设备调度",
+    badge: "虚构演示",
+    dataLabel: "模拟数据",
+  },
+  "water-treatment-operations": {
+    title: "清澜环境 · 宜昌水处理运行看板",
+    organization: "清澜环境（虚构）",
+    location: "湖北 · 宜昌",
+    site: "工业污水处理中心",
+    deliveryForm: "工艺驾驶舱 · 水质与设备监测",
+    badge: "虚构演示",
+    dataLabel: "模拟数据",
+  },
+  "data-center-infrastructure": {
+    title: "星港算力 · 成都数据中心运维看板",
+    organization: "星港算力（虚构）",
+    location: "四川 · 成都",
+    site: "高新算力基础设施中心",
+    deliveryForm: "基础设施驾驶舱 · 容量与告警监控",
+    badge: "虚构演示",
+    dataLabel: "模拟数据",
+  },
+};
+
+const showcaseTitle = (templateId: CanvasTemplateId) =>
+  canvasTemplateShowcases[templateId].title;
+
+const showcaseSubtitle = (templateId: CanvasTemplateId, detail: string) => {
+  const showcase = canvasTemplateShowcases[templateId];
+  return `${showcase.site} · ${detail} · ${showcase.dataLabel}`;
 };
 
 type Box = { x: number; y: number; width: number; height: number };
@@ -222,7 +320,7 @@ const status = (
 }, 10);
 
 const chart = (
-  type: "line-chart" | "bar-chart",
+  type: ChartNodeType,
   box: Box,
   chartTitle: string,
   categories: string[],
@@ -236,6 +334,54 @@ const chart = (
   unit,
   color,
 } satisfies ChartProps, 10);
+
+const ranking = (
+  box: Box,
+  base: DashboardBaseProps,
+  rankingTitle: string,
+  items: RankingListItem[],
+) => makeNode("ranking-list", box, {
+  ...base,
+  title: rankingTitle,
+  items,
+}, 10);
+
+const alarms = (
+  box: Box,
+  base: DashboardBaseProps,
+  alarmTitle: string,
+  items: AlarmListItem[],
+) => makeNode("alarm-list", box, {
+  ...base,
+  title: alarmTitle,
+  items,
+}, 10);
+
+const dataTable = (
+  box: Box,
+  base: DashboardBaseProps,
+  tableTitle: string,
+  columns: string[],
+  rows: string[][],
+  highlightColumn: number,
+) => makeNode("data-table", box, {
+  ...base,
+  title: tableTitle,
+  columns,
+  rows,
+  highlightColumn,
+}, 10);
+
+const timeline = (
+  box: Box,
+  base: DashboardBaseProps,
+  timelineTitle: string,
+  items: TimelineItem[],
+) => makeNode("event-timeline", box, {
+  ...base,
+  title: timelineTitle,
+  items,
+}, 10);
 
 const model = (box: Box, existingModel: CanvasNode | undefined) => {
   const defaultProps: Model3DProps = {
@@ -276,7 +422,11 @@ const maintenanceTemplate = (): CanvasNode[] => {
   }));
   return [
     background("#dceef1"),
-    title("装备修理统计态势", "维修保障 · 送修交接 · 质量反馈", colors),
+    title(
+      showcaseTitle("equipment-maintenance"),
+      showcaseSubtitle("equipment-maintenance", "维修保障 · 送修交接 · 质量反馈"),
+      colors,
+    ),
     datetime(colors),
     metric(metricBoxes[0], lightBase, "保障申请", "128", "项", "本月累计", "申"),
     metric(metricBoxes[1], lightBase, "处理中申请", "23", "项", "待审批、交接与反馈", "办"),
@@ -323,14 +473,15 @@ const maintenanceTemplate = (): CanvasNode[] => {
       ],
     ),
     chart("line-chart", { x: 480, y: 720, width: 620, height: 330 }, "近期修理执行", ["1月", "2月", "3月", "4月", "5月", "6月", "7月"], [42, 51, 49, 63, 72, 70, 76], "项", "#16839a"),
-    progress(
+    timeline(
       { x: 1120, y: 720, width: 770, height: 330 },
       lightBase,
-      "人员技能与任务完成",
+      "今日检修节点",
       [
-        { label: "高级技师", value: 8, maximum: 10, unit: "人" },
-        { label: "中级修理工", value: 16, maximum: 20, unit: "人" },
-        { label: "初级修理工", value: 22, maximum: 30, unit: "人" },
+        { time: "08:15", title: "EQ-017 入场交接", detail: "动力系统故障，已完成初检", tone: "normal" },
+        { time: "10:40", title: "EQ-042 等待备件", detail: "液压密封组件预计 14:00 到场", tone: "warning" },
+        { time: "13:20", title: "EQ-009 质量复核", detail: "路试数据已提交", tone: "normal" },
+        { time: "15:05", title: "EQ-031 通信中断", detail: "工位采集终端连续 90 秒无数据", tone: "offline" },
       ],
     ),
   ];
@@ -341,7 +492,11 @@ const supportTemplate = (existingNodes: CanvasNode[]): CanvasNode[] => {
   const existingModel = existingNodes.find((node) => node.type === "model-3d");
   return [
     background("#04111d"),
-    title("装备场综合保障看板", "车辆、车位、钥匙柜与装备状态综合监控", colors),
+    title(
+      showcaseTitle("equipment-support"),
+      showcaseSubtitle("equipment-support", "车辆、车位、钥匙柜与装备状态综合监控"),
+      colors,
+    ),
     datetime(colors),
     metric({ x: 30, y: 130, width: 330, height: 140 }, darkBase, "在位车辆", "34", "辆", "在位率 85%", "车"),
     metric({ x: 380, y: 130, width: 330, height: 140 }, darkBase, "离位钥匙", "6", "把", "较昨日 +2", "钥"),
@@ -358,16 +513,15 @@ const supportTemplate = (existingNodes: CanvasNode[]): CanvasNode[] => {
         { label: "已绑定车位", value: 38, maximum: 40, unit: "个" },
       ],
     ),
-    status(
+    alarms(
       { x: 30, y: 670, width: 430, height: 380 },
       darkBase,
-      "人员进出场情况",
-      2,
+      "进出场异常记录",
       [
-        { label: "部队人员", value: "42 人", tone: "normal" },
-        { label: "地方人员", value: "8 人", tone: "warning" },
-        { label: "在场", value: "39 人", tone: "normal" },
-        { label: "离场", value: "11 人", tone: "offline" },
+        { time: "15:32", source: "南侧装备门", message: "临时车辆等待人工核验", tone: "warning" },
+        { time: "14:18", source: "三号钥匙柜", message: "07 号钥匙超时未归还", tone: "danger" },
+        { time: "11:46", source: "西侧人行门", message: "访客证件校验通过", tone: "normal" },
+        { time: "09:03", source: "车位采集器 P18", message: "采集器离线，保留最后状态", tone: "offline" },
       ],
     ),
     model({ x: 490, y: 300, width: 900, height: 520 }, existingModel),
@@ -391,14 +545,18 @@ const productionTemplate = (): CanvasNode[] => {
   const colors = { text: "#eafff7", accent: "#48e0a4", fill: "#0b2525", border: "#2d806c" };
   return [
     background("#071a1d"),
-    title("智慧产线运营总览", "产量、节拍、质量、设备与人员协同监测", colors),
+    title(
+      showcaseTitle("production-operations"),
+      showcaseSubtitle("production-operations", "产量、节拍、质量、设备与人员协同监测"),
+      colors,
+    ),
     datetime(colors),
     metric({ x: 30, y: 130, width: 348, height: 140 }, greenBase, "今日产量", "12,680", "件", "计划达成 96.2%", "产"),
     metric({ x: 393, y: 130, width: 348, height: 140 }, greenBase, "平均节拍", "42.6", "秒", "目标 ≤ 45 秒", "速"),
     metric({ x: 756, y: 130, width: 348, height: 140 }, greenBase, "一次合格率", "99.1", "%", "较昨日 +0.3%", "质"),
     metric({ x: 1119, y: 130, width: 348, height: 140 }, greenBase, "设备 OEE", "87.4", "%", "目标 85%", "效"),
     metric({ x: 1482, y: 130, width: 408, height: 140 }, greenBase, "在岗人员", "126", "人", "缺岗 2 人", "人"),
-    chart("line-chart", { x: 30, y: 300, width: 850, height: 360 }, "24 小时产量趋势", ["00", "04", "08", "12", "16", "20", "24"], [420, 510, 680, 820, 760, 690, 590], "件", "#48e0a4"),
+    chart("area-chart", { x: 30, y: 300, width: 850, height: 360 }, "24 小时产量趋势", ["00", "04", "08", "12", "16", "20", "24"], [420, 510, 680, 820, 760, 690, 590], "件", "#48e0a4"),
     chart("bar-chart", { x: 900, y: 300, width: 600, height: 360 }, "各产线完成率", ["一线", "二线", "三线", "四线", "五线"], [96, 92, 88, 101, 94], "%", "#67e6b4"),
     gauge({ x: 1520, y: 300, width: 370, height: 360 }, greenBase, "订单达成率", 96.2, 100, "%", "计划 13,180 件"),
     progress(
@@ -426,14 +584,15 @@ const productionTemplate = (): CanvasNode[] => {
         { label: "空压站 U01", value: "运行", tone: "normal" },
       ],
     ),
-    progress(
+    alarms(
       { x: 1350, y: 690, width: 540, height: 360 },
       greenBase,
-      "质量缺陷分布",
+      "产线实时异常",
       [
-        { label: "尺寸偏差", value: 5, maximum: 20, unit: "件" },
-        { label: "外观划伤", value: 8, maximum: 20, unit: "件" },
-        { label: "装配漏项", value: 2, maximum: 20, unit: "件" },
+        { time: "15:42", source: "检测台 Q02", message: "工件到位信号延迟 18 秒", tone: "warning" },
+        { time: "15:18", source: "包装机 P02", message: "计划保养，预计 16:10 恢复", tone: "offline" },
+        { time: "14:56", source: "机器人 R03", message: "夹具寿命剩余 8%", tone: "danger" },
+        { time: "14:12", source: "输送线 L01", message: "节拍恢复至目标区间", tone: "normal" },
       ],
     ),
   ];
@@ -443,28 +602,40 @@ const energyTemplate = (): CanvasNode[] => {
   const colors = { text: "#fff8e8", accent: "#ffbf54", fill: "#251f14", border: "#8b6c32" };
   return [
     background("#17140e"),
-    title("厂区能源与安全监控", "水、电、气、碳排与安全告警统一监测", colors),
+    title(
+      showcaseTitle("energy-safety"),
+      showcaseSubtitle("energy-safety", "水、电、气、碳排与安全告警统一监测"),
+      colors,
+    ),
     datetime(colors),
     metric({ x: 30, y: 130, width: 348, height: 140 }, amberBase, "今日用电", "28,460", "kWh", "同比 -3.2%", "电"),
     metric({ x: 393, y: 130, width: 348, height: 140 }, amberBase, "今日用水", "1,286", "m³", "预算占比 76%", "水"),
     metric({ x: 756, y: 130, width: 348, height: 140 }, amberBase, "天然气", "3,820", "Nm³", "较昨日 +1.6%", "气"),
     metric({ x: 1119, y: 130, width: 348, height: 140 }, amberBase, "碳排估算", "18.6", "tCO₂", "月目标内", "碳"),
     metric({ x: 1482, y: 130, width: 408, height: 140 }, amberBase, "未处置告警", "7", "条", "高优先级 2 条", "!"),
-    chart("line-chart", { x: 30, y: 300, width: 850, height: 360 }, "综合能耗趋势", ["00", "04", "08", "12", "16", "20", "24"], [42, 38, 66, 82, 75, 61, 48], "MWh", "#ffbf54"),
-    chart("bar-chart", { x: 900, y: 300, width: 600, height: 360 }, "区域能耗排行", ["一车间", "二车间", "仓储", "动力站", "办公区"], [82, 71, 48, 66, 29], "MWh", "#ff9d52"),
+    chart("area-chart", { x: 30, y: 300, width: 850, height: 360 }, "综合能耗趋势", ["00", "04", "08", "12", "16", "20", "24"], [42, 38, 66, 82, 75, 61, 48], "MWh", "#ffbf54"),
+    ranking(
+      { x: 900, y: 300, width: 600, height: 360 },
+      amberBase,
+      "区域能耗排名",
+      [
+        { label: "一号熔炼车间", value: 82, unit: "MWh", trend: "up" },
+        { label: "二号成型车间", value: 71, unit: "MWh", trend: "down" },
+        { label: "动力站", value: 66, unit: "MWh", trend: "flat" },
+        { label: "原料仓储", value: 48, unit: "MWh", trend: "up" },
+        { label: "研发办公区", value: 29, unit: "MWh", trend: "down" },
+      ],
+    ),
     gauge({ x: 1520, y: 300, width: 370, height: 360 }, amberBase, "本月能源预算", 76, 100, "%", "剩余预算 24%"),
-    status(
+    alarms(
       { x: 30, y: 690, width: 760, height: 360 },
       amberBase,
-      "安全告警",
-      3,
+      "安全告警处置",
       [
-        { label: "高温告警", value: "2 条", tone: "danger" },
-        { label: "压力预警", value: "3 条", tone: "warning" },
-        { label: "烟感告警", value: "0 条", tone: "normal" },
-        { label: "设备离线", value: "2 台", tone: "offline" },
-        { label: "门禁异常", value: "0 条", tone: "normal" },
-        { label: "漏水检测", value: "0 条", tone: "normal" },
+        { time: "15:36", source: "熔炼炉 T-03", message: "炉壁温度超过二级阈值", tone: "danger" },
+        { time: "15:08", source: "空压站 P-02", message: "出口压力连续波动", tone: "warning" },
+        { time: "14:40", source: "消防泵房网关", message: "通信心跳中断", tone: "offline" },
+        { time: "13:25", source: "危化品库", message: "通风联锁恢复正常", tone: "normal" },
       ],
     ),
     progress(
@@ -498,7 +669,11 @@ const parkTemplate = (existingNodes: CanvasNode[]): CanvasNode[] => {
   const existingModel = existingNodes.find((node) => node.type === "model-3d");
   return [
     background("#061522"),
-    title("工业园区综合运行态势", "楼宇、通行、停车、能耗与事件协同监控", colors),
+    title(
+      showcaseTitle("industrial-park-operations"),
+      showcaseSubtitle("industrial-park-operations", "楼宇、通行、停车、能耗与事件协同监控"),
+      colors,
+    ),
     datetime(colors),
     metric({ x: 30, y: 130, width: 348, height: 140 }, parkBase, "在线楼宇", "18", "栋", "重点区域 6 个", "楼"),
     metric({ x: 393, y: 130, width: 348, height: 140 }, parkBase, "今日入园", "3,286", "人次", "访客 186 人次", "人"),
@@ -530,7 +705,7 @@ const parkTemplate = (existingNodes: CanvasNode[]): CanvasNode[] => {
     ),
     model({ x: 480, y: 300, width: 920, height: 500 }, existingModel),
     chart(
-      "line-chart",
+      "area-chart",
       { x: 480, y: 830, width: 920, height: 220 },
       "今日园区人流趋势",
       ["00", "04", "08", "12", "16", "20", "24"],
@@ -550,15 +725,15 @@ const parkTemplate = (existingNodes: CanvasNode[]): CanvasNode[] => {
         { label: "污水站", value: "离线", tone: "offline" },
       ],
     ),
-    progress(
+    timeline(
       { x: 1430, y: 670, width: 460, height: 380 },
       parkBase,
-      "事件处置闭环",
+      "园区事件时间线",
       [
-        { label: "安防事件", value: 12, maximum: 14, unit: "起" },
-        { label: "设备报修", value: 8, maximum: 11, unit: "单" },
-        { label: "环境异常", value: 5, maximum: 6, unit: "起" },
-        { label: "通行异常", value: 9, maximum: 12, unit: "起" },
+        { time: "15:30", title: "南门车辆排队", detail: "已增开 2 条临时通道", tone: "warning" },
+        { time: "14:52", title: "动力中心压力预警", detail: "运维班组已到场确认", tone: "danger" },
+        { time: "13:40", title: "访客团进入 B 区", detail: "预约与陪同人员核验完成", tone: "normal" },
+        { time: "11:18", title: "污水站网关失联", detail: "正在切换备用通信链路", tone: "offline" },
       ],
     ),
   ];
@@ -568,7 +743,11 @@ const warehouseTemplate = (): CanvasNode[] => {
   const colors = { text: "#f2efff", accent: "#a99df5", fill: "#1b1931", border: "#625a9d" };
   return [
     background("#121022"),
-    title("仓储物流运营调度中心", "库存、吞吐、作业任务、月台与车辆协同监控", colors),
+    title(
+      showcaseTitle("warehouse-logistics"),
+      showcaseSubtitle("warehouse-logistics", "库存、吞吐、作业任务、月台与车辆协同监控"),
+      colors,
+    ),
     datetime(colors),
     metric({ x: 30, y: 130, width: 348, height: 140 }, logisticsBase, "库存总量", "128,640", "件", "SKU 3,826 种", "库"),
     metric({ x: 393, y: 130, width: 348, height: 140 }, logisticsBase, "库容使用率", "78.3", "%", "可用库位 1,248", "位"),
@@ -576,7 +755,7 @@ const warehouseTemplate = (): CanvasNode[] => {
     metric({ x: 1119, y: 130, width: 348, height: 140 }, logisticsBase, "今日出库", "5,986", "件", "准时率 97.6%", "出"),
     metric({ x: 1482, y: 130, width: 408, height: 140 }, logisticsBase, "待执行任务", "36", "单", "超时任务 3 单", "!"),
     chart(
-      "line-chart",
+      "area-chart",
       { x: 30, y: 300, width: 820, height: 360 },
       "24 小时出入库吞吐",
       ["00", "04", "08", "12", "16", "20", "24"],
@@ -584,14 +763,17 @@ const warehouseTemplate = (): CanvasNode[] => {
       "件/时",
       "#a99df5",
     ),
-    chart(
-      "bar-chart",
+    ranking(
       { x: 870, y: 300, width: 640, height: 360 },
-      "库区库容使用率",
-      ["原料区", "半成品", "成品区", "备件区", "冷链区"],
-      [82, 74, 91, 63, 76],
-      "%",
-      "#8d7ef0",
+      logisticsBase,
+      "库区库容使用率排名",
+      [
+        { label: "成品区 C", value: 91, unit: "%", trend: "up" },
+        { label: "原料区 A", value: 82, unit: "%", trend: "flat" },
+        { label: "冷链区 E", value: 76, unit: "%", trend: "up" },
+        { label: "半成品区 B", value: 74, unit: "%", trend: "down" },
+        { label: "备件区 D", value: 63, unit: "%", trend: "down" },
+      ],
     ),
     gauge({ x: 1530, y: 300, width: 360, height: 360 }, logisticsBase, "订单准时率", 97.6, 100, "%", "目标 ≥ 96%"),
     status(
@@ -608,16 +790,18 @@ const warehouseTemplate = (): CanvasNode[] => {
         { label: "6 号月台", value: "装货", tone: "normal" },
       ],
     ),
-    progress(
+    dataTable(
       { x: 650, y: 690, width: 600, height: 360 },
       logisticsBase,
-      "当班任务完成情况",
+      "当班波次任务",
+      ["波次", "作业区", "任务", "进度"],
       [
-        { label: "入库上架", value: 42, maximum: 48, unit: "单" },
-        { label: "拣选复核", value: 68, maximum: 76, unit: "单" },
-        { label: "出库装车", value: 39, maximum: 45, unit: "单" },
-        { label: "盘点任务", value: 16, maximum: 20, unit: "单" },
+        ["WV-260906-08", "成品 C", "拣选复核", "68 / 76"],
+        ["WV-260906-09", "月台 1", "出库装车", "39 / 45"],
+        ["WV-260906-10", "原料 A", "入库上架", "42 / 48"],
+        ["WV-260906-11", "备件 D", "循环盘点", "16 / 20"],
       ],
+      3,
     ),
     status(
       { x: 1270, y: 690, width: 620, height: 360 },
@@ -640,7 +824,11 @@ const waterTemplate = (): CanvasNode[] => {
   const colors = { text: "#eaf8ff", accent: "#4fb7ff", fill: "#081f33", border: "#2e6e9b" };
   return [
     background("#061625"),
-    title("水处理设施运行监控", "进出水、水质、工艺单元、设备与能耗统一监测", colors),
+    title(
+      showcaseTitle("water-treatment-operations"),
+      showcaseSubtitle("water-treatment-operations", "进出水、水质、工艺单元、设备与能耗统一监测"),
+      colors,
+    ),
     datetime(colors),
     metric({ x: 30, y: 130, width: 348, height: 140 }, waterBase, "今日处理量", "48,620", "m³", "设计负荷 81.0%", "量"),
     metric({ x: 393, y: 130, width: 348, height: 140 }, waterBase, "出水 COD", "23.6", "mg/L", "限值 ≤ 50", "质"),
@@ -662,7 +850,7 @@ const waterTemplate = (): CanvasNode[] => {
       ],
     ),
     chart(
-      "line-chart",
+      "area-chart",
       { x: 550, y: 300, width: 800, height: 360 },
       "24 小时出水流量",
       ["00", "04", "08", "12", "16", "20", "24"],
@@ -680,27 +868,24 @@ const waterTemplate = (): CanvasNode[] => {
       "MWh",
       "#348ed8",
     ),
-    progress(
+    chart(
+      "radar-chart",
       { x: 750, y: 690, width: 560, height: 360 },
-      waterBase,
       "关键水质指标",
-      [
-        { label: "COD", value: 24, maximum: 50, unit: "mg/L" },
-        { label: "氨氮", value: 1.4, maximum: 5, unit: "mg/L" },
-        { label: "总磷", value: 0.28, maximum: 0.5, unit: "mg/L" },
-        { label: "悬浮物", value: 7.6, maximum: 10, unit: "mg/L" },
-      ],
+      ["COD", "氨氮", "总磷", "悬浮物", "pH 稳定度"],
+      [86, 92, 89, 84, 96],
+      "%",
+      "#4fb7ff",
     ),
-    status(
+    alarms(
       { x: 1330, y: 690, width: 560, height: 360 },
       waterBase,
-      "关键设备与告警",
-      2,
+      "设备与水质告警",
       [
-        { label: "1# 提升泵", value: "运行", tone: "normal" },
-        { label: "2# 鼓风机", value: "预警", tone: "warning" },
-        { label: "回流泵组", value: "运行", tone: "normal" },
-        { label: "液位计 L-07", value: "失联", tone: "offline" },
+        { time: "15:28", source: "二沉池 LT-07", message: "液位接近高位阈值", tone: "warning" },
+        { time: "14:56", source: "2# 鼓风机", message: "轴承振动连续升高", tone: "danger" },
+        { time: "13:42", source: "液位计 L-07", message: "设备通信中断", tone: "offline" },
+        { time: "12:18", source: "出水 COD", message: "在线仪表自动校准完成", tone: "normal" },
       ],
     ),
   ];
@@ -710,7 +895,11 @@ const dataCenterTemplate = (): CanvasNode[] => {
   const colors = { text: "#fff0f4", accent: "#f08ba6", fill: "#251824", border: "#8a5064" };
   return [
     background("#160e18"),
-    title("数据中心基础设施态势", "供配电、制冷、环境、容量与告警统一监控", colors),
+    title(
+      showcaseTitle("data-center-infrastructure"),
+      showcaseSubtitle("data-center-infrastructure", "供配电、制冷、环境、容量与告警统一监控"),
+      colors,
+    ),
     datetime(colors),
     metric({ x: 30, y: 130, width: 348, height: 140 }, dataCenterBase, "IT 实时负载", "2.86", "MW", "容量占用 71.5%", "IT"),
     metric({ x: 393, y: 130, width: 348, height: 140 }, dataCenterBase, "实时 PUE", "1.32", "", "目标 ≤ 1.40", "能"),
@@ -718,7 +907,7 @@ const dataCenterTemplate = (): CanvasNode[] => {
     metric({ x: 1119, y: 130, width: 348, height: 140 }, dataCenterBase, "UPS 负载率", "58.4", "%", "后备时间 42 分钟", "UPS"),
     metric({ x: 1482, y: 130, width: 408, height: 140 }, dataCenterBase, "活动告警", "12", "条", "严重告警 2 条", "!"),
     chart(
-      "line-chart",
+      "area-chart",
       { x: 30, y: 300, width: 820, height: 360 },
       "24 小时 IT 负载趋势",
       ["00", "04", "08", "12", "16", "20", "24"],
@@ -727,7 +916,7 @@ const dataCenterTemplate = (): CanvasNode[] => {
       "#f08ba6",
     ),
     chart(
-      "bar-chart",
+      "donut-chart",
       { x: 870, y: 300, width: 640, height: 360 },
       "机房容量使用率",
       ["A1", "A2", "B1", "B2", "C1", "C2"],
@@ -761,18 +950,15 @@ const dataCenterTemplate = (): CanvasNode[] => {
         { label: "网络端口", value: 68, maximum: 100, unit: "%" },
       ],
     ),
-    status(
+    alarms(
       { x: 1270, y: 690, width: 620, height: 360 },
       dataCenterBase,
-      "告警分布",
-      3,
+      "基础设施活动告警",
       [
-        { label: "供配电", value: "2 条", tone: "danger" },
-        { label: "制冷", value: "4 条", tone: "warning" },
-        { label: "温湿度", value: "3 条", tone: "warning" },
-        { label: "漏水", value: "0 条", tone: "normal" },
-        { label: "消防", value: "0 条", tone: "normal" },
-        { label: "通信", value: "3 条", tone: "offline" },
+        { time: "15:36", source: "冷机 CH-03", message: "冷冻水供水温度高于设定值", tone: "warning" },
+        { time: "15:02", source: "列头柜 P07", message: "采集网关连续 120 秒无心跳", tone: "offline" },
+        { time: "14:28", source: "A2-17 机柜", message: "冷通道温度达到 29.4℃", tone: "danger" },
+        { time: "13:45", source: "UPS-2B", message: "旁路切换自检完成", tone: "normal" },
       ],
     ),
   ];
@@ -801,6 +987,7 @@ export const canvasTemplates: CanvasTemplate[] = [
     },
     componentSummary: "6 指标卡 · 环形进度 · 进度排行 · 状态矩阵 · 图表",
     tags: ["维修申请", "修理闭环", "质量反馈"],
+    showcase: canvasTemplateShowcases["equipment-maintenance"],
   },
   {
     id: "equipment-support",
@@ -824,6 +1011,7 @@ export const canvasTemplates: CanvasTemplate[] = [
     },
     componentSummary: "5 指标卡 · 3D 场景 · 状态矩阵 · 环形进度 · 趋势图",
     tags: ["车辆在位", "钥匙管理", "3D 场区"],
+    showcase: canvasTemplateShowcases["equipment-support"],
   },
   {
     id: "production-operations",
@@ -845,8 +1033,9 @@ export const canvasTemplates: CanvasTemplate[] = [
       accentColor: "#48e0a4",
       borderColor: "#2d826d",
     },
-    componentSummary: "5 指标卡 · 双图表 · 工序进度 · 设备状态",
+    componentSummary: "5 指标卡 · 产量面积图 · 产线对比 · 设备状态 · 实时告警",
     tags: ["产线总览", "设备联动", "OEE"],
+    showcase: canvasTemplateShowcases["production-operations"],
   },
   {
     id: "energy-safety",
@@ -868,8 +1057,9 @@ export const canvasTemplates: CanvasTemplate[] = [
       accentColor: "#ffbf54",
       borderColor: "#8b6c32",
     },
-    componentSummary: "5 指标卡 · 能耗趋势 · 预算进度 · 告警矩阵",
+    componentSummary: "5 指标卡 · 能耗面积图 · 区域排名 · 预算进度 · 实时告警",
     tags: ["能耗分析", "安全告警", "区域状态"],
+    showcase: canvasTemplateShowcases["energy-safety"],
   },
   {
     id: "industrial-park-operations",
@@ -891,8 +1081,9 @@ export const canvasTemplates: CanvasTemplate[] = [
       accentColor: "#5cc9ff",
       borderColor: "#2f7797",
     },
-    componentSummary: "5 指标卡 · 3D 园区主视图 · 人流趋势 · 事件闭环",
+    componentSummary: "5 指标卡 · 3D 园区主视图 · 人流趋势 · 事件时间线",
     tags: ["空间态势", "停车门禁", "事件闭环"],
+    showcase: canvasTemplateShowcases["industrial-park-operations"],
   },
   {
     id: "warehouse-logistics",
@@ -914,8 +1105,9 @@ export const canvasTemplates: CanvasTemplate[] = [
       accentColor: "#a99df5",
       borderColor: "#625a9d",
     },
-    componentSummary: "5 指标卡 · 吞吐趋势 · 库容排行 · 月台与设备状态",
+    componentSummary: "5 指标卡 · 吞吐面积图 · 库容排名 · 波次表格 · 设备状态",
     tags: ["库存库容", "车辆月台", "任务跟踪"],
+    showcase: canvasTemplateShowcases["warehouse-logistics"],
   },
   {
     id: "water-treatment-operations",
@@ -937,8 +1129,9 @@ export const canvasTemplates: CanvasTemplate[] = [
       accentColor: "#4fb7ff",
       borderColor: "#2e6e9b",
     },
-    componentSummary: "5 指标卡 · 工艺状态 · 水量水质趋势 · 设备告警",
+    componentSummary: "5 指标卡 · 流量面积图 · 水质雷达 · 工艺能耗 · 实时告警",
     tags: ["工艺流程", "水质监测", "设备失联"],
+    showcase: canvasTemplateShowcases["water-treatment-operations"],
   },
   {
     id: "data-center-infrastructure",
@@ -960,8 +1153,9 @@ export const canvasTemplates: CanvasTemplate[] = [
       accentColor: "#f08ba6",
       borderColor: "#8a5064",
     },
-    componentSummary: "5 指标卡 · IT 负载 · 容量分析 · 设施与告警状态",
+    componentSummary: "5 指标卡 · IT 负载面积图 · 容量环图 · 设施状态 · 活动告警",
     tags: ["供配电", "机柜容量", "环境告警"],
+    showcase: canvasTemplateShowcases["data-center-infrastructure"],
   },
 ];
 

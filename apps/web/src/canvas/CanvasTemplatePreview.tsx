@@ -369,7 +369,7 @@ export function CanvasTemplatePreview({ className = "", templateId }: CanvasTemp
 
   return (
     <div
-      aria-label={`${template.name}真实画布缩略预览`}
+      aria-label={`${template.showcase.title}模拟案例画布缩略预览`}
       className={`template-canvas-preview${className ? ` ${className}` : ""}`}
       data-font={template.canvasTheme.fontFamily}
       data-pattern={template.canvasTheme.backgroundPattern}
