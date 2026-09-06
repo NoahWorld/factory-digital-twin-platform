@@ -27,10 +27,27 @@ export function CanvasTemplateGallery({
         <article className={`template-card is-${template.theme}`} key={template.id}>
           <CanvasTemplatePreview className="template-card-preview" templateId={template.id} />
           <div className="template-card-copy">
-            <span>{template.code} · {template.category}</span>
-            <h3>{template.name}</h3>
+            <div className="template-card-heading-row">
+              <span>{template.code} · {template.category}</span>
+              <b>{template.showcase.badge}</b>
+            </div>
+            <h3>{template.showcase.title}</h3>
             <p>{template.description}</p>
-            <small>{template.componentSummary}</small>
+            <dl className="template-case-meta">
+              <div>
+                <dt>机构</dt>
+                <dd>{template.showcase.organization}</dd>
+              </div>
+              <div>
+                <dt>现场</dt>
+                <dd>{template.showcase.location} · {template.showcase.site}</dd>
+              </div>
+              <div>
+                <dt>形态</dt>
+                <dd>{template.showcase.deliveryForm}</dd>
+              </div>
+            </dl>
+            <small>{template.componentSummary} · {template.showcase.dataLabel}</small>
             <ul aria-label="模板业务范围">
               {template.tags.map((tag) => <li key={tag}>{tag}</li>)}
             </ul>

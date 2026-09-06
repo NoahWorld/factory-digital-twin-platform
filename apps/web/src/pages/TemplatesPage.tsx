@@ -42,8 +42,8 @@ export function TemplatesPage({
       ) : null}
 
       <div className="template-dialog-notice template-page-notice">
-        <strong>模板数据均为示例</strong>
-        <span>进入新项目画布后可编辑所有组件；首次保存画布后，项目列表会自动生成封面。</span>
+        <strong>以下均为虚构演示案例</strong>
+        <span>企业、地点与数值为模拟内容，画布结构和组件均可实际编辑；首次保存后，项目列表会自动生成封面。</span>
       </div>
 
       <div className="template-category-toolbar">

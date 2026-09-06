@@ -81,9 +81,21 @@ const featuredTemplateIds = [
 
 const featuredTemplates = featuredTemplateIds.map(getCanvasTemplate);
 
-const industryCaseCategories = ["全部场景", "工业制造", "能源电力", "园区运营", "仓储物流", "水务环保", "数据中心"] as const;
+const industryCaseCategories = [
+  "全部场景",
+  "维修保障",
+  "装备保障",
+  "工业制造",
+  "能源电力",
+  "园区运营",
+  "仓储物流",
+  "水务环保",
+  "数据中心",
+] as const;
 
 const industryTemplateIds = [
+  "equipment-maintenance",
+  "equipment-support",
   "production-operations",
   "energy-safety",
   "industrial-park-operations",
@@ -351,10 +363,10 @@ function ProductLandingPage() {
         <div className="product-section-heading">
           <div>
             <p className="product-section-index">04 / DELIVERY SCENARIOS</p>
-            <h2>行业场景，不从空白开始</h2>
+            <h2>案例化模板，接近真实交付现场</h2>
           </div>
           <p>
-            每个行业入口都对应一份可创建项目、保存并继续编辑的 1920 × 1080 画布模板。下方预览直接读取真实画布节点；初始数值明确标为示例，接入现场数据后即可替换。
+            以下企业、项目地点与业务数据均为虚构演示，但每张预览都直接读取可创建、保存并继续编辑的 1920 × 1080 画布节点。接入现场数据后，可替换为正式交付项目。
           </p>
         </div>
 
@@ -381,16 +393,33 @@ function ProductLandingPage() {
             >
               <div className="product-case-visual">
                 <CanvasTemplatePreview templateId={item.id} />
-                <span>{item.code} · 1920 × 1080</span>
+                <span>{item.code} · {item.showcase.location}</span>
               </div>
               <div className="product-case-copy">
-                <span>{item.category} · 可编辑真实模板</span>
-                <h3>{item.name}</h3>
+                <div className="product-case-kicker">
+                  <span>{item.category} · 可编辑画布</span>
+                  <b>{item.showcase.badge}</b>
+                </div>
+                <h3>{item.showcase.title}</h3>
                 <p>{item.description}</p>
+                <dl className="product-case-meta">
+                  <div>
+                    <dt>项目现场</dt>
+                    <dd>{item.showcase.site}</dd>
+                  </div>
+                  <div>
+                    <dt>交付形态</dt>
+                    <dd>{item.showcase.deliveryForm}</dd>
+                  </div>
+                  <div>
+                    <dt>数据状态</dt>
+                    <dd>{item.showcase.dataLabel}</dd>
+                  </div>
+                </dl>
                 <ul>
                   {item.tags.map((tag) => <li key={tag}>{tag}</li>)}
                 </ul>
-                <a href="#/templates">使用这个模板 <span aria-hidden="true">→</span></a>
+                <a href="#/templates">以此案例创建项目 <span aria-hidden="true">→</span></a>
               </div>
             </article>
           ))}
@@ -420,8 +449,8 @@ function ProductLandingPage() {
               </header>
               <CanvasTemplatePreview className="product-template-preview" templateId={template.id} />
               <footer>
-                <strong>{template.name}</strong>
-                <span>真实画布 · 可编辑</span>
+                <strong>{template.showcase.title}</strong>
+                <span>{template.showcase.badge} · 可编辑画布</span>
               </footer>
             </article>
           ))}
