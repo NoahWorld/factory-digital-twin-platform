@@ -1,4 +1,5 @@
 import { FormEvent, lazy, Suspense, useEffect, useState } from "react";
+import { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH } from "../../../shared/auth-constraints";
 import { apiUrl, ApiRequestError, errorMessage, request } from "./api";
 import { projectTemplateCanvasPath } from "./canvas/routes";
 import {
@@ -192,7 +193,8 @@ function LoginForm({ onSuccess }: LoginFormProps) {
         <input
           autoComplete="current-password"
           disabled={submitting}
-          minLength={12}
+          maxLength={MAX_PASSWORD_LENGTH}
+          minLength={MIN_PASSWORD_LENGTH}
           onChange={(event) => setPassword(event.target.value)}
           required
           type="password"
@@ -280,9 +282,10 @@ function BootstrapForm({ onSuccess }: BootstrapFormProps) {
         <input
           autoComplete="new-password"
           disabled={submitting}
-          minLength={12}
+          maxLength={MAX_PASSWORD_LENGTH}
+          minLength={MIN_PASSWORD_LENGTH}
           onChange={(event) => setPassword(event.target.value)}
-          placeholder="至少 12 位"
+          placeholder={`至少 ${MIN_PASSWORD_LENGTH} 位`}
           required
           type="password"
           value={password}
@@ -293,7 +296,8 @@ function BootstrapForm({ onSuccess }: BootstrapFormProps) {
         <input
           autoComplete="new-password"
           disabled={submitting}
-          minLength={12}
+          maxLength={MAX_PASSWORD_LENGTH}
+          minLength={MIN_PASSWORD_LENGTH}
           onChange={(event) => setConfirmPassword(event.target.value)}
           required
           type="password"

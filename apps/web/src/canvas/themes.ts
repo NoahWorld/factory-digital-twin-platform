@@ -1,3 +1,4 @@
+import { isOrnamentNodeType } from "../../../../shared/canvas-ornaments";
 import {
   isBasicNodeType,
   isChartNodeType,
@@ -101,6 +102,9 @@ export const applyCanvasThemeToNode = (
   theme: CanvasTheme,
 ): CanvasNode => {
   if (isModel3DNodeType(node.type)) return node;
+  if (isOrnamentNodeType(node.type)) {
+    return { ...node, props: { ...node.props, iconColor: theme.accentColor, ...(node.type === "card-title" ? { textColor: theme.textColor, accentColor: theme.accentColor, fillColor: theme.surfaceColor } : {}) } };
+  }
 
   if (isChartNodeType(node.type)) {
     return { ...node, props: { ...node.props, color: theme.accentColor } };

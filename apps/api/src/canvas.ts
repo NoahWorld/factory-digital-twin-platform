@@ -1,4 +1,5 @@
 import { AppError, type AppEnv, type DatabaseResult } from "./auth";
+import { isOrnamentNodeType, ornamentMinimumSizes, parseOrnamentProps, type OrnamentNodeType, type OrnamentProps } from "../../../shared/canvas-ornaments";
 
 export type ChartNodeType =
   | "line-chart"
@@ -8,13 +9,21 @@ export type ChartNodeType =
   | "donut-chart"
   | "radar-chart";
 export type ShapeNodeType = "rectangle" | "circle";
+export type AnimatedDecorationNodeType =
+  | "radar-sweep"
+  | "data-stream"
+  | "circuit-pulse"
+  | "energy-core"
+  | "industrial-flow"
+  | "scan-grid";
 export type DecorationNodeType =
   | "screen-title"
   | "background-decoration"
   | "datetime"
   | "section-title"
   | "card-background"
-  | "icon-background";
+  | "icon-background"
+  | AnimatedDecorationNodeType;
 export type PanelFrameNodeType = "panel-frame";
 export type DashboardNodeType =
   | "metric-card"
@@ -31,12 +40,14 @@ export type BasicNodeType =
   | "image"
   | "carousel"
   | "button"
+  | "fullscreen-toggle"
   | "switch"
   | "checkbox-group"
   | "radio-group"
   | "select";
 export type Model3DNodeType = "model-3d";
 export type CanvasNodeType =
+  | OrnamentNodeType
   | ChartNodeType
   | ShapeNodeType
   | DecorationNodeType
@@ -262,6 +273,14 @@ export type ButtonProps = BasicAppearanceProps & {
   disabled: boolean;
 };
 
+export type FullscreenToggleProps = BasicAppearanceProps & {
+  enterText: string;
+  exitText: string;
+  fontSize: number;
+  fontWeight: number;
+  disabled: boolean;
+};
+
 export type SwitchProps = BasicAppearanceProps & {
   label: string;
   defaultChecked: boolean;
@@ -296,6 +315,7 @@ export type BasicProps =
   | ImageProps
   | CarouselProps
   | ButtonProps
+  | FullscreenToggleProps
   | SwitchProps
   | CheckboxGroupProps
   | RadioGroupProps
@@ -341,7 +361,7 @@ export type CanvasNode = {
   width: number;
   height: number;
   zIndex: number;
-  props: ChartProps | ShapeProps | DecorationProps | PanelFrameProps | DashboardProps | BasicProps | Model3DProps;
+  props: ChartProps | ShapeProps | DecorationProps | PanelFrameProps | DashboardProps | BasicProps | Model3DProps | OrnamentProps;
   resourceRefs: string[];
   dataBindingRefs: string[];
 };
@@ -424,6 +444,7 @@ const identifierPattern = /^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,119}$/;
 const colorPattern = /^#[0-9a-fA-F]{6}$/;
 const encoder = new TextEncoder();
 const minimumNodeSizes: Record<CanvasNodeType, { width: number; height: number }> = {
+  ...ornamentMinimumSizes,
   "line-chart": { width: 240, height: 160 },
   "bar-chart": { width: 240, height: 160 },
   "area-chart": { width: 240, height: 160 },
@@ -434,6 +455,12 @@ const minimumNodeSizes: Record<CanvasNodeType, { width: number; height: number }
   circle: { width: 240, height: 240 },
   "screen-title": { width: 360, height: 72 },
   "background-decoration": { width: 200, height: 72 },
+  "radar-sweep": { width: 160, height: 160 },
+  "data-stream": { width: 200, height: 72 },
+  "circuit-pulse": { width: 240, height: 120 },
+  "energy-core": { width: 160, height: 160 },
+  "industrial-flow": { width: 200, height: 64 },
+  "scan-grid": { width: 240, height: 120 },
   datetime: { width: 220, height: 72 },
   "section-title": { width: 160, height: 48 },
   "card-background": { width: 160, height: 100 },
@@ -453,6 +480,7 @@ const minimumNodeSizes: Record<CanvasNodeType, { width: number; height: number }
   image: { width: 160, height: 100 },
   carousel: { width: 240, height: 160 },
   button: { width: 120, height: 48 },
+  "fullscreen-toggle": { width: 120, height: 48 },
   switch: { width: 160, height: 48 },
   "checkbox-group": { width: 200, height: 96 },
   "radio-group": { width: 200, height: 96 },
@@ -808,13 +836,22 @@ const requireStringArray = (value: unknown, label: string, identifiers = false):
     : requireNonEmptyString(item, `${label}[${index}]`, 80));
 };
 
+const isAnimatedDecorationNodeType = (value: unknown): value is AnimatedDecorationNodeType =>
+  value === "radar-sweep" ||
+  value === "data-stream" ||
+  value === "circuit-pulse" ||
+  value === "energy-core" ||
+  value === "industrial-flow" ||
+  value === "scan-grid";
+
 const isDecorationNodeType = (value: unknown): value is DecorationNodeType =>
   value === "screen-title" ||
   value === "background-decoration" ||
   value === "datetime" ||
   value === "section-title" ||
   value === "card-background" ||
-  value === "icon-background";
+  value === "icon-background" ||
+  isAnimatedDecorationNodeType(value);
 
 const isPanelFrameNodeType = (value: unknown): value is PanelFrameNodeType =>
   value === "panel-frame";
@@ -838,12 +875,14 @@ const isBasicNodeType = (value: unknown): value is BasicNodeType =>
   value === "image" ||
   value === "carousel" ||
   value === "button" ||
+  value === "fullscreen-toggle" ||
   value === "switch" ||
   value === "checkbox-group" ||
   value === "radio-group" ||
   value === "select";
 
 const isCanvasNodeType = (value: unknown): value is CanvasNodeType =>
+  isOrnamentNodeType(value) ||
   value === "line-chart" ||
   value === "bar-chart" ||
   value === "area-chart" ||
@@ -867,9 +906,13 @@ const validateNode = (value: unknown): CanvasNode => {
   const type = rawType as CanvasNodeType;
 
   const props = requireObject(node.props, "canvas node props");
-  let validatedProps: ChartProps | ShapeProps | DecorationProps | PanelFrameProps | DashboardProps | BasicProps | Model3DProps | null = null;
+  let validatedProps: ChartProps | ShapeProps | DecorationProps | PanelFrameProps | DashboardProps | BasicProps | Model3DProps | OrnamentProps | null = null;
 
-  if (
+  if (isOrnamentNodeType(type)) {
+    const parsed = parseOrnamentProps(type, props);
+    if (!parsed.ok) throw new AppError(400, "invalid_canvas_node", parsed.message);
+    validatedProps = parsed.value;
+  } else if (
     type === "line-chart" ||
     type === "bar-chart" ||
     type === "area-chart" ||
@@ -903,7 +946,9 @@ const validateNode = (value: unknown): CanvasNode => {
       opacity: requireNumber(props.opacity, "props.opacity", 0.05, 1),
     };
   } else if (isDecorationNodeType(type)) {
-    const text = type === "background-decoration" || type === "card-background"
+    const text = type === "background-decoration" ||
+      type === "card-background" ||
+      isAnimatedDecorationNodeType(type)
       ? requireString(props.text, "props.text", 120)
       : requireNonEmptyString(
           props.text,
@@ -1142,6 +1187,15 @@ const validateNode = (value: unknown): CanvasNode => {
             disabled: requireBoolean(props.disabled, "props.disabled"),
           };
         }
+      } else if (type === "fullscreen-toggle") {
+        validatedProps = {
+          ...appearance,
+          enterText: requireNonEmptyString(props.enterText, "props.enterText", 120),
+          exitText: requireNonEmptyString(props.exitText, "props.exitText", 120),
+          fontSize: requireNumber(props.fontSize, "props.fontSize", 10, 120),
+          fontWeight: requireFontWeight(props.fontWeight, "props.fontWeight"),
+          disabled: requireBoolean(props.disabled, "props.disabled"),
+        };
       } else if (type === "switch") {
         validatedProps = {
           ...appearance,
@@ -1253,10 +1307,21 @@ const validateNode = (value: unknown): CanvasNode => {
   const minimumSize = minimumNodeSizes[type];
   const width = requireNumber(node.width, "node.width", minimumSize.width, 3840);
   const height = requireNumber(node.height, "node.height", minimumSize.height, 2160);
-  if ((type === "circle" || type === "icon-background") && Math.abs(width - height) > 0.001) {
+  if (
+    (type === "circle" ||
+      type === "icon-background" ||
+      type === "vector-icon" ||
+      type === "radar-sweep" ||
+      type === "energy-core") &&
+    Math.abs(width - height) > 0.001
+  ) {
     invalid("invalid_canvas_node", "Square canvas nodes must keep a 1:1 width-to-height ratio.");
   }
   const resourceRefs = requireStringArray(node.resourceRefs, "node.resourceRefs", true);
+  const dataBindingRefs = requireStringArray(node.dataBindingRefs, "node.dataBindingRefs", true);
+  if ((isOrnamentNodeType(type) || isAnimatedDecorationNodeType(type)) && (resourceRefs.length > 0 || dataBindingRefs.length > 0)) {
+    invalid("invalid_canvas_node", "Title, local icon, and animated decoration components do not accept external resources or data bindings.");
+  }
   if (type === "model-3d" && resourceRefs.length > 1) {
     invalid("invalid_canvas_node", "A 3D model component can reference at most one model asset.");
   }
@@ -1285,7 +1350,7 @@ const validateNode = (value: unknown): CanvasNode => {
     zIndex: requireNumber(node.zIndex, "node.zIndex", 0, 100000),
     props: acceptedProps,
     resourceRefs,
-    dataBindingRefs: requireStringArray(node.dataBindingRefs, "node.dataBindingRefs", true),
+    dataBindingRefs,
   };
 
   if (!Number.isInteger(validated.zIndex)) {

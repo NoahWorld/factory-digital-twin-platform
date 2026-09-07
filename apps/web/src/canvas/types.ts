@@ -1,3 +1,4 @@
+import { isOrnamentNodeType, ornamentDefaults, ornamentDefaultSizes, ornamentMinimumSizes, type OrnamentNodeType } from "../../../../shared/canvas-ornaments";
 export const CANVAS_DRAG_TYPE = "application/x-factory-twin-component";
 
 export type ChartNodeType =
@@ -8,13 +9,21 @@ export type ChartNodeType =
   | "donut-chart"
   | "radar-chart";
 export type ShapeNodeType = "rectangle" | "circle";
+export type AnimatedDecorationNodeType =
+  | "radar-sweep"
+  | "data-stream"
+  | "circuit-pulse"
+  | "energy-core"
+  | "industrial-flow"
+  | "scan-grid";
 export type DecorationNodeType =
   | "screen-title"
   | "background-decoration"
   | "datetime"
   | "section-title"
   | "card-background"
-  | "icon-background";
+  | "icon-background"
+  | AnimatedDecorationNodeType;
 export type PanelFrameNodeType = "panel-frame";
 export type Model3DNodeType = "model-3d";
 export type DashboardNodeType =
@@ -32,11 +41,13 @@ export type BasicNodeType =
   | "image"
   | "carousel"
   | "button"
+  | "fullscreen-toggle"
   | "switch"
   | "checkbox-group"
   | "radio-group"
   | "select";
 export type CanvasNodeType =
+  | OrnamentNodeType
   | ChartNodeType
   | ShapeNodeType
   | DecorationNodeType
@@ -272,6 +283,14 @@ export type ButtonProps = BasicAppearanceProps & {
   disabled: boolean;
 };
 
+export type FullscreenToggleProps = BasicAppearanceProps & {
+  enterText: string;
+  exitText: string;
+  fontSize: number;
+  fontWeight: number;
+  disabled: boolean;
+};
+
 export type SwitchProps = BasicAppearanceProps & {
   label: string;
   defaultChecked: boolean;
@@ -306,6 +325,7 @@ export type BasicProps =
   | ImageProps
   | CarouselProps
   | ButtonProps
+  | FullscreenToggleProps
   | SwitchProps
   | CheckboxGroupProps
   | RadioGroupProps
@@ -468,6 +488,78 @@ const decorationDefaults: Record<DecorationNodeType, DecorationProps> = {
     fillColor: "#071525",
     borderColor: "#1b5f7a",
     opacity: 0.55,
+    align: "center",
+    showDate: true,
+    showSeconds: true,
+  },
+  "radar-sweep": {
+    text: "",
+    subtitle: "",
+    textColor: "#dff8ff",
+    accentColor: "#39dcff",
+    fillColor: "#061827",
+    borderColor: "#23677f",
+    opacity: 0.88,
+    align: "center",
+    showDate: true,
+    showSeconds: true,
+  },
+  "data-stream": {
+    text: "",
+    subtitle: "",
+    textColor: "#e5f8ff",
+    accentColor: "#4aa8ff",
+    fillColor: "#071522",
+    borderColor: "#234b68",
+    opacity: 0.86,
+    align: "center",
+    showDate: true,
+    showSeconds: true,
+  },
+  "circuit-pulse": {
+    text: "",
+    subtitle: "",
+    textColor: "#e6fff8",
+    accentColor: "#36e0b1",
+    fillColor: "#071b1d",
+    borderColor: "#24675e",
+    opacity: 0.88,
+    align: "center",
+    showDate: true,
+    showSeconds: true,
+  },
+  "energy-core": {
+    text: "",
+    subtitle: "",
+    textColor: "#f2ecff",
+    accentColor: "#9a7cff",
+    fillColor: "#100d25",
+    borderColor: "#514589",
+    opacity: 0.9,
+    align: "center",
+    showDate: true,
+    showSeconds: true,
+  },
+  "industrial-flow": {
+    text: "",
+    subtitle: "",
+    textColor: "#fff5e2",
+    accentColor: "#ffad42",
+    fillColor: "#21170a",
+    borderColor: "#765129",
+    opacity: 0.9,
+    align: "center",
+    showDate: true,
+    showSeconds: true,
+  },
+  "scan-grid": {
+    text: "",
+    subtitle: "",
+    textColor: "#e4fff3",
+    accentColor: "#42f5a7",
+    fillColor: "#071b17",
+    borderColor: "#246557",
+    opacity: 0.86,
     align: "center",
     showDate: true,
     showSeconds: true,
@@ -723,6 +815,14 @@ const basicDefaults: Record<BasicNodeType, BasicProps> = {
     openInNewTab: false,
     disabled: false,
   },
+  "fullscreen-toggle": {
+    ...basicAppearanceDefaults,
+    enterText: "全屏",
+    exitText: "退出全屏",
+    fontSize: 20,
+    fontWeight: 600,
+    disabled: false,
+  },
   switch: {
     ...basicAppearanceDefaults,
     label: "设备控制",
@@ -766,6 +866,8 @@ const basicDefaults: Record<BasicNodeType, BasicProps> = {
 };
 
 export const componentLabels: Record<CanvasNodeType, string> = {
+  "card-title": "卡片标题",
+  "vector-icon": "矢量图标",
   "line-chart": "折线图",
   "bar-chart": "柱状图",
   "area-chart": "面积图",
@@ -776,6 +878,12 @@ export const componentLabels: Record<CanvasNodeType, string> = {
   circle: "圆形",
   "screen-title": "大屏标题",
   "background-decoration": "背景点缀",
+  "radar-sweep": "雷达扫描",
+  "data-stream": "数据流光",
+  "circuit-pulse": "电路脉冲",
+  "energy-core": "能量核心",
+  "industrial-flow": "工业流线",
+  "scan-grid": "网格扫描",
   datetime: "时间日期",
   "section-title": "标题",
   "card-background": "小卡片背景",
@@ -795,6 +903,7 @@ export const componentLabels: Record<CanvasNodeType, string> = {
   image: "图片",
   carousel: "轮播图",
   button: "按钮",
+  "fullscreen-toggle": "全屏切换",
   switch: "Switch",
   "checkbox-group": "多选框",
   "radio-group": "单选框",
@@ -802,6 +911,7 @@ export const componentLabels: Record<CanvasNodeType, string> = {
 };
 
 export const defaultNodeSizes: Record<CanvasNodeType, { width: number; height: number }> = {
+  ...ornamentDefaultSizes,
   "line-chart": { width: 520, height: 300 },
   "bar-chart": { width: 520, height: 300 },
   "area-chart": { width: 520, height: 300 },
@@ -812,6 +922,12 @@ export const defaultNodeSizes: Record<CanvasNodeType, { width: number; height: n
   circle: { width: 260, height: 260 },
   "screen-title": { width: 760, height: 110 },
   "background-decoration": { width: 420, height: 150 },
+  "radar-sweep": { width: 260, height: 260 },
+  "data-stream": { width: 460, height: 140 },
+  "circuit-pulse": { width: 440, height: 220 },
+  "energy-core": { width: 260, height: 260 },
+  "industrial-flow": { width: 460, height: 120 },
+  "scan-grid": { width: 440, height: 220 },
   datetime: { width: 320, height: 96 },
   "section-title": { width: 300, height: 64 },
   "card-background": { width: 360, height: 220 },
@@ -831,6 +947,7 @@ export const defaultNodeSizes: Record<CanvasNodeType, { width: number; height: n
   image: { width: 420, height: 260 },
   carousel: { width: 520, height: 300 },
   button: { width: 200, height: 64 },
+  "fullscreen-toggle": { width: 220, height: 64 },
   switch: { width: 260, height: 72 },
   "checkbox-group": { width: 320, height: 170 },
   "radio-group": { width: 320, height: 170 },
@@ -838,6 +955,7 @@ export const defaultNodeSizes: Record<CanvasNodeType, { width: number; height: n
 };
 
 export const minimumNodeSizes: Record<CanvasNodeType, { width: number; height: number }> = {
+  ...ornamentMinimumSizes,
   "line-chart": { width: 240, height: 160 },
   "bar-chart": { width: 240, height: 160 },
   "area-chart": { width: 240, height: 160 },
@@ -848,6 +966,12 @@ export const minimumNodeSizes: Record<CanvasNodeType, { width: number; height: n
   circle: { width: 240, height: 240 },
   "screen-title": { width: 360, height: 72 },
   "background-decoration": { width: 200, height: 72 },
+  "radar-sweep": { width: 160, height: 160 },
+  "data-stream": { width: 200, height: 72 },
+  "circuit-pulse": { width: 240, height: 120 },
+  "energy-core": { width: 160, height: 160 },
+  "industrial-flow": { width: 200, height: 64 },
+  "scan-grid": { width: 240, height: 120 },
   datetime: { width: 220, height: 72 },
   "section-title": { width: 160, height: 48 },
   "card-background": { width: 160, height: 100 },
@@ -867,6 +991,7 @@ export const minimumNodeSizes: Record<CanvasNodeType, { width: number; height: n
   image: { width: 160, height: 100 },
   carousel: { width: 240, height: 160 },
   button: { width: 120, height: 48 },
+  "fullscreen-toggle": { width: 120, height: 48 },
   switch: { width: 160, height: 48 },
   "checkbox-group": { width: 200, height: 96 },
   "radio-group": { width: 200, height: 96 },
@@ -884,13 +1009,22 @@ export const isChartNodeType = (value: string): value is ChartNodeType =>
 export const isShapeNodeType = (value: string): value is ShapeNodeType =>
   value === "rectangle" || value === "circle";
 
+export const isAnimatedDecorationNodeType = (value: string): value is AnimatedDecorationNodeType =>
+  value === "radar-sweep" ||
+  value === "data-stream" ||
+  value === "circuit-pulse" ||
+  value === "energy-core" ||
+  value === "industrial-flow" ||
+  value === "scan-grid";
+
 export const isDecorationNodeType = (value: string): value is DecorationNodeType =>
   value === "screen-title" ||
   value === "background-decoration" ||
   value === "datetime" ||
   value === "section-title" ||
   value === "card-background" ||
-  value === "icon-background";
+  value === "icon-background" ||
+  isAnimatedDecorationNodeType(value);
 
 export const isPanelFrameNodeType = (value: string): value is PanelFrameNodeType =>
   value === "panel-frame";
@@ -914,16 +1048,24 @@ export const isBasicNodeType = (value: string): value is BasicNodeType =>
   value === "image" ||
   value === "carousel" ||
   value === "button" ||
+  value === "fullscreen-toggle" ||
   value === "switch" ||
   value === "checkbox-group" ||
   value === "radio-group" ||
   value === "select";
 
 export const isBackgroundNodeType = (value: CanvasNodeType): boolean =>
-  value === "background-decoration" || value === "card-background" || isPanelFrameNodeType(value);
+  value === "background-decoration" ||
+  value === "card-background" ||
+  isAnimatedDecorationNodeType(value) ||
+  isPanelFrameNodeType(value);
 
 export const isSquareNodeType = (value: CanvasNodeType): boolean =>
-  value === "circle" || value === "icon-background";
+  value === "circle" ||
+  value === "icon-background" ||
+  value === "vector-icon" ||
+  value === "radar-sweep" ||
+  value === "energy-core";
 
 export const createCanvasNode = (
   type: CanvasNodeType,
@@ -932,7 +1074,7 @@ export const createCanvasNode = (
   zIndex: number,
 ): CanvasNode => {
   const size = defaultNodeSizes[type];
-  const props = isChartNodeType(type)
+  const props = isOrnamentNodeType(type) ? { ...ornamentDefaults[type] } : isChartNodeType(type)
     ? (() => {
         const defaults = chartDefaults[type];
         return { ...defaults, categories: [...defaults.categories], values: [...defaults.values] };
@@ -982,6 +1124,7 @@ export const createCanvasNode = (
 };
 
 export const isCanvasNodeType = (value: string): value is CanvasNodeType =>
+  isOrnamentNodeType(value) ||
   isChartNodeType(value) ||
   isShapeNodeType(value) ||
   isDecorationNodeType(value) ||
@@ -1413,6 +1556,7 @@ export const parseDecorationProps = (
   if (
     type !== "background-decoration" &&
     type !== "card-background" &&
+    !isAnimatedDecorationNodeType(type) &&
     props.text.trim().length === 0
   ) {
     return { ok: false, message: "当前组件的 text 不能为空" };
@@ -1751,6 +1895,32 @@ export const parseBasicProps = (
         text: props.text,
         href: props.href,
         openInNewTab: props.openInNewTab,
+        disabled: props.disabled,
+      },
+    };
+  }
+
+  if (type === "fullscreen-toggle") {
+    const textStyle = parseBasicTextStyle(props);
+    if (!textStyle.ok) return textStyle;
+    if (
+      typeof props.enterText !== "string" ||
+      props.enterText.trim().length === 0 ||
+      props.enterText.length > 120 ||
+      typeof props.exitText !== "string" ||
+      props.exitText.trim().length === 0 ||
+      props.exitText.length > 120 ||
+      typeof props.disabled !== "boolean"
+    ) {
+      return { ok: false, message: "全屏按钮文字不能为空且长度不能超过 120，disabled 必须是布尔值" };
+    }
+    return {
+      ok: true,
+      value: {
+        ...appearance.value,
+        ...textStyle.value,
+        enterText: props.enterText,
+        exitText: props.exitText,
         disabled: props.disabled,
       },
     };

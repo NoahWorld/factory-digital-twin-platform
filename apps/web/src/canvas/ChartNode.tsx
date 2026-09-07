@@ -279,7 +279,7 @@ export const ChartNode = memo(function ChartNode({ node }: { node: CanvasNode })
   return (
     <div className="chart-node-content">
       <header>
-        <div><span className="chart-node-kicker">{componentLabels[chartType]}</span><strong title={title}>{title}</strong></div>
+        <div><strong title={title}>{title}</strong></div>
         <span className="chart-node-value">{summaryValue(chartType, values)} <small>{unit}</small></span>
       </header>
       <svg aria-label={`${title}${componentLabels[chartType]}`} ref={svgRef} role="img">

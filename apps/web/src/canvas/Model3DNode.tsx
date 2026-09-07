@@ -21,7 +21,6 @@ type Model3DNodeProps = {
   cameraControlsEnabled?: boolean;
   editable: boolean;
   interactive?: boolean;
-  interactionHint?: string;
   node: CanvasNode;
   onSceneChange?: (canvasNodeId: string, snapshot: ModelSceneSnapshot | null) => void;
   onSceneNodeSelect: (canvasNodeId: string, sceneNodePath: string | null) => void;
@@ -59,7 +58,6 @@ export const Model3DNode = memo(function Model3DNode({
   cameraControlsEnabled,
   editable,
   interactive = false,
-  interactionHint,
   node,
   onSceneChange,
   onSceneNodeSelect,
@@ -90,10 +88,6 @@ export const Model3DNode = memo(function Model3DNode({
   const parsed = parseModel3DProps(node.props);
   modelPropsRef.current = parsed.ok ? parsed.value : null;
   const assetId = node.resourceRefs[0] ?? null;
-  const resolvedInteractionHint = interactionHint
-    ?? (interactive && !editable
-      ? "点击设备查看 2D 详情 · 拖动旋转视角"
-      : "点击对象选中 · 拖动可移动组件");
   const transformOverridesSignature = parsed.ok
     ? JSON.stringify(parsed.value.transformOverrides)
     : "";
@@ -736,10 +730,8 @@ export const Model3DNode = memo(function Model3DNode({
         onPointerUp={handlePointerUp}
         ref={containerRef}
       />
-      {loadState.status === "empty" ? <div className="model-3d-message"><strong>尚未绑定模型</strong><span>在右侧属性面板导入 GLB 或 GLTF</span></div> : null}
       {loadState.status === "loading" ? <div className="model-3d-message"><span className="model-loading-spinner" /><strong>正在加载 3D 模型</strong></div> : null}
       {loadState.status === "error" ? <div className="model-3d-message is-error" role="alert"><strong>3D 模型不可用</strong><span>{loadState.message}</span></div> : null}
-      {loadState.status === "ready" && (editable || interactive) ? <span className="model-3d-edit-hint">{resolvedInteractionHint}</span> : null}
     </div>
   );
 });

@@ -208,7 +208,6 @@ export default function Model3DEditorPage({
             <Model3DNode
               cameraControlsEnabled
               editable={editable}
-              interactionHint="点击对象选中 · 拖动旋转视角 · 滚轮缩放"
               node={node}
               onSceneChange={updateModelScene}
               onSceneNodeSelect={(_, path) => setSelectedSceneNodePath(path)}

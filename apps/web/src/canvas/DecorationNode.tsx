@@ -122,6 +122,95 @@ export const DecorationNode = memo(function DecorationNode({ node }: DecorationN
     );
   }
 
+  if (node.type === "radar-sweep") {
+    return (
+      <div aria-hidden="true" className="decoration-node decoration-radar" style={style}>
+        <span className="decoration-radar-ring is-outer" />
+        <span className="decoration-radar-ring is-middle" />
+        <span className="decoration-radar-ring is-inner" />
+        <span className="decoration-radar-axis is-horizontal" />
+        <span className="decoration-radar-axis is-vertical" />
+        <span className="decoration-radar-sweep" />
+        <i className="decoration-radar-target is-one" />
+        <i className="decoration-radar-target is-two" />
+        <i className="decoration-radar-target is-three" />
+        <span className="decoration-radar-core" />
+      </div>
+    );
+  }
+
+  if (node.type === "data-stream") {
+    return (
+      <div aria-hidden="true" className="decoration-node decoration-data-stream" style={style}>
+        <span className="decoration-stream-rail is-one"><i /><i /><i /></span>
+        <span className="decoration-stream-rail is-two"><i /><i /><i /></span>
+        <span className="decoration-stream-rail is-three"><i /><i /><i /></span>
+        <span className="decoration-stream-rail is-four"><i /><i /><i /></span>
+        <span className="decoration-stream-cap is-left" />
+        <span className="decoration-stream-cap is-right" />
+      </div>
+    );
+  }
+
+  if (node.type === "circuit-pulse") {
+    return (
+      <div aria-hidden="true" className="decoration-node decoration-circuit" style={style}>
+        <span className="decoration-circuit-path is-alpha"><i /></span>
+        <span className="decoration-circuit-path is-beta"><i /></span>
+        <span className="decoration-circuit-path is-gamma"><i /></span>
+        <span className="decoration-circuit-path is-delta"><i /></span>
+        <span className="decoration-circuit-node is-one" />
+        <span className="decoration-circuit-node is-two" />
+        <span className="decoration-circuit-node is-three" />
+        <span className="decoration-circuit-node is-four" />
+        <span className="decoration-circuit-hub"><i /></span>
+      </div>
+    );
+  }
+
+  if (node.type === "energy-core") {
+    return (
+      <div aria-hidden="true" className="decoration-node decoration-energy-core" style={style}>
+        <span className="decoration-energy-halo" />
+        <span className="decoration-energy-ring is-outer" />
+        <span className="decoration-energy-ring is-middle" />
+        <span className="decoration-energy-ring is-inner" />
+        <span className="decoration-energy-orbit"><i /><i /><i /></span>
+        <span className="decoration-energy-center" />
+      </div>
+    );
+  }
+
+  if (node.type === "industrial-flow") {
+    return (
+      <div aria-hidden="true" className="decoration-node decoration-industrial-flow" style={style}>
+        <span className="decoration-industrial-rail is-top" />
+        <span className="decoration-industrial-track">
+          <i /><i /><i /><i /><i /><i /><i /><i />
+        </span>
+        <span className="decoration-industrial-rail is-bottom" />
+        <span className="decoration-industrial-bolt is-left" />
+        <span className="decoration-industrial-bolt is-right" />
+      </div>
+    );
+  }
+
+  if (node.type === "scan-grid") {
+    return (
+      <div aria-hidden="true" className="decoration-node decoration-scan-grid" style={style}>
+        <span className="decoration-scan-grid-plane" />
+        <span className="decoration-scan-beam" />
+        <span className="decoration-scan-marker is-one" />
+        <span className="decoration-scan-marker is-two" />
+        <span className="decoration-scan-marker is-three" />
+        <span className="decoration-scan-corner is-top-left" />
+        <span className="decoration-scan-corner is-top-right" />
+        <span className="decoration-scan-corner is-bottom-left" />
+        <span className="decoration-scan-corner is-bottom-right" />
+      </div>
+    );
+  }
+
   if (node.type === "datetime") {
     const formatted = formatClock(timestamp, props.showDate, props.showSeconds);
     return (

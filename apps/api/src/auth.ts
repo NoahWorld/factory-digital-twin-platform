@@ -1,3 +1,5 @@
+import { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH } from "../../../shared/auth-constraints";
+
 export type DatabaseResult = {
   meta?: { changes?: number };
 };
@@ -259,11 +261,11 @@ export const validatePassword = (value: unknown): string => {
     throw new AppError(400, "invalid_password", "Password is required.");
   }
 
-  if (value.length < 12 || value.length > 256) {
+  if (value.length < MIN_PASSWORD_LENGTH || value.length > MAX_PASSWORD_LENGTH) {
     throw new AppError(
       400,
       "invalid_password",
-      "Password must contain 12 to 256 characters.",
+      `Password must contain ${MIN_PASSWORD_LENGTH} to ${MAX_PASSWORD_LENGTH} characters.`,
     );
   }
 

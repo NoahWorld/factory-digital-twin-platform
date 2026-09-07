@@ -161,7 +161,7 @@ export function BasicNodeInspector({
   };
 
   const showsAppearance = type !== "image" && type !== "carousel";
-  const showsFont = type === "plain-text" || type === "text-link" || type === "button";
+  const showsFont = type === "plain-text" || type === "text-link" || type === "button" || type === "fullscreen-toggle";
   const showsOptions = type === "checkbox-group" || type === "radio-group" || type === "select";
   const options = asOptions(draft.options);
 
@@ -177,6 +177,12 @@ export function BasicNodeInspector({
         <div className="inspector-section-title"><strong>内容配置</strong><span>组件自身配置</span></div>
         {type === "plain-text" || type === "text-link" || type === "button" ? (
           <label><span>显示文字</span><textarea disabled={!editable} maxLength={type === "plain-text" ? 1000 : 120} onChange={(event) => changeDraft({ text: event.target.value })} rows={type === "plain-text" ? 4 : 2} value={asText(draft.text)} /></label>
+        ) : null}
+        {type === "fullscreen-toggle" ? (
+          <div className="inspector-inline-fields">
+            <label><span>进入全屏文字</span><input disabled={!editable} maxLength={120} onChange={(event) => changeDraft({ enterText: event.target.value })} value={asText(draft.enterText)} /></label>
+            <label><span>退出全屏文字</span><input disabled={!editable} maxLength={120} onChange={(event) => changeDraft({ exitText: event.target.value })} value={asText(draft.exitText)} /></label>
+          </div>
         ) : null}
         {type === "text-link" || type === "button" ? (
           <label><span>跳转地址（HTTP / HTTPS）</span><input disabled={!editable} maxLength={2048} onChange={(event) => changeDraft({ href: event.target.value })} placeholder={type === "button" ? "可留空，稍后绑定动作" : "https://example.com"} type="url" value={asText(draft.href)} /></label>
@@ -228,6 +234,9 @@ export function BasicNodeInspector({
             {type === "text-link" ? <label><input checked={asBoolean(draft.underline)} disabled={!editable} onChange={(event) => changeDraft({ underline: event.target.checked })} type="checkbox" /><span>显示下划线</span></label> : null}
             {type === "button" ? <label><input checked={asBoolean(draft.disabled)} disabled={!editable} onChange={(event) => changeDraft({ disabled: event.target.checked })} type="checkbox" /><span>禁用按钮</span></label> : null}
           </div>
+        ) : null}
+        {type === "fullscreen-toggle" ? (
+          <label className="inspector-check-row"><input checked={asBoolean(draft.disabled)} disabled={!editable} onChange={(event) => changeDraft({ disabled: event.target.checked })} type="checkbox" /><span>禁用全屏切换</span></label>
         ) : null}
       </section>
 

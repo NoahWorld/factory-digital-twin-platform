@@ -2,8 +2,11 @@ import { useEffect, useMemo, useState } from "react";
 import { BasicNodeInspector } from "./BasicNodeInspector";
 import { DashboardNodeInspector } from "./DashboardNodeInspector";
 import { PanelFrameInspector } from "./PanelFrameInspector";
+import { OrnamentInspector } from "./OrnamentInspector";
+import { isOrnamentNodeType } from "../../../../shared/canvas-ornaments";
 import {
   componentLabels,
+  isAnimatedDecorationNodeType,
   isBasicNodeType,
   isChartNodeType,
   isDashboardNodeType,
@@ -481,8 +484,8 @@ function ValidDecorationInspector({
       </section>
 
       <div className="inspector-note">
-        <strong>{nodeType === "datetime" ? "共享时钟" : "自适应点缀"}</strong>
-        <p>{nodeType === "datetime" ? "同一画布上的时间组件共享一个计时器，避免组件增多时重复刷新。" : "文字按组件容器重新排版，缩放时不会用 transform 拉伸字体。"}</p>
+        <strong>{nodeType === "datetime" ? "共享时钟" : isAnimatedDecorationNodeType(nodeType) ? "轻量动画" : "自适应点缀"}</strong>
+        <p>{nodeType === "datetime" ? "同一画布上的时间组件共享一个计时器，避免组件增多时重复刷新。" : isAnimatedDecorationNodeType(nodeType) ? "动效只使用浏览器合成动画；系统开启“减少动态效果”时会自动停在静态画面。" : "文字按组件容器重新排版，缩放时不会用 transform 拉伸字体。"}</p>
       </div>
     </aside>
   );
@@ -502,6 +505,10 @@ export function ComponentInspector({
 
   if (!node) {
     return <aside className="component-inspector is-empty"><div><span>⌖</span><strong>选择一个组件</strong><p>选中画布中的组件后，可在这里修改数据或外观。</p></div></aside>;
+  }
+
+  if (isOrnamentNodeType(node.type)) {
+    return <OrnamentInspector key={node.id} editable={editable} node={node} onNodeChange={onNodeChange} onValidationChange={onValidationChange} />;
   }
 
   if (isShapeNodeType(node.type)) {

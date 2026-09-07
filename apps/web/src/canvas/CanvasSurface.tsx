@@ -8,6 +8,8 @@ import { Model3DNode } from "./Model3DNode";
 import type { ModelSceneSnapshot } from "./model-scene";
 import { PanelFrameNode } from "./PanelFrameNode";
 import { ShapeNode } from "./ShapeNode";
+import { OrnamentNode } from "./OrnamentNode";
+import { isOrnamentNodeType } from "../../../../shared/canvas-ornaments";
 import { CANVAS_DRAG_TYPE, defaultNodeSizes, isBasicNodeType, isCanvasNodeType, isDashboardNodeType, isDecorationNodeType, isModel3DNodeType, isPanelFrameNodeType, isShapeNodeType, type CanvasDocument, type CanvasNode, type CanvasNodeType, type ModelNodeAppearance } from "./types";
 
 type ActiveDrag = {
@@ -71,13 +73,13 @@ const CanvasNodeView = memo(function CanvasNodeView({ editable, modelInteraction
   return (
     <div
       aria-label={`${node.type} 组件`}
-      className={`canvas-node${isShapeNodeType(node.type) ? " is-shape" : ""}${isDecorationNodeType(node.type) ? " is-decoration" : ""}${isPanelFrameNodeType(node.type) ? " is-panel-frame" : ""}${isDashboardNodeType(node.type) ? " is-dashboard" : ""}${isBasicNodeType(node.type) ? " is-basic" : ""}${isModel3DNodeType(node.type) ? " is-model-3d" : ""}${selected ? " is-selected" : ""}${editable ? " is-editable" : ""}`}
+      className={`canvas-node${isOrnamentNodeType(node.type) ? " is-ornament" : ""}${isShapeNodeType(node.type) ? " is-shape" : ""}${isDecorationNodeType(node.type) ? " is-decoration" : ""}${isPanelFrameNodeType(node.type) ? " is-panel-frame" : ""}${isDashboardNodeType(node.type) ? " is-dashboard" : ""}${isBasicNodeType(node.type) ? " is-basic" : ""}${isModel3DNodeType(node.type) ? " is-model-3d" : ""}${selected ? " is-selected" : ""}${editable ? " is-editable" : ""}`}
       data-node-id={node.id}
       onPointerDown={editable ? (event) => onPointerDown(event, node) : undefined}
       role="group"
       style={{ height: node.height, transform: `translate3d(${node.x}px, ${node.y}px, 0)`, width: node.width, zIndex: renderZIndex }}
     >
-      {isShapeNodeType(node.type)
+      {isOrnamentNodeType(node.type) ? <OrnamentNode node={node} /> : isShapeNodeType(node.type)
         ? <ShapeNode node={node} />
         : isDecorationNodeType(node.type)
           ? <DecorationNode node={node} />
@@ -101,7 +103,6 @@ const CanvasNodeView = memo(function CanvasNodeView({ editable, modelInteraction
                 />
               )
             : <ChartNode node={node} />}
-      {editable ? <span className="canvas-node-drag-hint">拖动</span> : null}
       {editable && selected ? resizeHandles.map(({ direction, label }) => (
         <button
           aria-label={label}
@@ -165,17 +166,27 @@ export function CanvasSurface({ document, editable, modelInteractionEnabled = fa
     if (!viewport) return;
 
     const updateScale = () => {
-      const availableWidth = Math.max(viewport.clientWidth - 48, 1);
-      const availableHeight = Math.max(viewport.clientHeight - 48, 1);
-      const nextScale = Math.min(availableWidth / document.width, availableHeight / document.height, 1);
+      const isFullscreen = globalThis.document.fullscreenElement === viewport;
+      const viewportInset = isFullscreen ? 0 : 48;
+      const availableWidth = Math.max(viewport.clientWidth - viewportInset, 1);
+      const availableHeight = Math.max(viewport.clientHeight - viewportInset, 1);
+      const widthScale = availableWidth / document.width;
+      const heightScale = availableHeight / document.height;
+      const nextScale = isFullscreen
+        ? Math.max(widthScale, heightScale)
+        : Math.min(widthScale, heightScale, 1);
       scaleRef.current = nextScale;
       setScale(nextScale);
     };
 
     const observer = new ResizeObserver(updateScale);
     observer.observe(viewport);
+    globalThis.document.addEventListener("fullscreenchange", updateScale);
     updateScale();
-    return () => observer.disconnect();
+    return () => {
+      observer.disconnect();
+      globalThis.document.removeEventListener("fullscreenchange", updateScale);
+    };
   }, [document.height, document.width]);
 
   const hideGuides = useCallback(() => {
@@ -321,7 +332,7 @@ export function CanvasSurface({ document, editable, modelInteractionEnabled = fa
   };
 
   return (
-    <div className="canvas-viewport" ref={viewportRef}>
+    <div className="canvas-viewport" data-canvas-fullscreen-root ref={viewportRef}>
       <div className="canvas-scale-frame" style={{ height: document.height * scale, width: document.width * scale }}>
         <div
           className={`canvas-surface${editable ? " is-editable" : " is-preview"}`}

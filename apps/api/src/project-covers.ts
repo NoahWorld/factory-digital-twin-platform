@@ -1,3 +1,5 @@
+import { isOrnamentNodeType } from "../../../shared/canvas-ornaments";
+import { renderOrnamentSvg } from "../../../shared/ornament-svg";
 import {
   type BasicAppearanceProps,
   type AlarmListProps,
@@ -24,11 +26,13 @@ import {
   type StatusGridProps,
   type TextLinkProps,
   type EventTimelineProps,
+  type FullscreenToggleProps,
 } from "./canvas";
 
 const COVER_WIDTH = 480;
 const COVER_HEIGHT = 270;
 const MAX_RENDERED_NODES = 160;
+const COVER_RENDERER_VERSION = 5;
 
 const escapeXml = (value: string): string =>
   value.replace(/[&<>"']/gu, (character) => ({
@@ -181,6 +185,45 @@ const renderDecoration = (node: CanvasNode, canvas: CanvasDocument): string => {
   const anchor = props.align === "center" ? "middle" : props.align === "right" ? "end" : "start";
   const textX = props.align === "center" ? box.x + box.width / 2 : props.align === "right" ? box.x + box.width - 8 : box.x + 8;
 
+  if (node.type === "radar-sweep" || node.type === "energy-core") {
+    const centerX = box.x + box.width / 2;
+    const centerY = box.y + box.height / 2;
+    const radius = Math.max(2, Math.min(box.width, box.height) * 0.43);
+    const rings = [1, 0.66, 0.33].map((scale) => `<circle cx="${centerX.toFixed(2)}" cy="${centerY.toFixed(2)}" r="${(radius * scale).toFixed(2)}" fill="none" stroke="${scale === 1 ? border : accent}" stroke-opacity="${scale === 1 ? "0.72" : "0.46"}" stroke-width="0.8"/>`).join("");
+    const detail = node.type === "radar-sweep"
+      ? `<path d="M ${centerX.toFixed(2)} ${centerY.toFixed(2)} L ${(centerX + radius * 0.76).toFixed(2)} ${(centerY - radius * 0.64).toFixed(2)} A ${radius.toFixed(2)} ${radius.toFixed(2)} 0 0 0 ${(centerX + radius).toFixed(2)} ${centerY.toFixed(2)} Z" fill="${accent}" fill-opacity="0.2"/><circle cx="${(centerX + radius * 0.42).toFixed(2)}" cy="${(centerY - radius * 0.22).toFixed(2)}" r="1.8" fill="${accent}"/>`
+      : `<circle cx="${centerX.toFixed(2)}" cy="${centerY.toFixed(2)}" r="${(radius * 0.2).toFixed(2)}" fill="${accent}" fill-opacity="0.9"/><path d="M ${(centerX - radius * 0.72).toFixed(2)} ${(centerY - radius * 0.28).toFixed(2)} A ${(radius * 0.78).toFixed(2)} ${(radius * 0.78).toFixed(2)} 0 0 1 ${(centerX + radius * 0.58).toFixed(2)} ${(centerY - radius * 0.5).toFixed(2)}" fill="none" stroke="${accent}" stroke-width="1.5"/>`;
+    return `<g data-decoration-type="${node.type}" opacity="${finite(props.opacity, 1).toFixed(2)}"><rect x="${box.x.toFixed(2)}" y="${box.y.toFixed(2)}" width="${box.width.toFixed(2)}" height="${box.height.toFixed(2)}" rx="4" fill="${fill}" fill-opacity="0.62"/>${rings}${detail}</g>`;
+  }
+
+  if (node.type === "data-stream" || node.type === "industrial-flow") {
+    const rows = node.type === "data-stream" ? 4 : 3;
+    const marks = Array.from({ length: rows }, (_, row) => {
+      const y = box.y + box.height * (row + 1) / (rows + 1);
+      const segments = Array.from({ length: 8 }, (__, index) => {
+        const segmentWidth = box.width / 13;
+        const x = box.x + 5 + index * box.width / 8;
+        return node.type === "data-stream"
+          ? `<rect x="${x.toFixed(2)}" y="${(y - 0.7).toFixed(2)}" width="${segmentWidth.toFixed(2)}" height="1.4" rx="0.7" fill="${accent}" fill-opacity="${(0.25 + index * 0.08).toFixed(2)}"/>`
+          : `<path d="M ${x.toFixed(2)} ${(y - 2.4).toFixed(2)} L ${(x + 4).toFixed(2)} ${y.toFixed(2)} L ${x.toFixed(2)} ${(y + 2.4).toFixed(2)}" fill="none" stroke="${accent}" stroke-width="1.2"/>`;
+      }).join("");
+      return `<line x1="${box.x.toFixed(2)}" y1="${y.toFixed(2)}" x2="${(box.x + box.width).toFixed(2)}" y2="${y.toFixed(2)}" stroke="${border}" stroke-opacity="0.5" stroke-width="0.6"/>${segments}`;
+    }).join("");
+    return `<g data-decoration-type="${node.type}" opacity="${finite(props.opacity, 1).toFixed(2)}"><rect x="${box.x.toFixed(2)}" y="${box.y.toFixed(2)}" width="${box.width.toFixed(2)}" height="${box.height.toFixed(2)}" rx="3" fill="${fill}" fill-opacity="0.66" stroke="${border}" stroke-width="0.7"/>${marks}</g>`;
+  }
+
+  if (node.type === "circuit-pulse" || node.type === "scan-grid") {
+    const grid = Array.from({ length: 7 }, (_, index) => {
+      const x = box.x + box.width * index / 6;
+      const y = box.y + box.height * index / 6;
+      return `<line x1="${x.toFixed(2)}" y1="${box.y.toFixed(2)}" x2="${x.toFixed(2)}" y2="${(box.y + box.height).toFixed(2)}" stroke="${border}" stroke-opacity="0.26" stroke-width="0.5"/><line x1="${box.x.toFixed(2)}" y1="${y.toFixed(2)}" x2="${(box.x + box.width).toFixed(2)}" y2="${y.toFixed(2)}" stroke="${border}" stroke-opacity="0.26" stroke-width="0.5"/>`;
+    }).join("");
+    const signal = node.type === "circuit-pulse"
+      ? `<path d="M ${box.x.toFixed(2)} ${(box.y + box.height * 0.7).toFixed(2)} H ${(box.x + box.width * 0.28).toFixed(2)} V ${(box.y + box.height * 0.34).toFixed(2)} H ${(box.x + box.width * 0.66).toFixed(2)} V ${(box.y + box.height * 0.55).toFixed(2)} H ${(box.x + box.width).toFixed(2)}" fill="none" stroke="${accent}" stroke-width="1.4"/><circle cx="${(box.x + box.width * 0.66).toFixed(2)}" cy="${(box.y + box.height * 0.34).toFixed(2)}" r="2.4" fill="${accent}"/>`
+      : `<rect x="${box.x.toFixed(2)}" y="${(box.y + box.height * 0.43).toFixed(2)}" width="${box.width.toFixed(2)}" height="${Math.max(2, box.height * 0.12).toFixed(2)}" fill="${accent}" fill-opacity="0.22"/><line x1="${box.x.toFixed(2)}" y1="${(box.y + box.height * 0.49).toFixed(2)}" x2="${(box.x + box.width).toFixed(2)}" y2="${(box.y + box.height * 0.49).toFixed(2)}" stroke="${accent}" stroke-width="1.2"/>`;
+    return `<g data-decoration-type="${node.type}" opacity="${finite(props.opacity, 1).toFixed(2)}"><rect x="${box.x.toFixed(2)}" y="${box.y.toFixed(2)}" width="${box.width.toFixed(2)}" height="${box.height.toFixed(2)}" rx="3" fill="${fill}" fill-opacity="0.62" stroke="${border}" stroke-width="0.7"/>${grid}${signal}</g>`;
+  }
+
   return [
     panel(node, canvas, fill, border, finite(props.opacity, 1)),
     `<rect x="${box.x.toFixed(2)}" y="${box.y.toFixed(2)}" width="${Math.min(3, box.width).toFixed(2)}" height="${box.height.toFixed(2)}" fill="${accent}"/>`,
@@ -283,16 +326,12 @@ const renderImagePlaceholder = (
   const centerY = box.y + box.height / 2;
   const iconWidth = Math.max(12, Math.min(34, box.width * 0.22));
   const iconHeight = Math.max(9, Math.min(25, box.height * 0.22));
-  const boundCount = node.resourceRefs.length;
 
   return [
     panel(node, canvas, background, border),
     `<rect x="${(centerX - iconWidth / 2).toFixed(2)}" y="${(centerY - iconHeight / 2).toFixed(2)}" width="${iconWidth.toFixed(2)}" height="${iconHeight.toFixed(2)}" rx="2" fill="none" stroke="${accent}" stroke-width="1.2" stroke-opacity="0.82"/>`,
     `<circle cx="${(centerX - iconWidth * 0.2).toFixed(2)}" cy="${(centerY - iconHeight * 0.18).toFixed(2)}" r="${Math.max(1.2, iconWidth * 0.06).toFixed(2)}" fill="${accent}" fill-opacity="0.9"/>`,
     `<path d="M ${(centerX - iconWidth * 0.38).toFixed(2)} ${(centerY + iconHeight * 0.28).toFixed(2)} L ${(centerX - iconWidth * 0.08).toFixed(2)} ${(centerY - iconHeight * 0.02).toFixed(2)} L ${(centerX + iconWidth * 0.1).toFixed(2)} ${(centerY + iconHeight * 0.14).toFixed(2)} L ${(centerX + iconWidth * 0.34).toFixed(2)} ${(centerY - iconHeight * 0.12).toFixed(2)}" fill="none" stroke="${accent}" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>`,
-    boundCount > 0
-      ? `<text x="${(box.x + box.width - 6).toFixed(2)}" y="${(box.y + box.height - 6).toFixed(2)}" text-anchor="end" fill="${accent}" font-size="6">${boundCount}</text>`
-      : "",
   ].join("");
 };
 
@@ -345,6 +384,19 @@ const renderBasic = (node: CanvasNode, canvas: CanvasDocument): string => {
     ].join("");
   }
 
+  if (node.type === "fullscreen-toggle") {
+    const fullscreenProps = node.props as FullscreenToggleProps;
+    const iconSize = Math.min(11, Math.max(6, box.height * 0.28));
+    const iconX = box.x + Math.max(7, box.width * 0.12);
+    const iconY = box.y + box.height / 2;
+    return [
+      panelSvg,
+      `<rect x="${(box.x + 4).toFixed(2)}" y="${(box.y + 4).toFixed(2)}" width="${Math.max(1, box.width - 8).toFixed(2)}" height="${Math.max(1, box.height - 8).toFixed(2)}" rx="3" fill="${accent}" fill-opacity="${fullscreenProps.disabled ? "0.12" : "0.22"}" stroke="${accent}" stroke-width="0.8"/>`,
+      `<path d="M ${(iconX - iconSize / 2).toFixed(2)} ${(iconY - 1).toFixed(2)} V ${(iconY - iconSize / 2).toFixed(2)} H ${(iconX - 1).toFixed(2)} M ${(iconX + 1).toFixed(2)} ${(iconY - iconSize / 2).toFixed(2)} H ${(iconX + iconSize / 2).toFixed(2)} V ${(iconY - 1).toFixed(2)} M ${(iconX - iconSize / 2).toFixed(2)} ${(iconY + 1).toFixed(2)} V ${(iconY + iconSize / 2).toFixed(2)} H ${(iconX - 1).toFixed(2)} M ${(iconX + 1).toFixed(2)} ${(iconY + iconSize / 2).toFixed(2)} H ${(iconX + iconSize / 2).toFixed(2)} V ${(iconY + 1).toFixed(2)}" fill="none" stroke="${accent}" stroke-width="1.1"/>`,
+      `<text x="${(box.x + box.width * 0.58).toFixed(2)}" y="${(box.y + box.height * 0.58).toFixed(2)}" text-anchor="middle" fill="${text}" font-size="${Math.min(11, Math.max(6, box.height * 0.27)).toFixed(1)}" font-weight="${fullscreenProps.fontWeight}">${escapeXml(truncate(fullscreenProps.enterText, 26))}</text>`,
+    ].join("");
+  }
+
   if (node.type === "switch") {
     const switchProps = node.props as SwitchProps;
     const trackWidth = Math.min(25, Math.max(14, box.width * 0.18));
@@ -391,6 +443,10 @@ const renderBasic = (node: CanvasNode, canvas: CanvasDocument): string => {
 };
 
 const renderNode = (node: CanvasNode, canvas: CanvasDocument): string => {
+  if (isOrnamentNodeType(node.type)) {
+    const box = scaledBox(node, canvas);
+    return `<svg x="${box.x}" y="${box.y}" width="${box.width}" height="${box.height}">${renderOrnamentSvg(node.type, node.props as Record<string, unknown>, node.width, node.height, node.id)}</svg>`;
+  }
   if (node.type === "rectangle" || node.type === "circle") return renderShape(node, canvas);
   if (
     node.type === "line-chart"
@@ -403,6 +459,12 @@ const renderNode = (node: CanvasNode, canvas: CanvasDocument): string => {
   if (
     node.type === "screen-title"
     || node.type === "background-decoration"
+    || node.type === "radar-sweep"
+    || node.type === "data-stream"
+    || node.type === "circuit-pulse"
+    || node.type === "energy-core"
+    || node.type === "industrial-flow"
+    || node.type === "scan-grid"
     || node.type === "datetime"
     || node.type === "section-title"
     || node.type === "card-background"
@@ -426,6 +488,7 @@ const renderNode = (node: CanvasNode, canvas: CanvasDocument): string => {
     || node.type === "image"
     || node.type === "carousel"
     || node.type === "button"
+    || node.type === "fullscreen-toggle"
     || node.type === "switch"
     || node.type === "checkbox-group"
     || node.type === "radio-group"
@@ -474,7 +537,7 @@ export const projectCoverResponse = (
   request: Request,
   canvas: CanvasDocument,
 ): Response => {
-  const etag = `"project-${canvas.projectId}-canvas-${canvas.revision}"`;
+  const etag = `"project-${canvas.projectId}-canvas-${canvas.revision}-renderer-${COVER_RENDERER_VERSION}"`;
   const headers = new Headers({
     "cache-control": "private, max-age=0, must-revalidate",
     "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox",
