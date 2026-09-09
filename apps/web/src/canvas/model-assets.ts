@@ -17,6 +17,17 @@ export type ModelInspection = {
   externalResourceCount: number;
 };
 
+export type SceneBackgroundGeneration = {
+  algorithm: "textured-plane-v1";
+  imageHeight: number;
+  imageWidth: number;
+  movement: "fixed" | "limited";
+  planeHeightMeters: number;
+  planeWidthMeters: number;
+  quality: "lightweight" | "balanced" | "detail";
+  sourceImageAssetId: string;
+};
+
 export type ModelAsset = {
   id: string;
   projectId: string;
@@ -26,7 +37,9 @@ export type ModelAsset = {
   byteSize: number;
   sha256: string;
   inspection: ModelInspection;
-  source: "system" | "upload";
+  source: "system" | "upload" | "scene-background";
+  sourceImageAssetId: string | null;
+  generation: SceneBackgroundGeneration | null;
   usage: ResourceUsage;
   createdAt: string;
 };

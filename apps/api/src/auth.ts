@@ -20,6 +20,7 @@ export type ObjectBody = {
   body: ReadableStream;
   size: number;
   httpEtag: string;
+  arrayBuffer: () => Promise<ArrayBuffer>;
   writeHttpMetadata: (headers: Headers) => void;
 };
 

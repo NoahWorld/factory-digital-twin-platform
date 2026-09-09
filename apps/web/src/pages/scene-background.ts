@@ -34,6 +34,13 @@ const extensionOf = (filename: string): string =>
 const isImage = (file: SceneBackgroundFile): boolean => imageExtensions.has(extensionOf(file.name));
 const isVideo = (file: SceneBackgroundFile): boolean => videoExtensions.has(extensionOf(file.name));
 
+export function sceneBackgroundResourceKind(filename: string): "image" | "video" {
+  const extension = extensionOf(filename);
+  if (imageExtensions.has(extension)) return "image";
+  if (videoExtensions.has(extension)) return "video";
+  throw new Error(`场景底座素材“${filename}”不是受支持的图片或视频。`);
+}
+
 export const modeFileAccept = (mode: SceneBackgroundMode): string =>
   mode === "single-image"
     ? ".png,.jpg,.jpeg,.webp"
@@ -135,6 +142,9 @@ export const validateSceneBackgroundName = (name: string): string | null => {
   const trimmed = name.trim();
   if (trimmed.length < 2) return "场景名称至少需要 2 个字符。";
   if (trimmed.length > 80) return "场景名称不能超过 80 个字符。";
+  if (trimmed.includes("/") || trimmed.includes("\\") || trimmed.includes("\0")) {
+    return "场景名称不能包含路径分隔符。";
+  }
   return null;
 };
 

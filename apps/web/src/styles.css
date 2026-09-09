@@ -11517,6 +11517,11 @@ input:focus {
   background: rgba(65, 177, 209, 0.18);
 }
 
+.resource-card-tags .is-generated {
+  color: #9df2ca;
+  background: rgba(57, 186, 132, 0.17);
+}
+
 .resource-card-tags .is-used {
   color: #f0cd82;
   background: rgba(211, 160, 61, 0.14);

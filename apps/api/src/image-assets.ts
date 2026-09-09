@@ -40,6 +40,11 @@ type ImageAssetRow = {
   created_at: string;
 };
 
+export type StoredImageAsset = {
+  asset: ImageAsset;
+  bytes: Uint8Array;
+};
+
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 
 const requireImageStorage = (env: AppEnv) => {
@@ -172,6 +177,35 @@ const getImageAssetRow = async (
     throw new AppError(404, "image_asset_not_found", "The requested image asset was not found in this project.");
   }
   return row;
+};
+
+export const readStoredImageAsset = async (
+  env: AppEnv,
+  projectId: string,
+  assetId: string,
+): Promise<StoredImageAsset> => {
+  const imageStorage = requireImageStorage(env);
+  const row = await getImageAssetRow(env, projectId, assetId);
+  const object = await imageStorage.get(row.object_key);
+  if (!object) {
+    throw new AppError(
+      500,
+      "image_asset_object_missing",
+      `Image asset ${assetId} exists in D1 but its object is missing from storage.`,
+    );
+  }
+  const buffer = await object.arrayBuffer();
+  if (buffer.byteLength !== row.byte_size) {
+    throw new AppError(
+      500,
+      "image_asset_object_size_mismatch",
+      `Image asset ${assetId} metadata declares ${row.byte_size} bytes but object storage returned ${buffer.byteLength} bytes.`,
+    );
+  }
+  return {
+    asset: presentImageAsset(row),
+    bytes: new Uint8Array(buffer),
+  };
 };
 
 export const uploadImageAsset = async (

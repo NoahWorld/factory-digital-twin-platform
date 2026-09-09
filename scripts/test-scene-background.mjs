@@ -23,17 +23,35 @@ try {
     "--outDir", temporary,
     join(root, "apps/web/src/pages/scene-background.ts"),
   ], { cwd: root, stdio: "inherit" });
+  execFileSync(process.execPath, [
+    join(root, "apps/api/node_modules/typescript/bin/tsc"),
+    "--target", "ES2022",
+    "--module", "commonjs",
+    "--moduleResolution", "node",
+    "--strict",
+    "--skipLibCheck",
+    "--outDir", temporary,
+    join(root, "apps/api/src/scene-background-glb.ts"),
+  ], { cwd: root, stdio: "inherit" });
 
   const {
     SCENE_BACKGROUND_LIMITS,
     modeFileAccept,
+    sceneBackgroundResourceKind,
     validateKnownScale,
     validateSceneBackgroundFiles,
     validateSceneBackgroundName,
   } = require(join(temporary, "scene-background.js"));
+  const {
+    buildTexturedBackgroundPlaneGlb,
+    readImageDimensions,
+  } = require(join(temporary, "scene-background-glb.js"));
 
   assert.equal(modeFileAccept("single-image"), ".png,.jpg,.jpeg,.webp");
   assert.equal(modeFileAccept("site-capture"), ".png,.jpg,.jpeg,.webp,.mp4,.webm");
+  assert.equal(sceneBackgroundResourceKind("factory.JPEG"), "image");
+  assert.equal(sceneBackgroundResourceKind("walkthrough.webm"), "video");
+  assert.throws(() => sceneBackgroundResourceKind("factory.glb"), /不是受支持的图片或视频/);
   assert.match(validateSceneBackgroundFiles("single-image", []).errors.join(" "), /请先添加现场素材/);
   assert.deepEqual(
     validateSceneBackgroundFiles("single-image", [file("factory.WEBP")]).errors,
@@ -98,12 +116,44 @@ try {
   assert.match(validateSceneBackgroundName("A"), /至少需要 2 个字符/);
   assert.match(validateSceneBackgroundName(" "), /至少需要 2 个字符/);
   assert.match(validateSceneBackgroundName("场".repeat(81)), /不能超过 80 个字符/);
+  assert.match(validateSceneBackgroundName("一号/厂房"), /不能包含路径分隔符/);
   assert.equal(validateKnownScale("4.2"), null);
   assert.match(validateKnownScale("0"), /必须是大于 0/);
   assert.match(validateKnownScale("100001"), /不超过 100000 米/);
   assert.match(validateKnownScale("not-a-number"), /必须是大于 0/);
 
-  console.log("PASS: scene-background input modes, resource limits and configuration validation.");
+  const png = new Uint8Array(24);
+  png.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  const pngView = new DataView(png.buffer);
+  pngView.setUint32(16, 1920, false);
+  pngView.setUint32(20, 1080, false);
+  assert.deepEqual(readImageDimensions(png, "png"), { width: 1920, height: 1080 });
+
+  const generated = buildTexturedBackgroundPlaneGlb({
+    imageBytes: png,
+    imageFormat: "png",
+    planeWidthMeters: 12,
+  });
+  assert.equal(generated.imageWidth, 1920);
+  assert.equal(generated.imageHeight, 1080);
+  assert.equal(generated.planeWidthMeters, 12);
+  assert.equal(generated.planeHeightMeters, 6.75);
+  const glbView = new DataView(generated.bytes.buffer);
+  assert.equal(glbView.getUint32(0, true), 0x46546c67, "generated output must have a GLB header");
+  assert.equal(glbView.getUint32(4, true), 2, "generated output must be GLB 2.0");
+  assert.equal(glbView.getUint32(8, true), generated.bytes.byteLength, "declared and actual GLB lengths must match");
+  const jsonLength = glbView.getUint32(12, true);
+  const document = JSON.parse(new TextDecoder().decode(generated.bytes.subarray(20, 20 + jsonLength)).trim());
+  assert.deepEqual(document.extensionsRequired, ["KHR_materials_unlit"]);
+  assert.equal(document.images[0].mimeType, "image/png");
+  assert.equal(document.images[0].uri, undefined, "source image must be embedded rather than externally referenced");
+  assert.equal(document.nodes[0].name, "Background_Surface");
+  assert.equal(document.meshes.length, 1);
+  assert.equal(document.accessors[0].count, 4);
+  assert.deepEqual(document.accessors[0].max, [6, 3.375, 0]);
+  assert.equal(document.bufferViews[3].byteLength, png.byteLength);
+
+  console.log("PASS: scene-background preflight and embedded-texture GLB generation.");
 } finally {
   rmSync(temporary, { recursive: true, force: true });
 }

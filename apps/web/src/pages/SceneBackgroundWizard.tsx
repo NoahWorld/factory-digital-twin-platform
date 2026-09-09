@@ -18,6 +18,14 @@ import {
 
 type SceneBackgroundWizardProps = {
   onClose: () => void;
+  onCreate: (input: {
+    files: readonly File[];
+    knownScaleMeters: number | null;
+    mode: SceneBackgroundMode;
+    movement: SceneBackgroundMovement;
+    name: string;
+    quality: SceneBackgroundQuality;
+  }) => Promise<void>;
   projectName: string;
 };
 
@@ -34,8 +42,8 @@ const modeOptions: Array<{
     id: "single-image",
     code: "01",
     title: "极速背景",
-    description: "上传一张现场图片，生成适合固定视角或小范围移动的 2.5D 背景。",
-    output: "预计输出 · 分层深度背景",
+    description: "上传一张现场图片，生成适合固定视角展示的高清纹理平面背景。",
+    output: "当前可用 · 高清纹理背景 GLB",
   },
   {
     id: "site-capture",
@@ -51,9 +59,9 @@ const qualityOptions: Array<{
   id: SceneBackgroundQuality;
   label: string;
 }> = [
-  { id: "lightweight", label: "轻量优先", description: "移动端或复杂大屏优先" },
-  { id: "balanced", label: "均衡", description: "画质与加载速度兼顾" },
-  { id: "detail", label: "细节优先", description: "桌面端近距离查看" },
+  { id: "lightweight", label: "轻量优先", description: "记录移动端优化目标" },
+  { id: "balanced", label: "均衡", description: "记录默认优化目标" },
+  { id: "detail", label: "细节优先", description: "记录桌面端优化目标" },
 ];
 
 const movementOptions: Array<{
@@ -80,7 +88,7 @@ const isPreviewImage = (file: File): boolean =>
 const isPreviewVideo = (file: File): boolean =>
   ["mp4", "webm"].includes(fileExtension(file.name));
 
-export function SceneBackgroundWizard({ onClose, projectName }: SceneBackgroundWizardProps) {
+export function SceneBackgroundWizard({ onClose, onCreate, projectName }: SceneBackgroundWizardProps) {
   const [step, setStep] = useState<WizardStep>(1);
   const [mode, setMode] = useState<SceneBackgroundMode>("single-image");
   const [files, setFiles] = useState<File[]>([]);
@@ -90,6 +98,8 @@ export function SceneBackgroundWizard({ onClose, projectName }: SceneBackgroundW
   const [movement, setMovement] = useState<SceneBackgroundMovement>("fixed");
   const [knownScale, setKnownScale] = useState("");
   const [checked, setChecked] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [importError, setImportError] = useState<string | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
   const validation = useMemo(
@@ -104,11 +114,11 @@ export function SceneBackgroundWizard({ onClose, projectName }: SceneBackgroundW
 
   useEffect(() => {
     const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
+      if (event.key === "Escape" && !importing) onClose();
     };
     window.addEventListener("keydown", closeOnEscape);
     return () => window.removeEventListener("keydown", closeOnEscape);
-  }, [onClose]);
+  }, [importing, onClose]);
 
   useEffect(() => {
     if (!firstFile || (!isPreviewImage(firstFile) && !isPreviewVideo(firstFile))) {
@@ -123,6 +133,7 @@ export function SceneBackgroundWizard({ onClose, projectName }: SceneBackgroundW
   const replaceFiles = (nextFiles: File[]) => {
     setFiles(nextFiles);
     setChecked(false);
+    setImportError(null);
   };
 
   const selectMode = (nextMode: SceneBackgroundMode) => {
@@ -150,7 +161,29 @@ export function SceneBackgroundWizard({ onClose, projectName }: SceneBackgroundW
 
   const completePreflight = () => {
     if (validation.errors.length > 0 || !configurationValid) return;
+    setImportError(null);
     setChecked(true);
+  };
+
+  const createBackground = async () => {
+    if (validation.errors.length > 0 || !configurationValid || files.length === 0) return;
+    setImporting(true);
+    setImportError(null);
+    try {
+      await onCreate({
+        files,
+        knownScaleMeters: knownScale.trim() === "" ? null : Number(knownScale),
+        mode,
+        movement,
+        name: sceneName.trim(),
+        quality,
+      });
+      onClose();
+    } catch (reason) {
+      setImportError(reason instanceof Error ? reason.message : "场景底座创建失败，请查看服务端日志。");
+    } finally {
+      setImporting(false);
+    }
   };
 
   const inputDescription = mode === "single-image"
@@ -172,9 +205,9 @@ export function SceneBackgroundWizard({ onClose, projectName }: SceneBackgroundW
               <span>组件预览</span>
             </div>
             <h2 id="scene-background-wizard-title">创建场景底座</h2>
-            <p>为“{projectName}”准备客户现场素材。当前组件完成本地预检，不会上传文件或伪造生成任务。</p>
+            <p>极速背景会保留原图清晰度并生成可预览、可加入 3D 场景的轻量 GLB；写实漫游暂只接收采集素材。</p>
           </div>
-          <button aria-label="关闭场景底座向导" className="dialog-close" onClick={onClose} type="button">×</button>
+          <button aria-label="关闭场景底座向导" className="dialog-close" disabled={importing} onClick={onClose} type="button">×</button>
         </header>
 
         <nav aria-label="场景底座创建步骤" className="scene-background-steps">
@@ -302,7 +335,7 @@ export function SceneBackgroundWizard({ onClose, projectName }: SceneBackgroundW
               {files.length > 0 && validation.errors.length === 0 ? (
                 <div className="scene-background-validation is-success" role="status">
                   <strong>基础检查通过</strong>
-                  <p>文件扩展名、数量和大小符合当前资源边界；服务端接入后仍须校验文件签名与画面质量。</p>
+                  <p>文件扩展名、数量和大小符合当前资源边界；提交后服务端仍会校验文件签名和图片尺寸。</p>
                 </div>
               ) : null}
             </div>
@@ -312,7 +345,7 @@ export function SceneBackgroundWizard({ onClose, projectName }: SceneBackgroundW
             <div className="scene-background-config-step">
               <div className="scene-background-section-heading">
                 <div><span>STEP 03</span><h3>检查输出配置</h3></div>
-                <p>这些设置会成为生成任务输入；当前阶段仅在浏览器中预检，不会保存。</p>
+                <p>{mode === "single-image" ? "提交后会保存原图，并同步生成高清纹理背景 GLB。" : "提交后会保存采集素材；写实漫游的 GPU 重建服务尚未接入。"}</p>
               </div>
               <div className="scene-background-config-grid">
                 <section className="scene-background-form">
@@ -323,7 +356,7 @@ export function SceneBackgroundWizard({ onClose, projectName }: SceneBackgroundW
                   </label>
 
                   <fieldset>
-                    <legend>输出偏好</legend>
+                    <legend>后续优化偏好</legend>
                     <div className="scene-background-segmented">
                       {qualityOptions.map((option) => (
                         <label className={quality === option.id ? "is-active" : ""} key={option.id}>
@@ -332,13 +365,14 @@ export function SceneBackgroundWizard({ onClose, projectName }: SceneBackgroundW
                         </label>
                       ))}
                     </div>
+                    <small>当前版本始终保留原图清晰度；此选项会随模型记录，供后续纹理压缩与多级细节生成使用。</small>
                   </fieldset>
 
                   <fieldset>
                     <legend>镜头活动范围</legend>
                     <div className="scene-background-movement">
                       {movementOptions.map((option) => {
-                        const unsupported = mode === "single-image" && option.id === "free";
+                        const unsupported = mode === "single-image" && option.id !== "fixed";
                         return (
                           <label className={movement === option.id ? "is-active" : ""} key={option.id}>
                             <input
@@ -357,9 +391,9 @@ export function SceneBackgroundWizard({ onClose, projectName }: SceneBackgroundW
                   </fieldset>
 
                   <label>
-                    <span>现场已知尺寸（米）<em>可选</em></span>
-                    <input inputMode="decimal" min="0" onChange={(event) => { setKnownScale(event.target.value); setChecked(false); }} placeholder="例如：厂房门宽 4.2" step="0.01" type="number" value={knownScale} />
-                    {scaleError ? <small className="field-error">{scaleError}</small> : <small>后续在预览中选择对应两点，建立真实尺度参考。</small>}
+                    <span>背景宽度（米）<em>可选</em></span>
+                    <input inputMode="decimal" min="0" onChange={(event) => { setKnownScale(event.target.value); setChecked(false); }} placeholder="留空则使用 10 米" step="0.01" type="number" value={knownScale} />
+                    {scaleError ? <small className="field-error">{scaleError}</small> : <small>用于确定生成模型的实际宽度；高度会按原图比例计算。</small>}
                   </label>
                 </section>
 
@@ -374,9 +408,9 @@ export function SceneBackgroundWizard({ onClose, projectName }: SceneBackgroundW
                   </dl>
                   <ol>
                     <li className="is-ready"><i>✓</i><span><strong>素材预检</strong>前端组件已支持</span></li>
-                    <li><i>2</i><span><strong>服务端重建</strong>等待 GPU 任务服务</span></li>
-                    <li><i>3</i><span><strong>预览校准</strong>等待生成结果</span></li>
-                    <li><i>4</i><span><strong>发布到场景</strong>等待资源契约</span></li>
+                    <li className="is-ready"><i>✓</i><span><strong>原始素材入库</strong>使用项目资源接口</span></li>
+                    <li className={mode === "single-image" ? "is-ready" : undefined}><i>{mode === "single-image" ? "✓" : "3"}</i><span><strong>服务端生成</strong>{mode === "single-image" ? "纹理平面 GLB 已支持" : "等待 GPU 重建服务"}</span></li>
+                    <li className={mode === "single-image" ? "is-ready" : undefined}><i>{mode === "single-image" ? "✓" : "4"}</i><span><strong>发布到场景</strong>{mode === "single-image" ? "作为 3D 模型资源入库" : "等待生成结果"}</span></li>
                   </ol>
                 </aside>
               </div>
@@ -392,9 +426,15 @@ export function SceneBackgroundWizard({ onClose, projectName }: SceneBackgroundW
                 <div className="scene-background-preflight-complete" role="status">
                   <span aria-hidden="true">✓</span>
                   <div>
-                    <strong>组件预检已完成</strong>
-                    <p>配置和文件选择已通过浏览器端检查。生成服务尚未接入，因此文件没有上传、任务没有创建。</p>
+                    <strong>素材预检已完成</strong>
+                    <p>{mode === "single-image" ? "点击下方“生成背景模型”会保存原图，并创建一个内嵌原图纹理的轻量 GLB。" : "点击下方按钮会保存采集素材；当前不会伪造写实漫游结果。"}</p>
                   </div>
+                </div>
+              ) : null}
+              {importError ? (
+                <div className="scene-background-validation is-error" role="alert">
+                  <strong>场景底座创建失败</strong>
+                  <p>{importError}</p>
                 </div>
               ) : null}
             </div>
@@ -407,8 +447,8 @@ export function SceneBackgroundWizard({ onClose, projectName }: SceneBackgroundW
             <strong>{projectName}</strong>
           </div>
           <div>
-            {step === 1 ? <button className="secondary-button" onClick={onClose} type="button">取消</button> : null}
-            {step > 1 ? <button className="secondary-button" onClick={() => { setStep((step - 1) as WizardStep); setChecked(false); }} type="button">上一步</button> : null}
+            {step === 1 ? <button className="secondary-button" disabled={importing} onClick={onClose} type="button">取消</button> : null}
+            {step > 1 ? <button className="secondary-button" disabled={importing} onClick={() => { setStep((step - 1) as WizardStep); setChecked(false); setImportError(null); }} type="button">上一步</button> : null}
             {step === 1 ? <button className="primary-button" onClick={() => setStep(2)} type="button">添加素材</button> : null}
             {step === 2 ? (
               <button className="primary-button" disabled={validation.errors.length > 0} onClick={() => setStep(3)} type="button">检查配置</button>
@@ -416,7 +456,11 @@ export function SceneBackgroundWizard({ onClose, projectName }: SceneBackgroundW
             {step === 3 && !checked ? (
               <button className="primary-button" disabled={validation.errors.length > 0 || !configurationValid} onClick={completePreflight} type="button">完成素材预检</button>
             ) : null}
-            {step === 3 && checked ? <button className="primary-button" onClick={onClose} type="button">完成</button> : null}
+            {step === 3 && checked ? (
+              <button className="primary-button" disabled={importing} onClick={() => void createBackground()} type="button">
+                {importing ? (mode === "single-image" ? "正在生成…" : "正在导入…") : mode === "single-image" ? "生成背景模型" : `导入 ${files.length} 个素材到资源库`}
+              </button>
+            ) : null}
           </div>
         </footer>
       </section>

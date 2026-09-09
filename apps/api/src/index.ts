@@ -58,6 +58,10 @@ import {
   mediaAssetContentResponse,
   uploadMediaAsset,
 } from "./media-assets";
+import {
+  generateSceneBackground,
+  validateSceneBackgroundGenerationInput,
+} from "./scene-backgrounds";
 import { projectCoverResponse } from "./project-covers";
 import { collectAssetRuntimeState, probeRestDataSource } from "./runtime-state";
 
@@ -469,6 +473,36 @@ const handleApiRequest = async (
       );
     }
     return projectCoverResponse(request, canvas);
+  }
+
+  const sceneBackgroundsMatch = pathname.match(/^\/api\/v1\/projects\/([^/]+)\/scene-backgrounds$/);
+
+  if (method === "POST" && sceneBackgroundsMatch) {
+    const startedAt = Date.now();
+    const user = await getAuthenticatedUser(env, request);
+    const projectId = decodePathSegment(sceneBackgroundsMatch[1]);
+    const project = await requireProjectAccess(env, user, projectId);
+    if (!canEditProject(user, project)) {
+      throw new AppError(403, "permission_denied", "You do not have permission to generate backgrounds for this project.");
+    }
+    const input = validateSceneBackgroundGenerationInput(await readJsonObject(request));
+    const generated = await generateSceneBackground(env, projectId, user.id, input);
+    console.log(JSON.stringify({
+      event: "scene_background_generated",
+      requestId,
+      projectId,
+      userId: user.id,
+      sourceImageAssetId: input.sourceImageAssetId,
+      modelAssetId: generated.modelAsset.id,
+      algorithm: generated.modelAsset.generation?.algorithm,
+      imageWidth: generated.modelAsset.generation?.imageWidth,
+      imageHeight: generated.modelAsset.generation?.imageHeight,
+      planeWidthMeters: generated.modelAsset.generation?.planeWidthMeters,
+      planeHeightMeters: generated.modelAsset.generation?.planeHeightMeters,
+      byteSize: generated.modelAsset.byteSize,
+      durationMs: Date.now() - startedAt,
+    }));
+    return json({ ...generated, requestId }, 201);
   }
 
   const modelAssetContentMatch = pathname.match(

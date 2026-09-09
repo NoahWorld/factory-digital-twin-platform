@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ChangeEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { findBuiltinModel } from "../../../../shared/builtin-models";
 import { ApiRequestError, errorMessage, request } from "../api";
 import {
@@ -31,7 +31,18 @@ import {
 } from "../canvas/media-assets";
 import { Model3DNode } from "../canvas/Model3DNode";
 import { createCanvasNode, type CanvasNode } from "../canvas/types";
+import {
+  sceneBackgroundsPath,
+  type SceneBackgroundGenerationRequest,
+  type SceneBackgroundGenerationResponse,
+} from "../canvas/scene-backgrounds";
 import { SceneBackgroundWizard } from "./SceneBackgroundWizard";
+import {
+  sceneBackgroundResourceKind,
+  type SceneBackgroundMode,
+  type SceneBackgroundMovement,
+  type SceneBackgroundQuality,
+} from "./scene-background";
 
 export type ResourceProject = {
   id: string;
@@ -80,7 +91,12 @@ const itemName = (item: ResourceItem): string =>
     : item.asset.originalFilename;
 
 const itemDescription = (item: ResourceItem): string | null =>
-  item.kind === "model" ? findBuiltinModel(item.asset.id)?.description ?? null : null;
+  item.kind === "model"
+    ? findBuiltinModel(item.asset.id)?.description
+      ?? (item.asset.generation
+        ? `高清纹理背景 · ${item.asset.generation.imageWidth}×${item.asset.generation.imageHeight} px · ${item.asset.generation.planeWidthMeters.toFixed(2)}×${item.asset.generation.planeHeightMeters.toFixed(2)} 米`
+        : null)
+    : null;
 
 const contentUrl = (projectId: string, item: ResourceItem): string => {
   if (item.kind === "model") return modelAssetContentUrl(projectId, item.asset.id);
@@ -97,11 +113,14 @@ const deletePath = (projectId: string, item: ResourceItem): string => {
 const previewModelNode = (item: Extract<ResourceItem, { kind: "model" }>): CanvasNode => {
   const node = createCanvasNode("model-3d", 0, 0, 1);
   const builtin = findBuiltinModel(item.asset.id);
+  const generatedBackgroundDefaults = item.asset.source === "scene-background"
+    ? { autoRotate: false, cameraView: "front" as const, modelScale: 2.2, showGrid: false }
+    : {};
   return {
     ...node,
     height: 540,
     width: 960,
-    props: builtin ? { ...node.props, ...builtin.defaults } : node.props,
+    props: { ...node.props, ...(builtin?.defaults ?? {}), ...generatedBackgroundDefaults },
     resourceRefs: [item.asset.id],
   };
 };
@@ -237,8 +256,10 @@ export function ResourcesPage({
   const [deleteItem, setDeleteItem] = useState<ResourceItem | null>(null);
   const [backgroundWizardOpen, setBackgroundWizardOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [generatingImageAssetId, setGeneratingImageAssetId] = useState<string | null>(null);
   const [uploadingKind, setUploadingKind] = useState<ResourceKind | null>(null);
   const [reloadVersion, setReloadVersion] = useState(0);
+  const importedWizardImages = useRef(new WeakMap<File, ImageAsset>());
 
   useEffect(() => {
     if (projects.length === 0) {
@@ -285,6 +306,34 @@ export function ResourcesPage({
   );
   const filteredItems = filter === "all" ? items : items.filter((item) => item.kind === filter);
 
+  const uploadImageFile = async (file: File): Promise<ImageAsset> => {
+    if (!selectedProjectId) throw new Error("没有选中的项目，无法上传资源。");
+    const response = await request<ImageAssetUploadResponse>(
+      `${imageAssetsPath(selectedProjectId)}?filename=${encodeURIComponent(file.name)}`,
+      {
+        method: "POST",
+        headers: { "content-type": file.type || "application/octet-stream" },
+        body: file,
+      },
+    );
+    return response.imageAsset;
+  };
+
+  const uploadAssetFile = async (kind: ResourceKind, file: File): Promise<void> => {
+    if (!selectedProjectId) throw new Error("没有选中的项目，无法上传资源。");
+    const path = `${kind === "model" ? modelAssetsPath(selectedProjectId)
+      : kind === "image" ? imageAssetsPath(selectedProjectId)
+        : mediaAssetsPath(selectedProjectId)}?filename=${encodeURIComponent(file.name)}`;
+    const options: RequestInit = {
+      method: "POST",
+      headers: { "content-type": file.type || "application/octet-stream" },
+      body: file,
+    };
+    if (kind === "model") await request<ModelAssetUploadResponse>(path, options);
+    else if (kind === "image") await uploadImageFile(file);
+    else await request<MediaAssetUploadResponse>(path, options);
+  };
+
   const upload = async (kind: ResourceKind, event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     event.target.value = "";
@@ -293,23 +342,117 @@ export function ResourcesPage({
     setNotice(null);
     setLoadError(null);
     try {
-      const path = `${kind === "model" ? modelAssetsPath(selectedProjectId)
-        : kind === "image" ? imageAssetsPath(selectedProjectId)
-          : mediaAssetsPath(selectedProjectId)}?filename=${encodeURIComponent(file.name)}`;
-      const options: RequestInit = {
-        method: "POST",
-        headers: { "content-type": file.type || "application/octet-stream" },
-        body: file,
-      };
-      if (kind === "model") await request<ModelAssetUploadResponse>(path, options);
-      else if (kind === "image") await request<ImageAssetUploadResponse>(path, options);
-      else await request<MediaAssetUploadResponse>(path, options);
+      await uploadAssetFile(kind, file);
       setNotice(`${kindLabels[kind]}“${file.name}”已上传。`);
       setReloadVersion((value) => value + 1);
     } catch (reason) {
       setLoadError(errorMessage(reason));
     } finally {
       setUploadingKind(null);
+    }
+  };
+
+  const requestSceneBackground = async (
+    sourceImageAssetId: string,
+    input: Omit<SceneBackgroundGenerationRequest, "sourceImageAssetId">,
+  ) => request<SceneBackgroundGenerationResponse>(sceneBackgroundsPath(selectedProjectId), {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ ...input, sourceImageAssetId }),
+  });
+
+  const createSceneBackground = async (input: {
+    files: readonly File[];
+    knownScaleMeters: number | null;
+    mode: SceneBackgroundMode;
+    movement: SceneBackgroundMovement;
+    name: string;
+    quality: SceneBackgroundQuality;
+  }) => {
+    if (!selectedProjectId || !canEdit) {
+      throw new Error("当前项目不可编辑，无法创建场景底座。");
+    }
+    if (input.files.length === 0) throw new Error("没有可用的场景底座素材。");
+
+    if (input.mode === "single-image") {
+      const file = input.files[0];
+      setUploadingKind("image");
+      setNotice(null);
+      setLoadError(null);
+      let sourceImage = importedWizardImages.current.get(file) ?? null;
+      try {
+        if (!sourceImage) {
+          sourceImage = await uploadImageFile(file);
+          importedWizardImages.current.set(file, sourceImage);
+        }
+        const response = await requestSceneBackground(sourceImage.id, {
+          knownScaleMeters: input.knownScaleMeters,
+          movement: input.movement === "free" ? "limited" : input.movement,
+          name: input.name,
+          quality: input.quality,
+        });
+        setFilter("model");
+        setNotice(`原图“${file.name}”已入库，并生成背景模型“${response.modelAsset.originalFilename}”。`);
+        setReloadVersion((value) => value + 1);
+      } catch (reason) {
+        if (sourceImage) {
+          setReloadVersion((value) => value + 1);
+          throw new Error(`原图已入库（资源 ID：${sourceImage.id}），但背景模型生成失败：${errorMessage(reason)}`);
+        }
+        throw new Error(`原图上传失败：${errorMessage(reason)}`);
+      } finally {
+        setUploadingKind(null);
+      }
+      return;
+    }
+
+    const kinds = input.files.map((file) => sceneBackgroundResourceKind(file.name));
+    const imported: string[] = [];
+    setUploadingKind(kinds[0]);
+    setNotice(null);
+    setLoadError(null);
+    try {
+      for (let index = 0; index < input.files.length; index += 1) {
+        await uploadAssetFile(kinds[index], input.files[index]);
+        imported.push(input.files[index].name);
+      }
+    } catch (reason) {
+      if (imported.length > 0) setReloadVersion((value) => value + 1);
+      const context = imported.length > 0
+        ? `已成功导入 ${imported.length}/${input.files.length} 个文件；后续文件未完成。`
+        : "尚未导入任何文件。";
+      throw new Error(`${context} ${errorMessage(reason)}`);
+    } finally {
+      setUploadingKind(null);
+    }
+
+    setFilter(kinds.every((kind) => kind === kinds[0]) ? kinds[0] : "all");
+    setNotice(input.files.length === 1
+      ? `写实漫游原始素材“${input.files[0].name}”已导入；GPU 重建服务尚未接入。`
+      : `${input.files.length} 个写实漫游原始素材已导入；GPU 重建服务尚未接入。`);
+    setReloadVersion((value) => value + 1);
+  };
+
+  const generateFromExistingImage = async (asset: ImageAsset) => {
+    if (!selectedProjectId || !canEdit || generatingImageAssetId) return;
+    const baseName = asset.originalFilename.replace(/\.[^.]+$/u, "").trim();
+    setGeneratingImageAssetId(asset.id);
+    setNotice(null);
+    setLoadError(null);
+    try {
+      const response = await requestSceneBackground(asset.id, {
+        knownScaleMeters: null,
+        movement: "fixed",
+        name: `${baseName || "现场"}背景模型`,
+        quality: "balanced",
+      });
+      setFilter("model");
+      setNotice(`已从“${asset.originalFilename}”生成“${response.modelAsset.originalFilename}”。`);
+      setReloadVersion((value) => value + 1);
+    } catch (reason) {
+      setLoadError(`背景模型生成失败：${errorMessage(reason)}`);
+    } finally {
+      setGeneratingImageAssetId(null);
     }
   };
 
@@ -448,7 +591,11 @@ export function ResourcesPage({
                     <div className="resource-card-body">
                       <div className="resource-card-tags">
                         <span>{kindLabels[item.kind]}</span>
-                        {systemResource ? <span className="is-system">系统内置</span> : <span>项目上传</span>}
+                        {systemResource
+                          ? <span className="is-system">系统内置</span>
+                          : item.kind === "model" && item.asset.source === "scene-background"
+                            ? <span className="is-generated">场景生成</span>
+                            : <span>项目上传</span>}
                         {item.asset.usage.count > 0 ? <span className="is-used">已关联 {item.asset.usage.count}</span> : null}
                       </div>
                       <h2 title={itemName(item)}>{itemName(item)}</h2>
@@ -460,6 +607,16 @@ export function ResourcesPage({
                       </dl>
                       <footer>
                         <button className="secondary-button" onClick={() => setPreviewItem(item)} type="button">预览</button>
+                        {item.kind === "image" && canEdit ? (
+                          <button
+                            className="secondary-button"
+                            disabled={generatingImageAssetId !== null}
+                            onClick={() => void generateFromExistingImage(item.asset)}
+                            type="button"
+                          >
+                            {generatingImageAssetId === item.asset.id ? "生成中…" : "生成背景"}
+                          </button>
+                        ) : null}
                         <button
                           className="resource-delete-button"
                           disabled={systemResource || !canEdit}
@@ -484,6 +641,7 @@ export function ResourcesPage({
       {backgroundWizardOpen && selectedProject ? (
         <SceneBackgroundWizard
           onClose={() => setBackgroundWizardOpen(false)}
+          onCreate={createSceneBackground}
           projectName={selectedProject.name}
         />
       ) : null}

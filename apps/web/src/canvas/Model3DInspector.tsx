@@ -269,6 +269,18 @@ export function Model3DInspector({
     return findBuiltinModel(assetId)?.name ?? asset?.originalFilename ?? assetId;
   };
 
+  const modelViewDefaults = (assetId: string) => {
+    const builtin = findBuiltinModel(assetId);
+    const asset = modelAssets.find((candidate) => candidate.id === assetId);
+    return {
+      autoRotate: asset?.source === "scene-background" ? false : true,
+      cameraView: asset?.source === "scene-background" ? "front" as const : "isometric" as const,
+      modelScale: asset?.source === "scene-background" ? 2.2 : 1,
+      showGrid: asset?.source === "scene-background" ? false : true,
+      ...(builtin?.defaults ?? {}),
+    };
+  };
+
   const saveModelInstances = (nextInstances: ModelAssetInstance[]) => {
     const nextResourceRefs = [...new Set(nextInstances.map((instance) => instance.assetId))];
     const nextPrimaryAssetId = nextInstances[0]?.assetId ?? "";
@@ -286,7 +298,7 @@ export function Model3DInspector({
             showFlow: true,
             explosion: 0,
           },
-          ...(findBuiltinModel(nextPrimaryAssetId)?.defaults ?? {}),
+          ...modelViewDefaults(nextPrimaryAssetId),
           modelInstances: nextInstances,
         }
       : { ...parsed.value, modelInstances: nextInstances };
@@ -542,14 +554,13 @@ export function Model3DInspector({
   const chooseAsset = (assetId: string) => {
     if (assetId === selectedAssetId) return;
     if (parsed.value.modelInstances.length === 0) {
-      const builtin = findBuiltinModel(assetId);
       onSceneNodeSelect(null);
       onNodeChange({ ...node, resourceRefs: assetId ? [assetId] : [], props: {
         ...parsed.value,
         // Node names belong to the selected resource; never carry overrides to another model.
         appearanceOverrides: {}, transformOverrides: {},
         presentation: { lighting: "standard", shellMode: "original", showFlow: true, explosion: 0 },
-        ...(builtin?.defaults ?? {}),
+        ...modelViewDefaults(assetId),
         modelInstances: [],
       } });
       return;
