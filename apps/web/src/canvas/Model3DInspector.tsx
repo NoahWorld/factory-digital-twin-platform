@@ -1,3 +1,5 @@
+import { builtinModels, findBuiltinModel } from "../../../../shared/builtin-models";
+import { ModelPresentationPanel } from "./ModelPresentationPanel";
 import {
   useEffect,
   useMemo,
@@ -29,9 +31,13 @@ import {
   type ModelSceneSnapshot,
 } from "./model-scene";
 import {
+  MAX_MODEL_INSTANCES,
   componentLabels,
+  identityModelTransform,
   parseModel3DProps,
+  resolveModelInstances,
   type CanvasNode,
+  type ModelAssetInstance,
   type Model3DProps,
   type ModelNodeAppearance,
   type ModelNodeTransform,
@@ -70,7 +76,7 @@ const newAssetBindingDraft = (modelNode: string): AssetBindingDraft => ({
 });
 
 const nodeLabel = (node: ModelSceneNode): string =>
-  node.name || `未命名 ${node.objectType}`;
+  node.label || node.name || `未命名 ${node.objectType}`;
 
 const filterTree = (
   nodes: ModelSceneNode[],
@@ -78,7 +84,7 @@ const filterTree = (
 ): ModelSceneNode[] =>
   nodes.flatMap((node) => {
     const children = filterTree(node.children, normalizedQuery);
-    const matches = `${node.name} ${node.objectType}`.toLocaleLowerCase().includes(normalizedQuery);
+    const matches = `${node.name} ${node.label} ${node.objectType}`.toLocaleLowerCase().includes(normalizedQuery);
     return matches || children.length > 0 ? [{ ...node, children }] : [];
   });
 
@@ -132,6 +138,7 @@ export function Model3DInspector({
     () => modelAssets.find((asset) => asset.id === selectedAssetId) ?? null,
     [modelAssets, selectedAssetId],
   );
+  const embeddedAnimationCount = selectedModelAsset?.inspection.animationCount ?? 0;
   const activeScene = modelScene?.assetId === selectedAssetId ? modelScene : null;
   const normalizedSceneSearch = sceneSearch.trim().toLocaleLowerCase();
   const visibleSceneTree = useMemo(
@@ -252,13 +259,101 @@ export function Model3DInspector({
     onNodeChange({ ...node, props: { ...parsed.value, ...patch } });
   };
 
+  const modelInstances = resolveModelInstances(
+    node.resourceRefs,
+    parsed.value.modelInstances,
+  );
+
+  const modelAssetLabel = (assetId: string): string => {
+    const asset = modelAssets.find((candidate) => candidate.id === assetId);
+    return findBuiltinModel(assetId)?.name ?? asset?.originalFilename ?? assetId;
+  };
+
+  const saveModelInstances = (nextInstances: ModelAssetInstance[]) => {
+    const nextResourceRefs = [...new Set(nextInstances.map((instance) => instance.assetId))];
+    const nextPrimaryAssetId = nextInstances[0]?.assetId ?? "";
+    const primaryChanged = nextPrimaryAssetId !== selectedAssetId;
+    if (primaryChanged) onSceneNodeSelect(null);
+
+    const nextProps: Model3DProps = primaryChanged
+      ? {
+          ...parsed.value,
+          appearanceOverrides: {},
+          transformOverrides: {},
+          presentation: {
+            lighting: "standard",
+            shellMode: "original",
+            showFlow: true,
+            explosion: 0,
+          },
+          ...(findBuiltinModel(nextPrimaryAssetId)?.defaults ?? {}),
+          modelInstances: nextInstances,
+        }
+      : { ...parsed.value, modelInstances: nextInstances };
+
+    onNodeChange({
+      ...node,
+      props: nextProps,
+      resourceRefs: nextResourceRefs,
+    });
+  };
+
+  const addModelInstance = (assetId: string, preferredLabel?: string) => {
+    if (!assetId) return;
+    if (modelInstances.length >= MAX_MODEL_INSTANCES) {
+      setAssetError(`单个 3D 场景最多支持 ${MAX_MODEL_INSTANCES} 个模型实例。`);
+      return;
+    }
+    const instanceNumber = modelInstances.length + 1;
+    saveModelInstances([
+      ...modelInstances,
+      {
+        id: `model-${crypto.randomUUID()}`,
+        assetId,
+        label: `${preferredLabel ?? modelAssetLabel(assetId)} ${instanceNumber}`,
+        transform: {
+          ...identityModelTransform(),
+          position: [(instanceNumber - 1) * 2.5, 0, 0],
+        },
+        visible: true,
+      },
+    ]);
+    setAssetError(null);
+  };
+
+  const updateModelInstance = (
+    instanceId: string,
+    patch: Partial<ModelAssetInstance>,
+  ) => {
+    saveModelInstances(modelInstances.map((instance) =>
+      instance.id === instanceId ? { ...instance, ...patch } : instance));
+  };
+
+  const updateModelInstanceTransform = (
+    instance: ModelAssetInstance,
+    field: keyof ModelNodeTransform,
+    axis: 0 | 1 | 2,
+    rawValue: string,
+  ) => {
+    if (rawValue.trim() === "") return;
+    const value = Number(rawValue);
+    if (!Number.isFinite(value) || (field === "scale" && value < 0.001)) return;
+    const values = [...instance.transform[field]] as Vector3Tuple;
+    values[axis] = value;
+    updateModelInstance(instance.id, {
+      transform: { ...instance.transform, [field]: values },
+    });
+  };
+
   const updateNumberProp = (
     field:
       | "backgroundOpacity"
       | "environmentLightIntensity"
       | "keyLightIntensity"
       | "cameraFov"
-      | "rotationSpeed",
+      | "modelScale"
+      | "rotationSpeed"
+      | "animationSpeed",
     rawValue: string,
   ) => {
     if (rawValue.trim() === "") return;
@@ -445,8 +540,28 @@ export function Model3DInspector({
   };
 
   const chooseAsset = (assetId: string) => {
-    onSceneNodeSelect(null);
-    onNodeChange({ ...node, resourceRefs: assetId ? [assetId] : [] });
+    if (assetId === selectedAssetId) return;
+    if (parsed.value.modelInstances.length === 0) {
+      const builtin = findBuiltinModel(assetId);
+      onSceneNodeSelect(null);
+      onNodeChange({ ...node, resourceRefs: assetId ? [assetId] : [], props: {
+        ...parsed.value,
+        // Node names belong to the selected resource; never carry overrides to another model.
+        appearanceOverrides: {}, transformOverrides: {},
+        presentation: { lighting: "standard", shellMode: "original", showFlow: true, explosion: 0 },
+        ...(builtin?.defaults ?? {}),
+        modelInstances: [],
+      } });
+      return;
+    }
+
+    if (!assetId) {
+      saveModelInstances(modelInstances.slice(1));
+      return;
+    }
+    saveModelInstances(modelInstances.map((instance, index) => index === 0
+      ? { ...instance, assetId, label: modelAssetLabel(assetId) }
+      : instance));
   };
 
   const toggleSceneNode = (path: string) => {
@@ -494,7 +609,10 @@ export function Model3DInspector({
         result.modelAsset,
         ...current.filter((asset) => asset.id !== result.modelAsset.id),
       ]);
-      chooseAsset(result.modelAsset.id);
+      addModelInstance(
+        result.modelAsset.id,
+        findBuiltinModel(result.modelAsset.id)?.name ?? result.modelAsset.originalFilename,
+      );
     } catch (reason) {
       setAssetError(errorMessage(reason));
     } finally {
@@ -507,11 +625,31 @@ export function Model3DInspector({
       <div className="inspector-heading">
         <span className="eyebrow">3D component</span>
         <h2>{componentLabels[node.type]}</h2>
-        <p>模型文件独立存储，画布节点只保存资源 ID。</p>
+        <p>一个场景可组合多个模型实例，并独立控制位置、旋转、缩放与显隐。</p>
       </div>
 
+      <section className="inspector-section model-builtin-library" aria-label="内置模型样例">
+        <div className="inspector-section-title"><strong>内置样例</strong><span>项目自带 · 无需上传</span></div>
+        {builtinModels.map((sample) => <article className={`model-builtin-card${selectedAssetId === sample.id ? " is-active" : ""}`} key={sample.id}>
+          <img src={sample.thumbnailPath} alt="AQUA HELIX 水冷机组透明检视" loading="lazy" />
+          <div><strong>{sample.name}</strong><p>{sample.description}</p>
+            <button className="secondary-button" type="button" disabled={!editable || uploading || selectedAssetId === sample.id}
+              onClick={() => chooseAsset(sample.id)}>{selectedAssetId === sample.id ? "正在使用" : "使用此样例"}</button>
+          </div>
+        </article>)}
+      </section>
+
+      <section className="inspector-section">
+        <label className="model-presentation-flow"><input type="checkbox" disabled={!editable} checked={parsed.value.showControlPanel}
+          onChange={(event) => updateProps({ showControlPanel: event.target.checked })} />展示控制面板</label>
+        <p className="inspector-help">开启后，预览用户可调整检查效果；下方配置作为初始预设。</p>
+      </section>
+
+      {selectedAssetId ? <ModelPresentationPanel settings={parsed.value} scene={activeScene}
+        animationCount={embeddedAnimationCount} editable={editable} onChange={updateProps} /> : null}
+
       <div className="inspector-section">
-        <label className="inspector-label" htmlFor={`model-asset-${node.id}`}>模型资源</label>
+        <label className="inspector-label" htmlFor={`model-asset-${node.id}`}>主模型资源</label>
         <select
           disabled={!editable || uploading || loadingAssets}
           id={`model-asset-${node.id}`}
@@ -521,7 +659,7 @@ export function Model3DInspector({
           <option value="">{loadingAssets ? "正在读取模型…" : "请选择模型"}</option>
           {modelAssets.map((asset) => (
             <option key={asset.id} value={asset.id}>
-              {asset.originalFilename} · {formatFileSize(asset.byteSize)}
+              {findBuiltinModel(asset.id)?.name ?? asset.originalFilename} · {formatFileSize(asset.byteSize)}
             </option>
           ))}
         </select>
@@ -541,9 +679,93 @@ export function Model3DInspector({
         >
           {uploading ? "正在检查并上传…" : "导入 GLB / GLTF"}
         </button>
-        <p className="inspector-help">最大 25 MB；GLTF 必须内嵌纹理与二进制资源。</p>
+        <p className="inspector-help">导入后会添加到当前场景；单文件最大 25 MB，GLTF 必须内嵌纹理与二进制资源。</p>
         {assetError ? <p className="inspector-inline-error" role="alert">模型资源错误：{assetError}</p> : null}
       </div>
+
+      <section className="inspector-section model-instance-section">
+        <div className="inspector-section-title">
+          <strong>场景模型</strong>
+          <span>{modelInstances.length}/{MAX_MODEL_INSTANCES} 个实例 · {node.resourceRefs.length} 种资源</span>
+        </div>
+        <label className="inspector-label" htmlFor={`model-instance-add-${node.id}`}>添加模型实例</label>
+        <select
+          disabled={!editable || uploading || loadingAssets || modelInstances.length >= MAX_MODEL_INSTANCES}
+          id={`model-instance-add-${node.id}`}
+          onChange={(event) => addModelInstance(event.target.value)}
+          value=""
+        >
+          <option value="">{loadingAssets ? "正在读取模型…" : "+ 从资源库添加模型"}</option>
+          {modelAssets.map((asset) => (
+            <option key={asset.id} value={asset.id}>
+              {findBuiltinModel(asset.id)?.name ?? asset.originalFilename} · {formatFileSize(asset.byteSize)}
+            </option>
+          ))}
+        </select>
+        <p className="inspector-help">相同资源可重复添加，渲染时只解析一次；第一个实例是主模型，节点树与外观设置作用于它。</p>
+        <div className="model-instance-list">
+          {modelInstances.map((instance, instanceIndex) => (
+            <article className="model-instance-card" key={instance.id}>
+              <header>
+                <strong>{instanceIndex === 0 ? "主模型" : `实例 ${instanceIndex + 1}`}</strong>
+                <span title={modelAssetLabel(instance.assetId)}>{modelAssetLabel(instance.assetId)}</span>
+                <button
+                  aria-label={`删除 ${instance.label}`}
+                  className="model-instance-remove"
+                  disabled={!editable}
+                  onClick={() => saveModelInstances(modelInstances.filter((candidate) => candidate.id !== instance.id))}
+                  title="从场景中移除"
+                  type="button"
+                >
+                  ×
+                </button>
+              </header>
+              <label className="model-instance-name">
+                <span>名称</span>
+                <input
+                  disabled={!editable}
+                  maxLength={80}
+                  onChange={(event) => {
+                    const label = event.target.value;
+                    if (label.length > 0 && label === label.trim()) {
+                      updateModelInstance(instance.id, { label });
+                    }
+                  }}
+                  value={instance.label}
+                />
+              </label>
+              <label className="model-presentation-flow">
+                <input
+                  checked={instance.visible}
+                  disabled={!editable}
+                  onChange={(event) => updateModelInstance(instance.id, { visible: event.target.checked })}
+                  type="checkbox"
+                />
+                在场景中显示
+              </label>
+              {(["position", "rotation", "scale"] as const).map((field) => (
+                <div className="model-instance-transform" key={field}>
+                  <span>{field === "position" ? "位置" : field === "rotation" ? "旋转 °" : "缩放"}</span>
+                  {([0, 1, 2] as const).map((axis) => (
+                    <label key={axis}>
+                      <span>{["X", "Y", "Z"][axis]}</span>
+                      <input
+                        disabled={!editable}
+                        min={field === "scale" ? 0.001 : undefined}
+                        onChange={(event) => updateModelInstanceTransform(instance, field, axis, event.target.value)}
+                        step={field === "rotation" ? 1 : 0.1}
+                        type="number"
+                        value={instance.transform[field][axis]}
+                      />
+                    </label>
+                  ))}
+                </div>
+              ))}
+            </article>
+          ))}
+          {modelInstances.length === 0 ? <p className="model-instance-empty">选择或导入模型后，可在同一场景中继续添加。</p> : null}
+        </div>
+      </section>
 
       {selectedModelAsset ? (
         <div className="model-inspection-card">
@@ -1019,7 +1241,7 @@ export function Model3DInspector({
           </label>
         </div>
         <p className="inspector-help">
-          背景透明度设为 0，可让模型叠加在下方 2D 背景上。HDR 环境贴图将在资源管理模块中以资源 ID 接入。
+          背景透明度设为 0，可叠加在 2D 背景上。摄影棚模式使用内置环境反射，无需外部贴图。
         </p>
       </section>
 
@@ -1037,7 +1259,8 @@ export function Model3DInspector({
                 updateProps({ cameraView: event.target.value as Model3DProps["cameraView"] })}
               value={parsed.value.cameraView}
             >
-              <option value="isometric">等距视角</option>
+              <option value="isometric">右前视角</option>
+              <option value="isometric-left">左前视角</option>
               <option value="front">正面视角</option>
               <option value="top">顶部视角</option>
             </select>
@@ -1055,6 +1278,18 @@ export function Model3DInspector({
             />
           </label>
           <label>
+            <span>模型显示比例</span>
+            <input
+              disabled={!editable}
+              max="4"
+              min="0.25"
+              onChange={(event) => updateNumberProp("modelScale", event.target.value)}
+              step="0.05"
+              type="number"
+              value={parsed.value.modelScale}
+            />
+          </label>
+          <label>
             <span>旋转速度</span>
             <input
               disabled={!editable}
@@ -1067,6 +1302,9 @@ export function Model3DInspector({
             />
           </label>
         </div>
+        <p className="inspector-help">
+          模型显示比例会随画布保存并在预览中还原；视口中的滚轮缩放只用于临时查看。
+        </p>
       </section>
 
       <div className="inspector-section inspector-switches">
@@ -1089,6 +1327,8 @@ export function Model3DInspector({
           <span>显示地面网格</span>
         </label>
       </div>
+
+
     </aside>
   );
 }

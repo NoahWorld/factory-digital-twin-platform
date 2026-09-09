@@ -1,4 +1,6 @@
+import { findBuiltinModel } from "../../../../shared/builtin-models";
 import { apiUrl } from "../api";
+import type { ResourceUsage } from "./resource-usage";
 
 export type ModelInspection = {
   format: "glb" | "gltf";
@@ -24,6 +26,8 @@ export type ModelAsset = {
   byteSize: number;
   sha256: string;
   inspection: ModelInspection;
+  source: "system" | "upload";
+  usage: ResourceUsage;
   createdAt: string;
 };
 
@@ -37,11 +41,22 @@ export type ModelAssetUploadResponse = {
   requestId: string;
 };
 
+export type ModelAssetDeletionResponse = {
+  deletedModelAssetId: string;
+  usage: ResourceUsage;
+  warning: string | null;
+  requestId: string;
+};
+
 export const modelAssetsPath = (projectId: string): string =>
   `/api/v1/projects/${encodeURIComponent(projectId)}/model-assets`;
 
 export const modelAssetContentUrl = (projectId: string, assetId: string): string =>
-  apiUrl(`${modelAssetsPath(projectId)}/${encodeURIComponent(assetId)}/content`);
+  findBuiltinModel(assetId)?.contentPath
+    ?? apiUrl(`${modelAssetsPath(projectId)}/${encodeURIComponent(assetId)}/content`);
+
+export const modelAssetPath = (projectId: string, assetId: string): string =>
+  `${modelAssetsPath(projectId)}/${encodeURIComponent(assetId)}`;
 
 export const formatFileSize = (bytes: number): string => {
   if (bytes < 1024) return `${bytes} B`;

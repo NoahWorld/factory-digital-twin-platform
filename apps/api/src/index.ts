@@ -38,15 +38,23 @@ import {
   validateDataSourceCreate,
 } from "./data-sources";
 import {
+  deleteModelAsset,
   listModelAssets,
   modelAssetContentResponse,
   uploadModelAsset,
 } from "./model-assets";
 import {
+  deleteImageAsset,
   imageAssetContentResponse,
   listImageAssets,
   uploadImageAsset,
 } from "./image-assets";
+import {
+  deleteMediaAsset,
+  listMediaAssets,
+  mediaAssetContentResponse,
+  uploadMediaAsset,
+} from "./media-assets";
 import { projectCoverResponse } from "./project-covers";
 import { collectAssetRuntimeState, probeRestDataSource } from "./runtime-state";
 
@@ -128,6 +136,17 @@ const decodePathSegment = (value: string): string => {
   } catch {
     throw new AppError(400, "invalid_path_parameter", "The project ID path segment is not valid URL encoding.");
   }
+};
+
+const referencedDeletionConfirmed = (url: URL): boolean => {
+  const value = url.searchParams.get("confirmReferenced");
+  if (value === null || value === "false") return false;
+  if (value === "true") return true;
+  throw new AppError(
+    400,
+    "invalid_delete_confirmation",
+    "The confirmReferenced query parameter must be either true or false.",
+  );
 };
 
 const presentUser = (user: AuthenticatedUser) => ({
@@ -260,6 +279,7 @@ const updateProjectName = async (
 type ProjectDeletionResult = {
   deletedProjectId: string;
   deletedImageObjectCount: number;
+  deletedMediaObjectCount: number;
   deletedModelObjectCount: number;
   warning: string | null;
 };
@@ -274,6 +294,9 @@ const deleteProject = async (
   const imageObjectRows = await env.DB.prepare(
     "SELECT object_key FROM image_assets WHERE project_id = ? ORDER BY object_key ASC",
   ).bind(projectId).all<{ object_key: string }>();
+  const mediaObjectRows = await env.DB.prepare(
+    "SELECT object_key FROM media_assets WHERE project_id = ? ORDER BY object_key ASC",
+  ).bind(projectId).all<{ object_key: string }>();
 
   const results = await env.DB.batch([
     env.DB.prepare(
@@ -287,6 +310,7 @@ const deleteProject = async (
     env.DB.prepare("DELETE FROM assets WHERE project_id = ?").bind(projectId),
     env.DB.prepare("DELETE FROM data_sources WHERE project_id = ?").bind(projectId),
     env.DB.prepare("DELETE FROM project_versions WHERE project_id = ?").bind(projectId),
+    env.DB.prepare("DELETE FROM media_assets WHERE project_id = ?").bind(projectId),
     env.DB.prepare("DELETE FROM image_assets WHERE project_id = ?").bind(projectId),
     env.DB.prepare("DELETE FROM model_assets WHERE project_id = ?").bind(projectId),
     env.DB.prepare("DELETE FROM project_canvases WHERE project_id = ?").bind(projectId),
@@ -303,10 +327,13 @@ const deleteProject = async (
   }
 
   let deletedImageObjectCount = 0;
+  let deletedMediaObjectCount = 0;
   let deletedModelObjectCount = 0;
   let warning: string | null = null;
   const projectFiles = env.PROJECT_FILES;
-  const objectCount = modelObjectRows.results.length + imageObjectRows.results.length;
+  const objectCount = modelObjectRows.results.length
+    + imageObjectRows.results.length
+    + mediaObjectRows.results.length;
   if (objectCount > 0 && !projectFiles) {
     warning = `The project was deleted, but ${objectCount} project file object(s) could not be removed because PROJECT_FILES storage is not configured.`;
   } else if (projectFiles) {
@@ -319,14 +346,19 @@ const deleteProject = async (
         await projectFiles.delete(row.object_key);
         deletedModelObjectCount += 1;
       }
+      for (const row of mediaObjectRows.results) {
+        await projectFiles.delete(row.object_key);
+        deletedMediaObjectCount += 1;
+      }
     } catch (error) {
-      warning = `The project was deleted, but project file cleanup stopped after ${deletedImageObjectCount + deletedModelObjectCount} of ${objectCount} object(s): ${error instanceof Error ? error.message : String(error)}`;
+      warning = `The project was deleted, but project file cleanup stopped after ${deletedImageObjectCount + deletedModelObjectCount + deletedMediaObjectCount} of ${objectCount} object(s): ${error instanceof Error ? error.message : String(error)}`;
     }
   }
 
   return {
     deletedProjectId: projectId,
     deletedImageObjectCount,
+    deletedMediaObjectCount,
     deletedModelObjectCount,
     warning,
   };
@@ -488,6 +520,37 @@ const handleApiRequest = async (
     return json({ modelAsset, requestId }, 201);
   }
 
+  const modelAssetMatch = pathname.match(/^\/api\/v1\/projects\/([^/]+)\/model-assets\/([^/]+)$/);
+
+  if (method === "DELETE" && modelAssetMatch) {
+    const startedAt = Date.now();
+    const user = await getAuthenticatedUser(env, request);
+    const projectId = decodePathSegment(modelAssetMatch[1]);
+    const project = await requireProjectAccess(env, user, projectId);
+    if (!canEditProject(user, project)) {
+      throw new AppError(403, "permission_denied", "You do not have permission to delete models from this project.");
+    }
+    const deletion = await deleteModelAsset(
+      env,
+      projectId,
+      decodePathSegment(modelAssetMatch[2]),
+      referencedDeletionConfirmed(url),
+    );
+    const logContext = {
+      event: deletion.warning ? "model_asset_deleted_with_cleanup_warning" : "model_asset_deleted",
+      requestId,
+      projectId,
+      userId: user.id,
+      modelAssetId: deletion.deletedModelAssetId,
+      referenceCount: deletion.usage.count,
+      warning: deletion.warning,
+      durationMs: Date.now() - startedAt,
+    };
+    if (deletion.warning) console.error(JSON.stringify(logContext));
+    else console.log(JSON.stringify(logContext));
+    return json({ ...deletion, requestId });
+  }
+
   const imageAssetContentMatch = pathname.match(
     /^\/api\/v1\/projects\/([^/]+)\/image-assets\/([^/]+)\/content$/,
   );
@@ -538,6 +601,118 @@ const handleApiRequest = async (
       durationMs: Date.now() - startedAt,
     }));
     return json({ imageAsset, requestId }, 201);
+  }
+
+  const imageAssetMatch = pathname.match(/^\/api\/v1\/projects\/([^/]+)\/image-assets\/([^/]+)$/);
+
+  if (method === "DELETE" && imageAssetMatch) {
+    const startedAt = Date.now();
+    const user = await getAuthenticatedUser(env, request);
+    const projectId = decodePathSegment(imageAssetMatch[1]);
+    const project = await requireProjectAccess(env, user, projectId);
+    if (!canEditProject(user, project)) {
+      throw new AppError(403, "permission_denied", "You do not have permission to delete images from this project.");
+    }
+    const deletion = await deleteImageAsset(
+      env,
+      projectId,
+      decodePathSegment(imageAssetMatch[2]),
+      referencedDeletionConfirmed(url),
+    );
+    const logContext = {
+      event: deletion.warning ? "image_asset_deleted_with_cleanup_warning" : "image_asset_deleted",
+      requestId,
+      projectId,
+      userId: user.id,
+      imageAssetId: deletion.deletedImageAssetId,
+      referenceCount: deletion.usage.count,
+      warning: deletion.warning,
+      durationMs: Date.now() - startedAt,
+    };
+    if (deletion.warning) console.error(JSON.stringify(logContext));
+    else console.log(JSON.stringify(logContext));
+    return json({ ...deletion, requestId });
+  }
+
+  const mediaAssetContentMatch = pathname.match(
+    /^\/api\/v1\/projects\/([^/]+)\/media-assets\/([^/]+)\/content$/,
+  );
+
+  if (method === "GET" && mediaAssetContentMatch) {
+    const user = await getAuthenticatedUser(env, request);
+    const projectId = decodePathSegment(mediaAssetContentMatch[1]);
+    await requireProjectAccess(env, user, projectId);
+    return mediaAssetContentResponse(
+      request,
+      env,
+      projectId,
+      decodePathSegment(mediaAssetContentMatch[2]),
+    );
+  }
+
+  const mediaAssetsMatch = pathname.match(/^\/api\/v1\/projects\/([^/]+)\/media-assets$/);
+
+  if ((method === "GET" || method === "POST") && mediaAssetsMatch) {
+    const startedAt = Date.now();
+    const user = await getAuthenticatedUser(env, request);
+    const projectId = decodePathSegment(mediaAssetsMatch[1]);
+    const project = await requireProjectAccess(env, user, projectId);
+    if (method === "GET") {
+      return json({ mediaAssets: await listMediaAssets(env, projectId), requestId });
+    }
+    if (!canEditProject(user, project)) {
+      throw new AppError(403, "permission_denied", "You do not have permission to upload media to this project.");
+    }
+    const mediaAsset = await uploadMediaAsset(
+      request,
+      env,
+      projectId,
+      user.id,
+      url.searchParams.get("filename"),
+    );
+    console.log(JSON.stringify({
+      event: "media_asset_uploaded",
+      requestId,
+      projectId,
+      userId: user.id,
+      mediaAssetId: mediaAsset.id,
+      mediaType: mediaAsset.mediaType,
+      format: mediaAsset.format,
+      byteSize: mediaAsset.byteSize,
+      durationMs: Date.now() - startedAt,
+    }));
+    return json({ mediaAsset, requestId }, 201);
+  }
+
+  const mediaAssetMatch = pathname.match(/^\/api\/v1\/projects\/([^/]+)\/media-assets\/([^/]+)$/);
+
+  if (method === "DELETE" && mediaAssetMatch) {
+    const startedAt = Date.now();
+    const user = await getAuthenticatedUser(env, request);
+    const projectId = decodePathSegment(mediaAssetMatch[1]);
+    const project = await requireProjectAccess(env, user, projectId);
+    if (!canEditProject(user, project)) {
+      throw new AppError(403, "permission_denied", "You do not have permission to delete media from this project.");
+    }
+    const deletion = await deleteMediaAsset(
+      env,
+      projectId,
+      decodePathSegment(mediaAssetMatch[2]),
+      referencedDeletionConfirmed(url),
+    );
+    const logContext = {
+      event: deletion.warning ? "media_asset_deleted_with_cleanup_warning" : "media_asset_deleted",
+      requestId,
+      projectId,
+      userId: user.id,
+      mediaAssetId: deletion.deletedMediaAssetId,
+      referenceCount: deletion.usage.count,
+      warning: deletion.warning,
+      durationMs: Date.now() - startedAt,
+    };
+    if (deletion.warning) console.error(JSON.stringify(logContext));
+    else console.log(JSON.stringify(logContext));
+    return json({ ...deletion, requestId });
   }
 
   const assetsMatch = pathname.match(/^\/api\/v1\/projects\/([^/]+)\/assets$/);
@@ -963,6 +1138,8 @@ const handleApiRequest = async (
       requestId,
       projectId,
       userId: user.id,
+      deletedImageObjectCount: deletion.deletedImageObjectCount,
+      deletedMediaObjectCount: deletion.deletedMediaObjectCount,
       deletedModelObjectCount: deletion.deletedModelObjectCount,
       warning: deletion.warning,
       durationMs: Date.now() - startedAt,

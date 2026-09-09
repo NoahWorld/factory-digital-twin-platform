@@ -6,6 +6,8 @@ import type { ModelSceneSnapshot } from "../canvas/model-scene";
 import { canvasRoutePath, projectCanvasPath } from "../canvas/routes";
 import {
   isModel3DNodeType,
+  parseModel3DProps,
+  resolveModelInstances,
   type CanvasNode,
   type CanvasPatchResponse,
   type CanvasResponse,
@@ -154,6 +156,10 @@ export default function Model3DEditorPage({
   }
 
   const editable = canEdit && !saving;
+  const parsedModelProps = parseModel3DProps(node.props);
+  const modelInstanceCount = parsedModelProps.ok
+    ? resolveModelInstances(node.resourceRefs, parsedModelProps.value.modelInstances).length
+    : 0;
   return (
     <main className="model-editor-page">
       <header className="canvas-toolbar model-editor-toolbar">
@@ -200,12 +206,13 @@ export default function Model3DEditorPage({
               <h1>场景预览</h1>
             </div>
             <div className="model-editor-stage-status">
-              <span>{node.resourceRefs.length > 0 ? "模型已绑定" : "等待导入模型"}</span>
+              <span>{modelInstanceCount > 0 ? `${modelInstanceCount} 个模型实例` : "等待导入模型"}</span>
               <span>{selectedSceneNodePath ? "已选择模型节点" : "未选择节点"}</span>
             </div>
           </header>
           <div className="model-editor-viewport">
             <Model3DNode
+              runtimeControlsEnabled={false}
               cameraControlsEnabled
               editable={editable}
               node={node}

@@ -1,4 +1,11 @@
 import { AppError, type AppEnv } from "./auth";
+import {
+  emptyResourceUsage,
+  listProjectResourceUsage,
+  requireResourceDeletionConfirmation,
+  resourceUsageFor,
+  type ResourceUsage,
+} from "./resource-usage";
 
 export type ImageFormat = "png" | "jpeg" | "webp";
 
@@ -10,7 +17,15 @@ export type ImageAsset = {
   contentType: string;
   byteSize: number;
   sha256: string;
+  source: "upload";
+  usage: ResourceUsage;
   createdAt: string;
+};
+
+export type ImageAssetDeletion = {
+  deletedImageAssetId: string;
+  usage: ResourceUsage;
+  warning: string | null;
 };
 
 type ImageAssetRow = {
@@ -124,6 +139,8 @@ const presentImageAsset = (row: ImageAssetRow): ImageAsset => ({
   contentType: row.content_type,
   byteSize: row.byte_size,
   sha256: row.sha256,
+  source: "upload",
+  usage: emptyResourceUsage(),
   createdAt: row.created_at,
 });
 
@@ -131,10 +148,16 @@ const selectColumns =
   "id, project_id, original_filename, format, content_type, byte_size, sha256, object_key, created_at";
 
 export const listImageAssets = async (env: AppEnv, projectId: string): Promise<ImageAsset[]> => {
-  const result = await env.DB.prepare(
-    `SELECT ${selectColumns} FROM image_assets WHERE project_id = ? ORDER BY created_at DESC, id DESC`,
-  ).bind(projectId).all<ImageAssetRow>();
-  return result.results.map(presentImageAsset);
+  const [result, usageByResourceId] = await Promise.all([
+    env.DB.prepare(
+      `SELECT ${selectColumns} FROM image_assets WHERE project_id = ? ORDER BY created_at DESC, id DESC`,
+    ).bind(projectId).all<ImageAssetRow>(),
+    listProjectResourceUsage(env, projectId),
+  ]);
+  return result.results.map((row) => ({
+    ...presentImageAsset(row),
+    usage: resourceUsageFor(usageByResourceId, row.id),
+  }));
 };
 
 const getImageAssetRow = async (
@@ -221,8 +244,45 @@ export const uploadImageAsset = async (
     contentType,
     byteSize: buffer.byteLength,
     sha256,
+    source: "upload",
+    usage: emptyResourceUsage(),
     createdAt: now,
   };
+};
+
+export const deleteImageAsset = async (
+  env: AppEnv,
+  projectId: string,
+  assetId: string,
+  confirmedReferencedDeletion: boolean,
+): Promise<ImageAssetDeletion> => {
+  const row = await getImageAssetRow(env, projectId, assetId);
+  const usage = resourceUsageFor(await listProjectResourceUsage(env, projectId), assetId);
+  requireResourceDeletionConfirmation(row.original_filename, usage, confirmedReferencedDeletion);
+
+  const result = await env.DB.prepare(
+    "DELETE FROM image_assets WHERE project_id = ? AND id = ?",
+  ).bind(projectId, assetId).run();
+  if (result.meta?.changes !== 1) {
+    throw new AppError(
+      409,
+      "image_asset_delete_conflict",
+      "The image resource could not be deleted because it changed or was already deleted.",
+    );
+  }
+
+  let warning: string | null = null;
+  if (!env.PROJECT_FILES) {
+    warning = "The image metadata was deleted, but its object could not be removed because PROJECT_FILES storage is not configured.";
+  } else {
+    try {
+      await env.PROJECT_FILES.delete(row.object_key);
+    } catch (error) {
+      warning = `The image metadata was deleted, but object-storage cleanup failed: ${error instanceof Error ? error.message : String(error)}`;
+    }
+  }
+
+  return { deletedImageAssetId: assetId, usage, warning };
 };
 
 export const imageAssetContentResponse = async (

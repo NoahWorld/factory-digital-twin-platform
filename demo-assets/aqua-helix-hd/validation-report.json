@@ -1,0 +1,49 @@
+{
+  "format": "glTF 2.0",
+  "fileBytes": 10912432,
+  "sha256": "8072d847b20542ff8052c2bfdea4916122b8fd91ad0c92a1ef8b99c7c0b4a99c",
+  "nodes": 2742,
+  "independentMeshNodes": 2728,
+  "uniqueMeshes": 491,
+  "instantiatedTriangles": 785404,
+  "materials": 15,
+  "embeddedImages": 1,
+  "animationClips": 1,
+  "animationChannels": 420,
+  "animatedNodes": 388,
+  "durationSeconds": 12,
+  "flowParticleCount": 352,
+  "travelingWaveRings": 32,
+  "duplicateNames": [],
+  "externalDependencies": [],
+  "maximumLoopError": 5.960464477539062e-07,
+  "checks": [
+    "Unique node names",
+    "Finite animation values",
+    "Normalized quaternions",
+    "Strictly increasing key times",
+    "Initial animation agrees with exported transforms",
+    "Seamless end-to-start motion",
+    "No external buffers or textures"
+  ],
+  "standards": "https://registry.khronos.org/glTF/specs/2.0/glTF-2.0.html",
+  "blenderReimport": {
+    "passed": true,
+    "nodes": 2742,
+    "particleDisplacementAt1_5s": 1.6574087936295108,
+    "rotorQuaternionDotAt1_5s": -4.371138828673793e-08,
+    "loopPositionError": 0.0,
+    "boundsMetersZUp": {
+      "min": [
+        -4.125,
+        -2.125999927520752,
+        0.010000001639127731
+      ],
+      "max": [
+        4.125,
+        2.00600004196167,
+        4.239999771118164
+      ]
+    }
+  }
+}

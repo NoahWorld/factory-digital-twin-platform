@@ -1,3 +1,4 @@
+import { defaultModelPresentation, parseModelPresentation, type ModelPresentation } from "../../../../shared/model-presentation";
 import { isOrnamentNodeType, ornamentDefaults, ornamentDefaultSizes, ornamentMinimumSizes, type OrnamentNodeType } from "../../../../shared/canvas-ornaments";
 export const CANVAS_DRAG_TYPE = "application/x-factory-twin-component";
 
@@ -345,9 +346,41 @@ export type ModelNodeAppearance = {
   visible: boolean;
 };
 
-export type ModelCameraView = "isometric" | "front" | "top";
+export const MAX_MODEL_INSTANCES = 32;
+
+export type ModelAssetInstance = {
+  id: string;
+  assetId: string;
+  label: string;
+  transform: ModelNodeTransform;
+  visible: boolean;
+};
+
+export const identityModelTransform = (): ModelNodeTransform => ({
+  position: [0, 0, 0],
+  rotation: [0, 0, 0],
+  scale: [1, 1, 1],
+});
+
+export const resolveModelInstances = (
+  resourceRefs: string[],
+  configuredInstances: ModelAssetInstance[],
+): ModelAssetInstance[] => configuredInstances.length > 0
+  ? configuredInstances
+  : resourceRefs[0]
+    ? [{
+        id: "primary",
+        assetId: resourceRefs[0],
+        label: "主模型",
+        transform: identityModelTransform(),
+        visible: true,
+      }]
+    : [];
+
+export type ModelCameraView = "isometric" | "isometric-left" | "front" | "top";
 
 export type Model3DProps = {
+  presentation: ModelPresentation;
   backgroundColor: string;
   backgroundOpacity: number;
   environmentLightColor: string;
@@ -356,9 +389,14 @@ export type Model3DProps = {
   keyLightIntensity: number;
   cameraFov: number;
   cameraView: ModelCameraView;
+  modelScale: number;
   autoRotate: boolean;
   rotationSpeed: number;
+  showControlPanel: boolean;
+  playAnimations: boolean;
+  animationSpeed: number;
   showGrid: boolean;
+  modelInstances: ModelAssetInstance[];
   appearanceOverrides: Record<string, ModelNodeAppearance>;
   transformOverrides: Record<string, ModelNodeTransform>;
 };
@@ -633,6 +671,7 @@ const panelFrameDefaults: Record<PanelFrameNodeType, PanelFrameProps> = {
 
 const model3DDefaults: Record<Model3DNodeType, Model3DProps> = {
   "model-3d": {
+    presentation: { ...defaultModelPresentation },
     backgroundColor: "#071525",
     backgroundOpacity: 1,
     environmentLightColor: "#daf4ff",
@@ -641,9 +680,14 @@ const model3DDefaults: Record<Model3DNodeType, Model3DProps> = {
     keyLightIntensity: 2.4,
     cameraFov: 42,
     cameraView: "isometric",
+    modelScale: 1,
     autoRotate: true,
     rotationSpeed: 0.35,
+    showControlPanel: false,
+    playAnimations: true,
+    animationSpeed: 1,
     showGrid: true,
+    modelInstances: [],
     appearanceOverrides: {},
     transformOverrides: {},
   },
@@ -2062,6 +2106,68 @@ const parseVector3Tuple = (
   return { ok: true, value: [value[0], value[1], value[2]] };
 };
 
+const parseModelInstances = (
+  value: unknown,
+): { ok: true; value: ModelAssetInstance[] } | { ok: false; message: string } => {
+  if (value === undefined) return { ok: true, value: [] };
+  if (!Array.isArray(value) || value.length > MAX_MODEL_INSTANCES) {
+    return { ok: false, message: `modelInstances 必须是最多包含 ${MAX_MODEL_INSTANCES} 个实例的数组` };
+  }
+
+  const ids = new Set<string>();
+  const instances: ModelAssetInstance[] = [];
+  for (const [index, rawInstance] of value.entries()) {
+    if (!rawInstance || typeof rawInstance !== "object" || Array.isArray(rawInstance)) {
+      return { ok: false, message: `modelInstances[${index}] 必须是对象` };
+    }
+    const instance = rawInstance as Record<string, unknown>;
+    if (
+      typeof instance.id !== "string"
+      || !/^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,119}$/.test(instance.id)
+    ) {
+      return { ok: false, message: `modelInstances[${index}].id 必须是稳定标识符` };
+    }
+    if (ids.has(instance.id)) {
+      return { ok: false, message: `模型实例 ID ${instance.id} 重复` };
+    }
+    ids.add(instance.id);
+    if (
+      typeof instance.assetId !== "string"
+      || !/^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,119}$/.test(instance.assetId)
+    ) {
+      return { ok: false, message: `modelInstances[${index}].assetId 必须是模型资源 ID` };
+    }
+    if (
+      typeof instance.label !== "string"
+      || instance.label.trim().length === 0
+      || instance.label.length > 80
+    ) {
+      return { ok: false, message: `modelInstances[${index}].label 必须是 1–80 个字符` };
+    }
+    if (typeof instance.visible !== "boolean") {
+      return { ok: false, message: `modelInstances[${index}].visible 必须是布尔值` };
+    }
+    if (!instance.transform || typeof instance.transform !== "object" || Array.isArray(instance.transform)) {
+      return { ok: false, message: `modelInstances[${index}].transform 必须是对象` };
+    }
+    const transform = instance.transform as Record<string, unknown>;
+    const position = parseVector3Tuple(transform.position, `modelInstances[${index}].position`, -1_000_000, 1_000_000);
+    if (!position.ok) return position;
+    const rotation = parseVector3Tuple(transform.rotation, `modelInstances[${index}].rotation`, -3_600, 3_600);
+    if (!rotation.ok) return rotation;
+    const scale = parseVector3Tuple(transform.scale, `modelInstances[${index}].scale`, 0.001, 1_000);
+    if (!scale.ok) return scale;
+    instances.push({
+      id: instance.id,
+      assetId: instance.assetId,
+      label: instance.label.trim(),
+      transform: { position: position.value, rotation: rotation.value, scale: scale.value },
+      visible: instance.visible,
+    });
+  }
+  return { ok: true, value: instances };
+};
+
 const parseTransformOverrides = (
   value: unknown,
 ): { ok: true; value: Record<string, ModelNodeTransform> } | { ok: false; message: string } => {
@@ -2167,6 +2273,8 @@ const parseAppearanceOverrides = (
 };
 
 export const parseModel3DProps = (props: Record<string, unknown>): Model3DPropsResult => {
+  const presentation = parseModelPresentation(props.presentation);
+  if (!presentation.ok) return presentation;
   if (!isHexColor(props.backgroundColor)) {
     return { ok: false, message: "backgroundColor 必须是六位十六进制颜色" };
   }
@@ -2221,8 +2329,17 @@ export const parseModel3DProps = (props: Record<string, unknown>): Model3DPropsR
     return { ok: false, message: "cameraFov 必须是 15–90 之间的数值" };
   }
   const cameraView = props.cameraView === undefined ? "isometric" : props.cameraView;
-  if (cameraView !== "isometric" && cameraView !== "front" && cameraView !== "top") {
-    return { ok: false, message: "cameraView 必须是 isometric、front 或 top" };
+  if (cameraView !== "isometric" && cameraView !== "isometric-left" && cameraView !== "front" && cameraView !== "top") {
+    return { ok: false, message: "cameraView 必须是 isometric、isometric-left、front 或 top" };
+  }
+  const modelScale = props.modelScale === undefined ? 1 : props.modelScale;
+  if (
+    typeof modelScale !== "number"
+    || !Number.isFinite(modelScale)
+    || modelScale < 0.25
+    || modelScale > 4
+  ) {
+    return { ok: false, message: "modelScale 必须是 0.25–4 之间的数值" };
   }
   if (typeof props.autoRotate !== "boolean" || typeof props.showGrid !== "boolean") {
     return { ok: false, message: "autoRotate 与 showGrid 必须是布尔值" };
@@ -2235,6 +2352,25 @@ export const parseModel3DProps = (props: Record<string, unknown>): Model3DPropsR
   ) {
     return { ok: false, message: "rotationSpeed 必须是 0–5 之间的数值" };
   }
+  const showControlPanel = props.showControlPanel === undefined ? false : props.showControlPanel;
+  if (typeof showControlPanel !== "boolean") {
+    return { ok: false, message: "showControlPanel 必须是布尔值" };
+  }
+  const playAnimations = props.playAnimations === undefined ? true : props.playAnimations;
+  if (typeof playAnimations !== "boolean") {
+    return { ok: false, message: "playAnimations 必须是布尔值" };
+  }
+  const animationSpeed = props.animationSpeed === undefined ? 1 : props.animationSpeed;
+  if (
+    typeof animationSpeed !== "number"
+    || !Number.isFinite(animationSpeed)
+    || animationSpeed < 0.1
+    || animationSpeed > 3
+  ) {
+    return { ok: false, message: "animationSpeed 必须是 0.1–3 之间的数值" };
+  }
+  const modelInstances = parseModelInstances(props.modelInstances);
+  if (!modelInstances.ok) return modelInstances;
   const transformOverrides = parseTransformOverrides(props.transformOverrides);
   if (!transformOverrides.ok) return transformOverrides;
   const appearanceOverrides = parseAppearanceOverrides(props.appearanceOverrides);
@@ -2245,15 +2381,21 @@ export const parseModel3DProps = (props: Record<string, unknown>): Model3DPropsR
     value: {
       backgroundColor: props.backgroundColor,
       backgroundOpacity,
+      presentation: presentation.value,
       environmentLightColor,
       environmentLightIntensity,
       keyLightColor,
       keyLightIntensity,
       cameraFov,
       cameraView,
+      modelScale,
       autoRotate: props.autoRotate,
       rotationSpeed: props.rotationSpeed,
+      showControlPanel,
+      playAnimations,
+      animationSpeed,
       showGrid: props.showGrid,
+      modelInstances: modelInstances.value,
       appearanceOverrides: appearanceOverrides.value,
       transformOverrides: transformOverrides.value,
     },

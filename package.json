@@ -11,6 +11,9 @@
     "smoke:runtime": "node scripts/runtime-api-smoke-test.mjs",
     "test:ornaments": "node scripts/test-ornaments.mjs",
     "build": "pnpm --recursive run build",
-    "check": "pnpm --recursive run check"
+    "check": "pnpm --recursive run check",
+    "test:resources": "node scripts/test-resource-library.mjs",
+    "test:models": "node scripts/test-builtin-models.mjs",
+    "smoke:models": "node scripts/smoke-builtin-models.mjs"
   }
 }

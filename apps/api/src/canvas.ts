@@ -1,3 +1,5 @@
+import { findBuiltinModel } from "../../../shared/builtin-models";
+import { parseModelPresentation, type ModelPresentation } from "../../../shared/model-presentation";
 import { AppError, type AppEnv, type DatabaseResult } from "./auth";
 import { isOrnamentNodeType, ornamentMinimumSizes, parseOrnamentProps, type OrnamentNodeType, type OrnamentProps } from "../../../shared/canvas-ornaments";
 
@@ -335,9 +337,18 @@ export type ModelNodeAppearance = {
   visible: boolean;
 };
 
-export type ModelCameraView = "isometric" | "front" | "top";
+export type ModelAssetInstance = {
+  id: string;
+  assetId: string;
+  label: string;
+  transform: ModelNodeTransform;
+  visible: boolean;
+};
+
+export type ModelCameraView = "isometric" | "isometric-left" | "front" | "top";
 
 export type Model3DProps = {
+  presentation: ModelPresentation;
   backgroundColor: string;
   backgroundOpacity: number;
   environmentLightColor: string;
@@ -346,9 +357,14 @@ export type Model3DProps = {
   keyLightIntensity: number;
   cameraFov: number;
   cameraView: ModelCameraView;
+  modelScale: number;
   autoRotate: boolean;
   rotationSpeed: number;
+  showControlPanel: boolean;
+  playAnimations: boolean;
+  animationSpeed: number;
   showGrid: boolean;
+  modelInstances: ModelAssetInstance[];
   appearanceOverrides: Record<string, ModelNodeAppearance>;
   transformOverrides: Record<string, ModelNodeTransform>;
 };
@@ -435,6 +451,7 @@ const MAX_POINTS = 32;
 const MAX_PROPS_BYTES = 16 * 1024;
 const MAX_MODEL_NODE_TRANSFORMS = 100;
 const MAX_MODEL_NODE_APPEARANCES = 100;
+const MAX_MODEL_INSTANCES = 32;
 const MAX_PROGRESS_ITEMS = 12;
 const MAX_STATUS_ITEMS = 24;
 const MAX_STREAM_ITEMS = 20;
@@ -626,8 +643,8 @@ const requireModelCameraView = (
   value: unknown,
   label: string,
 ): ModelCameraView => {
-  if (value !== "isometric" && value !== "front" && value !== "top") {
-    invalid("invalid_canvas_node", `${label} must be isometric, front, or top.`);
+  if (value !== "isometric" && value !== "isometric-left" && value !== "front" && value !== "top") {
+    invalid("invalid_canvas_node", `${label} must be isometric, isometric-left, front, or top.`);
   }
   return value as ModelCameraView;
 };
@@ -647,6 +664,42 @@ const requireVector3Tuple = (
     requireNumber(values[1], `${label}[1]`, minimum, maximum),
     requireNumber(values[2], `${label}[2]`, minimum, maximum),
   ];
+};
+
+const requireModelInstances = (value: unknown): ModelAssetInstance[] => {
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || value.length > MAX_MODEL_INSTANCES) {
+    invalid(
+      "invalid_canvas_node",
+      `props.modelInstances must contain at most ${MAX_MODEL_INSTANCES} model instances.`,
+    );
+  }
+
+  const instanceIds = new Set<string>();
+  return (value as unknown[]).map((rawInstance, index) => {
+    const instance = requireObject(rawInstance, `props.modelInstances[${index}]`);
+    const id = requireIdentifier(instance.id, `props.modelInstances[${index}].id`);
+    if (instanceIds.has(id)) {
+      invalid("invalid_canvas_node", `props.modelInstances contains duplicate instance id ${JSON.stringify(id)}.`);
+    }
+    instanceIds.add(id);
+    const label = requireNonEmptyString(instance.label, `props.modelInstances[${index}].label`, 80);
+    if (label !== label.trim()) {
+      invalid("invalid_canvas_node", `props.modelInstances[${index}].label cannot contain surrounding whitespace.`);
+    }
+    const transform = requireObject(instance.transform, `props.modelInstances[${index}].transform`);
+    return {
+      id,
+      assetId: requireIdentifier(instance.assetId, `props.modelInstances[${index}].assetId`),
+      label,
+      transform: {
+        position: requireVector3Tuple(transform.position, `props.modelInstances[${index}].transform.position`, -1_000_000, 1_000_000),
+        rotation: requireVector3Tuple(transform.rotation, `props.modelInstances[${index}].transform.rotation`, -3_600, 3_600),
+        scale: requireVector3Tuple(transform.scale, `props.modelInstances[${index}].transform.scale`, 0.001, 1_000),
+      },
+      visible: requireBoolean(instance.visible, `props.modelInstances[${index}].visible`),
+    };
+  });
 };
 
 const requireModelNodeTransforms = (
@@ -1259,7 +1312,10 @@ const validateNode = (value: unknown): CanvasNode => {
       }
     }
   } else {
+    const presentation = parseModelPresentation(props.presentation);
+    if (!presentation.ok) throw new AppError(400, "invalid_model_presentation", presentation.message);
     validatedProps = {
+      presentation: presentation.value,
       backgroundColor: requireColor(props.backgroundColor, "props.backgroundColor"),
       backgroundOpacity: props.backgroundOpacity === undefined
         ? 1
@@ -1287,9 +1343,22 @@ const validateNode = (value: unknown): CanvasNode => {
       cameraView: props.cameraView === undefined
         ? "isometric"
         : requireModelCameraView(props.cameraView, "props.cameraView"),
+      modelScale: props.modelScale === undefined
+        ? 1
+        : requireNumber(props.modelScale, "props.modelScale", 0.25, 4),
       autoRotate: requireBoolean(props.autoRotate, "props.autoRotate"),
       rotationSpeed: requireNumber(props.rotationSpeed, "props.rotationSpeed", 0, 5),
+      showControlPanel: props.showControlPanel === undefined
+        ? false
+        : requireBoolean(props.showControlPanel, "props.showControlPanel"),
+      playAnimations: props.playAnimations === undefined
+        ? true
+        : requireBoolean(props.playAnimations, "props.playAnimations"),
+      animationSpeed: props.animationSpeed === undefined
+        ? 1
+        : requireNumber(props.animationSpeed, "props.animationSpeed", 0.1, 3),
       showGrid: requireBoolean(props.showGrid, "props.showGrid"),
+      modelInstances: requireModelInstances(props.modelInstances),
       appearanceOverrides: requireModelNodeAppearances(props.appearanceOverrides),
       transformOverrides: requireModelNodeTransforms(props.transformOverrides),
     };
@@ -1322,8 +1391,26 @@ const validateNode = (value: unknown): CanvasNode => {
   if ((isOrnamentNodeType(type) || isAnimatedDecorationNodeType(type)) && (resourceRefs.length > 0 || dataBindingRefs.length > 0)) {
     invalid("invalid_canvas_node", "Title, local icon, and animated decoration components do not accept external resources or data bindings.");
   }
-  if (type === "model-3d" && resourceRefs.length > 1) {
-    invalid("invalid_canvas_node", "A 3D model component can reference at most one model asset.");
+  if (type === "model-3d") {
+    const modelProps = acceptedProps as Model3DProps;
+    if (modelProps.modelInstances.length === 0 && resourceRefs.length > 1) {
+      invalid("invalid_canvas_node", "Multiple model resources require explicit props.modelInstances configuration.");
+    }
+    if (new Set(resourceRefs).size !== resourceRefs.length) {
+      invalid("invalid_canvas_node", "A 3D scene must list each model resource ID exactly once in resourceRefs.");
+    }
+    if (modelProps.modelInstances.length > 0) {
+      const referencedAssets = new Set(modelProps.modelInstances.map((instance) => instance.assetId));
+      if (
+        referencedAssets.size !== resourceRefs.length
+        || resourceRefs.some((assetId) => !referencedAssets.has(assetId))
+      ) {
+        invalid("invalid_canvas_node", "props.modelInstances and resourceRefs must reference the same model assets.");
+      }
+      if (modelProps.modelInstances[0]?.assetId !== resourceRefs[0]) {
+        invalid("invalid_canvas_node", "The first model instance must reference the primary resourceRefs entry.");
+      }
+    }
   }
   if (type === "image" && resourceRefs.length > 1) {
     invalid("invalid_canvas_node", "An image component can reference at most one image asset.");
@@ -1461,6 +1548,11 @@ export const applyCanvasPatch = async (
   const modelAssetRefs = [...new Set(modelNodes.flatMap((node) => node.resourceRefs))];
   const duplicateNamesByAssetId = new Map<string, Set<string>>();
   for (const assetId of modelAssetRefs) {
+    const builtin = findBuiltinModel(assetId);
+    if (builtin) {
+      duplicateNamesByAssetId.set(assetId, new Set(builtin.inspection.duplicateNodeNames));
+      continue;
+    }
     const row = await env.DB.prepare(
       "SELECT id, inspection_json FROM model_assets WHERE id = ? AND project_id = ?",
     ).bind(assetId, projectId).first<{ id: string; inspection_json: string }>();

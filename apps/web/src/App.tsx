@@ -1,13 +1,15 @@
 import { FormEvent, lazy, Suspense, useEffect, useState } from "react";
 import { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH } from "../../../shared/auth-constraints";
 import { apiUrl, ApiRequestError, errorMessage, request } from "./api";
-import { projectTemplateCanvasPath } from "./canvas/routes";
+import loginFactoryIllustration from "./assets/login-factory.webp";
+import { canvasRoutePath, projectTemplateCanvasPath } from "./canvas/routes";
 import {
   getCanvasTemplate,
   isCanvasTemplateId,
   type CanvasTemplateId,
 } from "./canvas/templates";
 import { CanvasPage } from "./pages/CanvasPage";
+import { ResourcesPage } from "./pages/ResourcesPage";
 import { TemplatesPage } from "./pages/TemplatesPage";
 
 const Model3DEditorPage = lazy(() => import("./pages/Model3DEditorPage"));
@@ -75,6 +77,8 @@ type ProjectResponse = {
 
 type DeleteProjectResponse = {
   deletedProjectId: string;
+  deletedImageObjectCount: number;
+  deletedMediaObjectCount: number;
   deletedModelObjectCount: number;
   warning: string | null;
   requestId: string;
@@ -334,14 +338,21 @@ function AuthPage({ setupRequired, onSuccess }: AuthPageProps) {
     <main className="auth-shell">
       <section className="auth-intro">
         <p className="eyebrow">Factory Digital Twin</p>
-        <h1>工厂数字孪生<br />交付平台</h1>
-        <p>
-          面向交付人员的 2D + 3D 项目配置台。访问项目、资产和客户数据前，必须完成身份验证。
+        <h1><span>工厂数字孪生</span><span>交付平台</span></h1>
+        <p className="auth-description">
+          面向交付人员的 2D + 3D 项目配置台。<br />
+          统一配置场景、资产与数据。
         </p>
-        <div className="security-note">
-          <span>权限边界</span>
-          <p>平台管理员、交付负责人和项目成员拥有不同的访问范围。</p>
-        </div>
+        <figure className="auth-illustration">
+          <img
+            alt="工厂数字孪生场景示意：剖面厂房内的机械臂生产线与数字控制室相连"
+            decoding="async"
+            fetchPriority="high"
+            height={1024}
+            src={loginFactoryIllustration}
+            width={1536}
+          />
+        </figure>
         <a className="auth-product-link" href="#/">
           查看产品介绍 <span aria-hidden="true">→</span>
         </a>
@@ -352,9 +363,13 @@ function AuthPage({ setupRequired, onSuccess }: AuthPageProps) {
         <p className="auth-copy">
           {setupRequired
             ? "仅在还没有任何用户时可执行。初始化令牌不会被保存到浏览器。"
-            : "请使用已获授权的交付账号登录。"}
+            : "请使用授权账号登录。"}
         </p>
         {setupRequired ? <BootstrapForm onSuccess={onSuccess} /> : <LoginForm onSuccess={onSuccess} />}
+        <div className="security-note">
+          <span>权限边界</span>
+          <p>项目、资产与客户数据按账号角色和权限开放。</p>
+        </div>
       </section>
     </main>
   );
@@ -560,6 +575,7 @@ type WorkspaceProps = {
 type WorkspaceRoute =
   | { kind: "projects" }
   | { kind: "templates" }
+  | { kind: "resources" }
   | { kind: "canvas"; projectId: string; mode: "edit" | "preview"; templateId?: CanvasTemplateId }
   | { kind: "model-editor"; projectId: string; nodeId: string }
   | { kind: "invalid"; message: string };
@@ -567,6 +583,9 @@ type WorkspaceRoute =
 const currentWorkspaceRoute = (): WorkspaceRoute => {
   if (window.location.hash === "#/templates") {
     return { kind: "templates" };
+  }
+  if (window.location.hash === "#/resources") {
+    return { kind: "resources" };
   }
   const modelEditorMatch = window.location.hash.match(/^#\/projects\/([^/]+)\/3d-editor\/([^/]+)$/);
   if (modelEditorMatch) {
@@ -613,7 +632,7 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
   }, []);
 
   useEffect(() => {
-    if (route.kind !== "projects") return;
+    if (route.kind !== "projects" && route.kind !== "resources") return;
     let active = true;
     setLoadingProjects(true);
     setProjectError(null);
@@ -733,7 +752,7 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
         <nav aria-label="主导航">
           <a aria-current={route.kind === "projects" ? "page" : undefined} href="#/projects">项目</a>
           <a aria-current={route.kind === "templates" ? "page" : undefined} href="#/templates">模板</a>
-          <span>资源库</span>
+          <a aria-current={route.kind === "resources" ? "page" : undefined} href="#/resources">资源库</a>
         </nav>
         <div className="user-menu">
           <div>
@@ -750,6 +769,13 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
         <TemplatesPage
           canCreateProject={user.capabilities.canCreateProject}
           onCreateFromTemplate={openTemplateProjectDialog}
+        />
+      ) : route.kind === "resources" ? (
+        <ResourcesPage
+          isPlatformAdmin={isPlatformAdmin}
+          loadingProjects={loadingProjects}
+          projectError={projectError}
+          projects={projects}
         />
       ) : (
       <section className="workspace-content" id="projects">
@@ -871,10 +897,10 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
                           </button>
                         ) : null}
                         <a
-                          aria-label={`打开 ${project.name} 的 2D 画布`}
+                          aria-label={`直接预览 ${project.name}`}
                           className="icon-button project-action"
-                          href={`#/projects/${encodeURIComponent(project.id)}/canvas`}
-                          title="打开 2D 画布"
+                          href={canvasRoutePath(project.id, "preview")}
+                          title="直接预览"
                         >
                           <ActionIcon name="view" />
                         </a>

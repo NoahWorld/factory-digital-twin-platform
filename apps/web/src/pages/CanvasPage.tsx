@@ -137,7 +137,7 @@ export function CanvasPage({ initialTemplateId, mode, projectId }: CanvasPagePro
     if (mode !== "preview" || assetListLoading) return null;
     if (assetLoadError) return `资产台账加载失败：${assetLoadError}`;
     if (model3DNodeCount !== 1) {
-      return `本地纵向测试要求画布中恰好有 1 个 3D 组件，当前为 ${model3DNodeCount} 个。`;
+      return `本地纵向测试要求画布中恰好有 1 个 3D 场景组件，当前为 ${model3DNodeCount} 个。`;
     }
     if (mappedRuntimeAssets.length === 0) {
       return "没有绑定模型节点的资产，请先在 3D 编辑器中完成设备与模型节点绑定。";
