@@ -16,6 +16,7 @@
     "test:resources": "node scripts/test-resource-library.mjs",
     "test:scene-background": "node scripts/test-scene-background.mjs",
     "test:models": "node scripts/test-builtin-models.mjs",
-    "smoke:models": "node scripts/smoke-builtin-models.mjs"
+    "smoke:models": "node scripts/smoke-builtin-models.mjs",
+    "test:scene-runtime": "node scripts/test-scene-runtime.mjs"
   }
 }

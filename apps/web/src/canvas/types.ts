@@ -2108,10 +2108,11 @@ const parseVector3Tuple = (
 
 const parseModelInstances = (
   value: unknown,
+  maximumInstances: number,
 ): { ok: true; value: ModelAssetInstance[] } | { ok: false; message: string } => {
   if (value === undefined) return { ok: true, value: [] };
-  if (!Array.isArray(value) || value.length > MAX_MODEL_INSTANCES) {
-    return { ok: false, message: `modelInstances 必须是最多包含 ${MAX_MODEL_INSTANCES} 个实例的数组` };
+  if (!Array.isArray(value) || value.length > maximumInstances) {
+    return { ok: false, message: `modelInstances 必须是最多包含 ${maximumInstances} 个实例的数组` };
   }
 
   const ids = new Set<string>();
@@ -2272,7 +2273,10 @@ const parseAppearanceOverrides = (
   return { ok: true, value: result };
 };
 
-export const parseModel3DProps = (props: Record<string, unknown>): Model3DPropsResult => {
+export const parseModel3DProps = (
+  props: Record<string, unknown>,
+  maximumInstances = MAX_MODEL_INSTANCES,
+): Model3DPropsResult => {
   const presentation = parseModelPresentation(props.presentation);
   if (!presentation.ok) return presentation;
   if (!isHexColor(props.backgroundColor)) {
@@ -2369,7 +2373,7 @@ export const parseModel3DProps = (props: Record<string, unknown>): Model3DPropsR
   ) {
     return { ok: false, message: "animationSpeed 必须是 0.1–3 之间的数值" };
   }
-  const modelInstances = parseModelInstances(props.modelInstances);
+  const modelInstances = parseModelInstances(props.modelInstances, maximumInstances);
   if (!modelInstances.ok) return modelInstances;
   const transformOverrides = parseTransformOverrides(props.transformOverrides);
   if (!transformOverrides.ok) return transformOverrides;

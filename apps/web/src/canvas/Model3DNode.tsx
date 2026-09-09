@@ -24,11 +24,14 @@ export type Model3DNodeProps = {
   runtimeControlsEnabled?: boolean;
   editable: boolean;
   interactive?: boolean;
+  maximumModelInstances?: number;
   node: CanvasNode;
+  onModelInstanceSelect?: (canvasNodeId: string, instanceId: string | null) => void;
   onSceneChange?: (canvasNodeId: string, snapshot: ModelSceneSnapshot | null) => void;
   onSceneNodeSelect: (canvasNodeId: string, sceneNodePath: string | null) => void;
   projectId: string;
   runtimeAppearanceOverrides?: Record<string, ModelNodeAppearance>;
+  selectedModelInstanceId?: string | null;
   selectedSceneNodePath: string | null;
 };
 
@@ -274,14 +277,14 @@ const SingleModel3DNode = memo(function SingleModel3DNode({
 
     void Promise.all([
       import("three"),
-      import("three/examples/jsm/loaders/GLTFLoader.js"),
+      import("../scene/model-loader"),
       import("three/examples/jsm/controls/OrbitControls.js"),
       import("three/examples/jsm/environments/RoomEnvironment.js"),
       import("three/examples/jsm/postprocessing/EffectComposer.js"),
       import("three/examples/jsm/postprocessing/RenderPass.js"),
       import("three/examples/jsm/postprocessing/UnrealBloomPass.js"),
       import("three/examples/jsm/postprocessing/OutputPass.js"),
-    ]).then(([THREE, { GLTFLoader }, { OrbitControls }, { RoomEnvironment }, { EffectComposer }, { RenderPass }, { UnrealBloomPass }, { OutputPass }]) => {
+    ]).then(([THREE, { createModelLoader }, { OrbitControls }, { RoomEnvironment }, { EffectComposer }, { RenderPass }, { UnrealBloomPass }, { OutputPass }]) => {
       if (cancelled) return;
 
       const scene = new THREE.Scene();
@@ -460,11 +463,15 @@ const SingleModel3DNode = memo(function SingleModel3DNode({
         else renderer.render(scene, camera);
       });
 
-      const loader = new GLTFLoader();
+      const decoders = createModelLoader(renderer);
+      const loader = decoders.loader;
+      let modelLoadSettled = false;
       loader.load(
         modelAssetContentUrl(projectId, assetId),
         (gltf) => {
+          modelLoadSettled = true;
           if (cancelled) {
+            decoders.dispose();
             disposeSceneResources(gltf.scene);
             return;
           }
@@ -818,6 +825,8 @@ const SingleModel3DNode = memo(function SingleModel3DNode({
         },
         undefined,
         (reason) => {
+          modelLoadSettled = true;
+          if (cancelled) decoders.dispose();
           if (!cancelled) {
             onSceneChange?.(node.id, null);
             setLoadState({ status: "error", message: `模型加载失败：${errorText(reason)}` });
@@ -846,6 +855,7 @@ const SingleModel3DNode = memo(function SingleModel3DNode({
         renderPass?.dispose();
         composer?.dispose();
         environmentTarget?.dispose();
+        if (modelLoadSettled) decoders.dispose();
         renderer.dispose();
         renderer.forceContextLoss();
         if (controlsRef.current === controls) controlsRef.current = null;
@@ -937,8 +947,8 @@ const SingleModel3DNode = memo(function SingleModel3DNode({
 });
 
 export const Model3DNode = memo(function Model3DNode(props: Model3DNodeProps) {
-  const parsed = parseModel3DProps(props.node.props);
-  if (parsed.ok && parsed.value.modelInstances.length > 0) {
+  const parsed = parseModel3DProps(props.node.props, props.maximumModelInstances);
+  if (parsed.ok && (parsed.value.modelInstances.length > 0 || props.maximumModelInstances !== undefined)) {
     return <BatchModel3DNode {...props} />;
   }
   return <SingleModel3DNode {...props} />;
