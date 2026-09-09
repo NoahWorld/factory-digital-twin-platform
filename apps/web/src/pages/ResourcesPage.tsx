@@ -31,6 +31,7 @@ import {
 } from "../canvas/media-assets";
 import { Model3DNode } from "../canvas/Model3DNode";
 import { createCanvasNode, type CanvasNode } from "../canvas/types";
+import { SceneBackgroundWizard } from "./SceneBackgroundWizard";
 
 export type ResourceProject = {
   id: string;
@@ -234,6 +235,7 @@ export function ResourcesPage({
   const [notice, setNotice] = useState<string | null>(null);
   const [previewItem, setPreviewItem] = useState<ResourceItem | null>(null);
   const [deleteItem, setDeleteItem] = useState<ResourceItem | null>(null);
+  const [backgroundWizardOpen, setBackgroundWizardOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [uploadingKind, setUploadingKind] = useState<ResourceKind | null>(null);
   const [reloadVersion, setReloadVersion] = useState(0);
@@ -359,6 +361,7 @@ export function ResourcesPage({
               setSelectedProjectId(event.target.value);
               setPreviewItem(null);
               setDeleteItem(null);
+              setBackgroundWizardOpen(false);
               setNotice(null);
             }}>
               {projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
@@ -390,6 +393,20 @@ export function ResourcesPage({
               ))}
             </div>
             <div className="resource-upload-actions">
+              <button
+                className="scene-background-launch-button"
+                disabled={!canEdit || uploadingKind !== null}
+                onClick={() => {
+                  setPreviewItem(null);
+                  setDeleteItem(null);
+                  setBackgroundWizardOpen(true);
+                }}
+                type="button"
+              >
+                <span aria-hidden="true">✦</span>
+                AI 场景底座
+                <small>BETA</small>
+              </button>
               {([
                 ["model", "上传模型", ".glb,.gltf"],
                 ["image", "上传图片", ".png,.jpg,.jpeg,.webp"],
@@ -464,6 +481,12 @@ export function ResourcesPage({
 
       {previewItem && selectedProjectId ? <ResourcePreviewDialog item={previewItem} onClose={() => setPreviewItem(null)} projectId={selectedProjectId} /> : null}
       {deleteItem ? <ResourceDeleteDialog item={deleteItem} onClose={() => setDeleteItem(null)} onConfirm={() => void confirmDelete()} submitting={deleting} /> : null}
+      {backgroundWizardOpen && selectedProject ? (
+        <SceneBackgroundWizard
+          onClose={() => setBackgroundWizardOpen(false)}
+          projectName={selectedProject.name}
+        />
+      ) : null}
     </section>
   );
 }

@@ -12,7 +12,9 @@
     "test:ornaments": "node scripts/test-ornaments.mjs",
     "build": "pnpm --recursive run build",
     "check": "pnpm --recursive run check",
+    "test:auth": "node scripts/test-auth-login.mjs",
     "test:resources": "node scripts/test-resource-library.mjs",
+    "test:scene-background": "node scripts/test-scene-background.mjs",
     "test:models": "node scripts/test-builtin-models.mjs",
     "smoke:models": "node scripts/smoke-builtin-models.mjs"
   }

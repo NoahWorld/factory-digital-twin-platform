@@ -40,6 +40,7 @@ type Capability = {
 type CurrentUser = {
   id: string;
   email: string;
+  loginName: string | null;
   displayName: string;
   roles: string[];
   capabilities: Capability;
@@ -154,7 +155,7 @@ type LoginFormProps = {
 };
 
 function LoginForm({ onSuccess }: LoginFormProps) {
-  const [email, setEmail] = useState("");
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -167,7 +168,7 @@ function LoginForm({ onSuccess }: LoginFormProps) {
     try {
       const result = await request<UserResponse>("/api/v1/auth/login", {
         method: "POST",
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ identifier, password }),
       });
       setPassword("");
       onSuccess(result.user);
@@ -181,15 +182,16 @@ function LoginForm({ onSuccess }: LoginFormProps) {
   return (
     <form className="auth-form" onSubmit={submit}>
       <label>
-        <span>邮箱</span>
+        <span>账号或邮箱</span>
         <input
-          autoComplete="email"
+          autoComplete="username"
           disabled={submitting}
-          onChange={(event) => setEmail(event.target.value)}
-          placeholder="name@company.com"
+          maxLength={254}
+          onChange={(event) => setIdentifier(event.target.value)}
+          placeholder="admin 或 name@company.com"
           required
-          type="email"
-          value={email}
+          type="text"
+          value={identifier}
         />
       </label>
       <label>
@@ -362,8 +364,8 @@ function AuthPage({ setupRequired, onSuccess }: AuthPageProps) {
         <h2>{setupRequired ? "初始化平台管理员" : "登录"}</h2>
         <p className="auth-copy">
           {setupRequired
-            ? "仅在还没有任何用户时可执行。初始化令牌不会被保存到浏览器。"
-            : "请使用授权账号登录。"}
+            ? "仅在还没有任何用户时可执行。首个管理员账号固定为 admin，初始化令牌不会被保存到浏览器。"
+            : "管理员可使用 admin 登录，其他用户也可使用已绑定邮箱登录。"}
         </p>
         {setupRequired ? <BootstrapForm onSuccess={onSuccess} /> : <LoginForm onSuccess={onSuccess} />}
         <div className="security-note">

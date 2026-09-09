@@ -7,9 +7,12 @@ import {
   destroyCurrentSession,
   getAuthenticatedUser,
   hasGlobalRole,
+  INITIAL_ADMIN_LOGIN_NAME,
   isBootstrapRequired,
   validateDisplayName,
   validateEmail,
+  validateLoginIdentifier,
+  validateLoginName,
   validatePassword,
   verifyBootstrapToken,
   verifyCredentials,
@@ -152,6 +155,7 @@ const referencedDeletionConfirmed = (url: URL): boolean => {
 const presentUser = (user: AuthenticatedUser) => ({
   id: user.id,
   email: user.email,
+  loginName: user.loginName,
   displayName: user.displayName,
   roles: user.roles,
   capabilities: capabilitiesFor(user),
@@ -400,6 +404,7 @@ const handleApiRequest = async (
     const body = await readJsonObject(request);
     const user = await createUser(env, {
       email: validateEmail(body.email),
+      loginName: validateLoginName(INITIAL_ADMIN_LOGIN_NAME),
       displayName: validateDisplayName(body.displayName),
       password: validatePassword(body.password),
       roles: ["platform_admin"],
@@ -415,9 +420,10 @@ const handleApiRequest = async (
 
   if (method === "POST" && pathname === "/api/v1/auth/login") {
     const body = await readJsonObject(request);
+    const identifier = body.identifier ?? body.email;
     const user = await verifyCredentials(
       env,
-      validateEmail(body.email),
+      validateLoginIdentifier(identifier),
       validatePassword(body.password),
     );
     const session = await createSession(env, user.id);
