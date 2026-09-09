@@ -1,3 +1,4 @@
+import './walk-physics.test.mjs';
 import assert from 'node:assert/strict';
 import { BoxGeometry, Group, Mesh, MeshBasicMaterial, PerspectiveCamera, InstancedMesh, Matrix4 } from 'three';
 import { MeshBVH } from 'three-mesh-bvh';

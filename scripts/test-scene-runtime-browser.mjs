@@ -67,15 +67,66 @@ try {
   await page.evaluate(async () => { await window.runtime.update(window.input); });
   console.log('Runtime status', await page.evaluate(() => window.statusResult));
   assert.equal(await page.evaluate(() => window.statusResult.status), 'ready');
+  assert.ok(!requests.some((url) => url.includes('dimforge_rapier')), 'Rapier should not load in orbit mode');
+  await page.evaluate(async () => {
+    window.walkConfig = {
+      version: 1, units: 'meters', spawn: [0, 0.02, 0], yaw: 0,
+      bounds: { min: [-10, -2, -10], max: [10, 5, 10] },
+      colliders: [
+        { id: 'floor', role: 'floor', center: [0, -0.25, 0], halfExtents: [10, 0.25, 10] },
+        { id: 'wall', role: 'obstacle', center: [0, 1.5, -2], halfExtents: [5, 1.5, 0.1] },
+      ],
+    };
+    window.input = { ...window.input, settings: { ...window.input.settings, playAnimations: false } };
+    await window.runtime.update(window.input);
+  });
+  assert.equal(await page.evaluate(() => window.runtime.enterWalk({ ...window.walkConfig, spawn: [0, 0.02, -2] })), false);
+  assert.match(await page.evaluate(() => window.runtime.navigationStatus().message), /重叠/);
+  assert.equal(await page.evaluate(() => window.runtime.enterWalk(window.walkConfig)), true);
+  await page.keyboard.down('w');
+  await page.waitForTimeout(3200);
+  await page.keyboard.up('w');
+  await page.waitForTimeout(2200);
+  const walking = await page.evaluate(() => window.runtime.diagnostics());
+  assert.equal(walking.navigation.mode, 'walk');
+  assert.ok(walking.physics.grounded);
+  assert.ok(walking.physics.feet[2] > -1.65 && walking.physics.feet[2] < -1.5, JSON.stringify(walking.physics));
+  assert.ok(Math.abs(walking.cameraPosition[1] - walking.physics.feet[1] - 1.6) < 1e-5);
+  // A focused panel or window blur releases held keys; Escape returns camera ownership.
+  await page.keyboard.down('d');
+  await page.evaluate(() => window.dispatchEvent(new Event('blur')));
+  await page.keyboard.up('d');
+  await page.waitForTimeout(2200);
+  assert.ok(Math.abs(await page.evaluate(() => window.runtime.diagnostics().physics.feet[0]) - walking.physics.feet[0]) < 0.1);
+  await page.keyboard.press('Escape');
+  assert.equal(await page.evaluate(() => window.runtime.navigationStatus().mode), 'orbit');
+  await page.waitForTimeout(2200);
+  assert.deepEqual(await page.evaluate(() => window.runtime.diagnostics().cameraPosition), pose);
+  // Selection updates keep walking; display/config changes invalidate the collision alignment.
+  assert.equal(await page.evaluate(() => window.runtime.enterWalk(window.walkConfig)), true);
+  await page.evaluate(async () => { window.input = { ...window.input, selectedInstanceId: 'a' }; await window.runtime.update(window.input); });
+  assert.equal(await page.evaluate(() => window.runtime.navigationStatus().mode), 'walk');
+  await page.evaluate(async () => { window.input = { ...window.input, settings: { ...window.input.settings, backgroundColor: '#223344' } }; await window.runtime.update(window.input); });
+  assert.equal(await page.evaluate(() => window.runtime.navigationStatus().mode), 'orbit');
+  // Cancelling an asynchronous entry never resurrects it after WASM initialization.
+  assert.equal(await page.evaluate(async () => { const pending = window.runtime.enterWalk(window.walkConfig); window.runtime.exitWalk(); return pending; }), false);
+  assert.equal(await page.evaluate(() => window.runtime.navigationStatus().mode), 'orbit');
+  assert.equal(await page.evaluate(() => window.firstCanvas === document.querySelector('canvas')), true);
+  console.log('Browser Rapier checks passed: lazy WASM, invalid spawn, WASD collision, focus release, Escape camera restore, selection, scene invalidation and cancellation.');
   // Exercise local decoder WASM compilation, not only HTTP 200 / SPA fallback responses.
   const decoderChecks = await page.evaluate(async () => {
     const paths = ['/decoders/basis/basis_transcoder.wasm', '/decoders/draco/draco_decoder.wasm'];
     return Promise.all(paths.map(async (path) => { const response = await fetch(path); if (!response.ok) throw new Error(`${path}: ${response.status}`); const bytes = await response.arrayBuffer(); return { mime: response.headers.get('Content-Type'), valid: WebAssembly.validate(bytes) }; }));
   });
   assert.ok(decoderChecks.every((item) => item.mime === 'application/wasm' && item.valid));
-  await page.evaluate(async () => { await window.runtime.update({ ...window.input, instances: [], selectedPath: null }); });
+  await page.evaluate(async () => { await window.runtime.update({ ...window.input, instances: [], selectedPath: null, selectedInstanceId: null }); });
   assert.equal(await page.evaluate(() => window.statusResult.status), 'empty');
+  await page.evaluate(async () => { await window.runtime.update(window.input); });
+  assert.equal(await page.evaluate(() => window.runtime.enterWalk(window.walkConfig)), true);
+  await page.keyboard.down('w');
   await page.evaluate(() => window.runtime.dispose());
+  await page.keyboard.up('w');
+  await page.evaluate(() => window.dispatchEvent(new Event('blur')));
   assert.equal(await page.locator('canvas').count(), 0);
   assert.deepEqual(errors, []);
   console.log('Browser scene runtime tests passed: real WebGL, shared fetch/canvas, BVH click, camera preservation on add/resize/settings, visible failure/recovery, local decoder WASM and disposal.');

@@ -8,6 +8,7 @@
     "check": "tsc -b --pretty false"
   },
   "dependencies": {
+    "@dimforge/rapier3d-compat": "^0.20.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "three": "^0.185.1",

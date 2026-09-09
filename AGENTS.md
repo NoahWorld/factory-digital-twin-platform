@@ -153,4 +153,6 @@
 - 多实例视窗由 `apps/web/src/scene/scene-runtime.ts` 拥有 renderer、相机和循环；React 只提交配置和接收事件。资源图变化通过 InstanceManager 增量协调，不能销毁仍在使用的 renderer 或源资源。替代此前“资源结构变化时整体释放”的规则；完整释放仅用于卸载或运行层销毁。
 - ResourceManager 默认最多 3 个加载任务；同资源共享源对象、每实例持有租约，最后引用释放才销毁几何/纹理。取消必须区分失败，真实失败保留上下文并显示错误，不能返回假成功。
 - Meshopt/KTX2/Draco 解码器本地分发；静态几何用 three-mesh-bvh，骨骼/morph 几何不得使用静态 BVH。拾取保留建筑遮挡。普通配置、实例增删及 resize 不复位相机。
-- 修改运行层后执行 `pnpm test:scene-runtime` 和前端 check/build；浏览器验证脚本、诊断字段与范围见架构文档。LOD、区域卸载、GPU Instancing、物理行走和独立场景实时浮层仍是后续事项，不得宣称已完成。
+- 修改运行层后执行 `pnpm test:scene-runtime` 和前端 check/build；浏览器验证脚本、诊断字段与范围见架构文档。LOD、区域卸载、GPU Instancing 和独立场景实时浮层仍是后续事项，不得宣称已完成。
+- Rapier 0.20.0 通过 `@dimforge/rapier3d-compat` 延迟加载；每个行走会话独立拥有世界和胶囊角色，固定 1/60 秒、单帧最多 6 步。使用显式米制/Y-up/出生点/地面/边界/简化长方体契约，见 [Rapier 前端行走](./docs/frontend-rapier-navigation.md)。禁止直接将展示模型全部变为碰撞网格、默认生成无限地面或把未校验场景标为可行走。
+- 行走期间相机只能由 WalkControls 驱动；切回、取消、配置变化、失焦、离屏与销毁必须管理输入和物理资源。当前静态行走要求关闭动画、自动旋转和拆解，并显示外壳；模型/显示配置变化退出行走。`walkScene` 仅是前端接入契约，碰撞体编辑与后端保存尚未实施，不能在画布 JSON 或 localStorage 私自增加持久化字段。

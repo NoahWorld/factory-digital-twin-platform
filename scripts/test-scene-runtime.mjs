@@ -8,6 +8,6 @@ const { build } = createRequire(web.resolve('vite'))('esbuild');
 const temporary = await mkdtemp(join(tmpdir(), 'factory-scene-runtime-'));
 try {
   const outfile = join(temporary, 'test.mjs');
-  await build({ entryPoints: [fileURLToPath(new URL('../apps/web/tests/scene-runtime.test.mjs', import.meta.url))], outfile, bundle: true, platform: 'node', format: 'esm', logLevel: 'warning' });
+  await build({ entryPoints: [fileURLToPath(new URL('../apps/web/tests/scene-runtime.test.mjs', import.meta.url))], outfile, bundle: true, platform: 'node', format: 'esm', sourcemap: 'inline', logLevel: 'warning' });
   await import(pathToFileURL(outfile).href);
 } finally { await rm(temporary, { recursive: true, force: true }); }

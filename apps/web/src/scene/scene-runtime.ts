@@ -8,9 +8,12 @@ import { ResourceManager } from "./resource-manager";
 import { InstanceManager, disposeClonedMaterials, type InstanceRecord, type MaterialObject } from "./instance-manager";
 import { createSceneModelLoader, disposeModelResources } from "./model-loader";
 import { createPickingService } from "./picking-service";
+import { createWalkPhysics, type WalkPhysics, type WalkSceneConfig } from "./walk-physics";
+import { createWalkControls } from "./walk-controls";
 
 type ColorMaterial = Material & { color?: { set: (value: string) => unknown }; metalness?: number; roughness?: number };
 export type SceneStatus = { status: "empty" | "loading" | "ready" } | { status: "error"; message: string };
+export type NavigationStatus = { mode: "orbit" | "loading" | "walk"; message?: string } | { mode: "error"; message: string };
 export type SceneSnapshot = { scene: ModelSceneSnapshot; animationCount: number };
 export type SceneInput = {
   instances: ModelAssetInstance[];
@@ -23,12 +26,13 @@ export type SceneInput = {
 export type SceneDiagnostics = {
   activeLoads: number; queuedLoads: number; resources: number; instanceCount: number;
   cameraPosition: number[]; cameraTarget: number[];
+  navigation: NavigationStatus; physics: ReturnType<WalkPhysics["diagnostics"]> | null;
   frameMs: number; drawCalls: number; triangles: number; geometries: number; textures: number;
 };
 export type SceneRuntime = ReturnType<typeof createSceneRuntime>;
 
 /** Owns one renderer per scene. React passes configuration, never Three.js objects. */
-export function createSceneRuntime({ container, projectId, canvasNodeId, initial, onStatus, onSnapshot, onDiagnostics }: {
+export function createSceneRuntime({ container, projectId, canvasNodeId, initial, onStatus, onSnapshot, onDiagnostics, onNavigation }: {
   container: HTMLElement;
   projectId: string;
   canvasNodeId: string;
@@ -36,6 +40,7 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
   onStatus: (status: SceneStatus) => void;
   onSnapshot: (snapshot: SceneSnapshot | null) => void;
   onDiagnostics?: (diagnostics: SceneDiagnostics) => void;
+  onNavigation?: (status: NavigationStatus) => void;
 }) {
   const constructionCleanup: Array<() => void> = [];
   try {
@@ -112,9 +117,68 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
     let resizeObserver: ResizeObserver | null = null;
     let intersectionObserver: IntersectionObserver | null = null;
 
+    let navigation: NavigationStatus = { mode: "orbit" };
+    let walk: { physics: WalkPhysics; controls: ReturnType<typeof createWalkControls>; camera: THREE.PerspectiveCamera; target: THREE.Vector3; rotation: number } | null = null;
+    let navigationRevision = 0;
+    const notifyNavigation = (status: NavigationStatus) => { navigation = status; onNavigation?.(status); };
+    const exitWalk = (message?: string) => {
+      navigationRevision++;
+      if (walk) {
+        walk.controls.dispose();
+        walk.physics.dispose();
+        camera.copy(walk.camera);
+        controls.target.copy(walk.target);
+        rotationPivot.rotation.y = walk.rotation;
+        walk = null;
+      }
+      controls.enabled = desired.controlsEnabled;
+      notifyNavigation({ mode: "orbit", ...(message ? { message } : {}) });
+    };
+    const navigationError = (reason: unknown) => {
+      exitWalk();
+      console.error("Rapier scene navigation failed.", { projectId, canvasNodeId, reason });
+      notifyNavigation({ mode: "error", message: `行走失败：${reason instanceof Error ? reason.message : String(reason)}` });
+    };
+    const enterWalk = async (input: WalkSceneConfig) => {
+      if (disposed) throw new Error("场景运行层已释放");
+      exitWalk();
+      const version = navigationRevision;
+      let physics: WalkPhysics | null = null;
+      try {
+        if (contextLost || !appliedInput || appliedInput !== desired || !records.length) throw new Error("场景未就绪，不能进入行走");
+        if (!desired.controlsEnabled) throw new Error("当前视窗未开放相机交互");
+        if (desired.settings.autoRotate || desired.settings.playAnimations || desired.settings.presentation.explosion !== 0 || desired.settings.presentation.shellMode === "hidden") {
+          throw new Error("行走前请关闭整场旋转、模型动画和拆解，并显示外壳；当前碰撞体仅支持静态场景");
+        }
+        const config = structuredClone(input);
+        notifyNavigation({ mode: "loading" });
+        physics = await createWalkPhysics(config);
+        if (disposed || version !== navigationRevision) { physics.dispose(); return false; }
+        // Drain OrbitControls damping before giving exclusive camera ownership to walking.
+        controls.enableDamping = false; controls.update(); controls.enableDamping = true;
+        const saved = camera.clone();
+        const target = controls.target.clone();
+        const rotation = rotationPivot.rotation.y;
+        controls.enabled = false;
+        rotationPivot.rotation.y = 0;
+        camera.up.set(0, 1, 0); camera.zoom = 1; camera.near = 0.05;
+        camera.far = Math.max(camera.far, new THREE.Vector3(...config.bounds.max).distanceTo(new THREE.Vector3(...config.bounds.min)) * 2);
+        camera.updateProjectionMatrix();
+        walk = { physics, camera: saved, target, rotation, controls: createWalkControls(renderer.domElement, camera, physics, config.yaw, () => exitWalk()) };
+        notifyNavigation({ mode: "walk" });
+        return true;
+      } catch (reason) {
+        if (physics && walk?.physics !== physics) physics.dispose();
+        if (disposed || version !== navigationRevision) return false;
+        navigationError(reason);
+        return false; // The error is surfaced through the separate navigation status channel.
+      }
+    };
+
     const handleContextLost = (event: Event) => {
       event.preventDefault();
       contextLost = true;
+      exitWalk("图形上下文丢失，已退出行走");
       renderer.setAnimationLoop(null);
       console.error("Batched 3D scene lost its WebGL context.", {
         canvasNodeId,
@@ -135,6 +199,7 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
     const disposeRuntime = () => {
       if (disposed) return;
       disposed = true;
+      exitWalk();
       renderer.setAnimationLoop(null);
       resizeObserver?.disconnect();
       intersectionObserver?.disconnect();
@@ -389,6 +454,7 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
       const height = Math.max(container.clientHeight, 1);
       renderer.setSize(width, height, false);
       camera.aspect = width / height;
+      if (walk) { walk.camera.aspect = camera.aspect; walk.camera.updateProjectionMatrix(); }
       camera.updateProjectionMatrix();
     };
     resizeObserver = new ResizeObserver(resize);
@@ -404,14 +470,18 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
       });
       if (settings.autoRotate) rotationPivot.rotation.y += deltaSeconds * settings.rotationSpeed;
       selectionHelper?.update();
-      controls.update();
+      if (walk) {
+        try { walk.controls.update(Math.max(0, frameMs / 1000)); }
+        catch (reason) { navigationError(reason); }
+      } else controls.update();
       renderer.render(scene, camera);
       frameCount++;
       frameTotal += frameMs;
       if (now - sampleAt >= 2000) {
         lastDiagnostics = {
           ...resources.stats, instanceCount: records.length,
-          cameraPosition: camera.position.toArray(), cameraTarget: controls.target.toArray(),
+          cameraPosition: camera.position.toArray(), cameraTarget: walk ? camera.position.clone().add(camera.getWorldDirection(new THREE.Vector3())).toArray() : controls.target.toArray(),
+          navigation, physics: walk?.physics.diagnostics() ?? null,
           frameMs: frameTotal / frameCount,
           drawCalls: renderer.info.render.calls, triangles: renderer.info.render.triangles,
           geometries: renderer.info.memory.geometries, textures: renderer.info.memory.textures,
@@ -423,6 +493,7 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
     function updateLoop() {
       if (disposed || contextLost) return;
       const running = visible && !document.hidden;
+      walk?.controls.pause();
       lastFrame = performance.now();
       frameCount = 0; frameTotal = 0; sampleAt = lastFrame;
       renderer.setAnimationLoop(running ? animate : null);
@@ -437,8 +508,10 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
 
     const update = async (next: SceneInput) => {
       if (disposed) throw new Error("场景运行层已释放");
+      const navigationKey = (value: SceneInput) => JSON.stringify([value.instances, value.settings, value.appearanceOverrides, value.controlsEnabled]);
+      if ((walk || navigation.mode === "loading") && navigationKey(next) !== navigationKey(desired)) exitWalk("场景配置已变化，请核对碰撞体后重新进入行走");
       desired = next;
-      controls.enabled = next.controlsEnabled;
+      controls.enabled = next.controlsEnabled && !walk;
       const version = ++revision;
       const graph = JSON.stringify(next.instances.map(({ id, assetId }) => [id, assetId]));
       try {
@@ -483,7 +556,7 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
         onStatus({ status: "error", message: `3D 场景更新失败：${reason instanceof Error ? reason.message : String(reason)}` });
       }
     };
-    return { update, pickSceneTarget, dispose: disposeRuntime, diagnostics: () => lastDiagnostics };
+    return { update, pickSceneTarget, enterWalk, exitWalk, navigationStatus: () => navigation, dispose: disposeRuntime, diagnostics: () => lastDiagnostics };
   } catch (reason) {
     for (const cleanup of constructionCleanup.reverse()) cleanup();
     throw reason;

@@ -3,11 +3,14 @@ import type { Model3DNodeProps } from "./Model3DNode";
 import { ModelPresentationPanel } from "./ModelPresentationPanel";
 import type { ModelSceneSnapshot } from "./model-scene";
 import { componentLabels, parseModel3DProps, resolveModelInstances, type Model3DProps } from "./types";
-import type { SceneInput, SceneRuntime, SceneStatus } from "../scene/scene-runtime";
+import type { NavigationStatus, SceneInput, SceneRuntime, SceneStatus } from "../scene/scene-runtime";
+
+import "../scene/walk-navigation.css";
 
 const errorText = (reason: unknown) => reason instanceof Error ? reason.message : String(reason);
 
 export const BatchModel3DNode = memo(function BatchModel3DNode({
+  walkScene,
   cameraControlsEnabled,
   runtimeControlsEnabled = true,
   editable,
@@ -22,6 +25,8 @@ export const BatchModel3DNode = memo(function BatchModel3DNode({
   selectedModelInstanceId = null,
   selectedSceneNodePath,
 }: Model3DNodeProps) {
+  const [navigation, setNavigation] = useState<NavigationStatus>({ mode: "orbit" });
+  const walkSignature = JSON.stringify(walkScene);
   const containerRef = useRef<HTMLDivElement>(null);
   const runtimeRef = useRef<SceneRuntime | null>(null);
   const sceneCallbackRef = useRef(onSceneChange);
@@ -61,11 +66,13 @@ export const BatchModel3DNode = memo(function BatchModel3DNode({
     let cancelled = false;
     let runtime: SceneRuntime | null = null;
     setLoadedScene(null);
+    setNavigation({ mode: "orbit" });
     setLoadState({ status: "loading" });
     void import("../scene/scene-runtime").then(({ createSceneRuntime }) => {
       if (cancelled || !inputRef.current) return;
       runtime = createSceneRuntime({
         container, projectId, canvasNodeId: node.id, initial: inputRef.current,
+        onNavigation: (status) => { if (!cancelled) setNavigation(status); },
         onStatus: (status) => { if (!cancelled) setLoadState(status); },
         onSnapshot: (snapshot) => {
           if (cancelled) return;
@@ -97,6 +104,8 @@ export const BatchModel3DNode = memo(function BatchModel3DNode({
   useEffect(() => {
     if (inputRef.current && runtimeRef.current) void runtimeRef.current.update(inputRef.current);
   }, [inputSignature]);
+
+  useEffect(() => { runtimeRef.current?.exitWalk("碰撞配置已变化，请核对后重新进入行走"); }, [walkSignature]);
 
   const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
     if ((!editable && !interactive) || event.button !== 0) return;
@@ -133,7 +142,20 @@ export const BatchModel3DNode = memo(function BatchModel3DNode({
         onPointerUp={handlePointerUp}
         ref={containerRef}
       />
-      {runtimePanelEnabled && loadState.status === "ready" && loadedScene ? (
+      {walkScene && !editable && input?.controlsEnabled && loadState.status === "ready" ? (
+        <div className="scene-walk-navigation" onPointerDown={(event) => event.stopPropagation()} onPointerUp={(event) => event.stopPropagation()}>
+          <button type="button" onClick={() => {
+            const runtime = runtimeRef.current;
+            if (!runtime) return;
+            if (navigation.mode === "walk" || navigation.mode === "loading") runtime.exitWalk();
+            else void runtime.enterWalk(walkScene);
+          }}>{navigation.mode === "walk" ? "退出行走" : navigation.mode === "loading" ? "取消初始化" : "进入行走"}</button>
+          <span role={navigation.mode === "error" ? "alert" : "status"}>
+            {navigation.mode === "loading" ? "正在初始化碰撞场景…" : navigation.mode === "walk" ? "WASD / 方向键移动 · 鼠标拖动看向 · Esc 退出" : navigation.message ?? "已提供碰撞配置；进入时将校验地面与出生点"}
+          </span>
+        </div>
+      ) : null}
+      {navigation.mode !== "walk" && navigation.mode !== "loading" && runtimePanelEnabled && loadState.status === "ready" && loadedScene ? (
         <details className="model-runtime-controls" open key={viewKey}
           onPointerDown={(event) => event.stopPropagation()} onPointerUp={(event) => event.stopPropagation()}
           onClick={(event) => event.stopPropagation()} onDoubleClick={(event) => event.stopPropagation()}

@@ -4,7 +4,7 @@
 
 ## 技术决定与实际实现
 
-保留 React 19、TypeScript、Vite 和 Three.js WebGLRenderer。新增 `three-mesh-bvh`，暂不引入 R3F、WebGPU、状态框架或物理引擎。
+保留 React 19、TypeScript、Vite 和 Three.js WebGLRenderer。新增 `three-mesh-bvh` 和 `@dimforge/rapier3d-compat`（锁定版本 0.20.0），暂不引入 R3F、WebGPU 或状态框架。Rapier 只负责静态碰撞场景中的角色移动，Three.js 继续负责渲染和拾取。
 
 | 模块 | 职责与边界 |
 | --- | --- |
@@ -14,6 +14,8 @@
 | `scene/model-loader.ts` | 同源模型请求、上下文错误、元数据验证、本地 Meshopt/KTX2/Draco 解码和静态几何 BVH |
 | `scene/instance-manager.ts` | 以实例 ID + 模型资源 ID 复用对象；新实例准备后替换；管理混合器、克隆骨骼与材质 |
 | `scene/picking-service.ts` | 实例包围盒筛选、静态 BVH、可见对象拾取，返回实例 ID 与主模型会话路径 |
+| `scene/walk-physics.ts` | 延迟初始化 Rapier WASM、校验米制碰撞配置、胶囊角色、固定步长、边界错误与物理世界释放 |
+| `scene/walk-controls.ts` | 聚焦画布后的键盘移动、拖动看向、失焦释放、独占相机；不持有 React 状态 |
 | `decoder-assets.ts` | 从锁定的 Three.js 包输出同源解码脚本与 WASM；开发和生产统一路径 |
 
 单模型兼容组件仍保留原有检视/后处理逻辑，仅接入同一套本地解码器；本次运行层拆分主要覆盖多实例及独立场景入口，不能宣称全部旧代码已经统一。
@@ -31,7 +33,7 @@
 
 ## 相机与拾取
 
-首次得到有效边界时取景；显式更换预设视角时重新取景。普通增删模型、改灯光、改外观和窗口调整不强制复位相机。首次居中建立旋转中心，之后保持场景坐标关系。当前仍为 OrbitControls，不包含 WASD 行走或碰撞。
+首次得到有效边界时取景；显式更换预设视角时重新取景。普通增删模型、改灯光、改外观和窗口调整不强制复位相机。首次居中建立旋转中心，之后保持场景坐标关系。默认采用 OrbitControls；显式提供 `WalkSceneConfig` 的组件可进入 Rapier 行走，接入方式与限制见 [Rapier 前端行走](./frontend-rapier-navigation.md)。未提供碰撞配置的现有项目继续只显示查看模式。
 
 BVH 使用 `indirect: true`，不重排共享几何索引。骨骼和 morph 几何不使用静态 BVH；文件自带的 InstancedMesh 保留原生逐实例拾取；有动画的实例不使用静态包围盒提前排除。拾取保留建筑、墙体的遮挡关系；不可通过删除背景候选对象实现“穿墙点击”。BVH 当前同步构建，复杂模型的主线程暂停仍需实测和后续 Worker 优化。
 
@@ -39,7 +41,7 @@ BVH 使用 `indirect: true`，不重排共享几何索引。骨骼和 morph 几�
 
 ## 诊断与验证
 
-资源加载日志包含 projectId、模型资源 ID、文件字节、耗时和失败原因。运行层每两秒采样实例数、资源数、活动/排队加载数、平均帧间隔、draw calls、三角面、几何/纹理数量与相机位置。可通过容器 `data-scene-diagnostics` 或运行层 `diagnostics()` 读取；不将 Three.js 对象或每帧状态放进 React。
+资源加载日志包含 projectId、模型资源 ID、文件字节、耗时和失败原因。运行层每两秒采样实例数、资源数、活动/排队加载数、平均帧间隔、draw calls、三角面、几何/纹理数量与相机位置。Rapier 行走时增加模式、脚底坐标、是否贴地、最近步进碰撞体 ID、步数和累计丢弃的补跑时间；导航初始化/运行失败另行上报并退出行走。可通过容器 `data-scene-diagnostics` 或运行层 `diagnostics()` 读取；不将 Three.js 对象或每帧状态放进 React。
 
 这里的纹理数量不是显存字节，平均帧间隔不是 GPU 时间，也不是 P95/P99。验收需单独记录目标设备、浏览器、分辨率、资源清单、帧耗时分位数、点击延迟及长时间内存趋势。
 
@@ -52,7 +54,7 @@ pnpm --filter @factory-twin/web build
 pnpm test:models
 ```
 
-可选真实浏览器回归：`node scripts/test-scene-runtime-browser.mjs`。要求开发机/CI 已安装 Playwright 和 Chromium；可用 `PLAYWRIGHT_MODULE_PATH`、`CHROMIUM_EXECUTABLE` 指定工具位置，用 `SCENE_TEST_PORT` 指定本机端口（默认 5199）。脚本不自动安装浏览器；使用临时 Vite 缓存和模拟模型响应，不连接后端、不写项目数据。测试范围是真实 WebGL、模型复用、相机保持、点击、失败恢复、解码器 WASM 格式和卸载；WASM 校验不等于所有压缩客户模型已经通过验收。
+可选真实浏览器回归：`node scripts/test-scene-runtime-browser.mjs`。要求开发机/CI 已安装 Playwright 和 Chromium；可用 `PLAYWRIGHT_MODULE_PATH`、`CHROMIUM_EXECUTABLE` 指定工具位置，用 `SCENE_TEST_PORT` 指定本机端口（默认 5199）。脚本不自动安装浏览器；使用临时 Vite 缓存和模拟模型响应，不连接后端、不写项目数据。测试范围是真实 WebGL、模型复用、相机保持、点击、失败恢复、解码器 WASM 格式、Rapier 延迟加载/墙体碰撞/WASD/失焦/Esc/取消与卸载；WASM 校验不等于所有压缩客户模型已经通过验收。
 
 解码器随应用构建分发，无运行时 CDN 依赖。`decoders/LICENSE.txt` 为 Apache 2.0 条款，来源及上游说明保留在各解码器 README。当前 Three.js 的内建资源 URL 也会被 Vite 处理，因此构建目录可能含额外解码资产；按需请求不等于所有产物都会在首屏下载。
 
@@ -62,7 +64,7 @@ pnpm test:models
 2. **实例内部设备绑定**：定义 `instanceId + stableNodeId → businessAssetId`，解决整厂 GLB 和重复设备模型。保存契约需前后端共同确认，不能用浏览器 localStorage 代替。
 3. **区域与 LOD**：区域清单包括稳定 regionId、边界、入口、实例归属、资源版本、距离级别与加载优先级；先定义版本化接口，再做区域装载/卸载、滞回和预取。
 4. **静态实例化**：对同几何/材质且无需独立骨骼的重复设备使用 InstancedMesh；材质兼容的异构静态对象再评估 BatchedMesh。必须维护 instanceId 与业务资产映射，并测量 draw calls 收益。
-5. **室内行走**：采用 Rapier JavaScript/WASM 角色控制器前，提供米制坐标、地面、出生点、简化碰撞体和通行区域；展示模型、拾取代理与碰撞体分开。未具备这些数据前，保持当前查看模式。
+5. **室内行走的项目接入**：Rapier 角色控制器和前端 `walkScene` 契约已实现；继续补充真实厂房的碰撞体制作、可视化校验、配置编辑与版本化保存。后续再评估静态简化三角网格、区域碰撞装卸、移动平台和触屏控制。当前只接收独立简化长方体，不自动从展示模型生成碰撞体。
 6. **大模型主线程与首屏**：用真实厂房模型测量 BVH 构建、解码和节点实例化；依据证据拆 Worker、安排渐进加载和调整包拆分。当前没有固定帧率或最大设备数承诺。
 
 后端模型优化任务、集中采集、SSE、PostgreSQL/对象存储迁移和发布版本组合均为待办，本次不实施。
@@ -70,3 +72,5 @@ pnpm test:models
 ## 本轮验证结果
 
 2026-09-09 已通过资源/实例自动化测试、内置模型兼容测试、前端 TypeScript 检查与生产构建，以及隔离的 Chromium WebGL 回归。生产构建仍提示主包和 Three.js chunk 超过 500 kB，未通过提高警告阈值隐藏。真实厂房规模、压缩客户模型端到端、多小时运行和目标硬件帧率尚未验收。
+
+Rapier 增补验证：通过真实 WASM 的贴地、墙体阻挡/滑动、帧率一致性、斜向限速、补跑上限、非法出生点/边界及独立世界释放测试；Chromium 验证延迟加载、相机互斥、按键与取消。兼容包将 WASM 内嵌在单独的延迟 JS chunk，本机构建约 2.86 MB（gzip 约 1.08 MB），首次进入行走才请求；构建仍保留体积警告。

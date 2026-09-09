@@ -127,6 +127,6 @@ pnpm --filter @factory-twin/api db:migrate:remote
 
 ### 前端场景运行层
 
-[厂房评估与选型](./docs/厂房场景架构评估与技术选型.md)记录架构局限、技术决定及后端待办。[前端场景运行架构](./docs/frontend-scene-runtime.md)说明资源所有权、增量实例、相机、拾取和诊断。
+[厂房评估与选型](./docs/厂房场景架构评估与技术选型.md)记录架构局限、技术决定及后端待办。[前端场景运行架构](./docs/frontend-scene-runtime.md)说明资源所有权、增量实例、相机、拾取和诊断。[Rapier 前端行走](./docs/frontend-rapier-navigation.md)提供碰撞配置样例、组件入口与当前限制。
 
 运行层回归：`pnpm test:scene-runtime`；浏览器回归：`node scripts/test-scene-runtime-browser.mjs`（需预装 Playwright/Chromium，配置见架构文档）。前端基础验证：`pnpm --filter @factory-twin/web check` 和 `pnpm --filter @factory-twin/web build`。

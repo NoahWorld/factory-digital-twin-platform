@@ -18,8 +18,10 @@ import { ModelPresentationPanel } from "./ModelPresentationPanel";
 import { BatchModel3DNode } from "./BatchModel3DNode";
 import { modelAssetContentUrl } from "./model-assets";
 import { buildModelSceneTree, type ModelSceneSnapshot } from "./model-scene";
+import type { WalkSceneConfig } from "../scene/walk-physics";
 
 export type Model3DNodeProps = {
+  walkScene?: WalkSceneConfig;
   cameraControlsEnabled?: boolean;
   runtimeControlsEnabled?: boolean;
   editable: boolean;
@@ -948,7 +950,7 @@ const SingleModel3DNode = memo(function SingleModel3DNode({
 
 export const Model3DNode = memo(function Model3DNode(props: Model3DNodeProps) {
   const parsed = parseModel3DProps(props.node.props, props.maximumModelInstances);
-  if (parsed.ok && (parsed.value.modelInstances.length > 0 || props.maximumModelInstances !== undefined)) {
+  if (parsed.ok && (parsed.value.modelInstances.length > 0 || props.maximumModelInstances !== undefined || props.walkScene !== undefined)) {
     return <BatchModel3DNode {...props} />;
   }
   return <SingleModel3DNode {...props} />;
