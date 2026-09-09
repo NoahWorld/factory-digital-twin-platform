@@ -41,7 +41,7 @@ try {
     const settings = parseModel3DProps(createCanvasNode('model-3d', 0, 0, 1).props).value;
     settings.autoRotate = false; settings.cameraView = 'front'; settings.presentation.lighting = 'standard';
     const instance = (id, assetId = 'same') => ({ id, assetId, label: id, visible: true, transform: { position: [0,0,0], rotation: [0,0,0], scale: [1,1,1] } });
-    window.input = { settings, instances: [instance('a')], appearanceOverrides: {}, selectedPath: null, selectedInstanceId: null, controlsEnabled: true };
+    window.input = { settings, instances: [instance('a')], appearanceOverrides: {}, selectedPath: null, selectedInstanceId: null, controlsEnabled: true, instanceTransformMode: null };
     window.instance = instance;
     window.runtime = createSceneRuntime({ container: document.querySelector('#scene'), projectId: 'test', canvasNodeId: 'fixture', initial: window.input, onStatus: (status) => { window.statusResult = status; }, onSnapshot: (snapshot) => { window.snapshot = snapshot; } });
     await window.runtime.update(window.input);

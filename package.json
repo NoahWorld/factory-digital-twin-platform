@@ -14,7 +14,9 @@
     "check": "pnpm --recursive run check",
     "test:auth": "node scripts/test-auth-login.mjs",
     "test:resources": "node scripts/test-resource-library.mjs",
+    "test:standalone-3d": "node scripts/test-standalone-3d.mjs",
     "test:scene-background": "node scripts/test-scene-background.mjs",
+    "test:workshop-motion": "node scripts/test-workshop-motion.mjs",
     "test:models": "node scripts/test-builtin-models.mjs",
     "smoke:models": "node scripts/smoke-builtin-models.mjs",
     "test:scene-runtime": "node scripts/test-scene-runtime.mjs"

@@ -1,15 +1,22 @@
 import * as THREE from "three";
+import { sceneCameraClipping } from "./camera-clipping";
 import type { Material, Object3D } from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+import { TransformControls } from "three/examples/jsm/controls/TransformControls.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { buildModelSceneTree, type ModelSceneSnapshot } from "../canvas/model-scene";
-import type { Model3DProps, ModelAssetInstance, ModelNodeAppearance } from "../canvas/types";
+import type { Model3DProps, ModelAssetInstance, ModelNodeAppearance, ModelNodeTransform } from "../canvas/types";
 import { ResourceManager } from "./resource-manager";
 import { InstanceManager, disposeClonedMaterials, type InstanceRecord, type MaterialObject } from "./instance-manager";
 import { createSceneModelLoader, disposeModelResources } from "./model-loader";
 import { createPickingService } from "./picking-service";
 import { createWalkPhysics, type WalkPhysics, type WalkSceneConfig } from "./walk-physics";
 import { createWalkControls } from "./walk-controls";
+import {
+  constrainEditableInstanceScale,
+  readEditableInstanceTransform,
+  type InstanceTransformMode,
+} from "./instance-transform";
 
 type ColorMaterial = Material & { color?: { set: (value: string) => unknown }; metalness?: number; roughness?: number };
 export type SceneStatus = { status: "empty" | "loading" | "ready" } | { status: "error"; message: string };
@@ -22,6 +29,7 @@ export type SceneInput = {
   selectedPath: string | null;
   selectedInstanceId: string | null;
   controlsEnabled: boolean;
+  instanceTransformMode: InstanceTransformMode | null;
 };
 export type SceneDiagnostics = {
   activeLoads: number; queuedLoads: number; resources: number; instanceCount: number;
@@ -32,7 +40,7 @@ export type SceneDiagnostics = {
 export type SceneRuntime = ReturnType<typeof createSceneRuntime>;
 
 /** Owns one renderer per scene. React passes configuration, never Three.js objects. */
-export function createSceneRuntime({ container, projectId, canvasNodeId, initial, onStatus, onSnapshot, onDiagnostics, onNavigation }: {
+export function createSceneRuntime({ container, projectId, canvasNodeId, initial, onStatus, onSnapshot, onDiagnostics, onNavigation, onInstanceTransform, onTransformDragging }: {
   container: HTMLElement;
   projectId: string;
   canvasNodeId: string;
@@ -41,6 +49,8 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
   onSnapshot: (snapshot: SceneSnapshot | null) => void;
   onDiagnostics?: (diagnostics: SceneDiagnostics) => void;
   onNavigation?: (status: NavigationStatus) => void;
+  onInstanceTransform?: (instanceId: string, transform: ModelNodeTransform) => void;
+  onTransformDragging?: (dragging: boolean) => void;
 }) {
   const constructionCleanup: Array<() => void> = [];
   try {
@@ -51,17 +61,22 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.15;
+    renderer.shadowMap.type = THREE.PCFShadowMap;
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     container.replaceChildren(renderer.domElement);
 
     const environmentLight = new THREE.HemisphereLight(initial.settings.environmentLightColor, 0x14202a, initial.settings.environmentLightIntensity);
     const keyLight = new THREE.DirectionalLight(initial.settings.keyLightColor, initial.settings.keyLightIntensity);
     keyLight.position.set(4, 8, 6);
+    keyLight.shadow.mapSize.set(2048, 2048);
+    keyLight.shadow.bias = -0.00015;
+    keyLight.shadow.normalBias = 0.02;
+    constructionCleanup.push(() => keyLight.shadow.dispose());
     const rimLight = new THREE.DirectionalLight(0x8cc9ff, 1.3);
     rimLight.position.set(1, 5, -5);
     const warmLight = new THREE.DirectionalLight(0xffbd85, 0.7);
     warmLight.position.set(-6, 3, 0);
-    scene.add(environmentLight, keyLight, rimLight, warmLight);
+    scene.add(environmentLight, keyLight, keyLight.target, rimLight, warmLight);
 
     const grid = new THREE.GridHelper(10, 20, 0x2a7590, 0x163d50);
     constructionCleanup.push(() => { grid.geometry.dispose(); (Array.isArray(grid.material) ? grid.material : [grid.material]).forEach((m) => m.dispose()); });
@@ -76,6 +91,15 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
     controls.enabled = initial.controlsEnabled;
     controls.enableDamping = true;
     controls.dampingFactor = 0.08;
+
+    const transformControls = new TransformControls(camera, renderer.domElement);
+    const transformHelper = transformControls.getHelper();
+    transformControls.setSize(0.85);
+    scene.add(transformHelper);
+    constructionCleanup.push(() => {
+      scene.remove(transformHelper);
+      transformControls.dispose();
+    });
 
 
     let environmentTarget: ReturnType<InstanceType<typeof THREE.PMREMGenerator>["fromScene"]> | null = null;
@@ -103,6 +127,7 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
     let cameraInitialized = false;
     let previousView = initial.settings.cameraView;
     const sceneCenter = new THREE.Vector3();
+    const clippingCenter = new THREE.Vector3();
     let frameCount = 0;
     let frameTotal = 0;
     let sampleAt = performance.now();
@@ -110,6 +135,8 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
     let primaryPathsByObject = new Map<Object3D, string>();
     let primaryObjectsByPath = new Map<string, Object3D>();
     let selectionHelper: InstanceType<typeof THREE.BoxHelper> | null = null;
+    let transformRecord: InstanceRecord | null = null;
+    let transformDragging = false;
     let modelRadius: number | null = null;
     let visible = true;
     let lastFrame = performance.now();
@@ -131,7 +158,8 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
         rotationPivot.rotation.y = walk.rotation;
         walk = null;
       }
-      controls.enabled = desired.controlsEnabled;
+      controls.enabled = desired.controlsEnabled && !transformDragging;
+      syncTransformControl(desired);
       notifyNavigation({ mode: "orbit", ...(message ? { message } : {}) });
     };
     const navigationError = (reason: unknown) => {
@@ -159,6 +187,7 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
         const saved = camera.clone();
         const target = controls.target.clone();
         const rotation = rotationPivot.rotation.y;
+        detachTransformControl();
         controls.enabled = false;
         rotationPivot.rotation.y = 0;
         camera.up.set(0, 1, 0); camera.zoom = 1; camera.near = 0.05;
@@ -196,6 +225,68 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
       selectionHelper = null;
     };
 
+    const detachTransformControl = () => {
+      transformControls.detach();
+      transformControls.enabled = false;
+      transformRecord = null;
+    };
+
+    function syncTransformControl(input: SceneInput) {
+      if (transformControls.dragging) return;
+      const record = input.selectedPath === null && input.selectedInstanceId !== null
+        ? records.find((candidate) => candidate.id === input.selectedInstanceId)
+        : undefined;
+      if (!input.instanceTransformMode || !record?.wrapper.visible || walk) {
+        detachTransformControl();
+        return;
+      }
+      transformControls.enabled = true;
+      transformControls.setMode(input.instanceTransformMode);
+      transformControls.setSpace(input.instanceTransformMode === "translate" ? "world" : "local");
+      if (transformRecord !== record) {
+        transformControls.attach(record.wrapper);
+        transformRecord = record;
+      }
+    }
+
+    const reportTransformError = (reason: unknown) => {
+      console.error("Failed to edit a 3D model instance with transform controls.", {
+        projectId,
+        canvasNodeId,
+        instanceId: transformRecord?.id ?? null,
+        reason,
+      });
+      onStatus({ status: "error", message: `模型拖拽失败：${reason instanceof Error ? reason.message : String(reason)}` });
+    };
+
+    transformControls.addEventListener("objectChange", () => {
+      if (!transformRecord) return;
+      try {
+        constrainEditableInstanceScale(transformRecord.wrapper);
+      } catch (reason) {
+        transformControls.reset();
+        reportTransformError(reason);
+      }
+    });
+    transformControls.addEventListener("mouseUp", () => {
+      if (!transformRecord) return;
+      try {
+        constrainEditableInstanceScale(transformRecord.wrapper);
+        const transform = readEditableInstanceTransform(transformRecord.wrapper);
+        updateSceneBounds();
+        onInstanceTransform?.(transformRecord.id, transform);
+      } catch (reason) {
+        transformControls.reset();
+        updateSceneBounds();
+        reportTransformError(reason);
+      }
+    });
+    transformControls.addEventListener("dragging-changed", (event) => {
+      transformDragging = event.value === true;
+      controls.enabled = desired.controlsEnabled && !walk && !transformDragging;
+      onTransformDragging?.(transformDragging);
+    });
+
     const disposeRuntime = () => {
       if (disposed) return;
       disposed = true;
@@ -205,6 +296,8 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
       intersectionObserver?.disconnect();
       renderer.domElement.removeEventListener("webglcontextlost", handleContextLost);
       controls.dispose();
+      scene.remove(transformHelper);
+      transformControls.dispose();
       clearSelection();
       document.removeEventListener("visibilitychange", updateLoop);
       manager.dispose();
@@ -214,6 +307,7 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
       if (Array.isArray(grid.material)) grid.material.forEach((material) => material.dispose());
       else grid.material.dispose();
       environmentTarget?.dispose();
+      keyLight.shadow.dispose();
       renderer.dispose();
       renderer.forceContextLoss();
       if (container.contains(renderer.domElement)) container.replaceChildren();
@@ -276,16 +370,25 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
       rotationPivot.rotation.y = priorRotation;
       scene.updateMatrixWorld(true);
       modelRadius = Math.max(size.length() / 2, 0.01);
+      // A single bounded shadow map covers the scene, including rotation about its center.
+      const shadowRadius = Math.max(modelRadius * 1.1, 0.1);
+      keyLight.position.copy(new THREE.Vector3(4, 8, 6).normalize().multiplyScalar(shadowRadius * 2).add(center));
+      keyLight.target.position.copy(center);
+      Object.assign(keyLight.shadow.camera, {
+        left: -shadowRadius, right: shadowRadius, top: shadowRadius, bottom: -shadowRadius,
+        near: 0.01, far: shadowRadius * 4,
+      });
+      keyLight.shadow.camera.updateProjectionMatrix();
       grid.scale.setScalar(Math.max(modelRadius / 2.5, 0.2));
       grid.position.set(center.x, box.min.y, center.z);
-      camera.near = 0.01;
-      camera.far = Math.max(modelRadius * 100, 100);
-      camera.updateProjectionMatrix();
+
     };
 
     const applySceneSettings = (settings: Model3DProps) => {
       const studio = settings.presentation.lighting === "studio";
       if (studio) ensureStudio();
+      renderer.shadowMap.enabled = studio;
+      keyLight.castShadow = studio;
       scene.environment = studio ? environmentTarget!.texture : null;
       scene.environmentIntensity = 0.8;
       scene.background = settings.backgroundOpacity === 1 ? new THREE.Color(settings.backgroundColor) : null;
@@ -474,6 +577,16 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
         try { walk.controls.update(Math.max(0, frameMs / 1000)); }
         catch (reason) { navigationError(reason); }
       } else controls.update();
+      if (!walk && modelRadius !== null) {
+        camera.updateMatrixWorld();
+        const centerDepth = -clippingCenter.copy(sceneCenter).applyMatrix4(camera.matrixWorldInverse).z;
+        const clipping = sceneCameraClipping(centerDepth, modelRadius);
+        if (camera.near !== clipping.near || camera.far !== clipping.far) {
+          camera.near = clipping.near;
+          camera.far = clipping.far;
+          camera.updateProjectionMatrix();
+        }
+      }
       renderer.render(scene, camera);
       frameCount++;
       frameTotal += frameMs;
@@ -511,16 +624,23 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
       const navigationKey = (value: SceneInput) => JSON.stringify([value.instances, value.settings, value.appearanceOverrides, value.controlsEnabled]);
       if ((walk || navigation.mode === "loading") && navigationKey(next) !== navigationKey(desired)) exitWalk("场景配置已变化，请核对碰撞体后重新进入行走");
       desired = next;
-      controls.enabled = next.controlsEnabled && !walk;
+      controls.enabled = next.controlsEnabled && !walk && !transformDragging;
       const version = ++revision;
       const graph = JSON.stringify(next.instances.map(({ id, assetId }) => [id, assetId]));
       try {
         if (contextLost) throw new Error("WebGL 上下文已丢失，请重新打开场景");
         const graphChanged = graph !== appliedGraph;
         if (graphChanged) {
+          detachTransformControl();
           onStatus({ status: "loading" });
           if (!await manager.reconcile(next.instances) || disposed || version !== revision) return;
           records = manager.records;
+          records.forEach(record => record.model.traverse(object => {
+            if (object instanceof THREE.Mesh) {
+              object.castShadow = true;
+              object.receiveShadow = true;
+            }
+          }));
           appliedGraph = graph;
           primaryPathsByObject = new Map();
           primaryObjectsByPath = new Map();
@@ -546,6 +666,7 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
         if (instancesChanged || modelChanged || appliedInput?.selectedPath !== next.selectedPath || appliedInput?.selectedInstanceId !== next.selectedInstanceId) {
           applySelection(next.selectedPath, next.selectedInstanceId);
         }
+        syncTransformControl(next);
         if (!cameraInitialized) fitCameraToScene();
         appliedInput = next;
         onStatus({ status: records.length ? "ready" : "empty" });

@@ -1,5 +1,6 @@
 import { FormEvent, lazy, Suspense, useEffect, useState } from "react";
 import { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH } from "../../../shared/auth-constraints";
+import { standaloneSceneRoutePath, type ProjectType } from "../../../shared/standalone-3d";
 import { apiUrl, ApiRequestError, errorMessage, request } from "./api";
 import loginFactoryIllustration from "./assets/login-factory.webp";
 import { canvasRoutePath, projectTemplateCanvasPath } from "./canvas/routes";
@@ -15,6 +16,7 @@ import { TemplatesPage } from "./pages/TemplatesPage";
 const Model3DEditorPage = lazy(() => import("./pages/Model3DEditorPage"));
 const ProductLandingPage = lazy(() => import("./pages/ProductLandingPage"));
 const IndustrialLandingPage = lazy(() => import("./pages/IndustrialLandingPage"));
+const Standalone3DProjectPage = lazy(() => import("./pages/Standalone3DProjectPage"));
 
 type ProductLandingVariant = "original" | "industrial";
 
@@ -54,6 +56,7 @@ type Project = {
   updatedAt: string;
   projectRole: "owner" | "editor" | "viewer" | null;
   coverUrl: string | null;
+  projectType: ProjectType;
 };
 
 type BootstrapStatusResponse = {
@@ -390,6 +393,7 @@ function CreateProjectDialog({
 }: CreateProjectDialogProps) {
   const template = templateId ? getCanvasTemplate(templateId) : null;
   const [name, setName] = useState(() => template ? `${template.name}项目` : "");
+  const [projectType, setProjectType] = useState<ProjectType>("2d");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -401,7 +405,7 @@ function CreateProjectDialog({
     try {
       const result = await request<ProjectResponse>("/api/v1/projects", {
         method: "POST",
-        body: JSON.stringify({ name }),
+        body: JSON.stringify({ name, projectType: template ? "2d" : projectType }),
       });
       onCreated(result.project, templateId);
     } catch (reason) {
@@ -424,6 +428,21 @@ function CreateProjectDialog({
             ? `将创建一个新项目，并在画布中载入“${template.name}”模板；确认效果后保存画布即可生成项目封面。`
             : "新项目默认处于草稿状态，创建人自动成为项目负责人。"}
         </p>
+        {!template ? (
+          <fieldset className="project-type-picker">
+            <legend>项目类型</legend>
+            <label className={projectType === "2d" ? "is-selected" : ""}>
+              <input checked={projectType === "2d"} disabled={submitting} name="projectType" onChange={() => setProjectType("2d")} type="radio" />
+              <strong>2D 看板</strong>
+              <span>沿用现有画布，可组合 2D 组件与单个 3D 组件。</span>
+            </label>
+            <label className={projectType === "3d" ? "is-selected" : ""}>
+              <input checked={projectType === "3d"} disabled={submitting} name="projectType" onChange={() => setProjectType("3d")} type="radio" />
+              <strong>3D 场景</strong>
+              <span>独立三维空间，支持多模型搭建、漫游与业务资产联动。</span>
+            </label>
+          </fieldset>
+        ) : null}
         <label>
           <span>项目名称</span>
           <input
@@ -556,7 +575,7 @@ function DeleteProjectDialog({
         <button aria-label="关闭" className="dialog-close" disabled={submitting} onClick={onClose} type="button">×</button>
         <p className="eyebrow">Delete project</p>
         <h2>删除“{project.name}”？</h2>
-        <p>项目画布、模型元数据、资产、数据源和成员关系都会被永久删除，此操作不可撤销。</p>
+        <p>项目场景、模型元数据、资产、数据源和成员关系都会被永久删除，此操作不可撤销。</p>
         <FormNotice error={error} />
         <div className="dialog-actions">
           <button className="secondary-button" disabled={submitting} onClick={onClose} type="button">取消</button>
@@ -578,7 +597,8 @@ type WorkspaceRoute =
   | { kind: "projects" }
   | { kind: "templates" }
   | { kind: "resources" }
-  | { kind: "canvas"; projectId: string; mode: "edit" | "preview"; templateId?: CanvasTemplateId }
+  | { kind: "canvas"; projectId: string; mode: "edit" | "preview"; templateId?: CanvasTemplateId; initialAssetId?: string }
+  | { kind: "standalone-scene"; projectId: string; mode: "edit" | "preview" }
   | { kind: "model-editor"; projectId: string; nodeId: string }
   | { kind: "invalid"; message: string };
 
@@ -589,6 +609,14 @@ const currentWorkspaceRoute = (): WorkspaceRoute => {
   if (window.location.hash === "#/resources") {
     return { kind: "resources" };
   }
+  const standaloneSceneMatch = window.location.hash.match(/^#\/projects\/([^/]+)\/(scene|scene-preview)$/);
+  if (standaloneSceneMatch) {
+    return {
+      kind: "standalone-scene",
+      projectId: decodeURIComponent(standaloneSceneMatch[1]),
+      mode: standaloneSceneMatch[2] === "scene-preview" ? "preview" : "edit",
+    };
+  }
   const modelEditorMatch = window.location.hash.match(/^#\/projects\/([^/]+)\/3d-editor\/([^/]+)$/);
   if (modelEditorMatch) {
     return {
@@ -597,9 +625,10 @@ const currentWorkspaceRoute = (): WorkspaceRoute => {
       nodeId: decodeURIComponent(modelEditorMatch[2]),
     };
   }
-  const canvasMatch = window.location.hash.match(/^#\/projects\/([^/]+)\/(canvas|preview)(?:\?template=([^&]+))?$/);
+  const canvasMatch = window.location.hash.match(/^#\/projects\/([^/]+)\/(canvas|preview)(?:\?([^#]*))?$/);
   if (!canvasMatch) return { kind: "projects" };
-  const templateValue = canvasMatch[3] ? decodeURIComponent(canvasMatch[3]) : undefined;
+  const query = new URLSearchParams(canvasMatch[3] ?? "");
+  const templateValue = query.get("template") ?? undefined;
   let templateId: CanvasTemplateId | undefined;
   if (templateValue) {
     if (!isCanvasTemplateId(templateValue)) {
@@ -612,6 +641,7 @@ const currentWorkspaceRoute = (): WorkspaceRoute => {
     projectId: decodeURIComponent(canvasMatch[1]),
     mode: canvasMatch[2] === "preview" ? "preview" : "edit",
     templateId,
+    initialAssetId: query.get("asset") ?? undefined,
   };
 };
 
@@ -677,6 +707,8 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
     setCreateProjectTemplateId(null);
     if (templateId) {
       window.location.hash = projectTemplateCanvasPath(project.id, templateId).slice(1);
+    } else if (project.projectType === "3d") {
+      window.location.hash = standaloneSceneRoutePath(project.id, "edit").slice(1);
     }
   };
 
@@ -712,11 +744,20 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
   if (route.kind === "canvas") {
     return (
       <CanvasPage
+        initialAssetId={route.initialAssetId}
         initialTemplateId={route.templateId}
-        key={`${route.projectId}:${route.mode}:${route.templateId ?? "saved"}`}
+        key={`${route.projectId}:${route.mode}:${route.templateId ?? "saved"}:${route.initialAssetId ?? "no-asset"}`}
         mode={route.mode}
         projectId={route.projectId}
       />
+    );
+  }
+
+  if (route.kind === "standalone-scene") {
+    return (
+      <Suspense fallback={<main className="canvas-page-state"><p className="eyebrow">3D workspace</p><h1>正在准备独立 3D 编辑器…</h1></main>}>
+        <Standalone3DProjectPage key={`${route.projectId}:${route.mode}`} mode={route.mode} projectId={route.projectId} />
+      </Suspense>
     );
   }
 
@@ -849,19 +890,25 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
                 || project.projectRole === "owner"
                 || project.projectRole === "editor";
               const canDelete = isPlatformAdmin || project.projectRole === "owner";
+              const editPath = project.projectType === "3d"
+                ? standaloneSceneRoutePath(project.id, "edit")
+                : canvasRoutePath(project.id, "canvas");
+              const previewPath = project.projectType === "3d"
+                ? standaloneSceneRoutePath(project.id, "preview")
+                : canvasRoutePath(project.id, "preview");
               return (
-                <article className="project-card" key={project.id}>
+                <article className={`project-card project-card-${project.projectType}`} key={project.id}>
                   <a
-                    aria-label={`打开 ${project.name} 的 2D 画布`}
+                    aria-label={`打开 ${project.name} 的${project.projectType === "3d" ? "独立 3D 场景" : "2D 画布"}`}
                     className="project-card-cover"
-                    href={`#/projects/${encodeURIComponent(project.id)}/canvas`}
+                    href={editPath}
                   >
-                    {project.coverUrl ? (
+                    {project.projectType === "2d" && project.coverUrl ? (
                       <img alt={`${project.name} 画布缩略图`} src={apiUrl(project.coverUrl)} />
                     ) : (
                       <span className="project-card-cover-empty">
-                        <i aria-hidden="true">◇</i>
-                        <strong>保存画布后生成封面</strong>
+                        <i aria-hidden="true">{project.projectType === "3d" ? "⬡" : "◇"}</i>
+                        <strong>{project.projectType === "3d" ? "独立 3D 场景" : "保存画布后生成封面"}</strong>
                       </span>
                     )}
                   </a>
@@ -870,6 +917,7 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
                       <span className={`status-tag status-${project.status}`}>
                         {projectStatusText[project.status]}
                       </span>
+                      <span className={`project-type-tag is-${project.projectType}`}>{project.projectType.toUpperCase()}</span>
                       {project.projectRole ? <span>{projectRoleText[project.projectRole]}</span> : null}
                     </div>
                     <h2>{project.name}</h2>
@@ -901,7 +949,7 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
                         <a
                           aria-label={`直接预览 ${project.name}`}
                           className="icon-button project-action"
-                          href={canvasRoutePath(project.id, "preview")}
+                          href={previewPath}
                           title="直接预览"
                         >
                           <ActionIcon name="view" />

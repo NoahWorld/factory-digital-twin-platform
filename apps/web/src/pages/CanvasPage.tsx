@@ -13,8 +13,10 @@ import { applyCanvasThemeToNode, applyCanvasThemeToNodes, canvasThemePresetLabel
 import { CANVAS_DRAG_TYPE, componentLabels, createCanvasNode, isBackgroundNodeType, isModel3DNodeType, type CanvasDocument, type CanvasNode, type CanvasNodeType, type CanvasPatchResponse, type CanvasResponse, type CanvasTheme, type ModelNodeAppearance } from "../canvas/types";
 import { DataSourcePanel } from "../DataSourcePanel";
 import { assetRuntimeStatePath, deviceVisualStatus, deviceVisualStatusLabel, type AssetRuntimeStateResponse, type DeviceVisualStatus, type RuntimeAssetConnection, type RuntimeMetricValue } from "../runtime-state";
+import type { TwinInteractionEvent } from "../../../../shared/standalone-3d";
 
 type CanvasPageProps = {
+  initialAssetId?: string;
   initialTemplateId?: CanvasTemplateId;
   mode: "edit" | "preview";
   projectId: string;
@@ -49,7 +51,7 @@ const formatRuntimeTime = (value: string | undefined): string => {
     : value;
 };
 
-export function CanvasPage({ initialTemplateId, mode, projectId }: CanvasPageProps) {
+export function CanvasPage({ initialAssetId, initialTemplateId, mode, projectId }: CanvasPageProps) {
   const [document, setDocument] = useState<CanvasDocument | null>(null);
   const [projectName, setProjectName] = useState("");
   const [canEdit, setCanEdit] = useState(false);
@@ -124,6 +126,48 @@ export function CanvasPage({ initialTemplateId, mode, projectId }: CanvasPagePro
       });
     return () => { active = false; };
   }, [mode, projectId]);
+
+  useEffect(() => {
+    if (mode !== "preview" || !initialAssetId || assetListLoading) return;
+    const asset = projectAssets.find((item) => item.assetId === initialAssetId);
+    if (asset) {
+      setSelectedRuntimeAssetId(asset.id);
+      setRuntimeSelectionMessage(null);
+    } else {
+      setSelectedRuntimeAssetId(null);
+      setRuntimeSelectionMessage(`关联请求中的业务资产 ${initialAssetId} 不存在于当前 2D 项目。`);
+    }
+  }, [assetListLoading, initialAssetId, mode, projectAssets]);
+
+  useEffect(() => {
+    if (mode !== "preview") return;
+    const selectAsset = (event: TwinInteractionEvent) => {
+      if (event.type !== "asset-selected" || event.targetProjectId !== projectId) return;
+      const asset = projectAssets.find((item) => item.assetId === event.assetId);
+      if (!asset) return;
+      setSelectedRuntimeAssetId(asset.id);
+      setRuntimeSelectionMessage(`已响应 3D 项目发出的资产联动：${event.assetId}`);
+    };
+    const handleWindowEvent = (event: Event) => {
+      const detail = (event as CustomEvent<unknown>).detail;
+      if (!detail || typeof detail !== "object") return;
+      selectAsset(detail as TwinInteractionEvent);
+    };
+    window.addEventListener("factory-twin:interaction", handleWindowEvent);
+    let channel: BroadcastChannel | null = null;
+    try {
+      channel = new BroadcastChannel("factory-twin:interaction");
+      channel.onmessage = (event: MessageEvent<unknown>) => {
+        if (event.data && typeof event.data === "object") selectAsset(event.data as TwinInteractionEvent);
+      };
+    } catch (reason) {
+      console.error("Failed to subscribe to cross-tab twin interactions.", { projectId, reason });
+    }
+    return () => {
+      window.removeEventListener("factory-twin:interaction", handleWindowEvent);
+      channel?.close();
+    };
+  }, [mode, projectAssets, projectId]);
 
   const model3DNodeCount = useMemo(
     () => document?.nodes.filter((node) => isModel3DNodeType(node.type)).length ?? 0,

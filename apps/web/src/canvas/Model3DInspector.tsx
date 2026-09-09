@@ -271,13 +271,13 @@ export function Model3DInspector({
 
   const modelViewDefaults = (assetId: string) => {
     const builtin = findBuiltinModel(assetId);
+    if (builtin) return { showGrid: true, ...builtin.defaults };
     const asset = modelAssets.find((candidate) => candidate.id === assetId);
     return {
       autoRotate: asset?.source === "scene-background" ? false : true,
       cameraView: asset?.source === "scene-background" ? "front" as const : "isometric" as const,
       modelScale: asset?.source === "scene-background" ? 2.2 : 1,
       showGrid: asset?.source === "scene-background" ? false : true,
-      ...(builtin?.defaults ?? {}),
     };
   };
 
@@ -642,7 +642,7 @@ export function Model3DInspector({
       <section className="inspector-section model-builtin-library" aria-label="内置模型样例">
         <div className="inspector-section-title"><strong>内置样例</strong><span>项目自带 · 无需上传</span></div>
         {builtinModels.map((sample) => <article className={`model-builtin-card${selectedAssetId === sample.id ? " is-active" : ""}`} key={sample.id}>
-          <img src={sample.thumbnailPath} alt="AQUA HELIX 水冷机组透明检视" loading="lazy" />
+          <img src={sample.thumbnailPath} alt={sample.name} loading="lazy" />
           <div><strong>{sample.name}</strong><p>{sample.description}</p>
             <button className="secondary-button" type="button" disabled={!editable || uploading || selectedAssetId === sample.id}
               onClick={() => chooseAsset(sample.id)}>{selectedAssetId === sample.id ? "正在使用" : "使用此样例"}</button>

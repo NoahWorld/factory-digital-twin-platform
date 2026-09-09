@@ -18,7 +18,10 @@ try {
   const { createCanvasNode, parseModel3DProps } = require(join(temporary, 'apps/web/src/canvas/types.js'));
   const { validateCanvasPatch, applyCanvasPatch } = require(join(temporary, 'apps/api/src/canvas.js'));
   const { listModelAssets, modelAssetContentResponse } = require(join(temporary, 'apps/api/src/model-assets.js'));
-  const { builtinModels, findBuiltinModel } = require(join(temporary, 'shared/builtin-models.js'));
+  const { builtinModels, findBuiltinModel, latestBuiltinModel } = require(join(temporary, 'shared/builtin-models.js'));
+  assert.equal(latestBuiltinModel('builtin:workshop-floor-v2').id, 'builtin:workshop-floor-v3');
+  assert.notEqual(findBuiltinModel('builtin:workshop-floor-v2').sha256, latestBuiltinModel('builtin:workshop-floor-v2').sha256);
+  assert.equal(latestBuiltinModel('builtin:missing'), undefined);
   const patch = (node) => validateCanvasPatch({ expectedRevision: 0, upsertNodes: [node], deleteNodeIds: [] });
   for (const model of builtinModels) {
     const bytes = readFileSync(join(root, 'apps/web/public', model.contentPath));
@@ -31,15 +34,38 @@ try {
     assert.equal(names.length, new Set(names).size, 'independent parts need unique, stable names');
     assert.ok(names.every((n) => typeof n === 'string' && n.length > 0));
     assert.equal(names.length, model.inspection.nodeCount);
-    assert.ok(gltf.nodes.some((n) => n.extras?.inspectionShell));
-    assert.equal(gltf.nodes.filter((n) => n.extras?.explodeOffset).length, 8);
-    assert.ok(gltf.nodes.filter((n) => n.extras?.category === 'flow').length > 300);
-    assert.equal(gltf.animations.length, model.inspection.animationCount);
-    assert.equal(gltf.animations[0].channels.length, 420);
+    if (model.id === 'builtin:aqua-helix-hd-v1') {
+      assert.ok(gltf.nodes.some((n) => n.extras?.inspectionShell));
+      assert.equal(gltf.nodes.filter((n) => n.extras?.explodeOffset).length, 8);
+      assert.ok(gltf.nodes.filter((n) => n.extras?.category === 'flow').length > 300);
+      assert.equal(gltf.animations[0].channels.length, 420);
+    }
+    assert.equal((gltf.animations ?? []).length, model.inspection.animationCount);
     assert.ok(!gltf.buffers.some((b) => b.uri));
-    assert.ok(!gltf.images.some((b) => b.uri));
+    assert.ok(!(gltf.images ?? []).some((b) => b.uri));
     // Sample every animation accessor: finite values and exact loop seams, not only clip metadata.
     const binary = bytes.subarray(28 + bytes.readUInt32LE(12));
+    assert.equal((gltf.images ?? []).length, model.inspection.imageCount);
+    assert.equal((gltf.textures ?? []).length, model.inspection.textureCount);
+    if (model.id.startsWith('builtin:workshop-') && /-v[23]$/.test(model.id)) {
+      if (['floor', 'robot-arm', 'production-machine', 'agv', 'box'].some(slug => model.id.replace(/-v[23]$/, '') === `builtin:workshop-${slug}`)) {
+        assert.ok(gltf.images.length > 0, `${model.id} must embed PBR maps`);
+      }
+      for (const image of gltf.images) {
+        const view = gltf.bufferViews[image.bufferView];
+        const offset = view.byteOffset ?? 0;
+        assert.equal(image.mimeType, 'image/png');
+        assert.ok(offset + view.byteLength <= binary.length);
+        assert.deepEqual([...binary.subarray(offset, offset + 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
+      }
+      for (const material of gltf.materials) {
+        const pbr = material.pbrMetallicRoughness;
+        if (!pbr.baseColorTexture) continue;
+        for (const texture of [pbr.baseColorTexture, pbr.metallicRoughnessTexture, material.normalTexture]) {
+          assert.ok(gltf.images[gltf.textures[texture.index].source]);
+        }
+      }
+    }
     function accessor(index) {
       const a = gltf.accessors[index], v = gltf.bufferViews[a.bufferView];
       assert.equal(a.componentType, 5126);
@@ -49,9 +75,11 @@ try {
       assert.ok(values.every(Number.isFinite));
       return { values, width };
     }
-    for (const sampler of gltf.animations[0].samplers) {
+    for (const sampler of (gltf.animations ?? []).flatMap((clip) => clip.samplers)) {
       const time = accessor(sampler.input).values;
-      assert.equal(time[0], 0); assert.equal(time.at(-1), 12);
+      assert.equal(time[0], 0); assert.ok(time.at(-1) > 0);
+      assert.ok(time.every((value, index) => index === 0 || value > time[index - 1]));
+      if (model.id === 'builtin:aqua-helix-hd-v1') assert.equal(time.at(-1), 12);
       const { values, width } = accessor(sampler.output);
       const first = values.slice(0, width), last = values.slice(-width);
       if (width === 4) {

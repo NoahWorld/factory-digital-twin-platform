@@ -19,6 +19,7 @@ import { BatchModel3DNode } from "./BatchModel3DNode";
 import { modelAssetContentUrl } from "./model-assets";
 import { buildModelSceneTree, type ModelSceneSnapshot } from "./model-scene";
 import type { WalkSceneConfig } from "../scene/walk-physics";
+import type { InstanceTransformMode } from "../scene/instance-transform";
 
 export type Model3DNodeProps = {
   walkScene?: WalkSceneConfig;
@@ -28,7 +29,9 @@ export type Model3DNodeProps = {
   interactive?: boolean;
   maximumModelInstances?: number;
   node: CanvasNode;
+  instanceTransformMode?: InstanceTransformMode | null;
   onModelInstanceSelect?: (canvasNodeId: string, instanceId: string | null) => void;
+  onModelInstanceTransform?: (canvasNodeId: string, instanceId: string, transform: ModelNodeTransform) => void;
   onSceneChange?: (canvasNodeId: string, snapshot: ModelSceneSnapshot | null) => void;
   onSceneNodeSelect: (canvasNodeId: string, sceneNodePath: string | null) => void;
   projectId: string;

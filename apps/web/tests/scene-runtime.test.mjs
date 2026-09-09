@@ -1,10 +1,12 @@
 import './walk-physics.test.mjs';
+import { sceneCameraClipping } from '../src/scene/camera-clipping';
 import assert from 'node:assert/strict';
 import { BoxGeometry, Group, Mesh, MeshBasicMaterial, PerspectiveCamera, InstancedMesh, Matrix4 } from 'three';
 import { MeshBVH } from 'three-mesh-bvh';
 import { ResourceManager } from '../src/scene/resource-manager';
 import { InstanceManager } from '../src/scene/instance-manager';
 import { createPickingService } from '../src/scene/picking-service';
+import { constrainEditableInstanceScale, readEditableInstanceTransform } from '../src/scene/instance-transform';
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
 const deferred = () => { let resolve; const promise = new Promise((yes) => { resolve = yes; }); return { promise, resolve }; };
 
@@ -110,3 +112,39 @@ const makeSource = () => {
   manager.dispose(); resources.dispose(); assert.equal(disposed.length, 2);
 }
 console.log('Scene runtime tests passed: coalescing, concurrency, cancellation, retry, shutdown, incremental identity, rollback, ownership, BVH picking and occlusion.');
+
+// Mouse transforms use the same finite, bounded and degree-based contract as persisted scene instances.
+{
+  const object = new Group();
+  object.position.set(12.345678, -2, 4);
+  object.rotation.set(Math.PI / 2, -Math.PI / 4, 0);
+  object.scale.set(-2, 2.345678, 2_000);
+  constrainEditableInstanceScale(object);
+  assert.deepEqual(readEditableInstanceTransform(object), {
+    position: [12.3457, -2, 4],
+    rotation: [90, -45, 0],
+    scale: [0.001, 2.3457, 1_000],
+  });
+  object.position.x = Number.POSITIVE_INFINITY;
+  assert.throws(() => readEditableInstanceTransform(object), /位置超出可保存范围/);
+  object.position.x = 0;
+  object.scale.y = Number.NaN;
+  assert.throws(() => constrainEditableInstanceScale(object), /非有限数值/);
+}
+console.log('Instance transform tests passed: mouse scale bounds, finite values, degree conversion and stable precision.');
+
+// Keep visible scene bounds while recovering precision for millimeter-spaced details.
+for (const [distance, radius] of [[50,18], [0,18], [-10,18], [-100,18], [10,18], [10000,18], [.02,.01]]) {
+  const { near, far } = sceneCameraClipping(distance, radius);
+  assert.ok(near > 0 && far > near);
+  assert.ok(far >= distance + radius);
+  if (distance > radius * 1.15) assert.ok(near <= distance - radius);
+}
+{
+  const { near, far } = sceneCameraClipping(50, 18);
+  const depthStep = (n, f) => 50 ** 2 * (f - n) / (f * n * 2 ** 24);
+  assert.ok(depthStep(near, far) < depthStep(.01, 1800) / 1000);
+}
+assert.throws(() => sceneCameraClipping(NaN, 18), /Invalid scene clipping/);
+assert.throws(() => sceneCameraClipping(1, 0), /Invalid scene clipping/);
+console.log('Camera clipping tests passed: outside/inside bounds, small scenes, distant zoom and depth precision.');

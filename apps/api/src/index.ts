@@ -64,6 +64,16 @@ import {
 } from "./scene-backgrounds";
 import { projectCoverResponse } from "./project-covers";
 import { collectAssetRuntimeState, probeRestDataSource } from "./runtime-state";
+import {
+  applyStandaloneScenePatch,
+  getStandaloneScene,
+  validateStandaloneScenePatch,
+} from "./standalone-scenes";
+import {
+  STANDALONE_3D_LIMITS,
+  isProjectType,
+  type ProjectType,
+} from "../../../shared/standalone-3d";
 
 type ProjectStatus = "draft" | "published" | "archived";
 
@@ -75,6 +85,7 @@ type ProjectRow = {
   updated_at: string;
   project_role: "owner" | "editor" | "viewer" | null;
   cover_revision: number | null;
+  project_type: ProjectType;
 };
 
 type JsonObject = Record<string, unknown>;
@@ -169,6 +180,7 @@ const presentProject = (project: ProjectRow) => ({
   id: project.id,
   name: project.name,
   status: project.status,
+  projectType: project.project_type,
   createdAt: project.created_at,
   updatedAt: project.updated_at,
   projectRole: project.project_role,
@@ -184,7 +196,7 @@ const requireProjectAccess = async (
 ): Promise<ProjectRow> => {
   const isPlatformAdmin = hasGlobalRole(user, "platform_admin") ? 1 : 0;
   const project = await env.DB.prepare(
-    `SELECT p.id, p.name, p.status, p.created_at, p.updated_at,
+    `SELECT p.id, p.name, p.status, p.project_type, p.created_at, p.updated_at,
        pm.role AS project_role, pc.revision AS cover_revision
      FROM projects p
      LEFT JOIN project_members pm ON pm.project_id = p.id AND pm.user_id = ?
@@ -210,7 +222,7 @@ const canDeleteProject = (user: AuthenticatedUser, project: ProjectRow): boolean
 const listProjects = async (env: AppEnv, user: AuthenticatedUser): Promise<ProjectRow[]> => {
   const isPlatformAdmin = hasGlobalRole(user, "platform_admin") ? 1 : 0;
   const result = await env.DB.prepare(
-    `SELECT p.id, p.name, p.status, p.created_at, p.updated_at,
+    `SELECT p.id, p.name, p.status, p.project_type, p.created_at, p.updated_at,
        pm.role AS project_role, pc.revision AS cover_revision
      FROM projects p
      LEFT JOIN project_members pm ON pm.project_id = p.id AND pm.user_id = ?
@@ -228,6 +240,7 @@ const createProject = async (
   env: AppEnv,
   user: AuthenticatedUser,
   name: string,
+  projectType: ProjectType,
 ): Promise<ProjectRow> => {
   if (!hasGlobalRole(user, "platform_admin", "delivery_manager")) {
     throw new AppError(403, "permission_denied", "You do not have permission to create projects.");
@@ -236,21 +249,28 @@ const createProject = async (
   const projectId = crypto.randomUUID();
   const now = new Date().toISOString();
 
-  await env.DB.batch([
+  const statements = [
     env.DB
       .prepare(
         `INSERT INTO projects (
-          id, name, status, created_by_user_id, created_at, updated_at
-        ) VALUES (?, ?, 'draft', ?, ?, ?)`,
+          id, name, status, project_type, created_by_user_id, created_at, updated_at
+        ) VALUES (?, ?, 'draft', ?, ?, ?, ?)`,
       )
-      .bind(projectId, name, user.id, now, now),
+      .bind(projectId, name, projectType, user.id, now, now),
     env.DB
       .prepare(
         `INSERT INTO project_members (project_id, user_id, role, created_at, updated_at)
          VALUES (?, ?, 'owner', ?, ?)`,
       )
       .bind(projectId, user.id, now, now),
-  ]);
+  ];
+  if (projectType === "3d") {
+    statements.push(env.DB.prepare(
+      `INSERT INTO standalone_3d_scenes (project_id, updated_by_user_id, updated_at)
+       VALUES (?, ?, ?)`,
+    ).bind(projectId, user.id, now));
+  }
+  await env.DB.batch(statements);
 
   return {
     id: projectId,
@@ -260,6 +280,7 @@ const createProject = async (
     updated_at: now,
     project_role: "owner",
     cover_revision: null,
+    project_type: projectType,
   };
 };
 
@@ -321,6 +342,8 @@ const deleteProject = async (
     env.DB.prepare("DELETE FROM media_assets WHERE project_id = ?").bind(projectId),
     env.DB.prepare("DELETE FROM image_assets WHERE project_id = ?").bind(projectId),
     env.DB.prepare("DELETE FROM model_assets WHERE project_id = ?").bind(projectId),
+    env.DB.prepare("DELETE FROM standalone_3d_instances WHERE project_id = ?").bind(projectId),
+    env.DB.prepare("DELETE FROM standalone_3d_scenes WHERE project_id = ?").bind(projectId),
     env.DB.prepare("DELETE FROM project_canvases WHERE project_id = ?").bind(projectId),
     env.DB.prepare("DELETE FROM project_members WHERE project_id = ?").bind(projectId),
     env.DB.prepare("DELETE FROM projects WHERE id = ?").bind(projectId),
@@ -454,7 +477,11 @@ const handleApiRequest = async (
   if (method === "POST" && pathname === "/api/v1/projects") {
     const user = await getAuthenticatedUser(env, request);
     const body = await readJsonObject(request);
-    const project = await createProject(env, user, validateProjectName(body.name));
+    const projectType = body.projectType ?? "2d";
+    if (!isProjectType(projectType)) {
+      throw new AppError(400, "invalid_project_type", "Project type must be either 2d or 3d.");
+    }
+    const project = await createProject(env, user, validateProjectName(body.name), projectType);
     return json({ project: presentProject(project), requestId }, 201);
   }
 
@@ -464,6 +491,9 @@ const handleApiRequest = async (
     const user = await getAuthenticatedUser(env, request);
     const projectId = decodePathSegment(projectCoverMatch[1]);
     const project = await requireProjectAccess(env, user, projectId);
+    if (project.project_type !== "2d") {
+      throw new AppError(409, "project_type_mismatch", "Standalone 3D projects do not use 2D canvas covers.");
+    }
     const canvas = await getCanvas(env, projectId);
     if (canvas.revision < 1) {
       throw new AppError(
@@ -1101,6 +1131,9 @@ const handleApiRequest = async (
     const user = await getAuthenticatedUser(env, request);
     const projectId = decodePathSegment(canvasMatch[1]);
     const project = await requireProjectAccess(env, user, projectId);
+    if (project.project_type !== "2d") {
+      throw new AppError(409, "project_type_mismatch", "This project uses the standalone 3D scene editor, not the 2D canvas editor.");
+    }
     const editable = canEditProject(user, project);
 
     if (method === "GET") {
@@ -1127,6 +1160,48 @@ const handleApiRequest = async (
       durationMs: Date.now() - startedAt,
     }));
     return json({ canvas, requestId });
+  }
+
+  const standaloneSceneMatch = pathname.match(/^\/api\/v1\/projects\/([^/]+)\/scene$/);
+
+  if ((method === "GET" || method === "PATCH") && standaloneSceneMatch) {
+    const startedAt = Date.now();
+    const user = await getAuthenticatedUser(env, request);
+    const projectId = decodePathSegment(standaloneSceneMatch[1]);
+    const project = await requireProjectAccess(env, user, projectId);
+    if (project.project_type !== "3d") {
+      throw new AppError(409, "project_type_mismatch", "This project uses the 2D canvas editor, not the standalone 3D scene editor.");
+    }
+    const editable = canEditProject(user, project);
+
+    if (method === "GET") {
+      return json({
+        project: presentProject(project),
+        scene: await getStandaloneScene(env, projectId),
+        editable,
+        limits: STANDALONE_3D_LIMITS,
+        requestId,
+      });
+    }
+    if (!editable) {
+      throw new AppError(403, "permission_denied", "You do not have permission to edit this 3D scene.");
+    }
+    const patch = validateStandaloneScenePatch(await readJsonObject(request, 512 * 1024));
+    const scene = await applyStandaloneScenePatch(env, projectId, user, patch);
+    console.log(JSON.stringify({
+      event: "standalone_3d_scene_saved",
+      requestId,
+      projectId,
+      userId: user.id,
+      revision: scene.revision,
+      settingsChanged: patch.settings !== undefined,
+      linkChanged: patch.linked2dProjectId !== undefined,
+      upsertedInstanceCount: patch.upsertInstances.length,
+      deletedInstanceCount: patch.deleteInstanceIds.length,
+      totalInstanceCount: scene.instances.length,
+      durationMs: Date.now() - startedAt,
+    }));
+    return json({ scene, limits: STANDALONE_3D_LIMITS, requestId });
   }
 
   const projectMatch = pathname.match(/^\/api\/v1\/projects\/([^/]+)$/);

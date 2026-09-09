@@ -47,6 +47,9 @@ try {
 
   const usageDatabase = {
     prepare(query) {
+      if (query.includes("FROM standalone_3d_instances")) return statement({
+        all: async () => ({ results: [{ id: "instance-a", model_asset_id: "resource-a" }] }),
+      });
       assert.match(query, /FROM canvas_nodes/);
       return statement({
         all: async () => ({
@@ -59,8 +62,8 @@ try {
     },
   };
   const usage = await listProjectResourceUsage({ DB: usageDatabase }, "project-a");
-  assert.equal(usage.get("resource-a").count, 2, "a canvas node must count once even if its reference list contains duplicates");
-  assert.deepEqual(usage.get("resource-a").nodes.map((node) => node.id), ["node-a", "node-b"]);
+  assert.equal(usage.get("resource-a").count, 3, "canvas nodes and standalone instances must both count as resource usage");
+  assert.deepEqual(usage.get("resource-a").nodes.map((node) => node.id), ["node-a", "node-b", "instance-a"]);
   assert.equal(usage.get("resource-b").count, 1);
   assert.throws(
     () => requireResourceDeletionConfirmation("used.glb", usage.get("resource-a"), false),
@@ -139,6 +142,7 @@ try {
       if (query.includes("FROM canvas_nodes")) return statement({
         all: async () => ({ results: [{ id: "node-used", node_type: "model-3d", resource_refs_json: '["media-used"]' }] }),
       });
+      if (query.includes("FROM standalone_3d_instances")) return statement();
       throw new Error(`Unexpected query: ${query}`);
     },
   };

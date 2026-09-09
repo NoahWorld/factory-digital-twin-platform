@@ -1,3 +1,7 @@
+import { workshopLegacyModels } from "./workshop-models-legacy";
+import { workshopModels } from "./workshop-models";
+import { workshopModels as workshopModelsV1 } from "./workshop-models-v1";
+
 /** Bundled, public demonstration assets. IDs and content hashes are immutable per version. */
 export const builtinModels = [
   {
@@ -46,7 +50,21 @@ export const builtinModels = [
         "explosion": 0
       }
     }
-  }
+  },
+  ...workshopModels,
+  ...workshopModelsV1,
+  ...workshopLegacyModels,
 ] as const;
 
 export const findBuiltinModel = (id: string) => builtinModels.find((model) => model.id === id);
+
+/** Explicit upgrades only; resolving an existing ID always retains its original bytes. */
+export const latestBuiltinModel = (id: string) => {
+  const current = findBuiltinModel(id);
+  const versioned = /^(.*)-v(\d+)$/.exec(id);
+  if (!current || !versioned) return current;
+  return builtinModels.reduce((latest, model) => {
+    const candidate = /^(.*)-v(\d+)$/.exec(model.id);
+    return candidate?.[1] === versioned[1] && Number(candidate[2]) > Number(/-v(\d+)$/.exec(latest.id)![1]) ? model : latest;
+  }, current);
+};

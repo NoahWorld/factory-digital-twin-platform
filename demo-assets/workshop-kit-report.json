@@ -1,0 +1,186 @@
+{
+  "units": "meters",
+  "upAxis": "Y",
+  "cost": {
+    "instances": 98,
+    "resources": 21,
+    "uniqueBytes": 7206648,
+    "estimatedMeshInstances": 697,
+    "animatedInstances": 6
+  },
+  "motionCheck": {
+    "method": "60 Hz full-period per-mesh AABB sampling, excluding supporting floor; disjoint swept volumes for all moving instances",
+    "checked": [
+      {
+        "id": "workshop-056",
+        "label": "产线 1-1 · 机械臂",
+        "duration": 8,
+        "samples": 481,
+        "minimumMachineGapMeters": 0.455
+      },
+      {
+        "id": "workshop-059",
+        "label": "产线 1-2 · 机械臂",
+        "duration": 8,
+        "samples": 481,
+        "minimumMachineGapMeters": 0.455
+      },
+      {
+        "id": "workshop-062",
+        "label": "产线 2-1 · 机械臂",
+        "duration": 8,
+        "samples": 481,
+        "minimumMachineGapMeters": 0.455
+      },
+      {
+        "id": "workshop-065",
+        "label": "产线 2-2 · 机械臂",
+        "duration": 8,
+        "samples": 481,
+        "minimumMachineGapMeters": 0.455
+      },
+      {
+        "id": "workshop-067",
+        "label": "AGV-01 · 中央运输通道",
+        "duration": 16,
+        "samples": 961,
+        "minimumMachineGapMeters": 1.91
+      },
+      {
+        "id": "workshop-068",
+        "label": "AGV-02 · 东侧运输通道",
+        "duration": 16,
+        "samples": 961,
+        "minimumMachineGapMeters": 5.01
+      }
+    ]
+  },
+  "models": [
+    {
+      "id": "builtin:workshop-robot-arm-v2",
+      "path": "/models/workshop/robot-arm.d9ff1d7f75f4.glb",
+      "sha256": "d9ff1d7f75f4832a449498cff68044bf2b8c6b5af65453c87b8c16253536ab76",
+      "bytes": 436416
+    },
+    {
+      "id": "builtin:workshop-agv-v2",
+      "path": "/models/workshop/agv.ec2762aecc7f.glb",
+      "sha256": "ec2762aecc7fdbfb2c7200bb41a35bc74c266b240e48ae38622d9ad4e72dde8c",
+      "bytes": 550928
+    },
+    {
+      "id": "builtin:workshop-rack-v2",
+      "path": "/models/workshop/rack.3c9654e0d9df.glb",
+      "sha256": "3c9654e0d9dfbc57148e6731516a62aab2a63e18e07c35b7bd5e7d4ec1b5a7da",
+      "bytes": 301920
+    },
+    {
+      "id": "builtin:workshop-box-v2",
+      "path": "/models/workshop/box.4fd124594163.glb",
+      "sha256": "4fd1245941638ad93d8bc502d3410094c08f0f02b86e78c5129316c85e550b94",
+      "bytes": 329736
+    },
+    {
+      "id": "builtin:workshop-workbench-v2",
+      "path": "/models/workshop/workbench.37b968e58feb.glb",
+      "sha256": "37b968e58febe2110a6ac9d0fba4db9e55c3f36ae6c74f5dc2fe9187c43b3eb5",
+      "bytes": 333224
+    },
+    {
+      "id": "builtin:workshop-partition-v2",
+      "path": "/models/workshop/partition.9e4750777aa3.glb",
+      "sha256": "9e4750777aa39a770e51102d41936467b1e303ea772afd1bfb7745d7969d150d",
+      "bytes": 298684
+    },
+    {
+      "id": "builtin:workshop-door-v2",
+      "path": "/models/workshop/door.d03dbe1b5663.glb",
+      "sha256": "d03dbe1b566341fa60ae2b2715a2d73e50938bf08afca723d2c9e3ff24830ac3",
+      "bytes": 316736
+    },
+    {
+      "id": "builtin:workshop-column-v2",
+      "path": "/models/workshop/column.0c4b5b2e97f3.glb",
+      "sha256": "0c4b5b2e97f30533a5f0eaa7f02de1be87609f86631e5f9688dcd03f41d988d0",
+      "bytes": 356360
+    },
+    {
+      "id": "builtin:workshop-wall-v2",
+      "path": "/models/workshop/wall.54879e6dc6e5.glb",
+      "sha256": "54879e6dc6e5efbe5b5d2ab0baffdece1a25e8ad8eb3b903a667e6743ba76703",
+      "bytes": 296564
+    },
+    {
+      "id": "builtin:workshop-alarm-light-v2",
+      "path": "/models/workshop/alarm-light.a71bcb6e82eb.glb",
+      "sha256": "a71bcb6e82ebc364404c5de54a0ba3a436130e85fab81f046a12486f0a2de63d",
+      "bytes": 240828
+    },
+    {
+      "id": "builtin:workshop-wall-camera-v2",
+      "path": "/models/workshop/wall-camera.ad81ec0f08aa.glb",
+      "sha256": "ad81ec0f08aa45806514075c642cebaf32039f6d5ccac12375742580d73cfbf5",
+      "bytes": 323136
+    },
+    {
+      "id": "builtin:workshop-production-machine-v2",
+      "path": "/models/workshop/production-machine.f25767e12a5f.glb",
+      "sha256": "f25767e12a5fb8927ac4dd1cc482b0a390005eea0ab054b4310f9bc55f69413e",
+      "bytes": 411368
+    },
+    {
+      "id": "builtin:workshop-floor-v3",
+      "path": "/models/workshop/floor.94a12c871add.glb",
+      "sha256": "94a12c871addc8cd36ce0ba470f97dab62eb829acc8432efee1a46dba2f2810e",
+      "bytes": 844144
+    },
+    {
+      "id": "builtin:workshop-conveyor-v2",
+      "path": "/models/workshop/conveyor.165992ce24bd.glb",
+      "sha256": "165992ce24bdf850ccbb20dacd60834cc43366fc9d319e17c709e5c8d667634c",
+      "bytes": 317436
+    },
+    {
+      "id": "builtin:workshop-tool-cabinet-v2",
+      "path": "/models/workshop/tool-cabinet.4a30a3073de4.glb",
+      "sha256": "4a30a3073de44db8e8411ba161e676db2e18f0fb7d17a67de9668e29084f6d97",
+      "bytes": 258092
+    },
+    {
+      "id": "builtin:workshop-safety-fence-v2",
+      "path": "/models/workshop/safety-fence.7f1e49d9c68b.glb",
+      "sha256": "7f1e49d9c68b6f40fa2f7d0b2909ddd9270553e1123e0acb728128d9ee3b2b4e",
+      "bytes": 278672
+    },
+    {
+      "id": "builtin:workshop-pallet-v2",
+      "path": "/models/workshop/pallet.c07c12fa9df6.glb",
+      "sha256": "c07c12fa9df6f6dcc608209edf70afc74890ba05f7f83a44a5948d6fbbaf3dcb",
+      "bytes": 364348
+    },
+    {
+      "id": "builtin:workshop-electrical-cabinet-v2",
+      "path": "/models/workshop/electrical-cabinet.773e38194012.glb",
+      "sha256": "773e38194012477fbecd9620b7c1f6d29b9ed71acf3552108cf75fb6ac6fa6f8",
+      "bytes": 286292
+    },
+    {
+      "id": "builtin:workshop-air-compressor-v2",
+      "path": "/models/workshop/air-compressor.d7683fecf872.glb",
+      "sha256": "d7683fecf872707e0545fc0d920fdf8348cd8fcffd64672bff63ca1632002348",
+      "bytes": 312648
+    },
+    {
+      "id": "builtin:workshop-fire-station-v2",
+      "path": "/models/workshop/fire-station.63f585a2d66a.glb",
+      "sha256": "63f585a2d66ade8bd86c392a411152a85f747a47ec6d74e32279186feda8b0dc",
+      "bytes": 64552
+    },
+    {
+      "id": "builtin:workshop-utility-gantry-v2",
+      "path": "/models/workshop/utility-gantry.7b974a83a5a5.glb",
+      "sha256": "7b974a83a5a55469c121daa7ce8e0120bd03d21a6b906f8ac09d9ccc8d2f546c",
+      "bytes": 284564
+    }
+  ]
+}

@@ -15,9 +15,11 @@ export const BatchModel3DNode = memo(function BatchModel3DNode({
   runtimeControlsEnabled = true,
   editable,
   interactive = false,
+  instanceTransformMode = null,
   maximumModelInstances,
   node,
   onModelInstanceSelect,
+  onModelInstanceTransform,
   onSceneChange,
   onSceneNodeSelect,
   projectId,
@@ -31,6 +33,9 @@ export const BatchModel3DNode = memo(function BatchModel3DNode({
   const runtimeRef = useRef<SceneRuntime | null>(null);
   const sceneCallbackRef = useRef(onSceneChange);
   sceneCallbackRef.current = onSceneChange;
+  const instanceTransformCallbackRef = useRef(onModelInstanceTransform);
+  instanceTransformCallbackRef.current = onModelInstanceTransform;
+  const suppressNextPickRef = useRef(false);
   const pointerStartRef = useRef<{
     clientX: number;
     clientY: number;
@@ -52,6 +57,7 @@ export const BatchModel3DNode = memo(function BatchModel3DNode({
     instances, settings: parsed.value, appearanceOverrides: runtimeAppearanceOverrides,
     selectedPath: selectedSceneNodePath, selectedInstanceId: selectedModelInstanceId,
     controlsEnabled: cameraControlsEnabled ?? !editable,
+    instanceTransformMode,
   } : null;
   const inputRef = useRef(input);
   inputRef.current = input;
@@ -82,6 +88,12 @@ export const BatchModel3DNode = memo(function BatchModel3DNode({
         onDiagnostics: (diagnostics) => {
           // Diagnostic counts only; no renderer, business data or live state enters React.
           container.dataset.sceneDiagnostics = JSON.stringify(diagnostics);
+        },
+        onInstanceTransform: (instanceId, transform) => {
+          if (!cancelled) instanceTransformCallbackRef.current?.(node.id, instanceId, transform);
+        },
+        onTransformDragging: (dragging) => {
+          if (dragging) suppressNextPickRef.current = true;
         },
       });
       runtimeRef.current = runtime;
@@ -115,6 +127,10 @@ export const BatchModel3DNode = memo(function BatchModel3DNode({
   const handlePointerUp = (event: ReactPointerEvent<HTMLDivElement>) => {
     const start = pointerStartRef.current;
     pointerStartRef.current = null;
+    if (suppressNextPickRef.current) {
+      suppressNextPickRef.current = false;
+      return;
+    }
     if ((!editable && !interactive) || !start || start.pointerId !== event.pointerId) return;
     if (Math.hypot(event.clientX - start.clientX, event.clientY - start.clientY) > 4) return;
     try {
@@ -137,6 +153,7 @@ export const BatchModel3DNode = memo(function BatchModel3DNode({
         className="model-3d-renderer"
         onPointerCancel={() => {
           pointerStartRef.current = null;
+          suppressNextPickRef.current = false;
         }}
         onPointerDown={handlePointerDown}
         onPointerUp={handlePointerUp}
