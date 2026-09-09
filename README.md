@@ -124,3 +124,9 @@ pnpm --filter @factory-twin/api db:migrate:remote
 ### 3D 组件控制面板
 
 选中 3D 组件，在画布属性栏或独立 3D 编辑器中勾选“展示控制面板”，保存画布后在项目预览生效。旧组件默认关闭。面板支持外壳透明/实体/隐藏、动画播放与速度、水流粒子、组件拆解和灯光质感；不支持的模型功能会禁用。查看者可收起面板或点击“恢复预设”，操作只影响本次查看，不修改已保存配置。初始效果仍在 3D 编辑器中设定并保存。
+
+### 前端场景运行层
+
+[厂房评估与选型](./docs/厂房场景架构评估与技术选型.md)记录架构局限、技术决定及后端待办。[前端场景运行架构](./docs/frontend-scene-runtime.md)说明资源所有权、增量实例、相机、拾取和诊断。
+
+运行层回归：`pnpm test:scene-runtime`；浏览器回归：`node scripts/test-scene-runtime-browser.mjs`（需预装 Playwright/Chromium，配置见架构文档）。前端基础验证：`pnpm --filter @factory-twin/web check` 和 `pnpm --filter @factory-twin/web build`。
