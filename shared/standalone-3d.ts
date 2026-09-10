@@ -11,6 +11,16 @@ export const STANDALONE_3D_LIMITS = {
 
 export type StandaloneSceneRenderMode = "background" | "interactive";
 
+export type StandaloneSceneInstanceAnimation = {
+  enabled: boolean;
+  speed: number;
+};
+
+export type StandaloneSceneInstanceAppearance = {
+  color: string | null;
+  opacity: number;
+};
+
 export type StandaloneSceneSettings = {
   animationSpeed: number;
   autoRotate: boolean;
@@ -29,6 +39,8 @@ export type StandaloneSceneSettings = {
 };
 
 export type StandaloneSceneInstance = {
+  animation?: StandaloneSceneInstanceAnimation;
+  appearance?: StandaloneSceneInstanceAppearance;
   assetId: string | null;
   id: string;
   label: string;
@@ -42,6 +54,16 @@ export type StandaloneSceneInstance = {
   };
   visible: boolean;
 };
+
+export const defaultStandaloneSceneInstanceAnimation = (): StandaloneSceneInstanceAnimation => ({
+  enabled: true,
+  speed: 1,
+});
+
+export const defaultStandaloneSceneInstanceAppearance = (): StandaloneSceneInstanceAppearance => ({
+  color: null,
+  opacity: 1,
+});
 
 export type StandaloneSceneDocument = {
   instances: StandaloneSceneInstance[];

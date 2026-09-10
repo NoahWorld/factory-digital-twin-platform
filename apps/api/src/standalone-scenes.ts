@@ -36,10 +36,14 @@ type SceneRow = {
 };
 
 type InstanceRow = {
+  animation_enabled: number;
+  animation_speed: number;
   business_asset_key: string | null;
+  color_override: string | null;
   id: string;
   label: string;
   model_asset_id: string;
+  opacity: number;
   position_x: number;
   position_y: number;
   position_z: number;
@@ -170,6 +174,14 @@ const validateInstance = (value: unknown, index: number): StandaloneSceneInstanc
     throw new AppError(400, "invalid_scene_instance", `upsertInstances[${index}] must be an object.`);
   }
   const instance = value as JsonObject;
+  const expected = new Set([
+    "animation", "appearance", "assetId", "id", "label", "modelAssetId",
+    "renderMode", "sortOrder", "transform", "visible",
+  ]);
+  const unknown = Object.keys(instance).find((field) => !expected.has(field));
+  if (unknown) {
+    throw new AppError(400, "unknown_scene_instance_field", `Unsupported scene instance field: ${unknown}.`);
+  }
   const id = validateId(instance.id, `upsertInstances[${index}].id`);
   const modelAssetId = validateId(instance.modelAssetId, `upsertInstances[${index}].modelAssetId`);
   if (
@@ -195,12 +207,41 @@ const validateInstance = (value: unknown, index: number): StandaloneSceneInstanc
   if (!instance.transform || typeof instance.transform !== "object" || Array.isArray(instance.transform)) {
     throw new AppError(400, "invalid_scene_transform", `upsertInstances[${index}].transform must be an object.`);
   }
+  const rawAnimation = instance.animation ?? { enabled: true, speed: 1 };
+  if (!rawAnimation || typeof rawAnimation !== "object" || Array.isArray(rawAnimation)) {
+    throw new AppError(400, "invalid_scene_instance_animation", `upsertInstances[${index}].animation must be an object.`);
+  }
+  const animation = rawAnimation as JsonObject;
+  const unknownAnimation = Object.keys(animation).find((field) => field !== "enabled" && field !== "speed");
+  if (unknownAnimation || typeof animation.enabled !== "boolean") {
+    throw new AppError(400, "invalid_scene_instance_animation", `upsertInstances[${index}].animation must contain only enabled and speed.`);
+  }
+  const rawAppearance = instance.appearance ?? { color: null, opacity: 1 };
+  if (!rawAppearance || typeof rawAppearance !== "object" || Array.isArray(rawAppearance)) {
+    throw new AppError(400, "invalid_scene_instance_appearance", `upsertInstances[${index}].appearance must be an object.`);
+  }
+  const appearance = rawAppearance as JsonObject;
+  const unknownAppearance = Object.keys(appearance).find((field) => field !== "color" && field !== "opacity");
+  if (
+    unknownAppearance
+    || (appearance.color !== null && (typeof appearance.color !== "string" || !HEX_COLOR_PATTERN.test(appearance.color)))
+  ) {
+    throw new AppError(400, "invalid_scene_instance_appearance", `upsertInstances[${index}].appearance must contain a hexadecimal color or null and opacity.`);
+  }
   const transform = instance.transform as JsonObject;
   const sortOrder = validateNumber(instance.sortOrder, `upsertInstances[${index}].sortOrder`, 0, 100_000);
   if (!Number.isInteger(sortOrder)) {
     throw new AppError(400, "invalid_scene_sort_order", `upsertInstances[${index}].sortOrder must be an integer.`);
   }
   return {
+    animation: {
+      enabled: animation.enabled,
+      speed: validateNumber(animation.speed, `upsertInstances[${index}].animation.speed`, 0.1, 3),
+    },
+    appearance: {
+      color: appearance.color,
+      opacity: validateNumber(appearance.opacity, `upsertInstances[${index}].appearance.opacity`, 0, 1),
+    },
     assetId,
     id,
     label: instance.label.trim(),
@@ -273,6 +314,7 @@ const sceneColumns = `
 
 const instanceColumns = `
   id, model_asset_id, business_asset_key, label, render_mode, visible,
+  animation_enabled, animation_speed, color_override, opacity,
   position_x, position_y, position_z, rotation_x, rotation_y, rotation_z,
   scale_x, scale_y, scale_z, sort_order
 `;
@@ -295,6 +337,14 @@ const presentSettings = (row: SceneRow): StandaloneSceneSettings => ({
 });
 
 const presentInstance = (row: InstanceRow): StandaloneSceneInstance => ({
+  animation: {
+    enabled: row.animation_enabled === 1,
+    speed: row.animation_speed,
+  },
+  appearance: {
+    color: row.color_override,
+    opacity: row.opacity,
+  },
   assetId: row.business_asset_key,
   id: row.id,
   label: row.label,
@@ -441,7 +491,9 @@ const validateModelBudget = async (
     );
   }
   const animatedInstances = playAnimations
-    ? instances.filter((instance) => (modelCosts.get(instance.modelAssetId)?.animationCount ?? 0) > 0).length
+    ? instances.filter((instance) =>
+        instance.animation?.enabled !== false
+        && (modelCosts.get(instance.modelAssetId)?.animationCount ?? 0) > 0).length
     : 0;
   if (animatedInstances > STANDALONE_3D_LIMITS.maximumAnimatedInstances) {
     throw new AppError(
@@ -519,9 +571,10 @@ export const applyStandaloneScenePatch = async (
     ...patch.upsertInstances.map((instance) => env.DB.prepare(
       `INSERT INTO standalone_3d_instances (
         id, project_id, model_asset_id, business_asset_key, label, render_mode, visible,
+        animation_enabled, animation_speed, color_override, opacity,
         position_x, position_y, position_z, rotation_x, rotation_y, rotation_z,
         scale_x, scale_y, scale_z, sort_order, updated_at
-      ) SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+      ) SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
         WHERE ${guard}
       ON CONFLICT(project_id, id) DO UPDATE SET
         model_asset_id = excluded.model_asset_id,
@@ -529,6 +582,10 @@ export const applyStandaloneScenePatch = async (
         label = excluded.label,
         render_mode = excluded.render_mode,
         visible = excluded.visible,
+        animation_enabled = excluded.animation_enabled,
+        animation_speed = excluded.animation_speed,
+        color_override = excluded.color_override,
+        opacity = excluded.opacity,
         position_x = excluded.position_x,
         position_y = excluded.position_y,
         position_z = excluded.position_z,
@@ -548,6 +605,10 @@ export const applyStandaloneScenePatch = async (
       instance.label,
       instance.renderMode,
       instance.visible ? 1 : 0,
+      instance.animation?.enabled === false ? 0 : 1,
+      instance.animation?.speed ?? 1,
+      instance.appearance?.color ?? null,
+      instance.appearance?.opacity ?? 1,
       ...instance.transform.position,
       ...instance.transform.rotation,
       ...instance.transform.scale,

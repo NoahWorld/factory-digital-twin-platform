@@ -107,7 +107,7 @@ pnpm test:ornaments
 
 `test:auth` 验证 `admin` 与邮箱双路径登录、密码失败、初始化写入及旧管理员迁移；`test:resources` 验证资源引用去重统计、系统资源不可删除、媒体文件签名校验、关联资源显式确认删除和媒体表迁移；`test:scene-background` 验证 AI 场景底座组件的文件类型、数量、体积、命名、尺寸边界和内嵌纹理 GLB 结构；`test:models` 验证内置 GLB 哈希、节点命名、动画循环、单模型兼容、批量实例契约、共享配置校验与资源分流。需要真实 Worker 验证时，在**单独的临时本地数据库**完成迁移并设置临时初始化令牌，再执行 `pnpm smoke:models http://127.0.0.1:端口 临时令牌`；此脚本会初始化验收账号、创建验收项目并保留其画布供浏览器检查，不能对真实项目数据库执行。
 
-数据库迁移包括 `0001_initial.sql`（项目、资产与数据配置）、`0002_access_control.sql`（用户、角色、会话与项目成员）、`0003_canvas_foundation.sql`（画布元数据与组件节点）、`0004_canvas_shape_nodes.sql`（基础图形）、`0005_canvas_decoration_nodes.sql`（大屏点缀组件）、`0006_model_assets_and_3d_node.sql`（模型资源与 3D 组件）、`0007_dashboard_components.sql`（指标卡、环形进度、进度排行与状态矩阵）、`0008_canvas_themes.sql`（画布主题元数据）、`0009_basic_components_and_image_assets.sql`（基础内容/交互组件与图片资源）、`0010_dashboard_industry_nodes.sql`（行业图表/看板组件）、`0011_panel_frame.sql`（科技面板）、`0012_card_titles_and_icons.sql`（卡片标题与本地图标）、`0013_animated_decorations.sql`（科技/工业动画点缀）、`0014_fullscreen_toggle.sql`（全屏切换组件）、`0015_resource_library_media.sql`（视频/音频资源元数据）、`0016_admin_login_name.sql`（首个平台管理员账号与账号唯一索引）和 `0017_scene_background_models.sql`（场景背景模型来源及生成参数）。部署依赖新表或节点类型的 API 前必须先显式应用对应迁移；资源库的视频和音频接口依赖 `0015`，`admin` 账号登录依赖 `0016`，背景模型生成接口依赖 `0017`。用户上传模型、图片、视频和音频还要求账号先在 Cloudflare 控制台完成 R2 订阅开通，再创建 R2 桶：
+数据库迁移包括 `0001_initial.sql`（项目、资产与数据配置）、`0002_access_control.sql`（用户、角色、会话与项目成员）、`0003_canvas_foundation.sql`（画布元数据与组件节点）、`0004_canvas_shape_nodes.sql`（基础图形）、`0005_canvas_decoration_nodes.sql`（大屏点缀组件）、`0006_model_assets_and_3d_node.sql`（模型资源与 3D 组件）、`0007_dashboard_components.sql`（指标卡、环形进度、进度排行与状态矩阵）、`0008_canvas_themes.sql`（画布主题元数据）、`0009_basic_components_and_image_assets.sql`（基础内容/交互组件与图片资源）、`0010_analytics_and_business_components.sql`（行业图表与业务组件）、`0011_visual_theme_and_panel_frame.sql`（视觉主题与科技面板）、`0012_card_titles_and_icons.sql`（卡片标题与本地图标）、`0013_animated_decorations.sql`（科技/工业动画点缀）、`0014_fullscreen_toggle.sql`（全屏切换组件）、`0015_resource_library_media.sql`（视频/音频资源元数据）、`0016_admin_login_name.sql`（首个平台管理员账号与账号唯一索引）、`0017_scene_background_models.sql`（场景背景模型来源及生成参数）、`0018_standalone_3d_projects.sql`（独立 3D 项目、场景与实例）和 `0019_standalone_3d_instance_presentation.sql`（实例外观与动画）。部署依赖新表或节点类型的 API 前必须先显式应用对应迁移；资源库的视频和音频接口依赖 `0015`，`admin` 账号登录依赖 `0016`，背景模型生成接口依赖 `0017`，独立 3D 场景依赖 `0018`，实例外观与动画依赖 `0019`。用户上传模型、图片、视频和音频还要求账号先在 Cloudflare 控制台完成 R2 订阅开通，再创建 R2 桶：
 
 ```bash
 npx wrangler r2 bucket create factory-digital-twin-project-files
@@ -131,6 +131,6 @@ pnpm --filter @factory-twin/api db:migrate:remote
 
 ### 前端场景运行层
 
-[厂房评估与选型](./docs/厂房场景架构评估与技术选型.md)记录架构局限、技术决定及后端待办。[前端场景运行架构](./docs/frontend-scene-runtime.md)说明资源所有权、增量实例、相机、拾取和诊断。[Rapier 前端行走](./docs/frontend-rapier-navigation.md)提供碰撞配置样例、组件入口与当前限制。
+[厂房评估与选型](./docs/厂房场景架构评估与技术选型.md)记录架构局限、技术决定及后端待办。[前端场景运行架构](./docs/frontend-scene-runtime.md)说明资源所有权、增量实例、相机、拾取和诊断。[Rapier 前端行走](./docs/frontend-rapier-navigation.md)提供碰撞配置样例、组件入口与当前限制。[2D + 3D 智能车间联动 Demo](./docs/2d-3d-workshop-demo.md)记录本地项目入口、设备绑定和验收结果。
 
 运行层回归：`pnpm test:scene-runtime`；浏览器回归：`node scripts/test-scene-runtime-browser.mjs`（需预装 Playwright/Chromium，配置见架构文档）。前端基础验证：`pnpm --filter @factory-twin/web check` 和 `pnpm --filter @factory-twin/web build`。

@@ -125,14 +125,24 @@ try {
       props: {
         ...node.props,
         modelInstances: [
-          { id: 'primary', assetId: model.id, label: '主模型', transform: instanceTransform, visible: true },
+          { id: 'primary', assetId: model.id, label: '主模型', animation: { enabled: false, speed: 1.5 }, appearance: { color: '#3aa8c8', opacity: 0.8 }, transform: instanceTransform, visible: true },
           { id: 'copy-2', assetId: model.id, label: '重复实例', transform: { ...instanceTransform, position: [2.5, 0, 0] }, visible: true },
         ],
       },
       resourceRefs: [model.id],
     };
     assert.equal(parseModel3DProps(batchNode.props).value.modelInstances.length, 2);
+    assert.deepEqual(parseModel3DProps(batchNode.props).value.modelInstances[0].animation, { enabled: false, speed: 1.5 });
+    assert.deepEqual(parseModel3DProps(batchNode.props).value.modelInstances[0].appearance, { color: '#3aa8c8', opacity: 0.8 });
     assert.equal(patch(batchNode).upsertNodes[0].props.modelInstances.length, 2);
+    for (const malformedPresentation of [
+      { animation: { enabled: true, speed: 4 } },
+      { appearance: { color: 'blue', opacity: 1 } },
+      { appearance: { color: null, opacity: -0.1 } },
+    ]) {
+      const malformed = { ...batchNode, props: { ...batchNode.props, modelInstances: [{ ...batchNode.props.modelInstances[0], ...malformedPresentation }] } };
+      assert.equal(parseModel3DProps(malformed.props).ok, false);
+    }
     assert.throws(() => patch({ ...batchNode, resourceRefs: [model.id, model.id] }), /list each model resource ID exactly once/);
     assert.throws(() => patch({ ...batchNode, resourceRefs: [model.id, 'builtin:missing'] }), /must reference the same model assets/);
     const duplicateInstanceId = {

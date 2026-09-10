@@ -120,6 +120,7 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
     constructionCleanup.push(() => manager.dispose());
     let records: InstanceRecord[] = [];
     let desired = initial;
+    let desiredInstancesById = new Map(initial.instances.map((instance) => [instance.id, instance]));
     let revision = 0;
     let appliedGraph = "";
     let appliedInput: SceneInput | null = null;
@@ -471,6 +472,25 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
       }
     };
 
+    const applyInstanceAppearance = (
+      record: InstanceRecord,
+      appearance: ModelAssetInstance["appearance"],
+    ) => {
+      if (!appearance || (appearance.color === null && appearance.opacity === 1)) return;
+      record.model.traverse((object) => {
+        cloneMaterials(record, object as MaterialObject).forEach((material) => {
+          const colorMaterial = material as ColorMaterial;
+          if (appearance.color !== null) colorMaterial.color?.set(appearance.color);
+          material.opacity *= appearance.opacity;
+          if (appearance.opacity < 1) {
+            material.transparent = true;
+            material.depthWrite = false;
+          }
+          material.needsUpdate = true;
+        });
+      });
+    };
+
     const applyModelState = (settings: Model3DProps) => {
       records.forEach(restoreRecord);
       const primary = records[0];
@@ -521,6 +541,11 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
           }
         });
       });
+      records.forEach((record) => {
+        const instance = desiredInstancesById.get(record.id);
+        if (!instance) throw new Error(`场景中缺少模型实例配置：${record.id}`);
+        applyInstanceAppearance(record, instance.appearance);
+      });
       applyAppearance(primary, {
         ...settings.appearanceOverrides,
         ...desired.appearanceOverrides,
@@ -569,7 +594,10 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
       lastFrame = now;
       const settings = desired.settings;
       if (settings.playAnimations) records.forEach((record) => {
-        if (record.wrapper.visible) record.mixer?.update(deltaSeconds * settings.animationSpeed);
+        const animation = desiredInstancesById.get(record.id)?.animation;
+        if (record.wrapper.visible && animation?.enabled !== false) {
+          record.mixer?.update(deltaSeconds * settings.animationSpeed * (animation?.speed ?? 1));
+        }
       });
       if (settings.autoRotate) rotationPivot.rotation.y += deltaSeconds * settings.rotationSpeed;
       selectionHelper?.update();
@@ -624,6 +652,7 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
       const navigationKey = (value: SceneInput) => JSON.stringify([value.instances, value.settings, value.appearanceOverrides, value.controlsEnabled]);
       if ((walk || navigation.mode === "loading") && navigationKey(next) !== navigationKey(desired)) exitWalk("场景配置已变化，请核对碰撞体后重新进入行走");
       desired = next;
+      desiredInstancesById = new Map(next.instances.map((instance) => [instance.id, instance]));
       controls.enabled = next.controlsEnabled && !walk && !transformDragging;
       const version = ++revision;
       const graph = JSON.stringify(next.instances.map(({ id, assetId }) => [id, assetId]));
@@ -658,7 +687,13 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
         } else manager.cancelPending();
         const instancesChanged = graphChanged || JSON.stringify(appliedInput?.instances) !== JSON.stringify(next.instances);
         const settingsChanged = JSON.stringify(appliedInput?.settings) !== JSON.stringify(next.settings);
-        const modelKey = (value: SceneInput | null) => JSON.stringify(value && [value.settings.presentation, value.settings.transformOverrides, value.settings.appearanceOverrides, value.appearanceOverrides]);
+        const modelKey = (value: SceneInput | null) => JSON.stringify(value && [
+          value.settings.presentation,
+          value.settings.transformOverrides,
+          value.settings.appearanceOverrides,
+          value.appearanceOverrides,
+          value.instances.map((instance) => [instance.id, instance.appearance]),
+        ]);
         const modelChanged = graphChanged || modelKey(appliedInput) !== modelKey(next);
         if (instancesChanged) applyInstances(next.instances);
         if (settingsChanged) applySceneSettings(next.settings);

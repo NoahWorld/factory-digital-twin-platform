@@ -89,10 +89,21 @@ try {
     expectedRevision: 0,
     linked2dProjectId: "project-2d",
     settings,
-    upsertInstances: [instance()],
+    upsertInstances: [{
+      ...instance(),
+      animation: { enabled: false, speed: 1.4 },
+      appearance: { color: "#3aa8c8", opacity: 0.72 },
+    }],
   });
   assert.equal(valid.upsertInstances[0].assetId, "pump-001");
+  assert.deepEqual(valid.upsertInstances[0].animation, { enabled: false, speed: 1.4 });
+  assert.deepEqual(valid.upsertInstances[0].appearance, { color: "#3aa8c8", opacity: 0.72 });
   assert.equal(valid.settings.cameraView, "isometric");
+  const defaults = validateStandaloneScenePatch({
+    deleteInstanceIds: [], expectedRevision: 0, upsertInstances: [instance()],
+  });
+  assert.deepEqual(defaults.upsertInstances[0].animation, { enabled: true, speed: 1 });
+  assert.deepEqual(defaults.upsertInstances[0].appearance, { color: null, opacity: 1 });
   assert.throws(
     () => validateStandaloneScenePatch({ expectedRevision: 0 }),
     (error) => error.code === "empty_scene_patch" && error.status === 400,
@@ -113,12 +124,29 @@ try {
     }),
     (error) => error.code === "invalid_business_asset_id" && error.status === 400,
   );
+  assert.throws(
+    () => validateStandaloneScenePatch({
+      deleteInstanceIds: [],
+      expectedRevision: 0,
+      upsertInstances: [{ ...instance(), appearance: { color: "blue", opacity: 1 } }],
+    }),
+    (error) => error.code === "invalid_scene_instance_appearance" && error.status === 400,
+  );
+  assert.throws(
+    () => validateStandaloneScenePatch({
+      deleteInstanceIds: [],
+      expectedRevision: 0,
+      upsertInstances: [{ ...instance(), animation: { enabled: true, speed: 4 } }],
+    }),
+    (error) => error.code === "invalid_scene_number" && error.status === 400,
+  );
 
   const database = new DatabaseSync(":memory:");
   database.exec("PRAGMA foreign_keys = ON");
   database.exec(readFileSync(join(root, "apps/api/migrations/0001_initial.sql"), "utf8"));
   database.exec(readFileSync(join(root, "apps/api/migrations/0002_access_control.sql"), "utf8"));
   database.exec(readFileSync(join(root, "apps/api/migrations/0018_standalone_3d_projects.sql"), "utf8"));
+  database.exec(readFileSync(join(root, "apps/api/migrations/0019_standalone_3d_instance_presentation.sql"), "utf8"));
   database.prepare(`
     INSERT INTO users (
       id, email, display_name, password_hash, password_salt, password_iterations,
@@ -147,6 +175,15 @@ try {
     database.prepare("SELECT business_asset_key FROM standalone_3d_instances WHERE project_id = 'project-3d'").get().business_asset_key,
     "pump-001",
   );
+  const storedPresentation = database.prepare("SELECT animation_enabled, animation_speed, color_override, opacity FROM standalone_3d_instances WHERE project_id = 'project-3d'").get();
+  assert.equal(storedPresentation.animation_enabled, 1);
+  assert.equal(storedPresentation.animation_speed, 1);
+  assert.equal(storedPresentation.color_override, null);
+  assert.equal(storedPresentation.opacity, 1);
+  assert.throws(
+    () => database.prepare("UPDATE standalone_3d_instances SET opacity = 1.2 WHERE project_id = 'project-3d'").run(),
+    /CHECK constraint failed/i,
+  );
   assert.throws(
     () => database.prepare(
       "INSERT INTO projects (id, name, status, created_at, updated_at, project_type) VALUES ('bad', 'Bad', 'draft', 'now', 'now', '4d')",
@@ -155,7 +192,7 @@ try {
   );
   database.close();
 
-  console.log("PASS: standalone 3D patch validation, 98-instance workshop catalog/budgets, project types and normalized scene migration.");
+  console.log("PASS: standalone 3D patch validation, instance presentation, 98-instance workshop catalog/budgets, project types and normalized scene migrations.");
 } finally {
   rmSync(temporary, { recursive: true, force: true });
 }

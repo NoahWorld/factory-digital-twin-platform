@@ -1,5 +1,6 @@
 import { defaultModelPresentation, parseModelPresentation, type ModelPresentation } from "../../../../shared/model-presentation";
 import { isOrnamentNodeType, ornamentDefaults, ornamentDefaultSizes, ornamentMinimumSizes, type OrnamentNodeType } from "../../../../shared/canvas-ornaments";
+import type { StandaloneSceneInstanceAnimation, StandaloneSceneInstanceAppearance } from "../../../../shared/standalone-3d";
 export const CANVAS_DRAG_TYPE = "application/x-factory-twin-component";
 
 export type ChartNodeType =
@@ -349,6 +350,8 @@ export type ModelNodeAppearance = {
 export const MAX_MODEL_INSTANCES = 32;
 
 export type ModelAssetInstance = {
+  animation?: StandaloneSceneInstanceAnimation;
+  appearance?: StandaloneSceneInstanceAppearance;
   id: string;
   assetId: string;
   label: string;
@@ -2148,6 +2151,34 @@ const parseModelInstances = (
     if (typeof instance.visible !== "boolean") {
       return { ok: false, message: `modelInstances[${index}].visible 必须是布尔值` };
     }
+    let animation: StandaloneSceneInstanceAnimation | undefined;
+    if (instance.animation !== undefined) {
+      if (!instance.animation || typeof instance.animation !== "object" || Array.isArray(instance.animation)) {
+        return { ok: false, message: `modelInstances[${index}].animation 必须是对象` };
+      }
+      const rawAnimation = instance.animation as Record<string, unknown>;
+      if (typeof rawAnimation.enabled !== "boolean") {
+        return { ok: false, message: `modelInstances[${index}].animation.enabled 必须是布尔值` };
+      }
+      if (typeof rawAnimation.speed !== "number" || !Number.isFinite(rawAnimation.speed) || rawAnimation.speed < 0.1 || rawAnimation.speed > 3) {
+        return { ok: false, message: `modelInstances[${index}].animation.speed 必须是 0.1–3 之间的有限数值` };
+      }
+      animation = { enabled: rawAnimation.enabled, speed: rawAnimation.speed };
+    }
+    let appearance: StandaloneSceneInstanceAppearance | undefined;
+    if (instance.appearance !== undefined) {
+      if (!instance.appearance || typeof instance.appearance !== "object" || Array.isArray(instance.appearance)) {
+        return { ok: false, message: `modelInstances[${index}].appearance 必须是对象` };
+      }
+      const rawAppearance = instance.appearance as Record<string, unknown>;
+      if (rawAppearance.color !== null && (typeof rawAppearance.color !== "string" || !/^#[0-9a-fA-F]{6}$/.test(rawAppearance.color))) {
+        return { ok: false, message: `modelInstances[${index}].appearance.color 必须是六位十六进制颜色或 null` };
+      }
+      if (typeof rawAppearance.opacity !== "number" || !Number.isFinite(rawAppearance.opacity) || rawAppearance.opacity < 0 || rawAppearance.opacity > 1) {
+        return { ok: false, message: `modelInstances[${index}].appearance.opacity 必须是 0–1 之间的有限数值` };
+      }
+      appearance = { color: rawAppearance.color, opacity: rawAppearance.opacity };
+    }
     if (!instance.transform || typeof instance.transform !== "object" || Array.isArray(instance.transform)) {
       return { ok: false, message: `modelInstances[${index}].transform 必须是对象` };
     }
@@ -2159,6 +2190,8 @@ const parseModelInstances = (
     const scale = parseVector3Tuple(transform.scale, `modelInstances[${index}].scale`, 0.001, 1_000);
     if (!scale.ok) return scale;
     instances.push({
+      ...(animation ? { animation } : {}),
+      ...(appearance ? { appearance } : {}),
       id: instance.id,
       assetId: instance.assetId,
       label: instance.label.trim(),
