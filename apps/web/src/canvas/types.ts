@@ -1,3 +1,6 @@
+import { defaultModelPresentation, parseModelPresentation, type ModelPresentation } from "../../../../shared/model-presentation";
+import { isOrnamentNodeType, ornamentDefaults, ornamentDefaultSizes, ornamentMinimumSizes, type OrnamentNodeType } from "../../../../shared/canvas-ornaments";
+import type { StandaloneSceneInstanceAnimation, StandaloneSceneInstanceAppearance } from "../../../../shared/standalone-3d";
 export const CANVAS_DRAG_TYPE = "application/x-factory-twin-component";
 
 export type ChartNodeType =
@@ -8,15 +11,25 @@ export type ChartNodeType =
   | "donut-chart"
   | "radar-chart";
 export type ShapeNodeType = "rectangle" | "circle";
+export type AnimatedDecorationNodeType =
+  | "radar-sweep"
+  | "data-stream"
+  | "circuit-pulse"
+  | "energy-core"
+  | "industrial-flow"
+  | "scan-grid";
 export type DecorationNodeType =
   | "screen-title"
   | "background-decoration"
   | "datetime"
   | "section-title"
   | "card-background"
-  | "icon-background";
+  | "icon-background"
+  | AnimatedDecorationNodeType;
 export type PanelFrameNodeType = "panel-frame";
 export type Model3DNodeType = "model-3d";
+export type Scene3DNodeType = "scene-3d";
+export type AssetDetailNodeType = "asset-detail";
 export type DashboardNodeType =
   | "metric-card"
   | "radial-gauge"
@@ -32,16 +45,20 @@ export type BasicNodeType =
   | "image"
   | "carousel"
   | "button"
+  | "fullscreen-toggle"
   | "switch"
   | "checkbox-group"
   | "radio-group"
   | "select";
 export type CanvasNodeType =
+  | OrnamentNodeType
   | ChartNodeType
   | ShapeNodeType
   | DecorationNodeType
   | PanelFrameNodeType
   | Model3DNodeType
+  | Scene3DNodeType
+  | AssetDetailNodeType
   | DashboardNodeType
   | BasicNodeType;
 
@@ -272,6 +289,14 @@ export type ButtonProps = BasicAppearanceProps & {
   disabled: boolean;
 };
 
+export type FullscreenToggleProps = BasicAppearanceProps & {
+  enterText: string;
+  exitText: string;
+  fontSize: number;
+  fontWeight: number;
+  disabled: boolean;
+};
+
 export type SwitchProps = BasicAppearanceProps & {
   label: string;
   defaultChecked: boolean;
@@ -306,6 +331,7 @@ export type BasicProps =
   | ImageProps
   | CarouselProps
   | ButtonProps
+  | FullscreenToggleProps
   | SwitchProps
   | CheckboxGroupProps
   | RadioGroupProps
@@ -325,9 +351,43 @@ export type ModelNodeAppearance = {
   visible: boolean;
 };
 
-export type ModelCameraView = "isometric" | "front" | "top";
+export const MAX_MODEL_INSTANCES = 32;
+
+export type ModelAssetInstance = {
+  animation?: StandaloneSceneInstanceAnimation;
+  appearance?: StandaloneSceneInstanceAppearance;
+  id: string;
+  assetId: string;
+  label: string;
+  transform: ModelNodeTransform;
+  visible: boolean;
+};
+
+export const identityModelTransform = (): ModelNodeTransform => ({
+  position: [0, 0, 0],
+  rotation: [0, 0, 0],
+  scale: [1, 1, 1],
+});
+
+export const resolveModelInstances = (
+  resourceRefs: string[],
+  configuredInstances: ModelAssetInstance[],
+): ModelAssetInstance[] => configuredInstances.length > 0
+  ? configuredInstances
+  : resourceRefs[0]
+    ? [{
+        id: "primary",
+        assetId: resourceRefs[0],
+        label: "主模型",
+        transform: identityModelTransform(),
+        visible: true,
+      }]
+    : [];
+
+export type ModelCameraView = "isometric" | "isometric-left" | "front" | "top";
 
 export type Model3DProps = {
+  presentation: ModelPresentation;
   backgroundColor: string;
   backgroundOpacity: number;
   environmentLightColor: string;
@@ -336,11 +396,32 @@ export type Model3DProps = {
   keyLightIntensity: number;
   cameraFov: number;
   cameraView: ModelCameraView;
+  modelScale: number;
   autoRotate: boolean;
   rotationSpeed: number;
+  showControlPanel: boolean;
+  playAnimations: boolean;
+  animationSpeed: number;
   showGrid: boolean;
+  modelInstances: ModelAssetInstance[];
   appearanceOverrides: Record<string, ModelNodeAppearance>;
   transformOverrides: Record<string, ModelNodeTransform>;
+};
+
+export type Scene3DProps = {
+  sceneProjectId: string | null;
+  interactionEnabled: boolean;
+};
+
+export type AssetDetailProps = {
+  title: string;
+  emptyText: string;
+  showMetadata: boolean;
+  maximumMetrics: number;
+  textColor: string;
+  accentColor: string;
+  fillColor: string;
+  borderColor: string;
 };
 
 export type CanvasNode = {
@@ -472,6 +553,78 @@ const decorationDefaults: Record<DecorationNodeType, DecorationProps> = {
     showDate: true,
     showSeconds: true,
   },
+  "radar-sweep": {
+    text: "",
+    subtitle: "",
+    textColor: "#dff8ff",
+    accentColor: "#39dcff",
+    fillColor: "#061827",
+    borderColor: "#23677f",
+    opacity: 0.88,
+    align: "center",
+    showDate: true,
+    showSeconds: true,
+  },
+  "data-stream": {
+    text: "",
+    subtitle: "",
+    textColor: "#e5f8ff",
+    accentColor: "#4aa8ff",
+    fillColor: "#071522",
+    borderColor: "#234b68",
+    opacity: 0.86,
+    align: "center",
+    showDate: true,
+    showSeconds: true,
+  },
+  "circuit-pulse": {
+    text: "",
+    subtitle: "",
+    textColor: "#e6fff8",
+    accentColor: "#36e0b1",
+    fillColor: "#071b1d",
+    borderColor: "#24675e",
+    opacity: 0.88,
+    align: "center",
+    showDate: true,
+    showSeconds: true,
+  },
+  "energy-core": {
+    text: "",
+    subtitle: "",
+    textColor: "#f2ecff",
+    accentColor: "#9a7cff",
+    fillColor: "#100d25",
+    borderColor: "#514589",
+    opacity: 0.9,
+    align: "center",
+    showDate: true,
+    showSeconds: true,
+  },
+  "industrial-flow": {
+    text: "",
+    subtitle: "",
+    textColor: "#fff5e2",
+    accentColor: "#ffad42",
+    fillColor: "#21170a",
+    borderColor: "#765129",
+    opacity: 0.9,
+    align: "center",
+    showDate: true,
+    showSeconds: true,
+  },
+  "scan-grid": {
+    text: "",
+    subtitle: "",
+    textColor: "#e4fff3",
+    accentColor: "#42f5a7",
+    fillColor: "#071b17",
+    borderColor: "#246557",
+    opacity: 0.86,
+    align: "center",
+    showDate: true,
+    showSeconds: true,
+  },
   datetime: {
     text: "实时数据",
     subtitle: "",
@@ -541,6 +694,7 @@ const panelFrameDefaults: Record<PanelFrameNodeType, PanelFrameProps> = {
 
 const model3DDefaults: Record<Model3DNodeType, Model3DProps> = {
   "model-3d": {
+    presentation: { ...defaultModelPresentation },
     backgroundColor: "#071525",
     backgroundOpacity: 1,
     environmentLightColor: "#daf4ff",
@@ -549,11 +703,36 @@ const model3DDefaults: Record<Model3DNodeType, Model3DProps> = {
     keyLightIntensity: 2.4,
     cameraFov: 42,
     cameraView: "isometric",
+    modelScale: 1,
     autoRotate: true,
     rotationSpeed: 0.35,
+    showControlPanel: false,
+    playAnimations: true,
+    animationSpeed: 1,
     showGrid: true,
+    modelInstances: [],
     appearanceOverrides: {},
     transformOverrides: {},
+  },
+};
+
+const scene3DDefaults: Record<Scene3DNodeType, Scene3DProps> = {
+  "scene-3d": {
+    sceneProjectId: null,
+    interactionEnabled: true,
+  },
+};
+
+const assetDetailDefaults: Record<AssetDetailNodeType, AssetDetailProps> = {
+  "asset-detail": {
+    title: "设备实时数据",
+    emptyText: "请点击 3D 场景中的设备",
+    showMetadata: true,
+    maximumMetrics: 6,
+    textColor: "#eafaff",
+    accentColor: "#55d8ff",
+    fillColor: "#0b2638",
+    borderColor: "#286783",
   },
 };
 
@@ -723,6 +902,14 @@ const basicDefaults: Record<BasicNodeType, BasicProps> = {
     openInNewTab: false,
     disabled: false,
   },
+  "fullscreen-toggle": {
+    ...basicAppearanceDefaults,
+    enterText: "全屏",
+    exitText: "退出全屏",
+    fontSize: 20,
+    fontWeight: 600,
+    disabled: false,
+  },
   switch: {
     ...basicAppearanceDefaults,
     label: "设备控制",
@@ -766,6 +953,8 @@ const basicDefaults: Record<BasicNodeType, BasicProps> = {
 };
 
 export const componentLabels: Record<CanvasNodeType, string> = {
+  "card-title": "卡片标题",
+  "vector-icon": "矢量图标",
   "line-chart": "折线图",
   "bar-chart": "柱状图",
   "area-chart": "面积图",
@@ -776,12 +965,20 @@ export const componentLabels: Record<CanvasNodeType, string> = {
   circle: "圆形",
   "screen-title": "大屏标题",
   "background-decoration": "背景点缀",
+  "radar-sweep": "雷达扫描",
+  "data-stream": "数据流光",
+  "circuit-pulse": "电路脉冲",
+  "energy-core": "能量核心",
+  "industrial-flow": "工业流线",
+  "scan-grid": "网格扫描",
   datetime: "时间日期",
   "section-title": "标题",
   "card-background": "小卡片背景",
   "icon-background": "小图标背景",
   "panel-frame": "科技面板",
   "model-3d": "3D 模型",
+  "scene-3d": "3D 场景",
+  "asset-detail": "设备数据",
   "metric-card": "指标卡",
   "radial-gauge": "环形进度",
   "progress-list": "进度排行",
@@ -795,6 +992,7 @@ export const componentLabels: Record<CanvasNodeType, string> = {
   image: "图片",
   carousel: "轮播图",
   button: "按钮",
+  "fullscreen-toggle": "全屏切换",
   switch: "Switch",
   "checkbox-group": "多选框",
   "radio-group": "单选框",
@@ -802,6 +1000,7 @@ export const componentLabels: Record<CanvasNodeType, string> = {
 };
 
 export const defaultNodeSizes: Record<CanvasNodeType, { width: number; height: number }> = {
+  ...ornamentDefaultSizes,
   "line-chart": { width: 520, height: 300 },
   "bar-chart": { width: 520, height: 300 },
   "area-chart": { width: 520, height: 300 },
@@ -812,12 +1011,20 @@ export const defaultNodeSizes: Record<CanvasNodeType, { width: number; height: n
   circle: { width: 260, height: 260 },
   "screen-title": { width: 760, height: 110 },
   "background-decoration": { width: 420, height: 150 },
+  "radar-sweep": { width: 260, height: 260 },
+  "data-stream": { width: 460, height: 140 },
+  "circuit-pulse": { width: 440, height: 220 },
+  "energy-core": { width: 260, height: 260 },
+  "industrial-flow": { width: 460, height: 120 },
+  "scan-grid": { width: 440, height: 220 },
   datetime: { width: 320, height: 96 },
   "section-title": { width: 300, height: 64 },
   "card-background": { width: 360, height: 220 },
   "icon-background": { width: 96, height: 96 },
   "panel-frame": { width: 560, height: 340 },
   "model-3d": { width: 720, height: 460 },
+  "scene-3d": { width: 980, height: 620 },
+  "asset-detail": { width: 420, height: 400 },
   "metric-card": { width: 280, height: 150 },
   "radial-gauge": { width: 320, height: 300 },
   "progress-list": { width: 420, height: 320 },
@@ -831,6 +1038,7 @@ export const defaultNodeSizes: Record<CanvasNodeType, { width: number; height: n
   image: { width: 420, height: 260 },
   carousel: { width: 520, height: 300 },
   button: { width: 200, height: 64 },
+  "fullscreen-toggle": { width: 220, height: 64 },
   switch: { width: 260, height: 72 },
   "checkbox-group": { width: 320, height: 170 },
   "radio-group": { width: 320, height: 170 },
@@ -838,6 +1046,7 @@ export const defaultNodeSizes: Record<CanvasNodeType, { width: number; height: n
 };
 
 export const minimumNodeSizes: Record<CanvasNodeType, { width: number; height: number }> = {
+  ...ornamentMinimumSizes,
   "line-chart": { width: 240, height: 160 },
   "bar-chart": { width: 240, height: 160 },
   "area-chart": { width: 240, height: 160 },
@@ -848,12 +1057,20 @@ export const minimumNodeSizes: Record<CanvasNodeType, { width: number; height: n
   circle: { width: 240, height: 240 },
   "screen-title": { width: 360, height: 72 },
   "background-decoration": { width: 200, height: 72 },
+  "radar-sweep": { width: 160, height: 160 },
+  "data-stream": { width: 200, height: 72 },
+  "circuit-pulse": { width: 240, height: 120 },
+  "energy-core": { width: 160, height: 160 },
+  "industrial-flow": { width: 200, height: 64 },
+  "scan-grid": { width: 240, height: 120 },
   datetime: { width: 220, height: 72 },
   "section-title": { width: 160, height: 48 },
   "card-background": { width: 160, height: 100 },
   "icon-background": { width: 64, height: 64 },
   "panel-frame": { width: 260, height: 180 },
   "model-3d": { width: 360, height: 240 },
+  "scene-3d": { width: 480, height: 320 },
+  "asset-detail": { width: 300, height: 260 },
   "metric-card": { width: 200, height: 120 },
   "radial-gauge": { width: 240, height: 220 },
   "progress-list": { width: 280, height: 220 },
@@ -867,6 +1084,7 @@ export const minimumNodeSizes: Record<CanvasNodeType, { width: number; height: n
   image: { width: 160, height: 100 },
   carousel: { width: 240, height: 160 },
   button: { width: 120, height: 48 },
+  "fullscreen-toggle": { width: 120, height: 48 },
   switch: { width: 160, height: 48 },
   "checkbox-group": { width: 200, height: 96 },
   "radio-group": { width: 200, height: 96 },
@@ -884,19 +1102,34 @@ export const isChartNodeType = (value: string): value is ChartNodeType =>
 export const isShapeNodeType = (value: string): value is ShapeNodeType =>
   value === "rectangle" || value === "circle";
 
+export const isAnimatedDecorationNodeType = (value: string): value is AnimatedDecorationNodeType =>
+  value === "radar-sweep" ||
+  value === "data-stream" ||
+  value === "circuit-pulse" ||
+  value === "energy-core" ||
+  value === "industrial-flow" ||
+  value === "scan-grid";
+
 export const isDecorationNodeType = (value: string): value is DecorationNodeType =>
   value === "screen-title" ||
   value === "background-decoration" ||
   value === "datetime" ||
   value === "section-title" ||
   value === "card-background" ||
-  value === "icon-background";
+  value === "icon-background" ||
+  isAnimatedDecorationNodeType(value);
 
 export const isPanelFrameNodeType = (value: string): value is PanelFrameNodeType =>
   value === "panel-frame";
 
 export const isModel3DNodeType = (value: string): value is Model3DNodeType =>
   value === "model-3d";
+
+export const isScene3DNodeType = (value: string): value is Scene3DNodeType =>
+  value === "scene-3d";
+
+export const isAssetDetailNodeType = (value: string): value is AssetDetailNodeType =>
+  value === "asset-detail";
 
 export const isDashboardNodeType = (value: string): value is DashboardNodeType =>
   value === "metric-card" ||
@@ -914,16 +1147,24 @@ export const isBasicNodeType = (value: string): value is BasicNodeType =>
   value === "image" ||
   value === "carousel" ||
   value === "button" ||
+  value === "fullscreen-toggle" ||
   value === "switch" ||
   value === "checkbox-group" ||
   value === "radio-group" ||
   value === "select";
 
 export const isBackgroundNodeType = (value: CanvasNodeType): boolean =>
-  value === "background-decoration" || value === "card-background" || isPanelFrameNodeType(value);
+  value === "background-decoration" ||
+  value === "card-background" ||
+  isAnimatedDecorationNodeType(value) ||
+  isPanelFrameNodeType(value);
 
 export const isSquareNodeType = (value: CanvasNodeType): boolean =>
-  value === "circle" || value === "icon-background";
+  value === "circle" ||
+  value === "icon-background" ||
+  value === "vector-icon" ||
+  value === "radar-sweep" ||
+  value === "energy-core";
 
 export const createCanvasNode = (
   type: CanvasNodeType,
@@ -932,7 +1173,7 @@ export const createCanvasNode = (
   zIndex: number,
 ): CanvasNode => {
   const size = defaultNodeSizes[type];
-  const props = isChartNodeType(type)
+  const props = isOrnamentNodeType(type) ? { ...ornamentDefaults[type] } : isChartNodeType(type)
     ? (() => {
         const defaults = chartDefaults[type];
         return { ...defaults, categories: [...defaults.categories], values: [...defaults.values] };
@@ -965,7 +1206,11 @@ export const createCanvasNode = (
                   ? { ...defaults, options: defaults.options.map((option) => ({ ...option })) }
                   : { ...defaults };
               })()
-            : { ...model3DDefaults[type] };
+            : isModel3DNodeType(type)
+              ? { ...model3DDefaults[type] }
+              : isScene3DNodeType(type)
+                ? { ...scene3DDefaults[type] }
+                : { ...assetDetailDefaults[type] };
 
   return {
     id: crypto.randomUUID(),
@@ -982,11 +1227,14 @@ export const createCanvasNode = (
 };
 
 export const isCanvasNodeType = (value: string): value is CanvasNodeType =>
+  isOrnamentNodeType(value) ||
   isChartNodeType(value) ||
   isShapeNodeType(value) ||
   isDecorationNodeType(value) ||
   isPanelFrameNodeType(value) ||
   isModel3DNodeType(value) ||
+  isScene3DNodeType(value) ||
+  isAssetDetailNodeType(value) ||
   isDashboardNodeType(value) ||
   isBasicNodeType(value);
 
@@ -1403,6 +1651,77 @@ export type DecorationPropsResult =
 const isHexColor = (value: unknown): value is string =>
   typeof value === "string" && /^#[0-9a-fA-F]{6}$/.test(value);
 
+export type Scene3DPropsResult =
+  | { ok: true; value: Scene3DProps }
+  | { ok: false; message: string };
+
+export const parseScene3DProps = (props: Record<string, unknown>): Scene3DPropsResult => {
+  if (
+    props.sceneProjectId !== null
+    && (
+      typeof props.sceneProjectId !== "string"
+      || !/^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,119}$/.test(props.sceneProjectId)
+    )
+  ) {
+    return { ok: false, message: "sceneProjectId 必须为空或合法的 3D 项目 ID" };
+  }
+  if (typeof props.interactionEnabled !== "boolean") {
+    return { ok: false, message: "interactionEnabled 必须是布尔值" };
+  }
+  return {
+    ok: true,
+    value: {
+      sceneProjectId: props.sceneProjectId,
+      interactionEnabled: props.interactionEnabled,
+    },
+  };
+};
+
+export type AssetDetailPropsResult =
+  | { ok: true; value: AssetDetailProps }
+  | { ok: false; message: string };
+
+export const parseAssetDetailProps = (props: Record<string, unknown>): AssetDetailPropsResult => {
+  if (typeof props.title !== "string" || props.title.trim().length === 0 || props.title.length > 120) {
+    return { ok: false, message: "title 必须是 1–120 个字符的文本" };
+  }
+  if (typeof props.emptyText !== "string" || props.emptyText.length > 200) {
+    return { ok: false, message: "emptyText 必须是不超过 200 个字符的文本" };
+  }
+  if (typeof props.showMetadata !== "boolean") {
+    return { ok: false, message: "showMetadata 必须是布尔值" };
+  }
+  if (
+    typeof props.maximumMetrics !== "number"
+    || !Number.isInteger(props.maximumMetrics)
+    || props.maximumMetrics < 1
+    || props.maximumMetrics > 12
+  ) {
+    return { ok: false, message: "maximumMetrics 必须是 1–12 之间的整数" };
+  }
+  if (
+    !isHexColor(props.textColor)
+    || !isHexColor(props.accentColor)
+    || !isHexColor(props.fillColor)
+    || !isHexColor(props.borderColor)
+  ) {
+    return { ok: false, message: "所有颜色字段都必须是六位十六进制颜色" };
+  }
+  return {
+    ok: true,
+    value: {
+      title: props.title,
+      emptyText: props.emptyText,
+      showMetadata: props.showMetadata,
+      maximumMetrics: props.maximumMetrics,
+      textColor: props.textColor,
+      accentColor: props.accentColor,
+      fillColor: props.fillColor,
+      borderColor: props.borderColor,
+    },
+  };
+};
+
 export const parseDecorationProps = (
   type: DecorationNodeType,
   props: Record<string, unknown>,
@@ -1413,6 +1732,7 @@ export const parseDecorationProps = (
   if (
     type !== "background-decoration" &&
     type !== "card-background" &&
+    !isAnimatedDecorationNodeType(type) &&
     props.text.trim().length === 0
   ) {
     return { ok: false, message: "当前组件的 text 不能为空" };
@@ -1756,6 +2076,32 @@ export const parseBasicProps = (
     };
   }
 
+  if (type === "fullscreen-toggle") {
+    const textStyle = parseBasicTextStyle(props);
+    if (!textStyle.ok) return textStyle;
+    if (
+      typeof props.enterText !== "string" ||
+      props.enterText.trim().length === 0 ||
+      props.enterText.length > 120 ||
+      typeof props.exitText !== "string" ||
+      props.exitText.trim().length === 0 ||
+      props.exitText.length > 120 ||
+      typeof props.disabled !== "boolean"
+    ) {
+      return { ok: false, message: "全屏按钮文字不能为空且长度不能超过 120，disabled 必须是布尔值" };
+    }
+    return {
+      ok: true,
+      value: {
+        ...appearance.value,
+        ...textStyle.value,
+        enterText: props.enterText,
+        exitText: props.exitText,
+        disabled: props.disabled,
+      },
+    };
+  }
+
   if (type === "switch") {
     if (
       typeof props.label !== "string" ||
@@ -1892,6 +2238,99 @@ const parseVector3Tuple = (
   return { ok: true, value: [value[0], value[1], value[2]] };
 };
 
+const parseModelInstances = (
+  value: unknown,
+  maximumInstances: number,
+): { ok: true; value: ModelAssetInstance[] } | { ok: false; message: string } => {
+  if (value === undefined) return { ok: true, value: [] };
+  if (!Array.isArray(value) || value.length > maximumInstances) {
+    return { ok: false, message: `modelInstances 必须是最多包含 ${maximumInstances} 个实例的数组` };
+  }
+
+  const ids = new Set<string>();
+  const instances: ModelAssetInstance[] = [];
+  for (const [index, rawInstance] of value.entries()) {
+    if (!rawInstance || typeof rawInstance !== "object" || Array.isArray(rawInstance)) {
+      return { ok: false, message: `modelInstances[${index}] 必须是对象` };
+    }
+    const instance = rawInstance as Record<string, unknown>;
+    if (
+      typeof instance.id !== "string"
+      || !/^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,119}$/.test(instance.id)
+    ) {
+      return { ok: false, message: `modelInstances[${index}].id 必须是稳定标识符` };
+    }
+    if (ids.has(instance.id)) {
+      return { ok: false, message: `模型实例 ID ${instance.id} 重复` };
+    }
+    ids.add(instance.id);
+    if (
+      typeof instance.assetId !== "string"
+      || !/^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,119}$/.test(instance.assetId)
+    ) {
+      return { ok: false, message: `modelInstances[${index}].assetId 必须是模型资源 ID` };
+    }
+    if (
+      typeof instance.label !== "string"
+      || instance.label.trim().length === 0
+      || instance.label.length > 80
+    ) {
+      return { ok: false, message: `modelInstances[${index}].label 必须是 1–80 个字符` };
+    }
+    if (typeof instance.visible !== "boolean") {
+      return { ok: false, message: `modelInstances[${index}].visible 必须是布尔值` };
+    }
+    let animation: StandaloneSceneInstanceAnimation | undefined;
+    if (instance.animation !== undefined) {
+      if (!instance.animation || typeof instance.animation !== "object" || Array.isArray(instance.animation)) {
+        return { ok: false, message: `modelInstances[${index}].animation 必须是对象` };
+      }
+      const rawAnimation = instance.animation as Record<string, unknown>;
+      if (typeof rawAnimation.enabled !== "boolean") {
+        return { ok: false, message: `modelInstances[${index}].animation.enabled 必须是布尔值` };
+      }
+      if (typeof rawAnimation.speed !== "number" || !Number.isFinite(rawAnimation.speed) || rawAnimation.speed < 0.1 || rawAnimation.speed > 3) {
+        return { ok: false, message: `modelInstances[${index}].animation.speed 必须是 0.1–3 之间的有限数值` };
+      }
+      animation = { enabled: rawAnimation.enabled, speed: rawAnimation.speed };
+    }
+    let appearance: StandaloneSceneInstanceAppearance | undefined;
+    if (instance.appearance !== undefined) {
+      if (!instance.appearance || typeof instance.appearance !== "object" || Array.isArray(instance.appearance)) {
+        return { ok: false, message: `modelInstances[${index}].appearance 必须是对象` };
+      }
+      const rawAppearance = instance.appearance as Record<string, unknown>;
+      if (rawAppearance.color !== null && (typeof rawAppearance.color !== "string" || !/^#[0-9a-fA-F]{6}$/.test(rawAppearance.color))) {
+        return { ok: false, message: `modelInstances[${index}].appearance.color 必须是六位十六进制颜色或 null` };
+      }
+      if (typeof rawAppearance.opacity !== "number" || !Number.isFinite(rawAppearance.opacity) || rawAppearance.opacity < 0 || rawAppearance.opacity > 1) {
+        return { ok: false, message: `modelInstances[${index}].appearance.opacity 必须是 0–1 之间的有限数值` };
+      }
+      appearance = { color: rawAppearance.color, opacity: rawAppearance.opacity };
+    }
+    if (!instance.transform || typeof instance.transform !== "object" || Array.isArray(instance.transform)) {
+      return { ok: false, message: `modelInstances[${index}].transform 必须是对象` };
+    }
+    const transform = instance.transform as Record<string, unknown>;
+    const position = parseVector3Tuple(transform.position, `modelInstances[${index}].position`, -1_000_000, 1_000_000);
+    if (!position.ok) return position;
+    const rotation = parseVector3Tuple(transform.rotation, `modelInstances[${index}].rotation`, -3_600, 3_600);
+    if (!rotation.ok) return rotation;
+    const scale = parseVector3Tuple(transform.scale, `modelInstances[${index}].scale`, 0.001, 1_000);
+    if (!scale.ok) return scale;
+    instances.push({
+      ...(animation ? { animation } : {}),
+      ...(appearance ? { appearance } : {}),
+      id: instance.id,
+      assetId: instance.assetId,
+      label: instance.label.trim(),
+      transform: { position: position.value, rotation: rotation.value, scale: scale.value },
+      visible: instance.visible,
+    });
+  }
+  return { ok: true, value: instances };
+};
+
 const parseTransformOverrides = (
   value: unknown,
 ): { ok: true; value: Record<string, ModelNodeTransform> } | { ok: false; message: string } => {
@@ -1996,7 +2435,12 @@ const parseAppearanceOverrides = (
   return { ok: true, value: result };
 };
 
-export const parseModel3DProps = (props: Record<string, unknown>): Model3DPropsResult => {
+export const parseModel3DProps = (
+  props: Record<string, unknown>,
+  maximumInstances = MAX_MODEL_INSTANCES,
+): Model3DPropsResult => {
+  const presentation = parseModelPresentation(props.presentation);
+  if (!presentation.ok) return presentation;
   if (!isHexColor(props.backgroundColor)) {
     return { ok: false, message: "backgroundColor 必须是六位十六进制颜色" };
   }
@@ -2051,8 +2495,17 @@ export const parseModel3DProps = (props: Record<string, unknown>): Model3DPropsR
     return { ok: false, message: "cameraFov 必须是 15–90 之间的数值" };
   }
   const cameraView = props.cameraView === undefined ? "isometric" : props.cameraView;
-  if (cameraView !== "isometric" && cameraView !== "front" && cameraView !== "top") {
-    return { ok: false, message: "cameraView 必须是 isometric、front 或 top" };
+  if (cameraView !== "isometric" && cameraView !== "isometric-left" && cameraView !== "front" && cameraView !== "top") {
+    return { ok: false, message: "cameraView 必须是 isometric、isometric-left、front 或 top" };
+  }
+  const modelScale = props.modelScale === undefined ? 1 : props.modelScale;
+  if (
+    typeof modelScale !== "number"
+    || !Number.isFinite(modelScale)
+    || modelScale < 0.25
+    || modelScale > 4
+  ) {
+    return { ok: false, message: "modelScale 必须是 0.25–4 之间的数值" };
   }
   if (typeof props.autoRotate !== "boolean" || typeof props.showGrid !== "boolean") {
     return { ok: false, message: "autoRotate 与 showGrid 必须是布尔值" };
@@ -2065,6 +2518,25 @@ export const parseModel3DProps = (props: Record<string, unknown>): Model3DPropsR
   ) {
     return { ok: false, message: "rotationSpeed 必须是 0–5 之间的数值" };
   }
+  const showControlPanel = props.showControlPanel === undefined ? false : props.showControlPanel;
+  if (typeof showControlPanel !== "boolean") {
+    return { ok: false, message: "showControlPanel 必须是布尔值" };
+  }
+  const playAnimations = props.playAnimations === undefined ? true : props.playAnimations;
+  if (typeof playAnimations !== "boolean") {
+    return { ok: false, message: "playAnimations 必须是布尔值" };
+  }
+  const animationSpeed = props.animationSpeed === undefined ? 1 : props.animationSpeed;
+  if (
+    typeof animationSpeed !== "number"
+    || !Number.isFinite(animationSpeed)
+    || animationSpeed < 0.1
+    || animationSpeed > 3
+  ) {
+    return { ok: false, message: "animationSpeed 必须是 0.1–3 之间的数值" };
+  }
+  const modelInstances = parseModelInstances(props.modelInstances, maximumInstances);
+  if (!modelInstances.ok) return modelInstances;
   const transformOverrides = parseTransformOverrides(props.transformOverrides);
   if (!transformOverrides.ok) return transformOverrides;
   const appearanceOverrides = parseAppearanceOverrides(props.appearanceOverrides);
@@ -2075,15 +2547,21 @@ export const parseModel3DProps = (props: Record<string, unknown>): Model3DPropsR
     value: {
       backgroundColor: props.backgroundColor,
       backgroundOpacity,
+      presentation: presentation.value,
       environmentLightColor,
       environmentLightIntensity,
       keyLightColor,
       keyLightIntensity,
       cameraFov,
       cameraView,
+      modelScale,
       autoRotate: props.autoRotate,
       rotationSpeed: props.rotationSpeed,
+      showControlPanel,
+      playAnimations,
+      animationSpeed,
       showGrid: props.showGrid,
+      modelInstances: modelInstances.value,
       appearanceOverrides: appearanceOverrides.value,
       transformOverrides: transformOverrides.value,
     },

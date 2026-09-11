@@ -1,10 +1,13 @@
+import { isOrnamentNodeType } from "../../../../shared/canvas-ornaments";
 import {
   isBasicNodeType,
+  isAssetDetailNodeType,
   isChartNodeType,
   isDashboardNodeType,
   isDecorationNodeType,
   isModel3DNodeType,
   isPanelFrameNodeType,
+  isScene3DNodeType,
   isShapeNodeType,
   type CanvasThemePresetId,
   type CanvasNode,
@@ -100,7 +103,10 @@ export const applyCanvasThemeToNode = (
   node: CanvasNode,
   theme: CanvasTheme,
 ): CanvasNode => {
-  if (isModel3DNodeType(node.type)) return node;
+  if (isModel3DNodeType(node.type) || isScene3DNodeType(node.type)) return node;
+  if (isOrnamentNodeType(node.type)) {
+    return { ...node, props: { ...node.props, iconColor: theme.accentColor, ...(node.type === "card-title" ? { textColor: theme.textColor, accentColor: theme.accentColor, fillColor: theme.surfaceColor } : {}) } };
+  }
 
   if (isChartNodeType(node.type)) {
     return { ...node, props: { ...node.props, color: theme.accentColor } };
@@ -123,7 +129,7 @@ export const applyCanvasThemeToNode = (
     };
   }
 
-  if (isDecorationNodeType(node.type) || isDashboardNodeType(node.type) || isPanelFrameNodeType(node.type)) {
+  if (isDecorationNodeType(node.type) || isDashboardNodeType(node.type) || isPanelFrameNodeType(node.type) || isAssetDetailNodeType(node.type)) {
     return {
       ...node,
       props: {

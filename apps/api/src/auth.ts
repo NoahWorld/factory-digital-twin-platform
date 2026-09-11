@@ -1,3 +1,5 @@
+import { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH } from "../../../shared/auth-constraints";
+
 export type DatabaseResult = {
   meta?: { changes?: number };
 };
@@ -18,6 +20,7 @@ export type ObjectBody = {
   body: ReadableStream;
   size: number;
   httpEtag: string;
+  arrayBuffer: () => Promise<ArrayBuffer>;
   writeHttpMetadata: (headers: Headers) => void;
 };
 
@@ -48,6 +51,7 @@ export type GlobalRole = "platform_admin" | "delivery_manager" | "viewer";
 type UserRow = {
   id: string;
   email: string;
+  login_name: string | null;
   display_name: string;
   password_hash: string;
   password_salt: string;
@@ -62,6 +66,7 @@ type RoleRow = {
 export type AuthenticatedUser = {
   id: string;
   email: string;
+  loginName: string | null;
   displayName: string;
   roles: GlobalRole[];
 };
@@ -94,6 +99,7 @@ const encoder = new TextEncoder();
 const DEFAULT_PASSWORD_ITERATIONS = 100_000;
 const DEFAULT_SESSION_TTL_HOURS = 24;
 const SESSION_COOKIE_NAME = "factory_twin_session";
+export const INITIAL_ADMIN_LOGIN_NAME = "admin";
 
 const toBase64 = (bytes: Uint8Array): string => {
   let binary = "";
@@ -196,10 +202,11 @@ const rolesForUser = async (env: AppEnv, userId: string): Promise<GlobalRole[]> 
 
 const toAuthenticatedUser = async (
   env: AppEnv,
-  user: Pick<UserRow, "id" | "email" | "display_name">,
+  user: Pick<UserRow, "id" | "email" | "login_name" | "display_name">,
 ): Promise<AuthenticatedUser> => ({
   id: user.id,
   email: user.email,
+  loginName: user.login_name,
   displayName: user.display_name,
   roles: await rolesForUser(env, user.id),
 });
@@ -236,6 +243,37 @@ export const validateEmail = (value: unknown): string => {
   return email;
 };
 
+export const validateLoginName = (value: unknown): string => {
+  if (typeof value !== "string") {
+    throw new AppError(400, "invalid_login_name", "Login name is required.");
+  }
+
+  const loginName = value.trim().toLowerCase();
+
+  if (
+    loginName.length < 3
+    || loginName.length > 64
+    || !/^[a-z][a-z0-9._-]*$/.test(loginName)
+  ) {
+    throw new AppError(
+      400,
+      "invalid_login_name",
+      "Login name must contain 3 to 64 lowercase letters, numbers, dots, underscores, or hyphens, and start with a letter.",
+    );
+  }
+
+  return loginName;
+};
+
+export const validateLoginIdentifier = (value: unknown): string => {
+  if (typeof value !== "string") {
+    throw new AppError(400, "invalid_login_identifier", "Account or email is required.");
+  }
+
+  const identifier = value.trim().toLowerCase();
+  return identifier.includes("@") ? validateEmail(identifier) : validateLoginName(identifier);
+};
+
 export const validateDisplayName = (value: unknown): string => {
   if (typeof value !== "string") {
     throw new AppError(400, "invalid_display_name", "Display name is required.");
@@ -259,11 +297,11 @@ export const validatePassword = (value: unknown): string => {
     throw new AppError(400, "invalid_password", "Password is required.");
   }
 
-  if (value.length < 12 || value.length > 256) {
+  if (value.length < MIN_PASSWORD_LENGTH || value.length > MAX_PASSWORD_LENGTH) {
     throw new AppError(
       400,
       "invalid_password",
-      "Password must contain 12 to 256 characters.",
+      `Password must contain ${MIN_PASSWORD_LENGTH} to ${MAX_PASSWORD_LENGTH} characters.`,
     );
   }
 
@@ -317,7 +355,13 @@ export const verifyBootstrapToken = async (
 
 export const createUser = async (
   env: AppEnv,
-  input: { email: string; displayName: string; password: string; roles: GlobalRole[] },
+  input: {
+    email: string;
+    loginName: string | null;
+    displayName: string;
+    password: string;
+    roles: GlobalRole[];
+  },
 ): Promise<AuthenticatedUser> => {
   const password = await createPasswordRecord(input.password);
   const userId = crypto.randomUUID();
@@ -326,13 +370,14 @@ export const createUser = async (
     env.DB
       .prepare(
         `INSERT INTO users (
-          id, email, display_name, password_hash, password_salt, password_iterations,
+          id, email, login_name, display_name, password_hash, password_salt, password_iterations,
           is_active, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)`,
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
       )
       .bind(
         userId,
         input.email,
+        input.loginName,
         input.displayName,
         password.hash,
         password.salt,
@@ -354,7 +399,11 @@ export const createUser = async (
     await env.DB.batch(statements);
   } catch (error) {
     if (error instanceof Error && /unique/i.test(error.message)) {
-      throw new AppError(409, "email_already_exists", "An account already uses this email.");
+      throw new AppError(
+        409,
+        "account_identifier_already_exists",
+        "An account already uses this login name or email.",
+      );
     }
 
     throw error;
@@ -363,6 +412,7 @@ export const createUser = async (
   return {
     id: userId,
     email: input.email,
+    loginName: input.loginName,
     displayName: input.displayName,
     roles: input.roles,
   };
@@ -370,19 +420,19 @@ export const createUser = async (
 
 export const verifyCredentials = async (
   env: AppEnv,
-  email: string,
+  identifier: string,
   password: string,
 ): Promise<AuthenticatedUser> => {
   const user = await env.DB.prepare(
-    `SELECT id, email, display_name, password_hash, password_salt, password_iterations, is_active
+    `SELECT id, email, login_name, display_name, password_hash, password_salt, password_iterations, is_active
      FROM users
-     WHERE email = ?`,
+     WHERE email = ? OR login_name = ?`,
   )
-    .bind(email)
+    .bind(identifier, identifier)
     .first<UserRow>();
 
   if (!user || user.is_active !== 1) {
-    throw new AppError(401, "invalid_credentials", "Email or password is incorrect.");
+    throw new AppError(401, "invalid_credentials", "Account/email or password is incorrect.");
   }
 
   const calculatedHash = await derivePasswordHash(
@@ -392,7 +442,7 @@ export const verifyCredentials = async (
   );
 
   if (!constantTimeEqual(calculatedHash, user.password_hash)) {
-    throw new AppError(401, "invalid_credentials", "Email or password is incorrect.");
+    throw new AppError(401, "invalid_credentials", "Account/email or password is incorrect.");
   }
 
   return toAuthenticatedUser(env, user);
@@ -434,7 +484,7 @@ export const getAuthenticatedUser = async (
 
   const now = new Date().toISOString();
   const user = await env.DB.prepare(
-    `SELECT u.id, u.email, u.display_name, u.password_hash, u.password_salt,
+    `SELECT u.id, u.email, u.login_name, u.display_name, u.password_hash, u.password_salt,
             u.password_iterations, u.is_active
      FROM sessions s
      INNER JOIN users u ON u.id = s.user_id

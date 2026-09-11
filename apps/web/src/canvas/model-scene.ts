@@ -11,6 +11,7 @@ export type ModelSceneNodeAppearance = {
 export type ModelSceneNode = {
   path: string;
   name: string;
+  label: string;
   objectType: string;
   isMesh: boolean;
   transform: ModelNodeTransform;
@@ -21,6 +22,7 @@ export type ModelSceneNode = {
 export type ModelSceneSnapshot = {
   assetId: string;
   roots: ModelSceneNode[];
+  capabilities: { shells: boolean; flow: boolean; explosion: boolean };
   totalNodeCount: number;
   namedNodeCount: number;
 };
@@ -55,6 +57,7 @@ const toSceneNode = (
   return {
     path,
     name,
+    label: typeof object.userData.label === "string" ? object.userData.label : name,
     objectType: object.type,
     isMesh: "isMesh" in object && object.isMesh === true,
     transform: {
@@ -82,12 +85,25 @@ const toSceneNode = (
 
 export const buildModelSceneTree = (sceneRoot: Object3D): SceneTreeResult => {
   const counts = { total: 0, named: 0 };
+  const capabilities = { shells: false, flow: false, explosion: false };
+  sceneRoot.traverse((object) => {
+    if (object.userData.inspectionShell === true) capabilities.shells = true;
+    if (object.userData.category === "flow" || object.userData.category === "animation") capabilities.flow = true;
+    if (object.userData.explodeOffset !== undefined) {
+      const offset: unknown = object.userData.explodeOffset;
+      if (!Array.isArray(offset) || offset.length !== 3 || offset.some((n) => typeof n !== "number" || !Number.isFinite(n) || Math.abs(n) > 10000)) {
+        throw new Error(`模型节点 ${object.name} 的 explodeOffset 必须是三个有限坐标（绝对值不超过 10000）`);
+      }
+      capabilities.explosion = true;
+    }
+  });
   const roots = sceneRoot.children.map((child, index) =>
     toSceneNode(child, String(index), counts),
   );
 
   return {
     roots,
+    capabilities,
     totalNodeCount: counts.total,
     namedNodeCount: counts.named,
   };

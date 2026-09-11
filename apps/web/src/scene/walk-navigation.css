@@ -1,0 +1,20 @@
+.scene-walk-navigation {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: calc(100% - 24px);
+  padding: 8px 10px;
+  border: 1px solid #567487;
+  border-radius: 6px;
+  background: #12232ef2;
+  color: #f0f6fa;
+  font-size: 12px;
+  pointer-events: auto;
+}
+.scene-walk-navigation button { flex-shrink: 0; cursor: pointer; }
+.scene-walk-navigation [role="alert"] { color: #ffb9a7; }
+.model-3d-renderer canvas:focus-visible { outline: 2px solid #5ad8ff; outline-offset: -2px; }

@@ -1,17 +1,22 @@
 import { FormEvent, lazy, Suspense, useEffect, useState } from "react";
+import { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH } from "../../../shared/auth-constraints";
+import { standaloneSceneRoutePath, type ProjectType } from "../../../shared/standalone-3d";
 import { apiUrl, ApiRequestError, errorMessage, request } from "./api";
-import { projectTemplateCanvasPath } from "./canvas/routes";
+import loginFactoryIllustration from "./assets/login-factory.webp";
+import { canvasRoutePath, projectTemplateCanvasPath } from "./canvas/routes";
 import {
   getCanvasTemplate,
   isCanvasTemplateId,
   type CanvasTemplateId,
 } from "./canvas/templates";
 import { CanvasPage } from "./pages/CanvasPage";
+import { ResourcesPage } from "./pages/ResourcesPage";
 import { TemplatesPage } from "./pages/TemplatesPage";
 
 const Model3DEditorPage = lazy(() => import("./pages/Model3DEditorPage"));
 const ProductLandingPage = lazy(() => import("./pages/ProductLandingPage"));
 const IndustrialLandingPage = lazy(() => import("./pages/IndustrialLandingPage"));
+const Standalone3DProjectPage = lazy(() => import("./pages/Standalone3DProjectPage"));
 
 type ProductLandingVariant = "original" | "industrial";
 
@@ -37,6 +42,7 @@ type Capability = {
 type CurrentUser = {
   id: string;
   email: string;
+  loginName: string | null;
   displayName: string;
   roles: string[];
   capabilities: Capability;
@@ -50,6 +56,7 @@ type Project = {
   updatedAt: string;
   projectRole: "owner" | "editor" | "viewer" | null;
   coverUrl: string | null;
+  projectType: ProjectType;
 };
 
 type BootstrapStatusResponse = {
@@ -74,6 +81,8 @@ type ProjectResponse = {
 
 type DeleteProjectResponse = {
   deletedProjectId: string;
+  deletedImageObjectCount: number;
+  deletedMediaObjectCount: number;
   deletedModelObjectCount: number;
   warning: string | null;
   requestId: string;
@@ -149,7 +158,7 @@ type LoginFormProps = {
 };
 
 function LoginForm({ onSuccess }: LoginFormProps) {
-  const [email, setEmail] = useState("");
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -162,7 +171,7 @@ function LoginForm({ onSuccess }: LoginFormProps) {
     try {
       const result = await request<UserResponse>("/api/v1/auth/login", {
         method: "POST",
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ identifier, password }),
       });
       setPassword("");
       onSuccess(result.user);
@@ -176,15 +185,16 @@ function LoginForm({ onSuccess }: LoginFormProps) {
   return (
     <form className="auth-form" onSubmit={submit}>
       <label>
-        <span>邮箱</span>
+        <span>账号或邮箱</span>
         <input
-          autoComplete="email"
+          autoComplete="username"
           disabled={submitting}
-          onChange={(event) => setEmail(event.target.value)}
-          placeholder="name@company.com"
+          maxLength={254}
+          onChange={(event) => setIdentifier(event.target.value)}
+          placeholder="admin 或 name@company.com"
           required
-          type="email"
-          value={email}
+          type="text"
+          value={identifier}
         />
       </label>
       <label>
@@ -192,7 +202,8 @@ function LoginForm({ onSuccess }: LoginFormProps) {
         <input
           autoComplete="current-password"
           disabled={submitting}
-          minLength={12}
+          maxLength={MAX_PASSWORD_LENGTH}
+          minLength={MIN_PASSWORD_LENGTH}
           onChange={(event) => setPassword(event.target.value)}
           required
           type="password"
@@ -280,9 +291,10 @@ function BootstrapForm({ onSuccess }: BootstrapFormProps) {
         <input
           autoComplete="new-password"
           disabled={submitting}
-          minLength={12}
+          maxLength={MAX_PASSWORD_LENGTH}
+          minLength={MIN_PASSWORD_LENGTH}
           onChange={(event) => setPassword(event.target.value)}
-          placeholder="至少 12 位"
+          placeholder={`至少 ${MIN_PASSWORD_LENGTH} 位`}
           required
           type="password"
           value={password}
@@ -293,7 +305,8 @@ function BootstrapForm({ onSuccess }: BootstrapFormProps) {
         <input
           autoComplete="new-password"
           disabled={submitting}
-          minLength={12}
+          maxLength={MAX_PASSWORD_LENGTH}
+          minLength={MIN_PASSWORD_LENGTH}
           onChange={(event) => setConfirmPassword(event.target.value)}
           required
           type="password"
@@ -330,14 +343,21 @@ function AuthPage({ setupRequired, onSuccess }: AuthPageProps) {
     <main className="auth-shell">
       <section className="auth-intro">
         <p className="eyebrow">Factory Digital Twin</p>
-        <h1>工厂数字孪生<br />交付平台</h1>
-        <p>
-          面向交付人员的 2D + 3D 项目配置台。访问项目、资产和客户数据前，必须完成身份验证。
+        <h1><span>工厂数字孪生</span><span>交付平台</span></h1>
+        <p className="auth-description">
+          面向交付人员的 2D + 3D 项目配置台。<br />
+          统一配置场景、资产与数据。
         </p>
-        <div className="security-note">
-          <span>权限边界</span>
-          <p>平台管理员、交付负责人和项目成员拥有不同的访问范围。</p>
-        </div>
+        <figure className="auth-illustration">
+          <img
+            alt="工厂数字孪生场景示意：剖面厂房内的机械臂生产线与数字控制室相连"
+            decoding="async"
+            fetchPriority="high"
+            height={1024}
+            src={loginFactoryIllustration}
+            width={1536}
+          />
+        </figure>
         <a className="auth-product-link" href="#/">
           查看产品介绍 <span aria-hidden="true">→</span>
         </a>
@@ -347,10 +367,14 @@ function AuthPage({ setupRequired, onSuccess }: AuthPageProps) {
         <h2>{setupRequired ? "初始化平台管理员" : "登录"}</h2>
         <p className="auth-copy">
           {setupRequired
-            ? "仅在还没有任何用户时可执行。初始化令牌不会被保存到浏览器。"
-            : "请使用已获授权的交付账号登录。"}
+            ? "仅在还没有任何用户时可执行。首个管理员账号固定为 admin，初始化令牌不会被保存到浏览器。"
+            : "管理员可使用 admin 登录，其他用户也可使用已绑定邮箱登录。"}
         </p>
         {setupRequired ? <BootstrapForm onSuccess={onSuccess} /> : <LoginForm onSuccess={onSuccess} />}
+        <div className="security-note">
+          <span>权限边界</span>
+          <p>项目、资产与客户数据按账号角色和权限开放。</p>
+        </div>
       </section>
     </main>
   );
@@ -369,6 +393,7 @@ function CreateProjectDialog({
 }: CreateProjectDialogProps) {
   const template = templateId ? getCanvasTemplate(templateId) : null;
   const [name, setName] = useState(() => template ? `${template.name}项目` : "");
+  const [projectType, setProjectType] = useState<ProjectType>("2d");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -380,7 +405,7 @@ function CreateProjectDialog({
     try {
       const result = await request<ProjectResponse>("/api/v1/projects", {
         method: "POST",
-        body: JSON.stringify({ name }),
+        body: JSON.stringify({ name, projectType: template ? "2d" : projectType }),
       });
       onCreated(result.project, templateId);
     } catch (reason) {
@@ -403,6 +428,21 @@ function CreateProjectDialog({
             ? `将创建一个新项目，并在画布中载入“${template.name}”模板；确认效果后保存画布即可生成项目封面。`
             : "新项目默认处于草稿状态，创建人自动成为项目负责人。"}
         </p>
+        {!template ? (
+          <fieldset className="project-type-picker">
+            <legend>项目类型</legend>
+            <label className={projectType === "2d" ? "is-selected" : ""}>
+              <input checked={projectType === "2d"} disabled={submitting} name="projectType" onChange={() => setProjectType("2d")} type="radio" />
+              <strong>2D 看板</strong>
+              <span>沿用现有画布，可组合 2D 组件与单个 3D 组件。</span>
+            </label>
+            <label className={projectType === "3d" ? "is-selected" : ""}>
+              <input checked={projectType === "3d"} disabled={submitting} name="projectType" onChange={() => setProjectType("3d")} type="radio" />
+              <strong>3D 场景</strong>
+              <span>独立三维空间，支持多模型搭建、漫游与业务资产联动。</span>
+            </label>
+          </fieldset>
+        ) : null}
         <label>
           <span>项目名称</span>
           <input
@@ -535,7 +575,7 @@ function DeleteProjectDialog({
         <button aria-label="关闭" className="dialog-close" disabled={submitting} onClick={onClose} type="button">×</button>
         <p className="eyebrow">Delete project</p>
         <h2>删除“{project.name}”？</h2>
-        <p>项目画布、模型元数据、资产、数据源和成员关系都会被永久删除，此操作不可撤销。</p>
+        <p>项目场景、模型元数据、资产、数据源和成员关系都会被永久删除，此操作不可撤销。</p>
         <FormNotice error={error} />
         <div className="dialog-actions">
           <button className="secondary-button" disabled={submitting} onClick={onClose} type="button">取消</button>
@@ -556,13 +596,26 @@ type WorkspaceProps = {
 type WorkspaceRoute =
   | { kind: "projects" }
   | { kind: "templates" }
-  | { kind: "canvas"; projectId: string; mode: "edit" | "preview"; templateId?: CanvasTemplateId }
+  | { kind: "resources" }
+  | { kind: "canvas"; projectId: string; mode: "edit" | "preview"; templateId?: CanvasTemplateId; initialAssetId?: string }
+  | { kind: "standalone-scene"; projectId: string; mode: "edit" | "preview" }
   | { kind: "model-editor"; projectId: string; nodeId: string }
   | { kind: "invalid"; message: string };
 
 const currentWorkspaceRoute = (): WorkspaceRoute => {
   if (window.location.hash === "#/templates") {
     return { kind: "templates" };
+  }
+  if (window.location.hash === "#/resources") {
+    return { kind: "resources" };
+  }
+  const standaloneSceneMatch = window.location.hash.match(/^#\/projects\/([^/]+)\/(scene|scene-preview)$/);
+  if (standaloneSceneMatch) {
+    return {
+      kind: "standalone-scene",
+      projectId: decodeURIComponent(standaloneSceneMatch[1]),
+      mode: standaloneSceneMatch[2] === "scene-preview" ? "preview" : "edit",
+    };
   }
   const modelEditorMatch = window.location.hash.match(/^#\/projects\/([^/]+)\/3d-editor\/([^/]+)$/);
   if (modelEditorMatch) {
@@ -572,9 +625,10 @@ const currentWorkspaceRoute = (): WorkspaceRoute => {
       nodeId: decodeURIComponent(modelEditorMatch[2]),
     };
   }
-  const canvasMatch = window.location.hash.match(/^#\/projects\/([^/]+)\/(canvas|preview)(?:\?template=([^&]+))?$/);
+  const canvasMatch = window.location.hash.match(/^#\/projects\/([^/]+)\/(canvas|preview)(?:\?([^#]*))?$/);
   if (!canvasMatch) return { kind: "projects" };
-  const templateValue = canvasMatch[3] ? decodeURIComponent(canvasMatch[3]) : undefined;
+  const query = new URLSearchParams(canvasMatch[3] ?? "");
+  const templateValue = query.get("template") ?? undefined;
   let templateId: CanvasTemplateId | undefined;
   if (templateValue) {
     if (!isCanvasTemplateId(templateValue)) {
@@ -587,6 +641,7 @@ const currentWorkspaceRoute = (): WorkspaceRoute => {
     projectId: decodeURIComponent(canvasMatch[1]),
     mode: canvasMatch[2] === "preview" ? "preview" : "edit",
     templateId,
+    initialAssetId: query.get("asset") ?? undefined,
   };
 };
 
@@ -609,7 +664,7 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
   }, []);
 
   useEffect(() => {
-    if (route.kind !== "projects") return;
+    if (route.kind !== "projects" && route.kind !== "resources") return;
     let active = true;
     setLoadingProjects(true);
     setProjectError(null);
@@ -652,6 +707,8 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
     setCreateProjectTemplateId(null);
     if (templateId) {
       window.location.hash = projectTemplateCanvasPath(project.id, templateId).slice(1);
+    } else if (project.projectType === "3d") {
+      window.location.hash = standaloneSceneRoutePath(project.id, "edit").slice(1);
     }
   };
 
@@ -687,11 +744,20 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
   if (route.kind === "canvas") {
     return (
       <CanvasPage
+        initialAssetId={route.initialAssetId}
         initialTemplateId={route.templateId}
-        key={`${route.projectId}:${route.mode}:${route.templateId ?? "saved"}`}
+        key={`${route.projectId}:${route.mode}:${route.templateId ?? "saved"}:${route.initialAssetId ?? "no-asset"}`}
         mode={route.mode}
         projectId={route.projectId}
       />
+    );
+  }
+
+  if (route.kind === "standalone-scene") {
+    return (
+      <Suspense fallback={<main className="canvas-page-state"><p className="eyebrow">3D workspace</p><h1>正在准备独立 3D 编辑器…</h1></main>}>
+        <Standalone3DProjectPage key={`${route.projectId}:${route.mode}`} mode={route.mode} projectId={route.projectId} />
+      </Suspense>
     );
   }
 
@@ -729,7 +795,7 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
         <nav aria-label="主导航">
           <a aria-current={route.kind === "projects" ? "page" : undefined} href="#/projects">项目</a>
           <a aria-current={route.kind === "templates" ? "page" : undefined} href="#/templates">模板</a>
-          <span>资源库</span>
+          <a aria-current={route.kind === "resources" ? "page" : undefined} href="#/resources">资源库</a>
         </nav>
         <div className="user-menu">
           <div>
@@ -746,6 +812,13 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
         <TemplatesPage
           canCreateProject={user.capabilities.canCreateProject}
           onCreateFromTemplate={openTemplateProjectDialog}
+        />
+      ) : route.kind === "resources" ? (
+        <ResourcesPage
+          isPlatformAdmin={isPlatformAdmin}
+          loadingProjects={loadingProjects}
+          projectError={projectError}
+          projects={projects}
         />
       ) : (
       <section className="workspace-content" id="projects">
@@ -817,19 +890,25 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
                 || project.projectRole === "owner"
                 || project.projectRole === "editor";
               const canDelete = isPlatformAdmin || project.projectRole === "owner";
+              const editPath = project.projectType === "3d"
+                ? standaloneSceneRoutePath(project.id, "edit")
+                : canvasRoutePath(project.id, "canvas");
+              const previewPath = project.projectType === "3d"
+                ? standaloneSceneRoutePath(project.id, "preview")
+                : canvasRoutePath(project.id, "preview");
               return (
-                <article className="project-card" key={project.id}>
+                <article className={`project-card project-card-${project.projectType}`} key={project.id}>
                   <a
-                    aria-label={`打开 ${project.name} 的 2D 画布`}
+                    aria-label={`打开 ${project.name} 的${project.projectType === "3d" ? "独立 3D 场景" : "2D 画布"}`}
                     className="project-card-cover"
-                    href={`#/projects/${encodeURIComponent(project.id)}/canvas`}
+                    href={editPath}
                   >
-                    {project.coverUrl ? (
+                    {project.projectType === "2d" && project.coverUrl ? (
                       <img alt={`${project.name} 画布缩略图`} src={apiUrl(project.coverUrl)} />
                     ) : (
                       <span className="project-card-cover-empty">
-                        <i aria-hidden="true">◇</i>
-                        <strong>保存画布后生成封面</strong>
+                        <i aria-hidden="true">{project.projectType === "3d" ? "⬡" : "◇"}</i>
+                        <strong>{project.projectType === "3d" ? "独立 3D 场景" : "保存画布后生成封面"}</strong>
                       </span>
                     )}
                   </a>
@@ -838,6 +917,7 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
                       <span className={`status-tag status-${project.status}`}>
                         {projectStatusText[project.status]}
                       </span>
+                      <span className={`project-type-tag is-${project.projectType}`}>{project.projectType.toUpperCase()}</span>
                       {project.projectRole ? <span>{projectRoleText[project.projectRole]}</span> : null}
                     </div>
                     <h2>{project.name}</h2>
@@ -867,10 +947,10 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
                           </button>
                         ) : null}
                         <a
-                          aria-label={`打开 ${project.name} 的 2D 画布`}
+                          aria-label={`直接预览 ${project.name}`}
                           className="icon-button project-action"
-                          href={`#/projects/${encodeURIComponent(project.id)}/canvas`}
-                          title="打开 2D 画布"
+                          href={previewPath}
+                          title="直接预览"
                         >
                           <ActionIcon name="view" />
                         </a>

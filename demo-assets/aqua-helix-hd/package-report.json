@@ -1,0 +1,8 @@
+{
+  "sourceSha256": "8072d847b20542ff8052c2bfdea4916122b8fd91ad0c92a1ef8b99c7c0b4a99c",
+  "contentPath": "/models/aqua-helix-hd.c7f39acdb954.glb",
+  "byteSize": 10912656,
+  "sha256": "c7f39acdb954c2862328382589dafb08990a228913a26876ee4e318ac84f9db0",
+  "explodableAssemblies": 8,
+  "changes": "Only nodes[].extras.explodeOffset added; geometry, materials and animation binary unchanged."
+}

@@ -8,6 +8,7 @@ import {
   type CanvasNode,
   type CarouselProps,
   type CheckboxGroupProps,
+  type FullscreenToggleProps,
   type ImageProps,
   type PlainTextProps,
   type RadioGroupProps,
@@ -40,6 +41,27 @@ const subscribeCarouselClock = (subscriber: () => void) => {
 const getCarouselTimestamp = () => carouselTimestamp;
 const getCarouselServerTimestamp = () => 0;
 
+const fullscreenSubscribers = new Set<() => void>();
+let fullscreenListenerAttached = false;
+const notifyFullscreenSubscribers = () => fullscreenSubscribers.forEach((subscriber) => subscriber());
+const subscribeFullscreen = (subscriber: () => void) => {
+  if (typeof document === "undefined") return () => undefined;
+  fullscreenSubscribers.add(subscriber);
+  if (!fullscreenListenerAttached) {
+    document.addEventListener("fullscreenchange", notifyFullscreenSubscribers);
+    fullscreenListenerAttached = true;
+  }
+  return () => {
+    fullscreenSubscribers.delete(subscriber);
+    if (fullscreenSubscribers.size === 0 && fullscreenListenerAttached) {
+      document.removeEventListener("fullscreenchange", notifyFullscreenSubscribers);
+      fullscreenListenerAttached = false;
+    }
+  };
+};
+const getFullscreenSnapshot = () => typeof document !== "undefined" && document.fullscreenElement !== null;
+const getFullscreenServerSnapshot = () => false;
+
 const baseStyle = (
   props: { textColor: string; accentColor: string; fillColor: string; borderColor: string; borderRadius: number },
 ): CSSProperties => ({
@@ -54,8 +76,8 @@ const preventEditorNavigation = (editable: boolean) => (event: MouseEvent) => {
   if (editable) event.preventDefault();
 };
 
-function EmptyImage({ message }: { message: string }) {
-  return <span className="basic-image-empty"><span aria-hidden="true">▧</span><strong>{message}</strong></span>;
+function ImageError({ message }: { message: string }) {
+  return <span className="basic-image-empty" role="alert"><span aria-hidden="true">▧</span><strong>{message}</strong></span>;
 }
 
 function ImageNode({ node, projectId, props }: { node: CanvasNode; projectId: string; props: ImageProps }) {
@@ -77,7 +99,7 @@ function ImageNode({ node, projectId, props }: { node: CanvasNode; projectId: st
           src={imageAssetContentUrl(projectId, assetId)}
           style={{ objectFit: props.fit }}
         />
-      ) : <EmptyImage message={assetId ? "图片加载失败" : "请选择图片资源"} />}
+      ) : assetId ? <ImageError message="图片加载失败" /> : null}
     </div>
   );
 }
@@ -119,7 +141,7 @@ function CarouselNode({ editable, node, projectId, props }: { editable: boolean;
           src={imageAssetContentUrl(projectId, assetId)}
           style={{ objectFit: props.fit }}
         />
-      ) : <EmptyImage message={assetId ? "轮播图片加载失败" : "请添加轮播图片"} />}
+      ) : assetId ? <ImageError message="轮播图片加载失败" /> : null}
       {props.showArrows && node.resourceRefs.length > 1 ? (
         <>
           <button aria-label="上一张" className="basic-carousel-arrow is-previous" disabled={editable} onClick={() => move(-1)} type="button">‹</button>
@@ -207,6 +229,74 @@ function ButtonNode({ editable, node, props }: { editable: boolean; node: Canvas
     >
       {content}
     </a>
+  );
+}
+
+function FullscreenIcon({ active }: { active: boolean }) {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24">
+      {active ? (
+        <path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5" />
+      ) : (
+        <path d="M9 4H4v5M15 4h5v5M9 20H4v-5M15 20h5v-5" />
+      )}
+    </svg>
+  );
+}
+
+function FullscreenToggleNode({ editable, node, props }: { editable: boolean; node: CanvasNode; props: FullscreenToggleProps }) {
+  const fullscreen = useSyncExternalStore(subscribeFullscreen, getFullscreenSnapshot, getFullscreenServerSnapshot);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => setError(null), [fullscreen, node.id]);
+
+  const toggleFullscreen = async (event: MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+    if (editable || props.disabled) return;
+
+    setError(null);
+    try {
+      if (document.fullscreenElement) {
+        await document.exitFullscreen();
+        return;
+      }
+      if (!document.fullscreenEnabled) {
+        throw new Error("当前浏览器或页面策略未开放全屏权限");
+      }
+      const target = event.currentTarget.closest<HTMLElement>("[data-canvas-fullscreen-root]");
+      if (!target) {
+        throw new Error("没有找到可全屏显示的画布容器");
+      }
+      await target.requestFullscreen();
+    } catch (reason) {
+      const message = reason instanceof Error && reason.message
+        ? `全屏切换失败：${reason.message}`
+        : "全屏切换失败：浏览器拒绝了请求";
+      setError(message);
+      console.error("[fullscreen-toggle] Fullscreen API request failed.", { nodeId: node.id, reason });
+    }
+  };
+
+  const label = error ? "全屏失败" : fullscreen ? props.exitText : props.enterText;
+  return (
+    <button
+      aria-disabled={editable || props.disabled}
+      aria-label={error ?? label}
+      className={`basic-fullscreen-toggle-node${fullscreen ? " is-fullscreen" : ""}${props.disabled ? " is-disabled" : ""}${error ? " is-error" : ""}`}
+      disabled={props.disabled}
+      onClick={(event) => void toggleFullscreen(event)}
+      style={{
+        ...baseStyle(props),
+        fontSize: Math.min(props.fontSize, Math.max(12, node.height * 0.42)),
+        fontWeight: props.fontWeight,
+      }}
+      tabIndex={editable ? -1 : 0}
+      title={error ?? (editable ? "进入预览后可切换画布全屏" : label)}
+      type="button"
+    >
+      <FullscreenIcon active={fullscreen} />
+      <span>{label}</span>
+    </button>
   );
 }
 
@@ -335,6 +425,7 @@ export const BasicNode = memo(function BasicNode({
   if (node.type === "image") return <ImageNode node={node} projectId={projectId} props={parsed.value as ImageProps} />;
   if (node.type === "carousel") return <CarouselNode editable={editable} node={node} projectId={projectId} props={parsed.value as CarouselProps} />;
   if (node.type === "button") return <ButtonNode editable={editable} node={node} props={parsed.value as ButtonProps} />;
+  if (node.type === "fullscreen-toggle") return <FullscreenToggleNode editable={editable} node={node} props={parsed.value as FullscreenToggleProps} />;
   if (node.type === "switch") return <SwitchNode editable={editable} props={parsed.value as SwitchProps} />;
   if (node.type === "checkbox-group") return <CheckboxGroupNode editable={editable} node={node} props={parsed.value as CheckboxGroupProps} />;
   if (node.type === "radio-group") return <RadioGroupNode editable={editable} node={node} props={parsed.value as RadioGroupProps} />;

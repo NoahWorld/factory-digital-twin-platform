@@ -385,6 +385,7 @@ const timeline = (
 
 const model = (box: Box, existingModel: CanvasNode | undefined) => {
   const defaultProps: Model3DProps = {
+    presentation: { lighting: "standard", shellMode: "original", showFlow: true, explosion: 0 },
     backgroundColor: "#061725",
     backgroundOpacity: 1,
     environmentLightColor: "#d7f5ff",
@@ -393,9 +394,14 @@ const model = (box: Box, existingModel: CanvasNode | undefined) => {
     keyLightIntensity: 2.4,
     cameraFov: 42,
     cameraView: "isometric",
+    modelScale: 1,
     autoRotate: true,
     rotationSpeed: 0.28,
+    showControlPanel: false,
+    playAnimations: true,
+    animationSpeed: 1,
     showGrid: true,
+    modelInstances: [],
     appearanceOverrides: {},
     transformOverrides: {},
   };

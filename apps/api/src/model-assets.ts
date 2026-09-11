@@ -1,4 +1,12 @@
+import { builtinModels, findBuiltinModel } from "../../../shared/builtin-models";
 import { AppError, type AppEnv } from "./auth";
+import {
+  emptyResourceUsage,
+  listProjectResourceUsage,
+  requireResourceDeletionConfirmation,
+  resourceUsageFor,
+  type ResourceUsage,
+} from "./resource-usage";
 
 export type ModelFormat = "glb" | "gltf";
 
@@ -17,6 +25,17 @@ export type ModelInspection = {
   externalResourceCount: number;
 };
 
+export type SceneBackgroundGeneration = {
+  algorithm: "textured-plane-v1";
+  imageHeight: number;
+  imageWidth: number;
+  movement: "fixed" | "limited";
+  planeHeightMeters: number;
+  planeWidthMeters: number;
+  quality: "lightweight" | "balanced" | "detail";
+  sourceImageAssetId: string;
+};
+
 export type ModelAsset = {
   id: string;
   projectId: string;
@@ -26,7 +45,17 @@ export type ModelAsset = {
   byteSize: number;
   sha256: string;
   inspection: ModelInspection;
+  source: "system" | "upload" | "scene-background";
+  sourceImageAssetId: string | null;
+  generation: SceneBackgroundGeneration | null;
+  usage: ResourceUsage;
   createdAt: string;
+};
+
+export type ModelAssetDeletion = {
+  deletedModelAssetId: string;
+  usage: ResourceUsage;
+  warning: string | null;
 };
 
 type ModelAssetRow = {
@@ -39,6 +68,9 @@ type ModelAssetRow = {
   sha256: string;
   object_key: string;
   inspection_json: string;
+  source: "upload" | "scene-background";
+  source_image_asset_id: string | null;
+  generation_json: string | null;
   created_at: string;
 };
 
@@ -159,7 +191,7 @@ const inspectDocument = (document: GltfDocument, format: ModelFormat): ModelInsp
   };
 };
 
-const inspectGlb = (bytes: Uint8Array): ModelInspection => {
+export const inspectGlb = (bytes: Uint8Array): ModelInspection => {
   if (bytes.byteLength < 20) {
     throw new AppError(400, "invalid_glb", "The GLB file is too small to contain a valid header and JSON chunk.");
   }
@@ -227,6 +259,21 @@ const parseStoredInspection = (row: ModelAssetRow): ModelInspection => {
   }
 };
 
+const parseStoredGeneration = (row: ModelAssetRow): SceneBackgroundGeneration | null => {
+  if (row.generation_json === null) return null;
+  try {
+    const value: unknown = JSON.parse(row.generation_json);
+    if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("not an object");
+    return value as SceneBackgroundGeneration;
+  } catch (error) {
+    throw new AppError(
+      500,
+      "invalid_model_asset_generation_storage",
+      `Model asset ${row.id} has invalid generation JSON: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+};
+
 export const presentModelAsset = (row: ModelAssetRow): ModelAsset => ({
   id: row.id,
   projectId: row.project_id,
@@ -236,17 +283,33 @@ export const presentModelAsset = (row: ModelAssetRow): ModelAsset => ({
   byteSize: row.byte_size,
   sha256: row.sha256,
   inspection: parseStoredInspection(row),
+  source: row.source,
+  sourceImageAssetId: row.source_image_asset_id,
+  generation: parseStoredGeneration(row),
+  usage: emptyResourceUsage(),
   createdAt: row.created_at,
 });
 
 const selectColumns =
-  "id, project_id, original_filename, format, content_type, byte_size, sha256, object_key, inspection_json, created_at";
+  "id, project_id, original_filename, format, content_type, byte_size, sha256, object_key, inspection_json, source, source_image_asset_id, generation_json, created_at";
 
 export const listModelAssets = async (env: AppEnv, projectId: string): Promise<ModelAsset[]> => {
-  const result = await env.DB.prepare(
-    `SELECT ${selectColumns} FROM model_assets WHERE project_id = ? ORDER BY created_at DESC, id DESC`,
-  ).bind(projectId).all<ModelAssetRow>();
-  return result.results.map(presentModelAsset);
+  const [result, usageByResourceId] = await Promise.all([
+    env.DB.prepare(
+      `SELECT ${selectColumns} FROM model_assets WHERE project_id = ? ORDER BY created_at DESC, id DESC`,
+    ).bind(projectId).all<ModelAssetRow>(),
+    listProjectResourceUsage(env, projectId),
+  ]);
+  return [...builtinModels.map((model): ModelAsset => ({
+    id: model.id, projectId, originalFilename: model.originalFilename, format: model.format,
+    contentType: model.contentType, byteSize: model.byteSize, sha256: model.sha256,
+    createdAt: model.createdAt, inspection: { ...model.inspection, duplicateNodeNames: [...model.inspection.duplicateNodeNames] },
+    source: "system", sourceImageAssetId: null, generation: null,
+    usage: resourceUsageFor(usageByResourceId, model.id),
+  })), ...result.results.map((row) => ({
+    ...presentModelAsset(row),
+    usage: resourceUsageFor(usageByResourceId, row.id),
+  }))];
 };
 
 export const getModelAssetRow = async (env: AppEnv, projectId: string, assetId: string): Promise<ModelAssetRow> => {
@@ -259,6 +322,110 @@ export const getModelAssetRow = async (env: AppEnv, projectId: string, assetId: 
   return row;
 };
 
+type PersistModelAssetOptions = {
+  bytes: Uint8Array;
+  filename: string;
+  format: ModelFormat;
+  generation: SceneBackgroundGeneration | null;
+  projectId: string;
+  source: "upload" | "scene-background";
+  sourceImageAssetId: string | null;
+  userId: string;
+};
+
+const persistModelAsset = async (
+  env: AppEnv,
+  options: PersistModelAssetOptions,
+): Promise<ModelAsset> => {
+  const modelStorage = requireModelStorage(env);
+  const inspection = options.format === "glb" ? inspectGlb(options.bytes) : inspectGltf(options.bytes);
+  const sha256 = await sha256Hex(options.bytes);
+  const assetId = crypto.randomUUID();
+  const objectKey = `${options.projectId}/${assetId}/original.${options.format}`;
+  const contentType = options.format === "glb" ? "model/gltf-binary" : "model/gltf+json";
+  const now = new Date().toISOString();
+  const buffer = options.bytes.buffer.slice(
+    options.bytes.byteOffset,
+    options.bytes.byteOffset + options.bytes.byteLength,
+  ) as ArrayBuffer;
+
+  await modelStorage.put(objectKey, buffer, {
+    httpMetadata: { contentType },
+    customMetadata: {
+      assetId,
+      projectId: options.projectId,
+      sha256,
+      originalFilename: options.filename,
+      source: options.source,
+    },
+  });
+
+  try {
+    await env.DB.prepare(
+      `INSERT INTO model_assets
+       (id, project_id, original_filename, format, content_type, byte_size, sha256, object_key, inspection_json,
+        created_by_user_id, created_at, source, source_image_asset_id, generation_json)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).bind(
+      assetId,
+      options.projectId,
+      options.filename,
+      options.format,
+      contentType,
+      buffer.byteLength,
+      sha256,
+      objectKey,
+      JSON.stringify(inspection),
+      options.userId,
+      now,
+      options.source,
+      options.sourceImageAssetId,
+      options.generation === null ? null : JSON.stringify(options.generation),
+    ).run();
+  } catch (error) {
+    await modelStorage.delete(objectKey);
+    throw new AppError(
+      500,
+      "model_asset_metadata_write_failed",
+      `The model file was validated but its metadata could not be saved: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+
+  return {
+    id: assetId,
+    projectId: options.projectId,
+    originalFilename: options.filename,
+    format: options.format,
+    contentType,
+    byteSize: buffer.byteLength,
+    sha256,
+    inspection,
+    source: options.source,
+    sourceImageAssetId: options.sourceImageAssetId,
+    generation: options.generation,
+    usage: emptyResourceUsage(),
+    createdAt: now,
+  };
+};
+
+export const createGeneratedBackgroundModelAsset = async (
+  env: AppEnv,
+  projectId: string,
+  userId: string,
+  filename: string,
+  bytes: Uint8Array,
+  generation: SceneBackgroundGeneration,
+): Promise<ModelAsset> => persistModelAsset(env, {
+  bytes,
+  filename,
+  format: "glb",
+  generation,
+  projectId,
+  source: "scene-background",
+  sourceImageAssetId: generation.sourceImageAssetId,
+  userId,
+});
+
 export const uploadModelAsset = async (
   request: Request,
   env: AppEnv,
@@ -266,7 +433,6 @@ export const uploadModelAsset = async (
   userId: string,
   rawFilename: string | null,
 ): Promise<ModelAsset> => {
-  const modelStorage = requireModelStorage(env);
   const { filename, format } = validateFilename(rawFilename);
   const contentLength = Number(request.headers.get("content-length"));
   if (Number.isFinite(contentLength) && contentLength > MAX_MODEL_BYTES) {
@@ -281,57 +447,54 @@ export const uploadModelAsset = async (
     throw new AppError(413, "model_file_too_large", `Model files cannot exceed ${MAX_MODEL_BYTES} bytes.`);
   }
 
-  const bytes = new Uint8Array(buffer);
-  const inspection = format === "glb" ? inspectGlb(bytes) : inspectGltf(bytes);
-  const sha256 = await sha256Hex(bytes);
-  const assetId = crypto.randomUUID();
-  const objectKey = `${projectId}/${assetId}/original.${format}`;
-  const contentType = format === "glb" ? "model/gltf-binary" : "model/gltf+json";
-  const now = new Date().toISOString();
-
-  await modelStorage.put(objectKey, buffer, {
-    httpMetadata: { contentType },
-    customMetadata: { assetId, projectId, sha256, originalFilename: filename },
+  return persistModelAsset(env, {
+    bytes: new Uint8Array(buffer),
+    filename,
+    format,
+    generation: null,
+    projectId,
+    source: "upload",
+    sourceImageAssetId: null,
+    userId,
   });
+};
 
-  try {
-    await env.DB.prepare(
-      `INSERT INTO model_assets
-       (id, project_id, original_filename, format, content_type, byte_size, sha256, object_key, inspection_json, created_by_user_id, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    ).bind(
-      assetId,
-      projectId,
-      filename,
-      format,
-      contentType,
-      buffer.byteLength,
-      sha256,
-      objectKey,
-      JSON.stringify(inspection),
-      userId,
-      now,
-    ).run();
-  } catch (error) {
-    await modelStorage.delete(objectKey);
+export const deleteModelAsset = async (
+  env: AppEnv,
+  projectId: string,
+  assetId: string,
+  confirmedReferencedDeletion: boolean,
+): Promise<ModelAssetDeletion> => {
+  if (findBuiltinModel(assetId) || assetId.startsWith("builtin:")) {
+    throw new AppError(403, "system_resource_immutable", "System-provided model resources cannot be deleted.");
+  }
+  const row = await getModelAssetRow(env, projectId, assetId);
+  const usage = resourceUsageFor(await listProjectResourceUsage(env, projectId), assetId);
+  requireResourceDeletionConfirmation(row.original_filename, usage, confirmedReferencedDeletion);
+
+  const result = await env.DB.prepare(
+    "DELETE FROM model_assets WHERE project_id = ? AND id = ?",
+  ).bind(projectId, assetId).run();
+  if (result.meta?.changes !== 1) {
     throw new AppError(
-      500,
-      "model_asset_metadata_write_failed",
-      `The model file was validated but its metadata could not be saved: ${error instanceof Error ? error.message : String(error)}`,
+      409,
+      "model_asset_delete_conflict",
+      "The model resource could not be deleted because it changed or was already deleted.",
     );
   }
 
-  return {
-    id: assetId,
-    projectId,
-    originalFilename: filename,
-    format,
-    contentType,
-    byteSize: buffer.byteLength,
-    sha256,
-    inspection,
-    createdAt: now,
-  };
+  let warning: string | null = null;
+  if (!env.PROJECT_FILES) {
+    warning = "The model metadata was deleted, but its object could not be removed because PROJECT_FILES storage is not configured.";
+  } else {
+    try {
+      await env.PROJECT_FILES.delete(row.object_key);
+    } catch (error) {
+      warning = `The model metadata was deleted, but object-storage cleanup failed: ${error instanceof Error ? error.message : String(error)}`;
+    }
+  }
+
+  return { deletedModelAssetId: assetId, usage, warning };
 };
 
 export const modelAssetContentResponse = async (
@@ -340,6 +503,14 @@ export const modelAssetContentResponse = async (
   projectId: string,
   assetId: string,
 ): Promise<Response> => {
+  const builtin = findBuiltinModel(assetId);
+  if (builtin) {
+    // The caller already checked project access. Bundled demos are public, immutable assets.
+    return new Response(null, { status: 307, headers: { location: builtin.contentPath } });
+  }
+  if (assetId.startsWith("builtin:")) {
+    throw new AppError(404, "model_asset_not_found", "The requested built-in model is not in the catalog.");
+  }
   const modelStorage = requireModelStorage(env);
   const row = await getModelAssetRow(env, projectId, assetId);
   const object = await modelStorage.get(row.object_key);

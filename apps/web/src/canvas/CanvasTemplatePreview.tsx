@@ -1,4 +1,6 @@
 import { useMemo, type CSSProperties, type ReactNode } from "react";
+import { isOrnamentNodeType, parseOrnamentProps } from "../../../../shared/canvas-ornaments";
+import { renderOrnamentSvg } from "../../../../shared/ornament-svg";
 import {
   isBasicNodeType,
   isChartNodeType,
@@ -26,6 +28,7 @@ import {
   type StatusGridProps,
 } from "./types";
 import { getCanvasTemplate, instantiateCanvasTemplate, type CanvasTemplateId } from "./templates";
+import { DecorationNode } from "./DecorationNode";
 
 type PreviewStyle = CSSProperties & {
   "--preview-accent"?: string;
@@ -61,19 +64,6 @@ const invalidNode = (node: CanvasNode, message: string) => (
     {node.type}: {message}
   </div>
 );
-
-const padTimePart = (value: number) => String(value).padStart(2, "0");
-
-function previewDateTime(showDate: boolean, showSeconds: boolean) {
-  const now = new Date();
-  const time = [now.getHours(), now.getMinutes(), ...(showSeconds ? [now.getSeconds()] : [])]
-    .map(padTimePart)
-    .join(":");
-  const date = showDate
-    ? `${now.getFullYear()}-${padTimePart(now.getMonth() + 1)}-${padTimePart(now.getDate())}`
-    : "";
-  return { date, time };
-}
 
 const previewChartColors = ["#46e3b7", "#55d8ff", "#ffbd59", "#a78bfa", "#ff6b7a", "#5aa0ff"];
 
@@ -266,6 +256,11 @@ function PreviewDashboard({ node }: { node: CanvasNode }) {
 }
 
 function renderNode(node: CanvasNode): ReactNode {
+  if (isOrnamentNodeType(node.type)) {
+    const parsed = parseOrnamentProps(node.type, node.props);
+    if (!parsed.ok) return invalidNode(node, parsed.message);
+    return <div className="ornament-thumbnail" dangerouslySetInnerHTML={{ __html: renderOrnamentSvg(node.type, node.props, node.width, node.height, node.id) }} />;
+  }
   if (isShapeNodeType(node.type)) {
     const parsed = parseShapeProps(node.props);
     if (!parsed.ok) return invalidNode(node, parsed.message);
@@ -286,22 +281,7 @@ function renderNode(node: CanvasNode): ReactNode {
   if (isDecorationNodeType(node.type)) {
     const parsed = parseDecorationProps(node.type, node.props);
     if (!parsed.ok) return invalidNode(node, parsed.message);
-    const props = parsed.value;
-    const style: PreviewStyle = {
-      "--preview-accent": props.accentColor,
-      "--preview-border": props.borderColor,
-      "--preview-surface": props.fillColor,
-      "--preview-text": props.textColor,
-      opacity: props.opacity,
-    };
-    if (node.type === "screen-title") {
-      return <div className="template-preview-screen-title" style={style}><strong>{props.text}</strong><small>{props.subtitle}</small></div>;
-    }
-    if (node.type === "datetime") {
-      const { date, time } = previewDateTime(props.showDate, props.showSeconds);
-      return <div className="template-preview-datetime" style={style}><strong>{time}</strong>{date ? <small>{date}</small> : null}</div>;
-    }
-    return <div className={`template-preview-decoration is-${node.type}`} style={style}>{props.text}</div>;
+    return <DecorationNode node={node} />;
   }
 
   if (isPanelFrameNodeType(node.type)) {
@@ -339,7 +319,6 @@ function renderNode(node: CanvasNode): ReactNode {
     return (
       <div className="template-preview-model" style={{ background: parsed.value.backgroundColor }}>
         <div><i /><i /><i /><i /></div>
-        <span>{node.resourceRefs.length ? "3D 场景" : "3D 模型区"}</span>
       </div>
     );
   }
@@ -350,13 +329,13 @@ function renderNode(node: CanvasNode): ReactNode {
     const props = parsed.value;
     const label = "text" in props
       ? props.text
+      : "enterText" in props
+        ? props.enterText
       : "label" in props
         ? props.label
         : "title" in props
           ? props.title
-          : node.type === "carousel"
-            ? "轮播图"
-            : "图片";
+          : "";
     return <div className={`template-preview-basic is-${node.type}`}>{label}</div>;
   }
 

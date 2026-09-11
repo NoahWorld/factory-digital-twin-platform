@@ -7,9 +7,12 @@ import {
   destroyCurrentSession,
   getAuthenticatedUser,
   hasGlobalRole,
+  INITIAL_ADMIN_LOGIN_NAME,
   isBootstrapRequired,
   validateDisplayName,
   validateEmail,
+  validateLoginIdentifier,
+  validateLoginName,
   validatePassword,
   verifyBootstrapToken,
   verifyCredentials,
@@ -38,17 +41,39 @@ import {
   validateDataSourceCreate,
 } from "./data-sources";
 import {
+  deleteModelAsset,
   listModelAssets,
   modelAssetContentResponse,
   uploadModelAsset,
 } from "./model-assets";
 import {
+  deleteImageAsset,
   imageAssetContentResponse,
   listImageAssets,
   uploadImageAsset,
 } from "./image-assets";
+import {
+  deleteMediaAsset,
+  listMediaAssets,
+  mediaAssetContentResponse,
+  uploadMediaAsset,
+} from "./media-assets";
+import {
+  generateSceneBackground,
+  validateSceneBackgroundGenerationInput,
+} from "./scene-backgrounds";
 import { projectCoverResponse } from "./project-covers";
 import { collectAssetRuntimeState, probeRestDataSource } from "./runtime-state";
+import {
+  applyStandaloneScenePatch,
+  getStandaloneScene,
+  validateStandaloneScenePatch,
+} from "./standalone-scenes";
+import {
+  STANDALONE_3D_LIMITS,
+  isProjectType,
+  type ProjectType,
+} from "../../../shared/standalone-3d";
 
 type ProjectStatus = "draft" | "published" | "archived";
 
@@ -60,6 +85,7 @@ type ProjectRow = {
   updated_at: string;
   project_role: "owner" | "editor" | "viewer" | null;
   cover_revision: number | null;
+  project_type: ProjectType;
 };
 
 type JsonObject = Record<string, unknown>;
@@ -130,9 +156,21 @@ const decodePathSegment = (value: string): string => {
   }
 };
 
+const referencedDeletionConfirmed = (url: URL): boolean => {
+  const value = url.searchParams.get("confirmReferenced");
+  if (value === null || value === "false") return false;
+  if (value === "true") return true;
+  throw new AppError(
+    400,
+    "invalid_delete_confirmation",
+    "The confirmReferenced query parameter must be either true or false.",
+  );
+};
+
 const presentUser = (user: AuthenticatedUser) => ({
   id: user.id,
   email: user.email,
+  loginName: user.loginName,
   displayName: user.displayName,
   roles: user.roles,
   capabilities: capabilitiesFor(user),
@@ -142,6 +180,7 @@ const presentProject = (project: ProjectRow) => ({
   id: project.id,
   name: project.name,
   status: project.status,
+  projectType: project.project_type,
   createdAt: project.created_at,
   updatedAt: project.updated_at,
   projectRole: project.project_role,
@@ -157,7 +196,7 @@ const requireProjectAccess = async (
 ): Promise<ProjectRow> => {
   const isPlatformAdmin = hasGlobalRole(user, "platform_admin") ? 1 : 0;
   const project = await env.DB.prepare(
-    `SELECT p.id, p.name, p.status, p.created_at, p.updated_at,
+    `SELECT p.id, p.name, p.status, p.project_type, p.created_at, p.updated_at,
        pm.role AS project_role, pc.revision AS cover_revision
      FROM projects p
      LEFT JOIN project_members pm ON pm.project_id = p.id AND pm.user_id = ?
@@ -183,7 +222,7 @@ const canDeleteProject = (user: AuthenticatedUser, project: ProjectRow): boolean
 const listProjects = async (env: AppEnv, user: AuthenticatedUser): Promise<ProjectRow[]> => {
   const isPlatformAdmin = hasGlobalRole(user, "platform_admin") ? 1 : 0;
   const result = await env.DB.prepare(
-    `SELECT p.id, p.name, p.status, p.created_at, p.updated_at,
+    `SELECT p.id, p.name, p.status, p.project_type, p.created_at, p.updated_at,
        pm.role AS project_role, pc.revision AS cover_revision
      FROM projects p
      LEFT JOIN project_members pm ON pm.project_id = p.id AND pm.user_id = ?
@@ -201,6 +240,7 @@ const createProject = async (
   env: AppEnv,
   user: AuthenticatedUser,
   name: string,
+  projectType: ProjectType,
 ): Promise<ProjectRow> => {
   if (!hasGlobalRole(user, "platform_admin", "delivery_manager")) {
     throw new AppError(403, "permission_denied", "You do not have permission to create projects.");
@@ -209,21 +249,28 @@ const createProject = async (
   const projectId = crypto.randomUUID();
   const now = new Date().toISOString();
 
-  await env.DB.batch([
+  const statements = [
     env.DB
       .prepare(
         `INSERT INTO projects (
-          id, name, status, created_by_user_id, created_at, updated_at
-        ) VALUES (?, ?, 'draft', ?, ?, ?)`,
+          id, name, status, project_type, created_by_user_id, created_at, updated_at
+        ) VALUES (?, ?, 'draft', ?, ?, ?, ?)`,
       )
-      .bind(projectId, name, user.id, now, now),
+      .bind(projectId, name, projectType, user.id, now, now),
     env.DB
       .prepare(
         `INSERT INTO project_members (project_id, user_id, role, created_at, updated_at)
          VALUES (?, ?, 'owner', ?, ?)`,
       )
       .bind(projectId, user.id, now, now),
-  ]);
+  ];
+  if (projectType === "3d") {
+    statements.push(env.DB.prepare(
+      `INSERT INTO standalone_3d_scenes (project_id, updated_by_user_id, updated_at)
+       VALUES (?, ?, ?)`,
+    ).bind(projectId, user.id, now));
+  }
+  await env.DB.batch(statements);
 
   return {
     id: projectId,
@@ -233,6 +280,7 @@ const createProject = async (
     updated_at: now,
     project_role: "owner",
     cover_revision: null,
+    project_type: projectType,
   };
 };
 
@@ -260,6 +308,7 @@ const updateProjectName = async (
 type ProjectDeletionResult = {
   deletedProjectId: string;
   deletedImageObjectCount: number;
+  deletedMediaObjectCount: number;
   deletedModelObjectCount: number;
   warning: string | null;
 };
@@ -274,6 +323,9 @@ const deleteProject = async (
   const imageObjectRows = await env.DB.prepare(
     "SELECT object_key FROM image_assets WHERE project_id = ? ORDER BY object_key ASC",
   ).bind(projectId).all<{ object_key: string }>();
+  const mediaObjectRows = await env.DB.prepare(
+    "SELECT object_key FROM media_assets WHERE project_id = ? ORDER BY object_key ASC",
+  ).bind(projectId).all<{ object_key: string }>();
 
   const results = await env.DB.batch([
     env.DB.prepare(
@@ -287,8 +339,11 @@ const deleteProject = async (
     env.DB.prepare("DELETE FROM assets WHERE project_id = ?").bind(projectId),
     env.DB.prepare("DELETE FROM data_sources WHERE project_id = ?").bind(projectId),
     env.DB.prepare("DELETE FROM project_versions WHERE project_id = ?").bind(projectId),
+    env.DB.prepare("DELETE FROM media_assets WHERE project_id = ?").bind(projectId),
     env.DB.prepare("DELETE FROM image_assets WHERE project_id = ?").bind(projectId),
     env.DB.prepare("DELETE FROM model_assets WHERE project_id = ?").bind(projectId),
+    env.DB.prepare("DELETE FROM standalone_3d_instances WHERE project_id = ?").bind(projectId),
+    env.DB.prepare("DELETE FROM standalone_3d_scenes WHERE project_id = ?").bind(projectId),
     env.DB.prepare("DELETE FROM project_canvases WHERE project_id = ?").bind(projectId),
     env.DB.prepare("DELETE FROM project_members WHERE project_id = ?").bind(projectId),
     env.DB.prepare("DELETE FROM projects WHERE id = ?").bind(projectId),
@@ -303,10 +358,13 @@ const deleteProject = async (
   }
 
   let deletedImageObjectCount = 0;
+  let deletedMediaObjectCount = 0;
   let deletedModelObjectCount = 0;
   let warning: string | null = null;
   const projectFiles = env.PROJECT_FILES;
-  const objectCount = modelObjectRows.results.length + imageObjectRows.results.length;
+  const objectCount = modelObjectRows.results.length
+    + imageObjectRows.results.length
+    + mediaObjectRows.results.length;
   if (objectCount > 0 && !projectFiles) {
     warning = `The project was deleted, but ${objectCount} project file object(s) could not be removed because PROJECT_FILES storage is not configured.`;
   } else if (projectFiles) {
@@ -319,14 +377,19 @@ const deleteProject = async (
         await projectFiles.delete(row.object_key);
         deletedModelObjectCount += 1;
       }
+      for (const row of mediaObjectRows.results) {
+        await projectFiles.delete(row.object_key);
+        deletedMediaObjectCount += 1;
+      }
     } catch (error) {
-      warning = `The project was deleted, but project file cleanup stopped after ${deletedImageObjectCount + deletedModelObjectCount} of ${objectCount} object(s): ${error instanceof Error ? error.message : String(error)}`;
+      warning = `The project was deleted, but project file cleanup stopped after ${deletedImageObjectCount + deletedModelObjectCount + deletedMediaObjectCount} of ${objectCount} object(s): ${error instanceof Error ? error.message : String(error)}`;
     }
   }
 
   return {
     deletedProjectId: projectId,
     deletedImageObjectCount,
+    deletedMediaObjectCount,
     deletedModelObjectCount,
     warning,
   };
@@ -368,6 +431,7 @@ const handleApiRequest = async (
     const body = await readJsonObject(request);
     const user = await createUser(env, {
       email: validateEmail(body.email),
+      loginName: validateLoginName(INITIAL_ADMIN_LOGIN_NAME),
       displayName: validateDisplayName(body.displayName),
       password: validatePassword(body.password),
       roles: ["platform_admin"],
@@ -383,9 +447,10 @@ const handleApiRequest = async (
 
   if (method === "POST" && pathname === "/api/v1/auth/login") {
     const body = await readJsonObject(request);
+    const identifier = body.identifier ?? body.email;
     const user = await verifyCredentials(
       env,
-      validateEmail(body.email),
+      validateLoginIdentifier(identifier),
       validatePassword(body.password),
     );
     const session = await createSession(env, user.id);
@@ -412,7 +477,11 @@ const handleApiRequest = async (
   if (method === "POST" && pathname === "/api/v1/projects") {
     const user = await getAuthenticatedUser(env, request);
     const body = await readJsonObject(request);
-    const project = await createProject(env, user, validateProjectName(body.name));
+    const projectType = body.projectType ?? "2d";
+    if (!isProjectType(projectType)) {
+      throw new AppError(400, "invalid_project_type", "Project type must be either 2d or 3d.");
+    }
+    const project = await createProject(env, user, validateProjectName(body.name), projectType);
     return json({ project: presentProject(project), requestId }, 201);
   }
 
@@ -422,6 +491,9 @@ const handleApiRequest = async (
     const user = await getAuthenticatedUser(env, request);
     const projectId = decodePathSegment(projectCoverMatch[1]);
     const project = await requireProjectAccess(env, user, projectId);
+    if (project.project_type !== "2d") {
+      throw new AppError(409, "project_type_mismatch", "Standalone 3D projects do not use 2D canvas covers.");
+    }
     const canvas = await getCanvas(env, projectId);
     if (canvas.revision < 1) {
       throw new AppError(
@@ -431,6 +503,36 @@ const handleApiRequest = async (
       );
     }
     return projectCoverResponse(request, canvas);
+  }
+
+  const sceneBackgroundsMatch = pathname.match(/^\/api\/v1\/projects\/([^/]+)\/scene-backgrounds$/);
+
+  if (method === "POST" && sceneBackgroundsMatch) {
+    const startedAt = Date.now();
+    const user = await getAuthenticatedUser(env, request);
+    const projectId = decodePathSegment(sceneBackgroundsMatch[1]);
+    const project = await requireProjectAccess(env, user, projectId);
+    if (!canEditProject(user, project)) {
+      throw new AppError(403, "permission_denied", "You do not have permission to generate backgrounds for this project.");
+    }
+    const input = validateSceneBackgroundGenerationInput(await readJsonObject(request));
+    const generated = await generateSceneBackground(env, projectId, user.id, input);
+    console.log(JSON.stringify({
+      event: "scene_background_generated",
+      requestId,
+      projectId,
+      userId: user.id,
+      sourceImageAssetId: input.sourceImageAssetId,
+      modelAssetId: generated.modelAsset.id,
+      algorithm: generated.modelAsset.generation?.algorithm,
+      imageWidth: generated.modelAsset.generation?.imageWidth,
+      imageHeight: generated.modelAsset.generation?.imageHeight,
+      planeWidthMeters: generated.modelAsset.generation?.planeWidthMeters,
+      planeHeightMeters: generated.modelAsset.generation?.planeHeightMeters,
+      byteSize: generated.modelAsset.byteSize,
+      durationMs: Date.now() - startedAt,
+    }));
+    return json({ ...generated, requestId }, 201);
   }
 
   const modelAssetContentMatch = pathname.match(
@@ -488,6 +590,37 @@ const handleApiRequest = async (
     return json({ modelAsset, requestId }, 201);
   }
 
+  const modelAssetMatch = pathname.match(/^\/api\/v1\/projects\/([^/]+)\/model-assets\/([^/]+)$/);
+
+  if (method === "DELETE" && modelAssetMatch) {
+    const startedAt = Date.now();
+    const user = await getAuthenticatedUser(env, request);
+    const projectId = decodePathSegment(modelAssetMatch[1]);
+    const project = await requireProjectAccess(env, user, projectId);
+    if (!canEditProject(user, project)) {
+      throw new AppError(403, "permission_denied", "You do not have permission to delete models from this project.");
+    }
+    const deletion = await deleteModelAsset(
+      env,
+      projectId,
+      decodePathSegment(modelAssetMatch[2]),
+      referencedDeletionConfirmed(url),
+    );
+    const logContext = {
+      event: deletion.warning ? "model_asset_deleted_with_cleanup_warning" : "model_asset_deleted",
+      requestId,
+      projectId,
+      userId: user.id,
+      modelAssetId: deletion.deletedModelAssetId,
+      referenceCount: deletion.usage.count,
+      warning: deletion.warning,
+      durationMs: Date.now() - startedAt,
+    };
+    if (deletion.warning) console.error(JSON.stringify(logContext));
+    else console.log(JSON.stringify(logContext));
+    return json({ ...deletion, requestId });
+  }
+
   const imageAssetContentMatch = pathname.match(
     /^\/api\/v1\/projects\/([^/]+)\/image-assets\/([^/]+)\/content$/,
   );
@@ -538,6 +671,118 @@ const handleApiRequest = async (
       durationMs: Date.now() - startedAt,
     }));
     return json({ imageAsset, requestId }, 201);
+  }
+
+  const imageAssetMatch = pathname.match(/^\/api\/v1\/projects\/([^/]+)\/image-assets\/([^/]+)$/);
+
+  if (method === "DELETE" && imageAssetMatch) {
+    const startedAt = Date.now();
+    const user = await getAuthenticatedUser(env, request);
+    const projectId = decodePathSegment(imageAssetMatch[1]);
+    const project = await requireProjectAccess(env, user, projectId);
+    if (!canEditProject(user, project)) {
+      throw new AppError(403, "permission_denied", "You do not have permission to delete images from this project.");
+    }
+    const deletion = await deleteImageAsset(
+      env,
+      projectId,
+      decodePathSegment(imageAssetMatch[2]),
+      referencedDeletionConfirmed(url),
+    );
+    const logContext = {
+      event: deletion.warning ? "image_asset_deleted_with_cleanup_warning" : "image_asset_deleted",
+      requestId,
+      projectId,
+      userId: user.id,
+      imageAssetId: deletion.deletedImageAssetId,
+      referenceCount: deletion.usage.count,
+      warning: deletion.warning,
+      durationMs: Date.now() - startedAt,
+    };
+    if (deletion.warning) console.error(JSON.stringify(logContext));
+    else console.log(JSON.stringify(logContext));
+    return json({ ...deletion, requestId });
+  }
+
+  const mediaAssetContentMatch = pathname.match(
+    /^\/api\/v1\/projects\/([^/]+)\/media-assets\/([^/]+)\/content$/,
+  );
+
+  if (method === "GET" && mediaAssetContentMatch) {
+    const user = await getAuthenticatedUser(env, request);
+    const projectId = decodePathSegment(mediaAssetContentMatch[1]);
+    await requireProjectAccess(env, user, projectId);
+    return mediaAssetContentResponse(
+      request,
+      env,
+      projectId,
+      decodePathSegment(mediaAssetContentMatch[2]),
+    );
+  }
+
+  const mediaAssetsMatch = pathname.match(/^\/api\/v1\/projects\/([^/]+)\/media-assets$/);
+
+  if ((method === "GET" || method === "POST") && mediaAssetsMatch) {
+    const startedAt = Date.now();
+    const user = await getAuthenticatedUser(env, request);
+    const projectId = decodePathSegment(mediaAssetsMatch[1]);
+    const project = await requireProjectAccess(env, user, projectId);
+    if (method === "GET") {
+      return json({ mediaAssets: await listMediaAssets(env, projectId), requestId });
+    }
+    if (!canEditProject(user, project)) {
+      throw new AppError(403, "permission_denied", "You do not have permission to upload media to this project.");
+    }
+    const mediaAsset = await uploadMediaAsset(
+      request,
+      env,
+      projectId,
+      user.id,
+      url.searchParams.get("filename"),
+    );
+    console.log(JSON.stringify({
+      event: "media_asset_uploaded",
+      requestId,
+      projectId,
+      userId: user.id,
+      mediaAssetId: mediaAsset.id,
+      mediaType: mediaAsset.mediaType,
+      format: mediaAsset.format,
+      byteSize: mediaAsset.byteSize,
+      durationMs: Date.now() - startedAt,
+    }));
+    return json({ mediaAsset, requestId }, 201);
+  }
+
+  const mediaAssetMatch = pathname.match(/^\/api\/v1\/projects\/([^/]+)\/media-assets\/([^/]+)$/);
+
+  if (method === "DELETE" && mediaAssetMatch) {
+    const startedAt = Date.now();
+    const user = await getAuthenticatedUser(env, request);
+    const projectId = decodePathSegment(mediaAssetMatch[1]);
+    const project = await requireProjectAccess(env, user, projectId);
+    if (!canEditProject(user, project)) {
+      throw new AppError(403, "permission_denied", "You do not have permission to delete media from this project.");
+    }
+    const deletion = await deleteMediaAsset(
+      env,
+      projectId,
+      decodePathSegment(mediaAssetMatch[2]),
+      referencedDeletionConfirmed(url),
+    );
+    const logContext = {
+      event: deletion.warning ? "media_asset_deleted_with_cleanup_warning" : "media_asset_deleted",
+      requestId,
+      projectId,
+      userId: user.id,
+      mediaAssetId: deletion.deletedMediaAssetId,
+      referenceCount: deletion.usage.count,
+      warning: deletion.warning,
+      durationMs: Date.now() - startedAt,
+    };
+    if (deletion.warning) console.error(JSON.stringify(logContext));
+    else console.log(JSON.stringify(logContext));
+    return json({ ...deletion, requestId });
   }
 
   const assetsMatch = pathname.match(/^\/api\/v1\/projects\/([^/]+)\/assets$/);
@@ -886,6 +1131,9 @@ const handleApiRequest = async (
     const user = await getAuthenticatedUser(env, request);
     const projectId = decodePathSegment(canvasMatch[1]);
     const project = await requireProjectAccess(env, user, projectId);
+    if (project.project_type !== "2d") {
+      throw new AppError(409, "project_type_mismatch", "This project uses the standalone 3D scene editor, not the 2D canvas editor.");
+    }
     const editable = canEditProject(user, project);
 
     if (method === "GET") {
@@ -912,6 +1160,48 @@ const handleApiRequest = async (
       durationMs: Date.now() - startedAt,
     }));
     return json({ canvas, requestId });
+  }
+
+  const standaloneSceneMatch = pathname.match(/^\/api\/v1\/projects\/([^/]+)\/scene$/);
+
+  if ((method === "GET" || method === "PATCH") && standaloneSceneMatch) {
+    const startedAt = Date.now();
+    const user = await getAuthenticatedUser(env, request);
+    const projectId = decodePathSegment(standaloneSceneMatch[1]);
+    const project = await requireProjectAccess(env, user, projectId);
+    if (project.project_type !== "3d") {
+      throw new AppError(409, "project_type_mismatch", "This project uses the 2D canvas editor, not the standalone 3D scene editor.");
+    }
+    const editable = canEditProject(user, project);
+
+    if (method === "GET") {
+      return json({
+        project: presentProject(project),
+        scene: await getStandaloneScene(env, projectId),
+        editable,
+        limits: STANDALONE_3D_LIMITS,
+        requestId,
+      });
+    }
+    if (!editable) {
+      throw new AppError(403, "permission_denied", "You do not have permission to edit this 3D scene.");
+    }
+    const patch = validateStandaloneScenePatch(await readJsonObject(request, 512 * 1024));
+    const scene = await applyStandaloneScenePatch(env, projectId, user, patch);
+    console.log(JSON.stringify({
+      event: "standalone_3d_scene_saved",
+      requestId,
+      projectId,
+      userId: user.id,
+      revision: scene.revision,
+      settingsChanged: patch.settings !== undefined,
+      linkChanged: patch.linked2dProjectId !== undefined,
+      upsertedInstanceCount: patch.upsertInstances.length,
+      deletedInstanceCount: patch.deleteInstanceIds.length,
+      totalInstanceCount: scene.instances.length,
+      durationMs: Date.now() - startedAt,
+    }));
+    return json({ scene, limits: STANDALONE_3D_LIMITS, requestId });
   }
 
   const projectMatch = pathname.match(/^\/api\/v1\/projects\/([^/]+)$/);
@@ -963,6 +1253,8 @@ const handleApiRequest = async (
       requestId,
       projectId,
       userId: user.id,
+      deletedImageObjectCount: deletion.deletedImageObjectCount,
+      deletedMediaObjectCount: deletion.deletedMediaObjectCount,
       deletedModelObjectCount: deletion.deletedModelObjectCount,
       warning: deletion.warning,
       durationMs: Date.now() - startedAt,

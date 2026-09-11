@@ -1,4 +1,7 @@
+import { findBuiltinModel } from "../../../shared/builtin-models";
+import { parseModelPresentation, type ModelPresentation } from "../../../shared/model-presentation";
 import { AppError, type AppEnv, type DatabaseResult } from "./auth";
+import { isOrnamentNodeType, ornamentMinimumSizes, parseOrnamentProps, type OrnamentNodeType, type OrnamentProps } from "../../../shared/canvas-ornaments";
 
 export type ChartNodeType =
   | "line-chart"
@@ -8,13 +11,21 @@ export type ChartNodeType =
   | "donut-chart"
   | "radar-chart";
 export type ShapeNodeType = "rectangle" | "circle";
+export type AnimatedDecorationNodeType =
+  | "radar-sweep"
+  | "data-stream"
+  | "circuit-pulse"
+  | "energy-core"
+  | "industrial-flow"
+  | "scan-grid";
 export type DecorationNodeType =
   | "screen-title"
   | "background-decoration"
   | "datetime"
   | "section-title"
   | "card-background"
-  | "icon-background";
+  | "icon-background"
+  | AnimatedDecorationNodeType;
 export type PanelFrameNodeType = "panel-frame";
 export type DashboardNodeType =
   | "metric-card"
@@ -31,19 +42,25 @@ export type BasicNodeType =
   | "image"
   | "carousel"
   | "button"
+  | "fullscreen-toggle"
   | "switch"
   | "checkbox-group"
   | "radio-group"
   | "select";
 export type Model3DNodeType = "model-3d";
+export type Scene3DNodeType = "scene-3d";
+export type AssetDetailNodeType = "asset-detail";
 export type CanvasNodeType =
+  | OrnamentNodeType
   | ChartNodeType
   | ShapeNodeType
   | DecorationNodeType
   | PanelFrameNodeType
   | DashboardNodeType
   | BasicNodeType
-  | Model3DNodeType;
+  | Model3DNodeType
+  | Scene3DNodeType
+  | AssetDetailNodeType;
 
 export type CanvasThemeMode = "dark" | "light" | "custom";
 export type CanvasThemePresetId =
@@ -262,6 +279,14 @@ export type ButtonProps = BasicAppearanceProps & {
   disabled: boolean;
 };
 
+export type FullscreenToggleProps = BasicAppearanceProps & {
+  enterText: string;
+  exitText: string;
+  fontSize: number;
+  fontWeight: number;
+  disabled: boolean;
+};
+
 export type SwitchProps = BasicAppearanceProps & {
   label: string;
   defaultChecked: boolean;
@@ -296,6 +321,7 @@ export type BasicProps =
   | ImageProps
   | CarouselProps
   | ButtonProps
+  | FullscreenToggleProps
   | SwitchProps
   | CheckboxGroupProps
   | RadioGroupProps
@@ -315,9 +341,18 @@ export type ModelNodeAppearance = {
   visible: boolean;
 };
 
-export type ModelCameraView = "isometric" | "front" | "top";
+export type ModelAssetInstance = {
+  id: string;
+  assetId: string;
+  label: string;
+  transform: ModelNodeTransform;
+  visible: boolean;
+};
+
+export type ModelCameraView = "isometric" | "isometric-left" | "front" | "top";
 
 export type Model3DProps = {
+  presentation: ModelPresentation;
   backgroundColor: string;
   backgroundOpacity: number;
   environmentLightColor: string;
@@ -326,11 +361,32 @@ export type Model3DProps = {
   keyLightIntensity: number;
   cameraFov: number;
   cameraView: ModelCameraView;
+  modelScale: number;
   autoRotate: boolean;
   rotationSpeed: number;
+  showControlPanel: boolean;
+  playAnimations: boolean;
+  animationSpeed: number;
   showGrid: boolean;
+  modelInstances: ModelAssetInstance[];
   appearanceOverrides: Record<string, ModelNodeAppearance>;
   transformOverrides: Record<string, ModelNodeTransform>;
+};
+
+export type Scene3DProps = {
+  sceneProjectId: string | null;
+  interactionEnabled: boolean;
+};
+
+export type AssetDetailProps = {
+  title: string;
+  emptyText: string;
+  showMetadata: boolean;
+  maximumMetrics: number;
+  textColor: string;
+  accentColor: string;
+  fillColor: string;
+  borderColor: string;
 };
 
 export type CanvasNode = {
@@ -341,7 +397,7 @@ export type CanvasNode = {
   width: number;
   height: number;
   zIndex: number;
-  props: ChartProps | ShapeProps | DecorationProps | PanelFrameProps | DashboardProps | BasicProps | Model3DProps;
+  props: ChartProps | ShapeProps | DecorationProps | PanelFrameProps | DashboardProps | BasicProps | Model3DProps | Scene3DProps | AssetDetailProps | OrnamentProps;
   resourceRefs: string[];
   dataBindingRefs: string[];
 };
@@ -415,6 +471,7 @@ const MAX_POINTS = 32;
 const MAX_PROPS_BYTES = 16 * 1024;
 const MAX_MODEL_NODE_TRANSFORMS = 100;
 const MAX_MODEL_NODE_APPEARANCES = 100;
+const MAX_MODEL_INSTANCES = 32;
 const MAX_PROGRESS_ITEMS = 12;
 const MAX_STATUS_ITEMS = 24;
 const MAX_STREAM_ITEMS = 20;
@@ -424,6 +481,7 @@ const identifierPattern = /^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,119}$/;
 const colorPattern = /^#[0-9a-fA-F]{6}$/;
 const encoder = new TextEncoder();
 const minimumNodeSizes: Record<CanvasNodeType, { width: number; height: number }> = {
+  ...ornamentMinimumSizes,
   "line-chart": { width: 240, height: 160 },
   "bar-chart": { width: 240, height: 160 },
   "area-chart": { width: 240, height: 160 },
@@ -434,6 +492,12 @@ const minimumNodeSizes: Record<CanvasNodeType, { width: number; height: number }
   circle: { width: 240, height: 240 },
   "screen-title": { width: 360, height: 72 },
   "background-decoration": { width: 200, height: 72 },
+  "radar-sweep": { width: 160, height: 160 },
+  "data-stream": { width: 200, height: 72 },
+  "circuit-pulse": { width: 240, height: 120 },
+  "energy-core": { width: 160, height: 160 },
+  "industrial-flow": { width: 200, height: 64 },
+  "scan-grid": { width: 240, height: 120 },
   datetime: { width: 220, height: 72 },
   "section-title": { width: 160, height: 48 },
   "card-background": { width: 160, height: 100 },
@@ -448,11 +512,14 @@ const minimumNodeSizes: Record<CanvasNodeType, { width: number; height: number }
   "data-table": { width: 360, height: 220 },
   "event-timeline": { width: 320, height: 240 },
   "model-3d": { width: 360, height: 240 },
+  "scene-3d": { width: 480, height: 320 },
+  "asset-detail": { width: 300, height: 260 },
   "plain-text": { width: 160, height: 48 },
   "text-link": { width: 160, height: 48 },
   image: { width: 160, height: 100 },
   carousel: { width: 240, height: 160 },
   button: { width: 120, height: 48 },
+  "fullscreen-toggle": { width: 120, height: 48 },
   switch: { width: 160, height: 48 },
   "checkbox-group": { width: 200, height: 96 },
   "radio-group": { width: 200, height: 96 },
@@ -598,8 +665,8 @@ const requireModelCameraView = (
   value: unknown,
   label: string,
 ): ModelCameraView => {
-  if (value !== "isometric" && value !== "front" && value !== "top") {
-    invalid("invalid_canvas_node", `${label} must be isometric, front, or top.`);
+  if (value !== "isometric" && value !== "isometric-left" && value !== "front" && value !== "top") {
+    invalid("invalid_canvas_node", `${label} must be isometric, isometric-left, front, or top.`);
   }
   return value as ModelCameraView;
 };
@@ -619,6 +686,42 @@ const requireVector3Tuple = (
     requireNumber(values[1], `${label}[1]`, minimum, maximum),
     requireNumber(values[2], `${label}[2]`, minimum, maximum),
   ];
+};
+
+const requireModelInstances = (value: unknown): ModelAssetInstance[] => {
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || value.length > MAX_MODEL_INSTANCES) {
+    invalid(
+      "invalid_canvas_node",
+      `props.modelInstances must contain at most ${MAX_MODEL_INSTANCES} model instances.`,
+    );
+  }
+
+  const instanceIds = new Set<string>();
+  return (value as unknown[]).map((rawInstance, index) => {
+    const instance = requireObject(rawInstance, `props.modelInstances[${index}]`);
+    const id = requireIdentifier(instance.id, `props.modelInstances[${index}].id`);
+    if (instanceIds.has(id)) {
+      invalid("invalid_canvas_node", `props.modelInstances contains duplicate instance id ${JSON.stringify(id)}.`);
+    }
+    instanceIds.add(id);
+    const label = requireNonEmptyString(instance.label, `props.modelInstances[${index}].label`, 80);
+    if (label !== label.trim()) {
+      invalid("invalid_canvas_node", `props.modelInstances[${index}].label cannot contain surrounding whitespace.`);
+    }
+    const transform = requireObject(instance.transform, `props.modelInstances[${index}].transform`);
+    return {
+      id,
+      assetId: requireIdentifier(instance.assetId, `props.modelInstances[${index}].assetId`),
+      label,
+      transform: {
+        position: requireVector3Tuple(transform.position, `props.modelInstances[${index}].transform.position`, -1_000_000, 1_000_000),
+        rotation: requireVector3Tuple(transform.rotation, `props.modelInstances[${index}].transform.rotation`, -3_600, 3_600),
+        scale: requireVector3Tuple(transform.scale, `props.modelInstances[${index}].transform.scale`, 0.001, 1_000),
+      },
+      visible: requireBoolean(instance.visible, `props.modelInstances[${index}].visible`),
+    };
+  });
 };
 
 const requireModelNodeTransforms = (
@@ -808,19 +911,34 @@ const requireStringArray = (value: unknown, label: string, identifiers = false):
     : requireNonEmptyString(item, `${label}[${index}]`, 80));
 };
 
+const isAnimatedDecorationNodeType = (value: unknown): value is AnimatedDecorationNodeType =>
+  value === "radar-sweep" ||
+  value === "data-stream" ||
+  value === "circuit-pulse" ||
+  value === "energy-core" ||
+  value === "industrial-flow" ||
+  value === "scan-grid";
+
 const isDecorationNodeType = (value: unknown): value is DecorationNodeType =>
   value === "screen-title" ||
   value === "background-decoration" ||
   value === "datetime" ||
   value === "section-title" ||
   value === "card-background" ||
-  value === "icon-background";
+  value === "icon-background" ||
+  isAnimatedDecorationNodeType(value);
 
 const isPanelFrameNodeType = (value: unknown): value is PanelFrameNodeType =>
   value === "panel-frame";
 
 const isModel3DNodeType = (value: unknown): value is Model3DNodeType =>
   value === "model-3d";
+
+const isScene3DNodeType = (value: unknown): value is Scene3DNodeType =>
+  value === "scene-3d";
+
+const isAssetDetailNodeType = (value: unknown): value is AssetDetailNodeType =>
+  value === "asset-detail";
 
 const isDashboardNodeType = (value: unknown): value is DashboardNodeType =>
   value === "metric-card" ||
@@ -838,12 +956,14 @@ const isBasicNodeType = (value: unknown): value is BasicNodeType =>
   value === "image" ||
   value === "carousel" ||
   value === "button" ||
+  value === "fullscreen-toggle" ||
   value === "switch" ||
   value === "checkbox-group" ||
   value === "radio-group" ||
   value === "select";
 
 const isCanvasNodeType = (value: unknown): value is CanvasNodeType =>
+  isOrnamentNodeType(value) ||
   value === "line-chart" ||
   value === "bar-chart" ||
   value === "area-chart" ||
@@ -856,7 +976,9 @@ const isCanvasNodeType = (value: unknown): value is CanvasNodeType =>
   isPanelFrameNodeType(value) ||
   isDashboardNodeType(value) ||
   isBasicNodeType(value) ||
-  isModel3DNodeType(value);
+  isModel3DNodeType(value) ||
+  isScene3DNodeType(value) ||
+  isAssetDetailNodeType(value);
 
 const validateNode = (value: unknown): CanvasNode => {
   const node = requireObject(value, "canvas node");
@@ -867,9 +989,13 @@ const validateNode = (value: unknown): CanvasNode => {
   const type = rawType as CanvasNodeType;
 
   const props = requireObject(node.props, "canvas node props");
-  let validatedProps: ChartProps | ShapeProps | DecorationProps | PanelFrameProps | DashboardProps | BasicProps | Model3DProps | null = null;
+  let validatedProps: ChartProps | ShapeProps | DecorationProps | PanelFrameProps | DashboardProps | BasicProps | Model3DProps | Scene3DProps | AssetDetailProps | OrnamentProps | null = null;
 
-  if (
+  if (isOrnamentNodeType(type)) {
+    const parsed = parseOrnamentProps(type, props);
+    if (!parsed.ok) throw new AppError(400, "invalid_canvas_node", parsed.message);
+    validatedProps = parsed.value;
+  } else if (
     type === "line-chart" ||
     type === "bar-chart" ||
     type === "area-chart" ||
@@ -903,7 +1029,9 @@ const validateNode = (value: unknown): CanvasNode => {
       opacity: requireNumber(props.opacity, "props.opacity", 0.05, 1),
     };
   } else if (isDecorationNodeType(type)) {
-    const text = type === "background-decoration" || type === "card-background"
+    const text = type === "background-decoration" ||
+      type === "card-background" ||
+      isAnimatedDecorationNodeType(type)
       ? requireString(props.text, "props.text", 120)
       : requireNonEmptyString(
           props.text,
@@ -1142,6 +1270,15 @@ const validateNode = (value: unknown): CanvasNode => {
             disabled: requireBoolean(props.disabled, "props.disabled"),
           };
         }
+      } else if (type === "fullscreen-toggle") {
+        validatedProps = {
+          ...appearance,
+          enterText: requireNonEmptyString(props.enterText, "props.enterText", 120),
+          exitText: requireNonEmptyString(props.exitText, "props.exitText", 120),
+          fontSize: requireNumber(props.fontSize, "props.fontSize", 10, 120),
+          fontWeight: requireFontWeight(props.fontWeight, "props.fontWeight"),
+          disabled: requireBoolean(props.disabled, "props.disabled"),
+        };
       } else if (type === "switch") {
         validatedProps = {
           ...appearance,
@@ -1204,8 +1341,33 @@ const validateNode = (value: unknown): CanvasNode => {
         }
       }
     }
-  } else {
+  } else if (isScene3DNodeType(type)) {
     validatedProps = {
+      sceneProjectId: props.sceneProjectId === null
+        ? null
+        : requireIdentifier(props.sceneProjectId, "props.sceneProjectId"),
+      interactionEnabled: requireBoolean(props.interactionEnabled, "props.interactionEnabled"),
+    };
+  } else if (isAssetDetailNodeType(type)) {
+    const maximumMetrics = requireNumber(props.maximumMetrics, "props.maximumMetrics", 1, 12);
+    if (!Number.isInteger(maximumMetrics)) {
+      invalid("invalid_canvas_node", "props.maximumMetrics must be an integer.");
+    }
+    validatedProps = {
+      title: requireNonEmptyString(props.title, "props.title", 120),
+      emptyText: requireString(props.emptyText, "props.emptyText", 200),
+      showMetadata: requireBoolean(props.showMetadata, "props.showMetadata"),
+      maximumMetrics,
+      textColor: requireColor(props.textColor, "props.textColor"),
+      accentColor: requireColor(props.accentColor, "props.accentColor"),
+      fillColor: requireColor(props.fillColor, "props.fillColor"),
+      borderColor: requireColor(props.borderColor, "props.borderColor"),
+    };
+  } else if (isModel3DNodeType(type)) {
+    const presentation = parseModelPresentation(props.presentation);
+    if (!presentation.ok) throw new AppError(400, "invalid_model_presentation", presentation.message);
+    validatedProps = {
+      presentation: presentation.value,
       backgroundColor: requireColor(props.backgroundColor, "props.backgroundColor"),
       backgroundOpacity: props.backgroundOpacity === undefined
         ? 1
@@ -1233,12 +1395,27 @@ const validateNode = (value: unknown): CanvasNode => {
       cameraView: props.cameraView === undefined
         ? "isometric"
         : requireModelCameraView(props.cameraView, "props.cameraView"),
+      modelScale: props.modelScale === undefined
+        ? 1
+        : requireNumber(props.modelScale, "props.modelScale", 0.25, 4),
       autoRotate: requireBoolean(props.autoRotate, "props.autoRotate"),
       rotationSpeed: requireNumber(props.rotationSpeed, "props.rotationSpeed", 0, 5),
+      showControlPanel: props.showControlPanel === undefined
+        ? false
+        : requireBoolean(props.showControlPanel, "props.showControlPanel"),
+      playAnimations: props.playAnimations === undefined
+        ? true
+        : requireBoolean(props.playAnimations, "props.playAnimations"),
+      animationSpeed: props.animationSpeed === undefined
+        ? 1
+        : requireNumber(props.animationSpeed, "props.animationSpeed", 0.1, 3),
       showGrid: requireBoolean(props.showGrid, "props.showGrid"),
+      modelInstances: requireModelInstances(props.modelInstances),
       appearanceOverrides: requireModelNodeAppearances(props.appearanceOverrides),
       transformOverrides: requireModelNodeTransforms(props.transformOverrides),
     };
+  } else {
+    invalid("unsupported_canvas_node_type", `Canvas node type ${type} does not have a property validator.`);
   }
 
   const acceptedProps = validatedProps;
@@ -1253,12 +1430,44 @@ const validateNode = (value: unknown): CanvasNode => {
   const minimumSize = minimumNodeSizes[type];
   const width = requireNumber(node.width, "node.width", minimumSize.width, 3840);
   const height = requireNumber(node.height, "node.height", minimumSize.height, 2160);
-  if ((type === "circle" || type === "icon-background") && Math.abs(width - height) > 0.001) {
+  if (
+    (type === "circle" ||
+      type === "icon-background" ||
+      type === "vector-icon" ||
+      type === "radar-sweep" ||
+      type === "energy-core") &&
+    Math.abs(width - height) > 0.001
+  ) {
     invalid("invalid_canvas_node", "Square canvas nodes must keep a 1:1 width-to-height ratio.");
   }
   const resourceRefs = requireStringArray(node.resourceRefs, "node.resourceRefs", true);
-  if (type === "model-3d" && resourceRefs.length > 1) {
-    invalid("invalid_canvas_node", "A 3D model component can reference at most one model asset.");
+  const dataBindingRefs = requireStringArray(node.dataBindingRefs, "node.dataBindingRefs", true);
+  if ((isOrnamentNodeType(type) || isAnimatedDecorationNodeType(type)) && (resourceRefs.length > 0 || dataBindingRefs.length > 0)) {
+    invalid("invalid_canvas_node", "Title, local icon, and animated decoration components do not accept external resources or data bindings.");
+  }
+  if ((isScene3DNodeType(type) || isAssetDetailNodeType(type)) && (resourceRefs.length > 0 || dataBindingRefs.length > 0)) {
+    invalid("invalid_canvas_node", "3D scene references and asset detail components do not accept resource or data-binding references.");
+  }
+  if (type === "model-3d") {
+    const modelProps = acceptedProps as Model3DProps;
+    if (modelProps.modelInstances.length === 0 && resourceRefs.length > 1) {
+      invalid("invalid_canvas_node", "Multiple model resources require explicit props.modelInstances configuration.");
+    }
+    if (new Set(resourceRefs).size !== resourceRefs.length) {
+      invalid("invalid_canvas_node", "A 3D scene must list each model resource ID exactly once in resourceRefs.");
+    }
+    if (modelProps.modelInstances.length > 0) {
+      const referencedAssets = new Set(modelProps.modelInstances.map((instance) => instance.assetId));
+      if (
+        referencedAssets.size !== resourceRefs.length
+        || resourceRefs.some((assetId) => !referencedAssets.has(assetId))
+      ) {
+        invalid("invalid_canvas_node", "props.modelInstances and resourceRefs must reference the same model assets.");
+      }
+      if (modelProps.modelInstances[0]?.assetId !== resourceRefs[0]) {
+        invalid("invalid_canvas_node", "The first model instance must reference the primary resourceRefs entry.");
+      }
+    }
   }
   if (type === "image" && resourceRefs.length > 1) {
     invalid("invalid_canvas_node", "An image component can reference at most one image asset.");
@@ -1285,7 +1494,7 @@ const validateNode = (value: unknown): CanvasNode => {
     zIndex: requireNumber(node.zIndex, "node.zIndex", 0, 100000),
     props: acceptedProps,
     resourceRefs,
-    dataBindingRefs: requireStringArray(node.dataBindingRefs, "node.dataBindingRefs", true),
+    dataBindingRefs,
   };
 
   if (!Number.isInteger(validated.zIndex)) {
@@ -1392,10 +1601,45 @@ export const applyCanvasPatch = async (
   userId: string,
   patch: CanvasPatch,
 ): Promise<CanvasDocument> => {
+  const sceneProjectIds = [...new Set(
+    patch.upsertNodes
+      .filter((node) => node.type === "scene-3d")
+      .map((node) => (node.props as Scene3DProps).sceneProjectId)
+      .filter((sceneProjectId): sceneProjectId is string => sceneProjectId !== null),
+  )];
+  for (const sceneProjectId of sceneProjectIds) {
+    const referencedProject = await env.DB.prepare(
+      `SELECT p.id
+       FROM projects p
+       LEFT JOIN project_members pm ON pm.project_id = p.id AND pm.user_id = ?
+       WHERE p.id = ?
+         AND p.project_type = '3d'
+         AND (
+           pm.user_id IS NOT NULL
+           OR EXISTS (
+             SELECT 1 FROM user_roles ur
+             WHERE ur.user_id = ? AND ur.role = 'platform_admin'
+           )
+         )`,
+    ).bind(userId, sceneProjectId, userId).first<{ id: string }>();
+    if (!referencedProject) {
+      throw new AppError(
+        400,
+        "invalid_scene_project_reference",
+        `Referenced 3D project ${sceneProjectId} does not exist or is not accessible to this user.`,
+      );
+    }
+  }
+
   const modelNodes = patch.upsertNodes.filter((node) => node.type === "model-3d");
   const modelAssetRefs = [...new Set(modelNodes.flatMap((node) => node.resourceRefs))];
   const duplicateNamesByAssetId = new Map<string, Set<string>>();
   for (const assetId of modelAssetRefs) {
+    const builtin = findBuiltinModel(assetId);
+    if (builtin) {
+      duplicateNamesByAssetId.set(assetId, new Set(builtin.inspection.duplicateNodeNames));
+      continue;
+    }
     const row = await env.DB.prepare(
       "SELECT id, inspection_json FROM model_assets WHERE id = ? AND project_id = ?",
     ).bind(assetId, projectId).first<{ id: string; inspection_json: string }>();

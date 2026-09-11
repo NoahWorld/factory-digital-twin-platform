@@ -1,9 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
 import { BasicNodeInspector } from "./BasicNodeInspector";
+import { AssetDetailInspector } from "./AssetDetailInspector";
 import { DashboardNodeInspector } from "./DashboardNodeInspector";
 import { PanelFrameInspector } from "./PanelFrameInspector";
+import { Scene3DInspector } from "./Scene3DInspector";
+import { OrnamentInspector } from "./OrnamentInspector";
+import { isOrnamentNodeType } from "../../../../shared/canvas-ornaments";
 import {
   componentLabels,
+  isAnimatedDecorationNodeType,
+  isAssetDetailNodeType,
   isBasicNodeType,
   isChartNodeType,
   isDashboardNodeType,
@@ -11,6 +17,7 @@ import {
   isModel3DNodeType,
   isPanelFrameNodeType,
   isShapeNodeType,
+  isScene3DNodeType,
   parseChartProps,
   parseDecorationProps,
   parseModel3DProps,
@@ -35,8 +42,9 @@ function Model3DLaunchInspector({
   editable,
   node,
   onModelEditorOpen,
+  onNodeChange,
   onValidationChange,
-}: Pick<ComponentInspectorProps, "editable" | "onModelEditorOpen" | "onValidationChange"> & {
+}: Pick<ComponentInspectorProps, "editable" | "onModelEditorOpen" | "onNodeChange" | "onValidationChange"> & {
   node: CanvasNode;
 }) {
   const parsed = parseModel3DProps(node.props);
@@ -61,7 +69,7 @@ function Model3DLaunchInspector({
       <section className="inspector-section model-editor-launch-card">
         <span className="model-editor-launch-icon" aria-hidden="true">⬡</span>
         <strong>使用独立 3D 编辑器</strong>
-        <p>在更大的视口中导入模型、选择节点，并配置位置、材质、灯光、镜头和资产绑定。</p>
+        <p>在更大的视口中导入模型、选择节点，并配置位置、材质、灯光、显示比例、动画和资产绑定。</p>
         <button
           className="primary-button"
           onClick={() => onModelEditorOpen?.(node.id)}
@@ -70,6 +78,11 @@ function Model3DLaunchInspector({
           {editable ? "进入 3D 编辑器" : "查看 3D 场景"}
         </button>
       </section>
+      <section className="inspector-section">
+        <label className="model-presentation-flow"><input type="checkbox" disabled={!editable} checked={parsed.value.showControlPanel}
+          onChange={(event) => onNodeChange({ ...node, props: { ...parsed.value, showControlPanel: event.target.checked } })} />展示控制面板</label>
+        <p className="inspector-help">开启后，预览用户可切换外壳、动画、水流和拆解效果。</p>
+      </section>
       <section className="inspector-section model-editor-summary">
         <div className="inspector-section-title"><strong>配置摘要</strong><span>保存后回传画布</span></div>
         <dl>
@@ -77,6 +90,8 @@ function Model3DLaunchInspector({
           <div><dt>节点变换</dt><dd>{Object.keys(parsed.value.transformOverrides).length} 项</dd></div>
           <div><dt>节点外观</dt><dd>{Object.keys(parsed.value.appearanceOverrides).length} 项</dd></div>
           <div><dt>初始镜头</dt><dd>{parsed.value.cameraView === "isometric" ? "等距" : parsed.value.cameraView === "front" ? "正面" : "顶部"}</dd></div>
+          <div><dt>模型比例</dt><dd>{Math.round(parsed.value.modelScale * 100)}%</dd></div>
+          <div><dt>模型动画</dt><dd>{parsed.value.playAnimations ? `${parsed.value.animationSpeed}× 播放` : "暂停"}</dd></div>
         </dl>
       </section>
       <div className="inspector-note">
@@ -481,8 +496,8 @@ function ValidDecorationInspector({
       </section>
 
       <div className="inspector-note">
-        <strong>{nodeType === "datetime" ? "共享时钟" : "自适应点缀"}</strong>
-        <p>{nodeType === "datetime" ? "同一画布上的时间组件共享一个计时器，避免组件增多时重复刷新。" : "文字按组件容器重新排版，缩放时不会用 transform 拉伸字体。"}</p>
+        <strong>{nodeType === "datetime" ? "共享时钟" : isAnimatedDecorationNodeType(nodeType) ? "轻量动画" : "自适应点缀"}</strong>
+        <p>{nodeType === "datetime" ? "同一画布上的时间组件共享一个计时器，避免组件增多时重复刷新。" : isAnimatedDecorationNodeType(nodeType) ? "动效只使用浏览器合成动画；系统开启“减少动态效果”时会自动停在静态画面。" : "文字按组件容器重新排版，缩放时不会用 transform 拉伸字体。"}</p>
       </div>
     </aside>
   );
@@ -502,6 +517,10 @@ export function ComponentInspector({
 
   if (!node) {
     return <aside className="component-inspector is-empty"><div><span>⌖</span><strong>选择一个组件</strong><p>选中画布中的组件后，可在这里修改数据或外观。</p></div></aside>;
+  }
+
+  if (isOrnamentNodeType(node.type)) {
+    return <OrnamentInspector key={node.id} editable={editable} node={node} onNodeChange={onNodeChange} onValidationChange={onValidationChange} />;
   }
 
   if (isShapeNodeType(node.type)) {
@@ -554,9 +573,34 @@ export function ComponentInspector({
     );
   }
 
+  if (isScene3DNodeType(node.type)) {
+    return (
+      <Scene3DInspector
+        editable={editable}
+        key={node.id}
+        node={node}
+        onNodeChange={onNodeChange}
+        onValidationChange={onValidationChange}
+      />
+    );
+  }
+
+  if (isAssetDetailNodeType(node.type)) {
+    return (
+      <AssetDetailInspector
+        editable={editable}
+        key={node.id}
+        node={node}
+        onNodeChange={onNodeChange}
+        onValidationChange={onValidationChange}
+      />
+    );
+  }
+
   if (isModel3DNodeType(node.type)) {
     return (
       <Model3DLaunchInspector
+        onNodeChange={onNodeChange}
         editable={editable}
         node={node}
         onModelEditorOpen={onModelEditorOpen}

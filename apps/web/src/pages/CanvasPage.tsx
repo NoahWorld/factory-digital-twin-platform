@@ -1,27 +1,30 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from "react";
-import { ApiRequestError, errorMessage, request } from "../api";
+import { errorMessage, request } from "../api";
+import { ComponentPalette } from "../canvas/ComponentPalette";
 import { ComponentInspector } from "../canvas/ComponentInspector";
 import { CanvasSurface } from "../canvas/CanvasSurface";
 import { projectAssetsPath, type ProjectAsset, type ProjectAssetListResponse } from "../canvas/assets";
+import type { EmbeddedSceneRuntimeSelection } from "../canvas/EmbeddedSceneNode";
 import { findModelSceneNode, type ModelSceneSnapshot } from "../canvas/model-scene";
 import { canvasRoutePath, modelEditorRoutePath, projectCanvasPath } from "../canvas/routes";
 import { TemplateDialog } from "../canvas/TemplateDialog";
 import { getCanvasTemplate, instantiateCanvasTemplate, type CanvasTemplateId } from "../canvas/templates";
 import { ThemeDialog } from "../canvas/ThemeDialog";
 import { applyCanvasThemeToNode, applyCanvasThemeToNodes, canvasThemePresetLabels } from "../canvas/themes";
-import { CANVAS_DRAG_TYPE, componentLabels, createCanvasNode, isBackgroundNodeType, isModel3DNodeType, type CanvasDocument, type CanvasNode, type CanvasNodeType, type CanvasPatchResponse, type CanvasResponse, type CanvasTheme, type ModelNodeAppearance } from "../canvas/types";
+import { CANVAS_DRAG_TYPE, componentLabels, createCanvasNode, isAssetDetailNodeType, isBackgroundNodeType, isModel3DNodeType, isScene3DNodeType, type CanvasDocument, type CanvasNode, type CanvasNodeType, type CanvasPatchResponse, type CanvasResponse, type CanvasTheme, type ModelNodeAppearance } from "../canvas/types";
 import { DataSourcePanel } from "../DataSourcePanel";
-import { assetRuntimeStatePath, deviceVisualStatus, deviceVisualStatusLabel, type AssetRuntimeStateResponse, type DeviceVisualStatus, type RuntimeAssetConnection, type RuntimeMetricValue } from "../runtime-state";
+import { deviceVisualStatus, type DeviceVisualStatus } from "../runtime-state";
+import { AssetRuntimeDetailPanel } from "../twin/AssetRuntimeDetailPanel";
+import { AssetRuntimeStatusBanner } from "../twin/AssetRuntimeStatusBanner";
+import { useAssetRuntimeConnections } from "../twin/useAssetRuntimeConnections";
+import type { TwinInteractionEvent } from "../../../../shared/standalone-3d";
 
 type CanvasPageProps = {
+  initialAssetId?: string;
   initialTemplateId?: CanvasTemplateId;
   mode: "edit" | "preview";
   projectId: string;
 };
-
-type AssetRuntimePollOutcome =
-  | { asset: ProjectAsset; kind: "success"; result: AssetRuntimeStateResponse }
-  | { asset: ProjectAsset; failureCount: number; kind: "failure"; reason: unknown };
 
 const runtimeAppearances: Partial<Record<DeviceVisualStatus, ModelNodeAppearance>> = {
   alarm: { color: "#ff4d5f", opacity: 1, visible: true },
@@ -31,24 +34,7 @@ const runtimeAppearances: Partial<Record<DeviceVisualStatus, ModelNodeAppearance
   warning: { color: "#f6c344", opacity: 1, visible: true },
 };
 
-const formatRuntimeValue = (value: RuntimeMetricValue): string => {
-  if (typeof value === "boolean") return value ? "是" : "否";
-  return String(value);
-};
-
-const formatRuntimeTime = (value: string | undefined): string => {
-  if (!value) return "—";
-  const timestamp = Date.parse(value);
-  return Number.isFinite(timestamp)
-    ? new Intl.DateTimeFormat("zh-CN", {
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-      }).format(timestamp)
-    : value;
-};
-
-export function CanvasPage({ initialTemplateId, mode, projectId }: CanvasPageProps) {
+export function CanvasPage({ initialAssetId, initialTemplateId, mode, projectId }: CanvasPageProps) {
   const [document, setDocument] = useState<CanvasDocument | null>(null);
   const [projectName, setProjectName] = useState("");
   const [canEdit, setCanEdit] = useState(false);
@@ -68,9 +54,12 @@ export function CanvasPage({ initialTemplateId, mode, projectId }: CanvasPagePro
   const [assetLoadError, setAssetLoadError] = useState<string | null>(null);
   const [assetListLoading, setAssetListLoading] = useState(mode === "preview");
   const [modelScenes, setModelScenes] = useState<Record<string, ModelSceneSnapshot>>({});
-  const [runtimeConnections, setRuntimeConnections] = useState<Record<string, RuntimeAssetConnection>>({});
   const [selectedRuntimeAssetId, setSelectedRuntimeAssetId] = useState<string | null>(null);
   const [runtimeSelectionMessage, setRuntimeSelectionMessage] = useState<string | null>(null);
+  const [embeddedSceneSelection, setEmbeddedSceneSelection] = useState<EmbeddedSceneRuntimeSelection | null>(null);
+  const [embeddedProjectAssets, setEmbeddedProjectAssets] = useState<ProjectAsset[]>([]);
+  const [embeddedAssetLoadError, setEmbeddedAssetLoadError] = useState<string | null>(null);
+  const [embeddedAssetListLoading, setEmbeddedAssetListLoading] = useState(false);
   const dirtyNodeIdsRef = useRef(new Set<string>());
   const deletedNodeIdsRef = useRef(new Set<string>());
   const initialTemplateAppliedRef = useRef(false);
@@ -81,6 +70,7 @@ export function CanvasPage({ initialTemplateId, mode, projectId }: CanvasPagePro
     setLoadError(null);
     setSelectedNodeId(null);
     setSelectedModelSceneNodePath(null);
+    setEmbeddedSceneSelection(null);
     setConfigurationError(null);
     dirtyNodeIdsRef.current.clear();
     deletedNodeIdsRef.current.clear();
@@ -97,11 +87,52 @@ export function CanvasPage({ initialTemplateId, mode, projectId }: CanvasPagePro
     return () => { active = false; };
   }, [projectId]);
 
+  const selectEmbeddedSceneAsset = useCallback((selection: EmbeddedSceneRuntimeSelection | null) => {
+    setEmbeddedSceneSelection(selection);
+    if (!selection) {
+      setRuntimeSelectionMessage(null);
+      return;
+    }
+    if (!selection.linked2dProjectId) {
+      setRuntimeSelectionMessage(`设备“${selection.label}”所在的 3D 场景尚未关联 2D 资产项目。`);
+      return;
+    }
+    if (!selection.assetId) {
+      setRuntimeSelectionMessage(`模型“${selection.label}”尚未绑定业务资产，无法读取设备数据。`);
+      return;
+    }
+    setRuntimeSelectionMessage(null);
+  }, []);
+
+  const embeddedRuntimeProjectId = embeddedSceneSelection?.linked2dProjectId ?? null;
+
+  useEffect(() => {
+    let active = true;
+    setEmbeddedProjectAssets([]);
+    setEmbeddedAssetLoadError(null);
+    if (mode !== "preview" || !embeddedRuntimeProjectId) {
+      setEmbeddedAssetListLoading(false);
+      return () => { active = false; };
+    }
+
+    setEmbeddedAssetListLoading(true);
+    void request<ProjectAssetListResponse>(projectAssetsPath(embeddedRuntimeProjectId))
+      .then((result) => {
+        if (active) setEmbeddedProjectAssets(result.assets);
+      })
+      .catch((reason) => {
+        if (active) setEmbeddedAssetLoadError(errorMessage(reason));
+      })
+      .finally(() => {
+        if (active) setEmbeddedAssetListLoading(false);
+      });
+    return () => { active = false; };
+  }, [embeddedRuntimeProjectId, mode]);
+
   useEffect(() => {
     let active = true;
     setProjectAssets([]);
     setAssetLoadError(null);
-    setRuntimeConnections({});
     setModelScenes({});
     setSelectedRuntimeAssetId(null);
     setRuntimeSelectionMessage(null);
@@ -124,19 +155,81 @@ export function CanvasPage({ initialTemplateId, mode, projectId }: CanvasPagePro
     return () => { active = false; };
   }, [mode, projectId]);
 
+  useEffect(() => {
+    if (mode !== "preview" || !initialAssetId || assetListLoading) return;
+    const asset = projectAssets.find((item) => item.assetId === initialAssetId);
+    if (asset) {
+      setSelectedRuntimeAssetId(asset.id);
+      setRuntimeSelectionMessage(null);
+    } else {
+      setSelectedRuntimeAssetId(null);
+      setRuntimeSelectionMessage(`关联请求中的业务资产 ${initialAssetId} 不存在于当前 2D 项目。`);
+    }
+  }, [assetListLoading, initialAssetId, mode, projectAssets]);
+
+  useEffect(() => {
+    if (mode !== "preview") return;
+    const selectAsset = (event: TwinInteractionEvent) => {
+      if (event.type !== "asset-selected" || event.targetProjectId !== projectId) return;
+      const asset = projectAssets.find((item) => item.assetId === event.assetId);
+      if (!asset) return;
+      setSelectedRuntimeAssetId(asset.id);
+      setRuntimeSelectionMessage(`已响应 3D 项目发出的资产联动：${event.assetId}`);
+    };
+    const handleWindowEvent = (event: Event) => {
+      const detail = (event as CustomEvent<unknown>).detail;
+      if (!detail || typeof detail !== "object") return;
+      selectAsset(detail as TwinInteractionEvent);
+    };
+    window.addEventListener("factory-twin:interaction", handleWindowEvent);
+    let channel: BroadcastChannel | null = null;
+    try {
+      channel = new BroadcastChannel("factory-twin:interaction");
+      channel.onmessage = (event: MessageEvent<unknown>) => {
+        if (event.data && typeof event.data === "object") selectAsset(event.data as TwinInteractionEvent);
+      };
+    } catch (reason) {
+      console.error("Failed to subscribe to cross-tab twin interactions.", { projectId, reason });
+    }
+    return () => {
+      window.removeEventListener("factory-twin:interaction", handleWindowEvent);
+      channel?.close();
+    };
+  }, [mode, projectAssets, projectId]);
+
   const model3DNodeCount = useMemo(
     () => document?.nodes.filter((node) => isModel3DNodeType(node.type)).length ?? 0,
+    [document],
+  );
+  const hasComposableRuntime = useMemo(
+    () => document?.nodes.some((node) => isScene3DNodeType(node.type) || isAssetDetailNodeType(node.type)) ?? false,
     [document],
   );
   const mappedRuntimeAssets = useMemo(
     () => projectAssets.filter((asset) => asset.modelNode !== null),
     [projectAssets],
   );
+  const selectedRuntimeAsset = selectedRuntimeAssetId
+    ? projectAssets.find((asset) => asset.id === selectedRuntimeAssetId) ?? null
+    : null;
+  const runtimeAssets = useMemo(() => {
+    if (model3DNodeCount > 0) return mappedRuntimeAssets;
+    const selected = selectedRuntimeAssetId
+      ? projectAssets.find((asset) => asset.id === selectedRuntimeAssetId)
+      : undefined;
+    return selected ? [selected] : [];
+  }, [mappedRuntimeAssets, model3DNodeCount, projectAssets, selectedRuntimeAssetId]);
   const runtimeSetupError = useMemo(() => {
     if (mode !== "preview" || assetListLoading) return null;
     if (assetLoadError) return `资产台账加载失败：${assetLoadError}`;
+    if (model3DNodeCount === 0) {
+      if (initialAssetId && !selectedRuntimeAsset) {
+        return `联动资产 ${initialAssetId} 不存在，无法读取设备数据。`;
+      }
+      return null;
+    }
     if (model3DNodeCount !== 1) {
-      return `本地纵向测试要求画布中恰好有 1 个 3D 组件，当前为 ${model3DNodeCount} 个。`;
+      return `本地纵向测试要求画布中恰好有 1 个 3D 场景组件，当前为 ${model3DNodeCount} 个。`;
     }
     if (mappedRuntimeAssets.length === 0) {
       return "没有绑定模型节点的资产，请先在 3D 编辑器中完成设备与模型节点绑定。";
@@ -145,99 +238,14 @@ export function CanvasPage({ initialTemplateId, mode, projectId }: CanvasPagePro
       return `当前有 ${mappedRuntimeAssets.length} 个模型资产；本地直连轮询上限为 50，请使用服务端批量采集器。`;
     }
     return null;
-  }, [assetListLoading, assetLoadError, mappedRuntimeAssets.length, mode, model3DNodeCount]);
+  }, [assetListLoading, assetLoadError, initialAssetId, mappedRuntimeAssets.length, mode, model3DNodeCount, selectedRuntimeAsset]);
 
-  useEffect(() => {
-    if (
-      mode !== "preview"
-      || assetListLoading
-      || runtimeSetupError
-      || mappedRuntimeAssets.length === 0
-    ) {
-      return;
-    }
-
-    let cancelled = false;
-    let nextPollTimer: number | null = null;
-    const failureCounts = new Map<string, number>();
-    setRuntimeConnections(Object.fromEntries(
-      mappedRuntimeAssets.map((asset) => [
-        asset.id,
-        { status: "loading", failureCount: 0 } satisfies RuntimeAssetConnection,
-      ]),
-    ));
-
-    const poll = async () => {
-      const outcomes: AssetRuntimePollOutcome[] = await Promise.all(mappedRuntimeAssets.map(async (asset) => {
-        try {
-          const result = await request<AssetRuntimeStateResponse>(
-            assetRuntimeStatePath(projectId, asset.id),
-          );
-          failureCounts.set(asset.id, 0);
-          return { asset, kind: "success", result } as const;
-        } catch (reason) {
-          const failureCount = (failureCounts.get(asset.id) ?? 0) + 1;
-          failureCounts.set(asset.id, failureCount);
-          const apiError = reason instanceof ApiRequestError ? reason : null;
-          console.error("Asset runtime polling failed.", {
-            assetId: asset.assetId,
-            assetRecordId: asset.id,
-            errorCode: apiError?.code ?? "runtime_request_failed",
-            failureCount,
-            projectId,
-            reason,
-            requestId: apiError?.requestId,
-          });
-          return { asset, failureCount, kind: "failure", reason } as const;
-        }
-      }));
-
-      if (cancelled) return;
-      setRuntimeConnections((current) => {
-        const next = { ...current };
-        for (const outcome of outcomes) {
-          if (outcome.kind === "success") {
-            next[outcome.asset.id] = {
-              status: "live",
-              snapshot: outcome.result.runtimeState,
-              failureCount: 0,
-              lastSuccessAt: outcome.result.runtimeState.timestamp,
-            };
-          } else {
-            const previous = current[outcome.asset.id];
-            const apiError = outcome.reason instanceof ApiRequestError
-              ? outcome.reason
-              : null;
-            next[outcome.asset.id] = {
-              status: "offline",
-              snapshot: previous?.snapshot,
-              errorCode: apiError?.code ?? "runtime_request_failed",
-              errorMessage: errorMessage(outcome.reason),
-              failedAt: new Date().toISOString(),
-              failureCount: outcome.failureCount,
-              lastSuccessAt: previous?.lastSuccessAt,
-            };
-          }
-        }
-        return next;
-      });
-
-      const successfulIntervals = outcomes.flatMap((outcome) => (
-        outcome.kind === "success" ? [outcome.result.runtimeState.pollAfterSeconds] : []
-      ));
-      const maximumFailureCount = Math.max(0, ...failureCounts.values());
-      const nextSeconds = successfulIntervals.length > 0
-        ? Math.min(...successfulIntervals)
-        : Math.min(2 ** Math.max(maximumFailureCount - 1, 0), 30);
-      nextPollTimer = window.setTimeout(() => void poll(), nextSeconds * 1000);
-    };
-
-    void poll();
-    return () => {
-      cancelled = true;
-      if (nextPollTimer !== null) window.clearTimeout(nextPollTimer);
-    };
-  }, [assetListLoading, mappedRuntimeAssets, mode, projectId, runtimeSetupError]);
+  const runtimeConnections = useAssetRuntimeConnections({
+    assets: runtimeAssets,
+    blockedReason: runtimeSetupError,
+    enabled: mode === "preview" && !assetListLoading && runtimeAssets.length > 0,
+    projectId,
+  });
 
   const runtimeAppearanceOverrides = useMemo(() => {
     const overrides: Record<string, ModelNodeAppearance> = {};
@@ -250,27 +258,38 @@ export function CanvasPage({ initialTemplateId, mode, projectId }: CanvasPagePro
     return overrides;
   }, [mappedRuntimeAssets, mode, runtimeConnections, runtimeSetupError]);
 
-  const selectedRuntimeAsset = selectedRuntimeAssetId
-    ? projectAssets.find((asset) => asset.id === selectedRuntimeAssetId) ?? null
-    : null;
   const selectedRuntimeConnection = selectedRuntimeAsset
     ? runtimeConnections[selectedRuntimeAsset.id]
     : undefined;
-  const selectedDeviceStatus = deviceVisualStatus(selectedRuntimeConnection);
-  const runtimeConnectionList = Object.values(runtimeConnections);
-  const offlineDeviceCount = runtimeConnectionList.filter((state) => state.status === "offline").length;
-  const staleDeviceCount = runtimeConnectionList.filter(
-    (state) => state.status === "offline" && state.errorCode === "data_source_stale",
-  ).length;
-  const disconnectedDeviceCount = offlineDeviceCount - staleDeviceCount;
-  const liveDeviceCount = runtimeConnectionList.filter((state) => state.status === "live").length;
-  const selectedRuntimeIsStale = selectedRuntimeConnection?.errorCode === "data_source_stale";
-  const offlineSummary = staleDeviceCount > 0 && disconnectedDeviceCount > 0
-    ? `数据异常 ${offlineDeviceCount} 台（陈旧 ${staleDeviceCount} / 失联 ${disconnectedDeviceCount}）`
-    : staleDeviceCount > 0
-      ? `数据陈旧 ${staleDeviceCount} 台`
-      : `数据失联 ${disconnectedDeviceCount} 台`;
-
+  const selectedEmbeddedAsset = useMemo(() => {
+    const assetId = embeddedSceneSelection?.assetId;
+    return assetId
+      ? embeddedProjectAssets.find((asset) => asset.assetId === assetId) ?? null
+      : null;
+  }, [embeddedProjectAssets, embeddedSceneSelection?.assetId]);
+  const embeddedRuntimeError = useMemo(() => {
+    if (!embeddedSceneSelection) return null;
+    if (!embeddedSceneSelection.linked2dProjectId) return "当前 3D 场景没有关联 2D 资产项目。";
+    if (!embeddedSceneSelection.assetId) return `模型“${embeddedSceneSelection.label}”没有绑定业务资产。`;
+    if (embeddedAssetLoadError) return `资产台账加载失败：${embeddedAssetLoadError}`;
+    if (!embeddedAssetListLoading && !selectedEmbeddedAsset) {
+      return `业务资产 ${embeddedSceneSelection.assetId} 不存在或当前账号无权访问。`;
+    }
+    return null;
+  }, [embeddedAssetListLoading, embeddedAssetLoadError, embeddedSceneSelection, selectedEmbeddedAsset]);
+  const embeddedRuntimeAssets = useMemo(
+    () => selectedEmbeddedAsset ? [selectedEmbeddedAsset] : [],
+    [selectedEmbeddedAsset],
+  );
+  const embeddedRuntimeConnections = useAssetRuntimeConnections({
+    assets: embeddedRuntimeAssets,
+    blockedReason: embeddedRuntimeError,
+    enabled: mode === "preview" && !embeddedAssetListLoading && embeddedRuntimeAssets.length === 1,
+    projectId: embeddedRuntimeProjectId,
+  });
+  const embeddedRuntimeConnection = selectedEmbeddedAsset
+    ? embeddedRuntimeConnections[selectedEmbeddedAsset.id]
+    : undefined;
   const markNodeDirty = useCallback((nodeId: string) => {
     dirtyNodeIdsRef.current.add(nodeId);
     deletedNodeIdsRef.current.delete(nodeId);
@@ -491,152 +510,47 @@ export function CanvasPage({ initialTemplateId, mode, projectId }: CanvasPagePro
         </div>
       ) : null}
       <div className={`canvas-workbench${mode === "preview" ? " is-preview" : ""}`}>
-        {mode === "edit" ? <aside className="component-palette">
-          <div className="component-palette-heading"><span className="eyebrow">Components</span><h2>组件库</h2><p>拖到画布中创建组件</p></div>
-          <section aria-labelledby="palette-3d-title" className="palette-group is-model">
-            <h3 className="palette-group-title" id="palette-3d-title"><span>3D 场景</span><em>1</em></h3>
-            <button aria-label="3D 模型，导入 GLB 或 GLTF" className="palette-item palette-model-3d" disabled={!canEdit || saving} draggable={canEdit && !saving} onDragStart={(event) => startPaletteDrag(event, "model-3d")} title="3D 模型 · 导入 GLB 或 GLTF" type="button"><span className="palette-icon" aria-hidden="true">⬡</span><span><strong>3D 模型</strong><small>导入 GLB 或 GLTF</small></span><span className="palette-drag-mark">⋮⋮</span></button>
-          </section>
-          <section aria-labelledby="palette-charts-title" className="palette-group is-chart">
-            <h3 className="palette-group-title" id="palette-charts-title"><span>图表</span><em>6</em></h3>
-            <button aria-label="折线图，连续趋势数据" className="palette-item palette-line-chart" disabled={!canEdit || saving} draggable={canEdit && !saving} onDragStart={(event) => startPaletteDrag(event, "line-chart")} title="折线图 · 连续趋势数据" type="button"><span className="palette-icon" aria-hidden="true">⌁</span><span><strong>折线图</strong><small>连续趋势数据</small></span><span className="palette-drag-mark">⋮⋮</span></button>
-            <button aria-label="柱状图，分类对比数据" className="palette-item palette-bar-chart" disabled={!canEdit || saving} draggable={canEdit && !saving} onDragStart={(event) => startPaletteDrag(event, "bar-chart")} title="柱状图 · 分类对比数据" type="button"><span className="palette-icon" aria-hidden="true">▥</span><span><strong>柱状图</strong><small>分类对比数据</small></span><span className="palette-drag-mark">⋮⋮</span></button>
-            <button aria-label="面积图，展示趋势与累计变化" className="palette-item palette-area-chart" disabled={!canEdit || saving} draggable={canEdit && !saving} onDragStart={(event) => startPaletteDrag(event, "area-chart")} title="面积图 · 趋势与累计变化" type="button"><span className="palette-icon" aria-hidden="true">◒</span><span><strong>面积图</strong><small>趋势与累计变化</small></span><span className="palette-drag-mark">⋮⋮</span></button>
-            <button aria-label="饼图，展示分类占比构成" className="palette-item palette-pie-chart" disabled={!canEdit || saving} draggable={canEdit && !saving} onDragStart={(event) => startPaletteDrag(event, "pie-chart")} title="饼图 · 分类占比构成" type="button"><span className="palette-icon" aria-hidden="true">◔</span><span><strong>饼图</strong><small>分类占比构成</small></span><span className="palette-drag-mark">⋮⋮</span></button>
-            <button aria-label="环形图，展示占比与总量" className="palette-item palette-donut-chart" disabled={!canEdit || saving} draggable={canEdit && !saving} onDragStart={(event) => startPaletteDrag(event, "donut-chart")} title="环形图 · 占比与总量" type="button"><span className="palette-icon" aria-hidden="true">◎</span><span><strong>环形图</strong><small>占比与总量</small></span><span className="palette-drag-mark">⋮⋮</span></button>
-            <button aria-label="雷达图，展示多维能力对比" className="palette-item palette-radar-chart" disabled={!canEdit || saving} draggable={canEdit && !saving} onDragStart={(event) => startPaletteDrag(event, "radar-chart")} title="雷达图 · 多维能力对比" type="button"><span className="palette-icon" aria-hidden="true">◇</span><span><strong>雷达图</strong><small>多维能力对比</small></span><span className="palette-drag-mark">⋮⋮</span></button>
-          </section>
-          <section aria-labelledby="palette-basic-title" className="palette-group is-basic">
-            <h3 className="palette-group-title" id="palette-basic-title"><span>内容与交互</span><em>9</em></h3>
-            <button aria-label="纯文本，支持静态与滚动文字" className="palette-item palette-plain-text" disabled={!canEdit || saving} draggable={canEdit && !saving} onDragStart={(event) => startPaletteDrag(event, "plain-text")} title="纯文本 · 静态与滚动文字" type="button"><span className="palette-icon" aria-hidden="true">Aa</span><span><strong>纯文本</strong><small>静态与滚动文字</small></span><span className="palette-drag-mark">⋮⋮</span></button>
-            <button aria-label="文字超链接，预览时打开网页" className="palette-item palette-text-link" disabled={!canEdit || saving} draggable={canEdit && !saving} onDragStart={(event) => startPaletteDrag(event, "text-link")} title="文字超链接 · 预览时打开网页" type="button"><span className="palette-icon" aria-hidden="true">↗</span><span><strong>文字超链接</strong><small>预览时打开网页</small></span><span className="palette-drag-mark">⋮⋮</span></button>
-            <button aria-label="图片，绑定项目图片资源" className="palette-item palette-image" disabled={!canEdit || saving} draggable={canEdit && !saving} onDragStart={(event) => startPaletteDrag(event, "image")} title="图片 · 绑定项目资源" type="button"><span className="palette-icon" aria-hidden="true">▧</span><span><strong>图片</strong><small>绑定项目资源</small></span><span className="palette-drag-mark">⋮⋮</span></button>
-            <button aria-label="轮播图，多张项目图片自动轮播" className="palette-item palette-carousel" disabled={!canEdit || saving} draggable={canEdit && !saving} onDragStart={(event) => startPaletteDrag(event, "carousel")} title="轮播图 · 多图自动轮播" type="button"><span className="palette-icon" aria-hidden="true">▤</span><span><strong>轮播图</strong><small>多图自动轮播</small></span><span className="palette-drag-mark">⋮⋮</span></button>
-            <button aria-label="按钮，预览时执行链接动作" className="palette-item palette-button" disabled={!canEdit || saving} draggable={canEdit && !saving} onDragStart={(event) => startPaletteDrag(event, "button")} title="按钮 · 预览时执行动作" type="button"><span className="palette-icon" aria-hidden="true">▰</span><span><strong>按钮</strong><small>预览时执行动作</small></span><span className="palette-drag-mark">⋮⋮</span></button>
-            <button aria-label="Switch 切换按钮，预览时可操作" className="palette-item palette-switch" disabled={!canEdit || saving} draggable={canEdit && !saving} onDragStart={(event) => startPaletteDrag(event, "switch")} title="Switch · 预览时可操作" type="button"><span className="palette-icon" aria-hidden="true">◉</span><span><strong>Switch</strong><small>开关状态切换</small></span><span className="palette-drag-mark">⋮⋮</span></button>
-            <button aria-label="多选框，预览时可多项选择" className="palette-item palette-checkbox-group" disabled={!canEdit || saving} draggable={canEdit && !saving} onDragStart={(event) => startPaletteDrag(event, "checkbox-group")} title="多选框 · 多项选择" type="button"><span className="palette-icon" aria-hidden="true">☑</span><span><strong>多选框</strong><small>多项选择</small></span><span className="palette-drag-mark">⋮⋮</span></button>
-            <button aria-label="单选框，预览时单项选择" className="palette-item palette-radio-group" disabled={!canEdit || saving} draggable={canEdit && !saving} onDragStart={(event) => startPaletteDrag(event, "radio-group")} title="单选框 · 单项选择" type="button"><span className="palette-icon" aria-hidden="true">◉</span><span><strong>单选框</strong><small>单项选择</small></span><span className="palette-drag-mark">⋮⋮</span></button>
-            <button aria-label="下拉菜单，预览时选择选项" className="palette-item palette-select" disabled={!canEdit || saving} draggable={canEdit && !saving} onDragStart={(event) => startPaletteDrag(event, "select")} title="下拉菜单 · 选项选择" type="button"><span className="palette-icon" aria-hidden="true">⌄</span><span><strong>下拉菜单</strong><small>选项选择</small></span><span className="palette-drag-mark">⋮⋮</span></button>
-          </section>
-          <section aria-labelledby="palette-dashboard-title" className="palette-group is-dashboard">
-            <h3 className="palette-group-title" id="palette-dashboard-title"><span>数据展示</span><em>4</em></h3>
-            <button aria-label="指标卡，展示核心数字和摘要" className="palette-item palette-metric-card" disabled={!canEdit || saving} draggable={canEdit && !saving} onDragStart={(event) => startPaletteDrag(event, "metric-card")} title="指标卡 · 核心数字与摘要" type="button"><span className="palette-icon" aria-hidden="true">#</span><span><strong>指标卡</strong><small>核心数字与摘要</small></span><span className="palette-drag-mark">⋮⋮</span></button>
-            <button aria-label="环形进度，展示完成率和消耗率" className="palette-item palette-radial-gauge" disabled={!canEdit || saving} draggable={canEdit && !saving} onDragStart={(event) => startPaletteDrag(event, "radial-gauge")} title="环形进度 · 完成率与消耗率" type="button"><span className="palette-icon" aria-hidden="true">◉</span><span><strong>环形进度</strong><small>完成率与消耗率</small></span><span className="palette-drag-mark">⋮⋮</span></button>
-            <button aria-label="流程排行，多行进度与排行" className="palette-item palette-progress-list" disabled={!canEdit || saving} draggable={canEdit && !saving} onDragStart={(event) => startPaletteDrag(event, "progress-list")} title="流程排行 · 多行进度与排行" type="button"><span className="palette-icon" aria-hidden="true">≡</span><span><strong>流程排行</strong><small>多行进度与排行</small></span><span className="palette-drag-mark">⋮⋮</span></button>
-            <button aria-label="状态矩阵，展示设备、人员或告警状态" className="palette-item palette-status-grid" disabled={!canEdit || saving} draggable={canEdit && !saving} onDragStart={(event) => startPaletteDrag(event, "status-grid")} title="状态矩阵 · 设备、人员或告警" type="button"><span className="palette-icon" aria-hidden="true">▦</span><span><strong>状态矩阵</strong><small>设备、人员或告警</small></span><span className="palette-drag-mark">⋮⋮</span></button>
-          </section>
-          <section aria-labelledby="palette-business-title" className="palette-group is-business">
-            <h3 className="palette-group-title" id="palette-business-title"><span>业务组件</span><em>4</em></h3>
-            <button aria-label="数据排名，展示业务排行与变化趋势" className="palette-item palette-ranking-list" disabled={!canEdit || saving} draggable={canEdit && !saving} onDragStart={(event) => startPaletteDrag(event, "ranking-list")} title="数据排名 · 业务排行与趋势" type="button"><span className="palette-icon" aria-hidden="true">№</span><span><strong>数据排名</strong><small>业务排行与趋势</small></span><span className="palette-drag-mark">⋮⋮</span></button>
-            <button aria-label="实时告警，展示故障、预警和失联事件" className="palette-item palette-alarm-list" disabled={!canEdit || saving} draggable={canEdit && !saving} onDragStart={(event) => startPaletteDrag(event, "alarm-list")} title="实时告警 · 故障与失联事件" type="button"><span className="palette-icon" aria-hidden="true">!</span><span><strong>实时告警</strong><small>故障与失联事件</small></span><span className="palette-drag-mark">⋮⋮</span></button>
-            <button aria-label="业务表格，展示结构化业务明细" className="palette-item palette-data-table" disabled={!canEdit || saving} draggable={canEdit && !saving} onDragStart={(event) => startPaletteDrag(event, "data-table")} title="业务表格 · 结构化业务明细" type="button"><span className="palette-icon" aria-hidden="true">▦</span><span><strong>业务表格</strong><small>结构化业务明细</small></span><span className="palette-drag-mark">⋮⋮</span></button>
-            <button aria-label="事件时间线，展示流程和操作记录" className="palette-item palette-event-timeline" disabled={!canEdit || saving} draggable={canEdit && !saving} onDragStart={(event) => startPaletteDrag(event, "event-timeline")} title="事件时间线 · 流程与操作记录" type="button"><span className="palette-icon" aria-hidden="true">◷</span><span><strong>事件时间线</strong><small>流程与操作记录</small></span><span className="palette-drag-mark">⋮⋮</span></button>
-          </section>
-          <section aria-labelledby="palette-shapes-title" className="palette-group is-shape">
-            <h3 className="palette-group-title" id="palette-shapes-title"><span>基础图形</span><em>2</em></h3>
-            <button aria-label="矩形，可配置填充和圆角" className="palette-item palette-rectangle" disabled={!canEdit || saving} draggable={canEdit && !saving} onDragStart={(event) => startPaletteDrag(event, "rectangle")} title="矩形 · 可配置填充和圆角" type="button"><span className="palette-icon" aria-hidden="true"><i className="palette-shape-icon is-rectangle" /></span><span><strong>矩形</strong><small>可配置填充和圆角</small></span><span className="palette-drag-mark">⋮⋮</span></button>
-            <button aria-label="圆形，固定比例缩放" className="palette-item palette-circle" disabled={!canEdit || saving} draggable={canEdit && !saving} onDragStart={(event) => startPaletteDrag(event, "circle")} title="圆形 · 固定比例缩放" type="button"><span className="palette-icon" aria-hidden="true"><i className="palette-shape-icon is-circle" /></span><span><strong>圆形</strong><small>固定比例缩放</small></span><span className="palette-drag-mark">⋮⋮</span></button>
-          </section>
-          <section aria-labelledby="palette-decorations-title" className="palette-group is-decoration">
-            <h3 className="palette-group-title" id="palette-decorations-title"><span>界面点缀</span><em>7</em></h3>
-            <button aria-label="大屏标题，主标题与英文副标题" className="palette-item palette-screen-title" disabled={!canEdit || saving} draggable={canEdit && !saving} onDragStart={(event) => startPaletteDrag(event, "screen-title")} title="大屏标题 · 主标题与英文副标题" type="button"><span className="palette-icon" aria-hidden="true">T</span><span><strong>大屏标题</strong><small>主标题与英文副标题</small></span><span className="palette-drag-mark">⋮⋮</span></button>
-            <button aria-label="背景点缀，网格与科技光环" className="palette-item palette-background-decoration" disabled={!canEdit || saving} draggable={canEdit && !saving} onDragStart={(event) => startPaletteDrag(event, "background-decoration")} title="背景点缀 · 网格与科技光环" type="button"><span className="palette-icon" aria-hidden="true">◇</span><span><strong>背景点缀</strong><small>网格与科技光环</small></span><span className="palette-drag-mark">⋮⋮</span></button>
-            <button aria-label="时间日期，实时日期与时钟" className="palette-item palette-datetime" disabled={!canEdit || saving} draggable={canEdit && !saving} onDragStart={(event) => startPaletteDrag(event, "datetime")} title="时间日期 · 实时日期与时钟" type="button"><span className="palette-icon" aria-hidden="true">◷</span><span><strong>时间日期</strong><small>实时日期与时钟</small></span><span className="palette-drag-mark">⋮⋮</span></button>
-            <button aria-label="标题，看板区块标题" className="palette-item palette-section-title" disabled={!canEdit || saving} draggable={canEdit && !saving} onDragStart={(event) => startPaletteDrag(event, "section-title")} title="标题 · 看板区块标题" type="button"><span className="palette-icon" aria-hidden="true">▰</span><span><strong>标题</strong><small>看板区块标题</small></span><span className="palette-drag-mark">⋮⋮</span></button>
-            <button aria-label="小卡片背景，轻量面板底框" className="palette-item palette-card-background" disabled={!canEdit || saving} draggable={canEdit && !saving} onDragStart={(event) => startPaletteDrag(event, "card-background")} title="小卡片背景 · 轻量面板底框" type="button"><span className="palette-icon" aria-hidden="true">▣</span><span><strong>小卡片背景</strong><small>轻量面板底框</small></span><span className="palette-drag-mark">⋮⋮</span></button>
-            <button aria-label="科技面板，可配置标题与五种边框风格" className="palette-item palette-panel-frame" disabled={!canEdit || saving} draggable={canEdit && !saving} onDragStart={(event) => startPaletteDrag(event, "panel-frame")} title="科技面板 · 五种边框样式" type="button"><span className="palette-icon" aria-hidden="true">⌗</span><span><strong>科技面板</strong><small>标题与科技边框</small></span><span className="palette-drag-mark">⋮⋮</span></button>
-            <button aria-label="小图标背景，固定比例图标底座" className="palette-item palette-icon-background" disabled={!canEdit || saving} draggable={canEdit && !saving} onDragStart={(event) => startPaletteDrag(event, "icon-background")} title="小图标背景 · 固定比例图标底座" type="button"><span className="palette-icon" aria-hidden="true">◆</span><span><strong>小图标背景</strong><small>固定比例图标底座</small></span><span className="palette-drag-mark">⋮⋮</span></button>
-          </section>
-          <div className="palette-note"><strong>资源分离</strong><p>模型文件独立存储；画布节点只保存配置、资源 ID 与数据绑定 ID。</p></div>
-        </aside> : null}
+        {mode === "edit" ? <ComponentPalette editable={editable} onDragStart={startPaletteDrag} /> : null}
         <CanvasSurface
           document={document}
           editable={editable}
+          embeddedSceneSelection={embeddedSceneSelection}
           modelInteractionEnabled={mode === "preview"}
           onCreateNode={createNode}
+          onEmbeddedSceneSelectionChange={selectEmbeddedSceneAsset}
           onModelSceneChange={mode === "preview" ? handleModelSceneChange : undefined}
           onModelSceneNodeSelect={selectModelSceneNode}
           onNodeChange={updateNode}
           onSelectNode={selectCanvasNode}
           runtimeAppearanceOverrides={runtimeAppearanceOverrides}
+          runtimeAsset={selectedEmbeddedAsset}
+          runtimeAssetConnection={embeddedRuntimeConnection}
+          runtimeAssetError={embeddedRuntimeError}
+          runtimeAssetLoading={embeddedAssetListLoading}
           selectedModelSceneNodePath={selectedModelSceneNodePath}
           selectedNodeId={selectedNodeId}
         />
         {mode === "preview" ? (
           <>
-            <div
-              className={`runtime-status-banner${runtimeSetupError ? " is-error" : offlineDeviceCount > 0 ? staleDeviceCount === offlineDeviceCount ? " is-stale" : " is-offline" : liveDeviceCount > 0 ? " is-live" : " is-loading"}`}
-              role={runtimeSetupError || offlineDeviceCount > 0 ? "alert" : "status"}
-            >
-              <strong>REST 模拟采集</strong>
-              <span>
-                {assetListLoading
-                  ? "🟡 正在读取资产映射…"
-                  : runtimeSetupError
-                    ? `⚠ ${runtimeSetupError}`
-                    : offlineDeviceCount > 0
-                      ? `${staleDeviceCount === offlineDeviceCount ? "🟠" : "🔴"} ${offlineSummary} · 正在重连（第 ${Math.max(...runtimeConnectionList.map((state) => state.failureCount))} 次）`
-                      : liveDeviceCount > 0
-                        ? `🟢 在线 ${liveDeviceCount} 台 · 字段映射与 3D 状态已生效`
-                        : "🟡 正在连接设备数据…"}
-              </span>
-            </div>
+            {!hasComposableRuntime && (model3DNodeCount > 0 || selectedRuntimeAsset || runtimeSetupError) ? (
+              <AssetRuntimeStatusBanner
+                connections={runtimeConnections}
+                loading={assetListLoading}
+                setupError={runtimeSetupError}
+              />
+            ) : null}
             {runtimeSelectionMessage ? (
               <div className="runtime-selection-message" role="alert">
                 <span>{runtimeSelectionMessage}</span>
                 <button aria-label="关闭提示" onClick={() => setRuntimeSelectionMessage(null)} type="button">×</button>
               </div>
             ) : null}
-            {selectedRuntimeAsset ? (
-              <aside className="runtime-detail-panel" aria-label={`${selectedRuntimeAsset.name} 设备详情`}>
-                <header>
-                  <div>
-                    <span className="eyebrow">2D DEVICE DETAIL</span>
-                    <h2>{selectedRuntimeAsset.name}</h2>
-                  </div>
-                  <button aria-label="关闭设备详情" onClick={() => setSelectedRuntimeAssetId(null)} type="button">×</button>
-                </header>
-                <div className={`runtime-device-state is-${selectedDeviceStatus}${selectedRuntimeIsStale ? " is-stale" : ""}`}>
-                  <i aria-hidden="true" />
-                  <strong>{selectedRuntimeIsStale ? "数据陈旧" : deviceVisualStatusLabel[selectedDeviceStatus]}</strong>
-                  <span>{selectedRuntimeConnection?.status === "offline" ? `重连第 ${selectedRuntimeConnection.failureCount} 次` : "实时状态"}</span>
-                </div>
-                <dl className="runtime-device-meta">
-                  <div><dt>assetId</dt><dd>{selectedRuntimeAsset.assetId}</dd></div>
-                  <div><dt>模型节点</dt><dd>{selectedRuntimeAsset.modelNode ?? "未绑定"}</dd></div>
-                  <div><dt>最近成功</dt><dd>{formatRuntimeTime(selectedRuntimeConnection?.lastSuccessAt)}</dd></div>
-                </dl>
-                {selectedRuntimeConnection?.status === "offline" ? (
-                  <div className={`runtime-offline-alert${selectedRuntimeIsStale ? " is-stale" : ""}`} role="alert">
-                    <strong>{selectedRuntimeIsStale ? "设备数据已陈旧" : "设备数据已失联"}</strong>
-                    <p>{selectedRuntimeConnection.errorMessage ?? "采集请求失败。"}</p>
-                    <small>最后数据保留用于排查，不代表当前实时值。</small>
-                  </div>
-                ) : null}
-                <section className="runtime-metric-section">
-                  <div className="runtime-section-heading">
-                    <h3>映射指标</h3>
-                    {selectedRuntimeConnection?.status === "offline" && selectedRuntimeConnection.snapshot
-                      ? <span>最后一次成功值</span>
-                      : null}
-                  </div>
-                  {selectedRuntimeConnection?.snapshot?.metrics.length ? (
-                    <div className="runtime-metric-grid">
-                      {selectedRuntimeConnection.snapshot.metrics.map((metric) => (
-                        <div className="runtime-metric-card" key={metric.bindingId}>
-                          <span>{metric.metricKey}</span>
-                          <strong>{formatRuntimeValue(metric.value)}{metric.unit ? <small>{metric.unit}</small> : null}</strong>
-                          <code>{metric.sourcePath}</code>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="runtime-empty-metrics">
-                      {selectedRuntimeConnection?.status === "loading" ? "正在读取映射数据…" : "尚无可显示指标。"}
-                    </p>
-                  )}
-                </section>
-              </aside>
+            {!hasComposableRuntime && selectedRuntimeAsset ? (
+              <AssetRuntimeDetailPanel
+                asset={selectedRuntimeAsset}
+                connection={selectedRuntimeConnection}
+                onClose={() => setSelectedRuntimeAssetId(null)}
+              />
             ) : null}
           </>
         ) : null}
