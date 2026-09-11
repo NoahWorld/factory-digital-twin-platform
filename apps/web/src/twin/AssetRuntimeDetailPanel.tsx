@@ -10,7 +10,10 @@ type AssetRuntimeDetailPanelProps = {
   asset: ProjectAsset;
   connection: RuntimeAssetConnection | undefined;
   embedded?: boolean;
+  eyebrow?: string;
+  maximumMetrics?: number;
   onClose?: () => void;
+  showMetadata?: boolean;
 };
 
 const formatRuntimeValue = (value: RuntimeMetricValue): string => {
@@ -46,7 +49,10 @@ export function AssetRuntimeDetailPanel({
   asset,
   connection,
   embedded = false,
+  eyebrow = "2D DEVICE DETAIL",
+  maximumMetrics,
   onClose,
+  showMetadata = true,
 }: AssetRuntimeDetailPanelProps) {
   const deviceStatus = deviceVisualStatus(connection);
   const isStale = connection?.errorCode === "data_source_stale";
@@ -58,7 +64,7 @@ export function AssetRuntimeDetailPanel({
     >
       <header>
         <div>
-          <span className="eyebrow">2D DEVICE DETAIL</span>
+          <span className="eyebrow">{eyebrow}</span>
           <h2>{asset.name}</h2>
         </div>
         {onClose ? <button aria-label="关闭设备详情" onClick={onClose} type="button">×</button> : null}
@@ -69,12 +75,14 @@ export function AssetRuntimeDetailPanel({
         <strong>{isStale ? "数据陈旧" : deviceVisualStatusLabel[deviceStatus]}</strong>
         <span>{connection?.status === "offline" ? `重连第 ${connection.failureCount} 次` : "实时状态"}</span>
       </div>
-      <dl className="runtime-device-meta">
-        <div><dt>assetId</dt><dd>{asset.assetId}</dd></div>
-        <div><dt>设备类型</dt><dd>{asset.assetType}</dd></div>
-        <div><dt>模型节点</dt><dd>{asset.modelNode ?? "独立 3D 实例"}</dd></div>
-        <div><dt>最近成功</dt><dd>{formatRuntimeTime(connection?.lastSuccessAt)}</dd></div>
-      </dl>
+      {showMetadata ? (
+        <dl className="runtime-device-meta">
+          <div><dt>assetId</dt><dd>{asset.assetId}</dd></div>
+          <div><dt>设备类型</dt><dd>{asset.assetType}</dd></div>
+          <div><dt>模型节点</dt><dd>{asset.modelNode ?? "独立 3D 实例"}</dd></div>
+          <div><dt>最近成功</dt><dd>{formatRuntimeTime(connection?.lastSuccessAt)}</dd></div>
+        </dl>
+      ) : null}
       {connection?.status === "offline" ? (
         <div className={`runtime-offline-alert${isStale ? " is-stale" : ""}`} role="alert">
           <strong>{isStale ? "设备数据已陈旧" : "设备数据已失联"}</strong>
@@ -91,7 +99,7 @@ export function AssetRuntimeDetailPanel({
         </div>
         {connection?.snapshot?.metrics.length ? (
           <div className="runtime-metric-grid">
-            {connection.snapshot.metrics.map((metric) => (
+            {connection.snapshot.metrics.slice(0, maximumMetrics).map((metric) => (
               <div className="runtime-metric-card" key={metric.bindingId}>
                 <span title={metric.metricKey}>{metricLabel(asset, metric.metricKey)}</span>
                 <strong>{formatRuntimeValue(metric.value)}{metric.unit ? <small>{metric.unit}</small> : null}</strong>

@@ -3,14 +3,18 @@ import { BasicNode } from "./BasicNode";
 import { ChartNode } from "./ChartNode";
 import { DashboardNode } from "./DashboardNode";
 import { DecorationNode } from "./DecorationNode";
+import { EmbeddedSceneNode, type EmbeddedSceneRuntimeSelection } from "./EmbeddedSceneNode";
 import { buildSnapTargets, resizeCanvasNode, snapNodePosition, type ResizeDirection, type SnapTargets, type SnappedPosition } from "./geometry";
 import { Model3DNode } from "./Model3DNode";
 import type { ModelSceneSnapshot } from "./model-scene";
 import { PanelFrameNode } from "./PanelFrameNode";
+import { RuntimeAssetDetailNode } from "./RuntimeAssetDetailNode";
 import { ShapeNode } from "./ShapeNode";
 import { OrnamentNode } from "./OrnamentNode";
 import { isOrnamentNodeType } from "../../../../shared/canvas-ornaments";
-import { CANVAS_DRAG_TYPE, defaultNodeSizes, isBasicNodeType, isCanvasNodeType, isDashboardNodeType, isDecorationNodeType, isModel3DNodeType, isPanelFrameNodeType, isShapeNodeType, type CanvasDocument, type CanvasNode, type CanvasNodeType, type ModelNodeAppearance } from "./types";
+import type { RuntimeAssetConnection } from "../runtime-state";
+import type { ProjectAsset } from "./assets";
+import { CANVAS_DRAG_TYPE, defaultNodeSizes, isAssetDetailNodeType, isBasicNodeType, isCanvasNodeType, isDashboardNodeType, isDecorationNodeType, isModel3DNodeType, isPanelFrameNodeType, isScene3DNodeType, isShapeNodeType, type CanvasDocument, type CanvasNode, type CanvasNodeType, type ModelNodeAppearance } from "./types";
 
 type ActiveDrag = {
   kind: "drag";
@@ -42,11 +46,17 @@ type ActiveInteraction = ActiveDrag | ActiveResize;
 
 type CanvasNodeViewProps = {
   editable: boolean;
+  embeddedSceneSelection: EmbeddedSceneRuntimeSelection | null;
   modelInteractionEnabled: boolean;
   node: CanvasNode;
+  onEmbeddedSceneSelectionChange: (selection: EmbeddedSceneRuntimeSelection | null) => void;
   onModelSceneChange?: (canvasNodeId: string, snapshot: ModelSceneSnapshot | null) => void;
   onModelSceneNodeSelect: (canvasNodeId: string, sceneNodePath: string | null) => void;
   projectId: string;
+  runtimeAsset: ProjectAsset | null;
+  runtimeAssetConnection: RuntimeAssetConnection | undefined;
+  runtimeAssetError: string | null;
+  runtimeAssetLoading: boolean;
   runtimeAppearanceOverrides: Record<string, ModelNodeAppearance>;
   selected: boolean;
   selectedModelSceneNodePath: string | null;
@@ -69,11 +79,13 @@ const hasGeometryChanged = (previous: CanvasNode, next: CanvasNode) => (
   || previous.height !== next.height
 );
 
-const CanvasNodeView = memo(function CanvasNodeView({ editable, modelInteractionEnabled, node, onModelSceneChange, onModelSceneNodeSelect, projectId, renderZIndex, runtimeAppearanceOverrides, selected, selectedModelSceneNodePath, onPointerDown, onResizePointerDown }: CanvasNodeViewProps) {
+const ignoreEmbeddedSceneSelection = () => undefined;
+
+const CanvasNodeView = memo(function CanvasNodeView({ editable, embeddedSceneSelection, modelInteractionEnabled, node, onEmbeddedSceneSelectionChange, onModelSceneChange, onModelSceneNodeSelect, projectId, renderZIndex, runtimeAppearanceOverrides, runtimeAsset, runtimeAssetConnection, runtimeAssetError, runtimeAssetLoading, selected, selectedModelSceneNodePath, onPointerDown, onResizePointerDown }: CanvasNodeViewProps) {
   return (
     <div
       aria-label={`${node.type} 组件`}
-      className={`canvas-node${isOrnamentNodeType(node.type) ? " is-ornament" : ""}${isShapeNodeType(node.type) ? " is-shape" : ""}${isDecorationNodeType(node.type) ? " is-decoration" : ""}${isPanelFrameNodeType(node.type) ? " is-panel-frame" : ""}${isDashboardNodeType(node.type) ? " is-dashboard" : ""}${isBasicNodeType(node.type) ? " is-basic" : ""}${isModel3DNodeType(node.type) ? " is-model-3d" : ""}${selected ? " is-selected" : ""}${editable ? " is-editable" : ""}`}
+      className={`canvas-node${isOrnamentNodeType(node.type) ? " is-ornament" : ""}${isShapeNodeType(node.type) ? " is-shape" : ""}${isDecorationNodeType(node.type) ? " is-decoration" : ""}${isPanelFrameNodeType(node.type) ? " is-panel-frame" : ""}${isDashboardNodeType(node.type) ? " is-dashboard" : ""}${isBasicNodeType(node.type) ? " is-basic" : ""}${isModel3DNodeType(node.type) ? " is-model-3d" : ""}${isScene3DNodeType(node.type) ? " is-scene-3d" : ""}${isAssetDetailNodeType(node.type) ? " is-asset-detail" : ""}${selected ? " is-selected" : ""}${editable ? " is-editable" : ""}`}
       data-node-id={node.id}
       onPointerDown={editable ? (event) => onPointerDown(event, node) : undefined}
       role="group"
@@ -89,6 +101,27 @@ const CanvasNodeView = memo(function CanvasNodeView({ editable, modelInteraction
             ? <DashboardNode node={node} />
           : isBasicNodeType(node.type)
             ? <BasicNode editable={editable} node={node} projectId={projectId} />
+          : isScene3DNodeType(node.type)
+            ? (
+                <EmbeddedSceneNode
+                  editable={editable}
+                  interactive={modelInteractionEnabled}
+                  node={node}
+                  onSelectionChange={onEmbeddedSceneSelectionChange}
+                  selectedInstanceId={embeddedSceneSelection?.canvasNodeId === node.id ? embeddedSceneSelection.instanceId : null}
+                />
+              )
+          : isAssetDetailNodeType(node.type)
+            ? (
+                <RuntimeAssetDetailNode
+                  asset={runtimeAsset}
+                  connection={runtimeAssetConnection}
+                  editable={editable}
+                  error={runtimeAssetError}
+                  loading={runtimeAssetLoading}
+                  node={node}
+                />
+              )
           : isModel3DNodeType(node.type)
             ? (
                 <Model3DNode
@@ -99,6 +132,7 @@ const CanvasNodeView = memo(function CanvasNodeView({ editable, modelInteraction
                   onSceneNodeSelect={onModelSceneNodeSelect}
                   projectId={projectId}
                   runtimeAppearanceOverrides={runtimeAppearanceOverrides}
+                  selectionStyle={editable ? "editor" : "runtime"}
                   selectedSceneNodePath={selectedModelSceneNodePath}
                 />
               )
@@ -119,13 +153,19 @@ const CanvasNodeView = memo(function CanvasNodeView({ editable, modelInteraction
 type CanvasSurfaceProps = {
   document: CanvasDocument;
   editable: boolean;
+  embeddedSceneSelection?: EmbeddedSceneRuntimeSelection | null;
   modelInteractionEnabled?: boolean;
   selectedNodeId: string | null;
   onCreateNode: (type: CanvasNodeType, x: number, y: number) => void;
+  onEmbeddedSceneSelectionChange?: (selection: EmbeddedSceneRuntimeSelection | null) => void;
   onModelSceneChange?: (canvasNodeId: string, snapshot: ModelSceneSnapshot | null) => void;
   onModelSceneNodeSelect: (canvasNodeId: string, sceneNodePath: string | null) => void;
   onNodeChange: (node: CanvasNode) => void;
   onSelectNode: (nodeId: string | null) => void;
+  runtimeAsset?: ProjectAsset | null;
+  runtimeAssetConnection?: RuntimeAssetConnection;
+  runtimeAssetError?: string | null;
+  runtimeAssetLoading?: boolean;
   runtimeAppearanceOverrides?: Record<string, ModelNodeAppearance>;
   selectedModelSceneNodePath: string | null;
 };
@@ -138,7 +178,7 @@ const isCanvasBackdropNode = (node: CanvasNode, document: CanvasDocument) => (
   && node.height >= document.height
 );
 
-export function CanvasSurface({ document, editable, modelInteractionEnabled = false, selectedNodeId, selectedModelSceneNodePath, onCreateNode, onModelSceneChange, onModelSceneNodeSelect, onNodeChange, onSelectNode, runtimeAppearanceOverrides = {} }: CanvasSurfaceProps) {
+export function CanvasSurface({ document, editable, embeddedSceneSelection = null, modelInteractionEnabled = false, selectedNodeId, selectedModelSceneNodePath, onCreateNode, onEmbeddedSceneSelectionChange = ignoreEmbeddedSceneSelection, onModelSceneChange, onModelSceneNodeSelect, onNodeChange, onSelectNode, runtimeAppearanceOverrides = {}, runtimeAsset = null, runtimeAssetConnection, runtimeAssetError = null, runtimeAssetLoading = false }: CanvasSurfaceProps) {
   const viewportRef = useRef<HTMLDivElement>(null);
   const surfaceRef = useRef<HTMLDivElement>(null);
   const verticalGuideRef = useRef<HTMLDivElement>(null);
@@ -349,9 +389,11 @@ export function CanvasSurface({ document, editable, modelInteractionEnabled = fa
           {document.nodes.map((node) => (
             <CanvasNodeView
               editable={editable}
+              embeddedSceneSelection={embeddedSceneSelection}
               key={node.id}
               modelInteractionEnabled={modelInteractionEnabled}
               node={node}
+              onEmbeddedSceneSelectionChange={onEmbeddedSceneSelectionChange}
               onModelSceneChange={onModelSceneChange}
               onModelSceneNodeSelect={onModelSceneNodeSelect}
               onPointerDown={startPointerDrag}
@@ -359,7 +401,11 @@ export function CanvasSurface({ document, editable, modelInteractionEnabled = fa
               projectId={document.projectId}
               renderZIndex={isCanvasBackdropNode(node, document) ? 0 : node.zIndex + 2}
               runtimeAppearanceOverrides={runtimeAppearanceOverrides}
-              selected={node.id === selectedNodeId}
+              runtimeAsset={runtimeAsset}
+              runtimeAssetConnection={runtimeAssetConnection}
+              runtimeAssetError={runtimeAssetError}
+              runtimeAssetLoading={runtimeAssetLoading}
+              selected={editable && node.id === selectedNodeId}
               selectedModelSceneNodePath={
                 node.id === selectedNodeId ? selectedModelSceneNodePath : null
               }

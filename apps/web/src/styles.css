@@ -1351,15 +1351,23 @@ input:focus {
 .icon-picker button:focus-visible, .title-variant-picker button:focus-visible { outline: 2px solid #eafbff; outline-offset: 2px; }
 .icon-picker button:disabled, .title-variant-picker button:disabled { opacity: .5; cursor: not-allowed; }
 
-.canvas-node.is-model-3d {
+.canvas-node.is-model-3d,
+.canvas-node.is-scene-3d {
   border-color: rgba(255, 184, 107, 0.38);
   color: #e6f4fa;
   background: #071525;
 }
 
-.canvas-node.is-model-3d.is-selected {
+.canvas-node.is-model-3d.is-selected,
+.canvas-node.is-scene-3d.is-selected {
   border-color: #76dcff;
   box-shadow: 0 0 0 2px rgba(118, 220, 255, 0.22), 0 18px 38px rgba(0, 0, 0, 0.3);
+}
+
+.canvas-node.is-asset-detail {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
 }
 
 .canvas-node.is-dashboard {
@@ -1934,6 +1942,88 @@ input:focus {
   border-top-color: #5ad8ff;
   border-radius: 50%;
   animation: model-loading-spin 800ms linear infinite;
+}
+
+.embedded-scene-node {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.embedded-scene-reference {
+  position: absolute;
+  z-index: 3;
+  top: 12px;
+  left: 12px;
+  max-width: calc(100% - 24px);
+  padding: 6px 9px;
+  overflow: hidden;
+  border: 1px solid rgba(118, 220, 255, 0.32);
+  border-radius: 6px;
+  color: #bceeff;
+  background: rgba(4, 22, 34, 0.82);
+  font-size: 0.65rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.embedded-scene-state,
+.asset-detail-node-state {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  place-content: center;
+  justify-items: center;
+  gap: 8px;
+  padding: 24px;
+  color: #82a6b7;
+  background: linear-gradient(145deg, rgba(9, 30, 46, 0.96), rgba(5, 20, 32, 0.98));
+  font-size: clamp(0.62rem, 2.4cqw, 0.78rem);
+  line-height: 1.5;
+  text-align: center;
+}
+
+.embedded-scene-state strong,
+.asset-detail-node-state strong {
+  color: #eafaff;
+  font-size: clamp(0.76rem, 3.3cqw, 1.02rem);
+}
+
+.embedded-scene-state.is-error,
+.asset-detail-node-state.is-error {
+  color: #e0a4ad;
+  background: rgba(44, 15, 23, 0.96);
+}
+
+.embedded-scene-state.is-error strong,
+.asset-detail-node-state.is-error strong {
+  color: #ffb5c0;
+}
+
+.asset-detail-node {
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  padding: 16px;
+  overflow: auto;
+  border: 1px solid var(--asset-detail-border);
+  border-radius: inherit;
+  color: var(--asset-detail-text);
+  background: color-mix(in srgb, var(--asset-detail-fill) 94%, transparent);
+  box-shadow: inset 0 0 30px color-mix(in srgb, var(--asset-detail-accent) 8%, transparent);
+}
+
+.asset-detail-empty-icon {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--asset-detail-accent) 55%, transparent);
+  border-radius: 50%;
+  color: var(--asset-detail-accent);
+  font-size: 1.15rem;
 }
 
 @keyframes model-loading-spin {
@@ -6544,6 +6634,31 @@ input:focus {
   background: transparent;
   box-shadow: none;
   backdrop-filter: none;
+}
+
+.asset-detail-node .runtime-detail-panel.is-embedded {
+  color: var(--asset-detail-text);
+}
+
+.asset-detail-node .runtime-detail-panel .eyebrow,
+.asset-detail-node .runtime-metric-card > strong small {
+  color: var(--asset-detail-accent);
+}
+
+.asset-detail-node .runtime-detail-panel > header,
+.asset-detail-node .runtime-device-meta div,
+.asset-detail-node .runtime-metric-card {
+  border-color: color-mix(in srgb, var(--asset-detail-border) 76%, transparent);
+}
+
+.asset-detail-node .runtime-detail-panel h2,
+.asset-detail-node .runtime-device-meta dd,
+.asset-detail-node .runtime-metric-card > strong {
+  color: var(--asset-detail-text);
+}
+
+.asset-detail-node .runtime-metric-card {
+  background: color-mix(in srgb, var(--asset-detail-fill) 82%, black);
 }
 
 .runtime-detail-panel.is-embedded > header {

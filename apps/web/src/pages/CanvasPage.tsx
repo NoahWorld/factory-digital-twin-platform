@@ -4,13 +4,14 @@ import { ComponentPalette } from "../canvas/ComponentPalette";
 import { ComponentInspector } from "../canvas/ComponentInspector";
 import { CanvasSurface } from "../canvas/CanvasSurface";
 import { projectAssetsPath, type ProjectAsset, type ProjectAssetListResponse } from "../canvas/assets";
+import type { EmbeddedSceneRuntimeSelection } from "../canvas/EmbeddedSceneNode";
 import { findModelSceneNode, type ModelSceneSnapshot } from "../canvas/model-scene";
 import { canvasRoutePath, modelEditorRoutePath, projectCanvasPath } from "../canvas/routes";
 import { TemplateDialog } from "../canvas/TemplateDialog";
 import { getCanvasTemplate, instantiateCanvasTemplate, type CanvasTemplateId } from "../canvas/templates";
 import { ThemeDialog } from "../canvas/ThemeDialog";
 import { applyCanvasThemeToNode, applyCanvasThemeToNodes, canvasThemePresetLabels } from "../canvas/themes";
-import { CANVAS_DRAG_TYPE, componentLabels, createCanvasNode, isBackgroundNodeType, isModel3DNodeType, type CanvasDocument, type CanvasNode, type CanvasNodeType, type CanvasPatchResponse, type CanvasResponse, type CanvasTheme, type ModelNodeAppearance } from "../canvas/types";
+import { CANVAS_DRAG_TYPE, componentLabels, createCanvasNode, isAssetDetailNodeType, isBackgroundNodeType, isModel3DNodeType, isScene3DNodeType, type CanvasDocument, type CanvasNode, type CanvasNodeType, type CanvasPatchResponse, type CanvasResponse, type CanvasTheme, type ModelNodeAppearance } from "../canvas/types";
 import { DataSourcePanel } from "../DataSourcePanel";
 import { deviceVisualStatus, type DeviceVisualStatus } from "../runtime-state";
 import { AssetRuntimeDetailPanel } from "../twin/AssetRuntimeDetailPanel";
@@ -55,6 +56,10 @@ export function CanvasPage({ initialAssetId, initialTemplateId, mode, projectId 
   const [modelScenes, setModelScenes] = useState<Record<string, ModelSceneSnapshot>>({});
   const [selectedRuntimeAssetId, setSelectedRuntimeAssetId] = useState<string | null>(null);
   const [runtimeSelectionMessage, setRuntimeSelectionMessage] = useState<string | null>(null);
+  const [embeddedSceneSelection, setEmbeddedSceneSelection] = useState<EmbeddedSceneRuntimeSelection | null>(null);
+  const [embeddedProjectAssets, setEmbeddedProjectAssets] = useState<ProjectAsset[]>([]);
+  const [embeddedAssetLoadError, setEmbeddedAssetLoadError] = useState<string | null>(null);
+  const [embeddedAssetListLoading, setEmbeddedAssetListLoading] = useState(false);
   const dirtyNodeIdsRef = useRef(new Set<string>());
   const deletedNodeIdsRef = useRef(new Set<string>());
   const initialTemplateAppliedRef = useRef(false);
@@ -65,6 +70,7 @@ export function CanvasPage({ initialAssetId, initialTemplateId, mode, projectId 
     setLoadError(null);
     setSelectedNodeId(null);
     setSelectedModelSceneNodePath(null);
+    setEmbeddedSceneSelection(null);
     setConfigurationError(null);
     dirtyNodeIdsRef.current.clear();
     deletedNodeIdsRef.current.clear();
@@ -80,6 +86,48 @@ export function CanvasPage({ initialAssetId, initialTemplateId, mode, projectId 
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [projectId]);
+
+  const selectEmbeddedSceneAsset = useCallback((selection: EmbeddedSceneRuntimeSelection | null) => {
+    setEmbeddedSceneSelection(selection);
+    if (!selection) {
+      setRuntimeSelectionMessage(null);
+      return;
+    }
+    if (!selection.linked2dProjectId) {
+      setRuntimeSelectionMessage(`设备“${selection.label}”所在的 3D 场景尚未关联 2D 资产项目。`);
+      return;
+    }
+    if (!selection.assetId) {
+      setRuntimeSelectionMessage(`模型“${selection.label}”尚未绑定业务资产，无法读取设备数据。`);
+      return;
+    }
+    setRuntimeSelectionMessage(null);
+  }, []);
+
+  const embeddedRuntimeProjectId = embeddedSceneSelection?.linked2dProjectId ?? null;
+
+  useEffect(() => {
+    let active = true;
+    setEmbeddedProjectAssets([]);
+    setEmbeddedAssetLoadError(null);
+    if (mode !== "preview" || !embeddedRuntimeProjectId) {
+      setEmbeddedAssetListLoading(false);
+      return () => { active = false; };
+    }
+
+    setEmbeddedAssetListLoading(true);
+    void request<ProjectAssetListResponse>(projectAssetsPath(embeddedRuntimeProjectId))
+      .then((result) => {
+        if (active) setEmbeddedProjectAssets(result.assets);
+      })
+      .catch((reason) => {
+        if (active) setEmbeddedAssetLoadError(errorMessage(reason));
+      })
+      .finally(() => {
+        if (active) setEmbeddedAssetListLoading(false);
+      });
+    return () => { active = false; };
+  }, [embeddedRuntimeProjectId, mode]);
 
   useEffect(() => {
     let active = true;
@@ -153,6 +201,10 @@ export function CanvasPage({ initialAssetId, initialTemplateId, mode, projectId 
     () => document?.nodes.filter((node) => isModel3DNodeType(node.type)).length ?? 0,
     [document],
   );
+  const hasComposableRuntime = useMemo(
+    () => document?.nodes.some((node) => isScene3DNodeType(node.type) || isAssetDetailNodeType(node.type)) ?? false,
+    [document],
+  );
   const mappedRuntimeAssets = useMemo(
     () => projectAssets.filter((asset) => asset.modelNode !== null),
     [projectAssets],
@@ -208,6 +260,35 @@ export function CanvasPage({ initialAssetId, initialTemplateId, mode, projectId 
 
   const selectedRuntimeConnection = selectedRuntimeAsset
     ? runtimeConnections[selectedRuntimeAsset.id]
+    : undefined;
+  const selectedEmbeddedAsset = useMemo(() => {
+    const assetId = embeddedSceneSelection?.assetId;
+    return assetId
+      ? embeddedProjectAssets.find((asset) => asset.assetId === assetId) ?? null
+      : null;
+  }, [embeddedProjectAssets, embeddedSceneSelection?.assetId]);
+  const embeddedRuntimeError = useMemo(() => {
+    if (!embeddedSceneSelection) return null;
+    if (!embeddedSceneSelection.linked2dProjectId) return "当前 3D 场景没有关联 2D 资产项目。";
+    if (!embeddedSceneSelection.assetId) return `模型“${embeddedSceneSelection.label}”没有绑定业务资产。`;
+    if (embeddedAssetLoadError) return `资产台账加载失败：${embeddedAssetLoadError}`;
+    if (!embeddedAssetListLoading && !selectedEmbeddedAsset) {
+      return `业务资产 ${embeddedSceneSelection.assetId} 不存在或当前账号无权访问。`;
+    }
+    return null;
+  }, [embeddedAssetListLoading, embeddedAssetLoadError, embeddedSceneSelection, selectedEmbeddedAsset]);
+  const embeddedRuntimeAssets = useMemo(
+    () => selectedEmbeddedAsset ? [selectedEmbeddedAsset] : [],
+    [selectedEmbeddedAsset],
+  );
+  const embeddedRuntimeConnections = useAssetRuntimeConnections({
+    assets: embeddedRuntimeAssets,
+    blockedReason: embeddedRuntimeError,
+    enabled: mode === "preview" && !embeddedAssetListLoading && embeddedRuntimeAssets.length === 1,
+    projectId: embeddedRuntimeProjectId,
+  });
+  const embeddedRuntimeConnection = selectedEmbeddedAsset
+    ? embeddedRuntimeConnections[selectedEmbeddedAsset.id]
     : undefined;
   const markNodeDirty = useCallback((nodeId: string) => {
     dirtyNodeIdsRef.current.add(nodeId);
@@ -433,19 +514,25 @@ export function CanvasPage({ initialAssetId, initialTemplateId, mode, projectId 
         <CanvasSurface
           document={document}
           editable={editable}
+          embeddedSceneSelection={embeddedSceneSelection}
           modelInteractionEnabled={mode === "preview"}
           onCreateNode={createNode}
+          onEmbeddedSceneSelectionChange={selectEmbeddedSceneAsset}
           onModelSceneChange={mode === "preview" ? handleModelSceneChange : undefined}
           onModelSceneNodeSelect={selectModelSceneNode}
           onNodeChange={updateNode}
           onSelectNode={selectCanvasNode}
           runtimeAppearanceOverrides={runtimeAppearanceOverrides}
+          runtimeAsset={selectedEmbeddedAsset}
+          runtimeAssetConnection={embeddedRuntimeConnection}
+          runtimeAssetError={embeddedRuntimeError}
+          runtimeAssetLoading={embeddedAssetListLoading}
           selectedModelSceneNodePath={selectedModelSceneNodePath}
           selectedNodeId={selectedNodeId}
         />
         {mode === "preview" ? (
           <>
-            {model3DNodeCount > 0 || selectedRuntimeAsset || runtimeSetupError ? (
+            {!hasComposableRuntime && (model3DNodeCount > 0 || selectedRuntimeAsset || runtimeSetupError) ? (
               <AssetRuntimeStatusBanner
                 connections={runtimeConnections}
                 loading={assetListLoading}
@@ -458,7 +545,7 @@ export function CanvasPage({ initialAssetId, initialTemplateId, mode, projectId 
                 <button aria-label="关闭提示" onClick={() => setRuntimeSelectionMessage(null)} type="button">×</button>
               </div>
             ) : null}
-            {selectedRuntimeAsset ? (
+            {!hasComposableRuntime && selectedRuntimeAsset ? (
               <AssetRuntimeDetailPanel
                 asset={selectedRuntimeAsset}
                 connection={selectedRuntimeConnection}

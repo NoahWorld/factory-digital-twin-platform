@@ -1,12 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
 import { BasicNodeInspector } from "./BasicNodeInspector";
+import { AssetDetailInspector } from "./AssetDetailInspector";
 import { DashboardNodeInspector } from "./DashboardNodeInspector";
 import { PanelFrameInspector } from "./PanelFrameInspector";
+import { Scene3DInspector } from "./Scene3DInspector";
 import { OrnamentInspector } from "./OrnamentInspector";
 import { isOrnamentNodeType } from "../../../../shared/canvas-ornaments";
 import {
   componentLabels,
   isAnimatedDecorationNodeType,
+  isAssetDetailNodeType,
   isBasicNodeType,
   isChartNodeType,
   isDashboardNodeType,
@@ -14,6 +17,7 @@ import {
   isModel3DNodeType,
   isPanelFrameNodeType,
   isShapeNodeType,
+  isScene3DNodeType,
   parseChartProps,
   parseDecorationProps,
   parseModel3DProps,
@@ -565,6 +569,30 @@ export function ComponentInspector({
         onNodeChange={onNodeChange}
         onValidationChange={onValidationChange}
         projectId={projectId}
+      />
+    );
+  }
+
+  if (isScene3DNodeType(node.type)) {
+    return (
+      <Scene3DInspector
+        editable={editable}
+        key={node.id}
+        node={node}
+        onNodeChange={onNodeChange}
+        onValidationChange={onValidationChange}
+      />
+    );
+  }
+
+  if (isAssetDetailNodeType(node.type)) {
+    return (
+      <AssetDetailInspector
+        editable={editable}
+        key={node.id}
+        node={node}
+        onNodeChange={onNodeChange}
+        onValidationChange={onValidationChange}
       />
     );
   }

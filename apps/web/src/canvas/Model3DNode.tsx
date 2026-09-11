@@ -5,7 +5,15 @@ import {
   useState,
   type PointerEvent as ReactPointerEvent,
 } from "react";
-import type { BufferGeometry, Material, Object3D, Texture } from "three";
+import type {
+  BufferGeometry,
+  Material,
+  Mesh,
+  MeshBasicMaterial,
+  Object3D,
+  RingGeometry,
+  Texture,
+} from "three";
 import {
   componentLabels,
   parseModel3DProps,
@@ -20,6 +28,7 @@ import { modelAssetContentUrl } from "./model-assets";
 import { buildModelSceneTree, type ModelSceneSnapshot } from "./model-scene";
 import type { WalkSceneConfig } from "../scene/walk-physics";
 import type { InstanceTransformMode } from "../scene/instance-transform";
+import type { SceneSelectionStyle } from "../scene/scene-runtime";
 
 export type Model3DNodeProps = {
   walkScene?: WalkSceneConfig;
@@ -36,6 +45,7 @@ export type Model3DNodeProps = {
   onSceneNodeSelect: (canvasNodeId: string, sceneNodePath: string | null) => void;
   projectId: string;
   runtimeAppearanceOverrides?: Record<string, ModelNodeAppearance>;
+  selectionStyle?: SceneSelectionStyle;
   selectedModelInstanceId?: string | null;
   selectedSceneNodePath: string | null;
 };
@@ -48,7 +58,7 @@ type LoadState =
 
 type ModelRuntime = {
   applyAppearances: (overrides: Record<string, ModelNodeAppearance>) => void;
-  applySelection: (sceneNodePath: string | null) => void;
+  applySelection: (sceneNodePath: string | null, style: SceneSelectionStyle) => void;
   applyPresentation: (settings: Model3DProps) => void;
   applySceneSettings: (settings: Model3DProps) => void;
   applyTransforms: (overrides: Record<string, ModelNodeTransform>) => void;
@@ -98,6 +108,7 @@ const SingleModel3DNode = memo(function SingleModel3DNode({
   onSceneNodeSelect,
   projectId,
   runtimeAppearanceOverrides = {},
+  selectionStyle = editable ? "editor" : "runtime",
   selectedSceneNodePath,
 }: Model3DNodeProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -113,6 +124,8 @@ const SingleModel3DNode = memo(function SingleModel3DNode({
   } | null>(null);
   const selectedSceneNodePathRef = useRef(selectedSceneNodePath);
   selectedSceneNodePathRef.current = selectedSceneNodePath;
+  const selectionStyleRef = useRef(selectionStyle);
+  selectionStyleRef.current = selectionStyle;
   const settingsRef = useRef({
     autoRotate: true,
     rotationSpeed: 0.35,
@@ -247,7 +260,7 @@ const SingleModel3DNode = memo(function SingleModel3DNode({
   useEffect(() => {
     if (!runtimeRef.current) return;
     try {
-      runtimeRef.current.applySelection(selectedSceneNodePath);
+      runtimeRef.current.applySelection(selectedSceneNodePath, selectionStyle);
       setLoadState({ status: "ready" });
     } catch (reason) {
       console.error("Failed to highlight the selected model node.", {
@@ -261,7 +274,7 @@ const SingleModel3DNode = memo(function SingleModel3DNode({
         message: `节点高亮失败：${errorText(reason)}`,
       });
     }
-  }, [assetId, node.id, selectedSceneNodePath]);
+  }, [assetId, node.id, selectedSceneNodePath, selectionStyle]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -368,6 +381,11 @@ const SingleModel3DNode = memo(function SingleModel3DNode({
       let animationMixer: InstanceType<typeof THREE.AnimationMixer> | null = null;
       let animationRoot: Object3D | null = null;
       let selectionHelper: InstanceType<typeof THREE.BoxHelper> | null = null;
+      let selectionRing: Mesh<RingGeometry, MeshBasicMaterial> | null = null;
+      let selectionTarget: Object3D | null = null;
+      const selectionBounds = new THREE.Box3();
+      const selectionSize = new THREE.Vector3();
+      const selectionCenter = new THREE.Vector3();
       let visible = true;
       let lastFrame = performance.now();
 
@@ -461,6 +479,25 @@ const SingleModel3DNode = memo(function SingleModel3DNode({
           modelRoot.rotation.y += deltaSeconds * settingsRef.current.rotationSpeed;
         }
         selectionHelper?.update();
+        if (selectionRing && selectionTarget) {
+          selectionBounds.setFromObject(selectionTarget);
+          if (selectionBounds.isEmpty()) {
+            selectionRing.visible = false;
+          } else {
+            selectionRing.visible = true;
+            selectionBounds.getSize(selectionSize);
+            selectionBounds.getCenter(selectionCenter);
+            const radius = Math.max(selectionSize.x, selectionSize.z, 0.12) * 0.68;
+            const pulse = 1 + Math.sin(now * 0.005) * 0.07;
+            selectionRing.position.set(
+              selectionCenter.x,
+              selectionBounds.min.y + Math.max(selectionSize.y * 0.01, 0.008),
+              selectionCenter.z,
+            );
+            selectionRing.scale.setScalar(radius * pulse);
+            selectionRing.material.opacity = 0.68 + Math.sin(now * 0.005) * 0.16;
+          }
+        }
         controls.update();
         // Bloom writes opaque pixels; preserve 2D compositing for transparent canvases.
         const currentSettings = modelPropsRef.current;
@@ -557,15 +594,23 @@ const SingleModel3DNode = memo(function SingleModel3DNode({
           restoreRuntimeAppearanceState = restoreAppearanceState;
 
           const clearSelectionState = () => {
-            if (!selectionHelper) return;
-            scene.remove(selectionHelper);
-            selectionHelper.geometry.dispose();
-            selectionHelper.material.dispose();
-            selectionHelper = null;
+            if (selectionHelper) {
+              scene.remove(selectionHelper);
+              selectionHelper.geometry.dispose();
+              selectionHelper.material.dispose();
+              selectionHelper = null;
+            }
+            if (selectionRing) {
+              scene.remove(selectionRing);
+              selectionRing.geometry.dispose();
+              selectionRing.material.dispose();
+              selectionRing = null;
+            }
+            selectionTarget = null;
           };
           clearRuntimeSelectionState = clearSelectionState;
 
-          const applySelection = (sceneNodePath: string | null) => {
+          const applySelection = (sceneNodePath: string | null, style: SceneSelectionStyle) => {
             clearSelectionState();
             if (sceneNodePath === null) return;
             const selectedObject = objectsByPath.get(sceneNodePath);
@@ -576,6 +621,26 @@ const SingleModel3DNode = memo(function SingleModel3DNode({
             if (selectedBounds.isEmpty()) {
               // Groups, cameras and bones are valid scene-tree selections even
               // when they do not own renderable geometry.
+              return;
+            }
+            if (style === "none") return;
+            if (style === "runtime") {
+              selectionTarget = selectedObject;
+              selectionRing = new THREE.Mesh(
+                new THREE.RingGeometry(0.76, 1, 64),
+                new THREE.MeshBasicMaterial({
+                  color: 0x35d8ff,
+                  depthTest: false,
+                  depthWrite: false,
+                  opacity: 0.82,
+                  side: THREE.DoubleSide,
+                  toneMapped: false,
+                  transparent: true,
+                }),
+              );
+              selectionRing.rotation.x = -Math.PI / 2;
+              selectionRing.renderOrder = 100000;
+              scene.add(selectionRing);
               return;
             }
             const helper = new THREE.BoxHelper(selectedObject, 0x5ad8ff);
@@ -789,7 +854,7 @@ const SingleModel3DNode = memo(function SingleModel3DNode({
               ...latestSettings.appearanceOverrides,
               ...runtimeAppearanceOverridesRef.current,
             });
-            applySelection(selectedSceneNodePathRef.current);
+            applySelection(selectedSceneNodePathRef.current, selectionStyleRef.current);
             if (gltf.animations.length > 0) {
               animationMixer = new THREE.AnimationMixer(gltf.scene);
               animationRoot = gltf.scene;

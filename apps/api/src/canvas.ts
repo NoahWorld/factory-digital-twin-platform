@@ -48,6 +48,8 @@ export type BasicNodeType =
   | "radio-group"
   | "select";
 export type Model3DNodeType = "model-3d";
+export type Scene3DNodeType = "scene-3d";
+export type AssetDetailNodeType = "asset-detail";
 export type CanvasNodeType =
   | OrnamentNodeType
   | ChartNodeType
@@ -56,7 +58,9 @@ export type CanvasNodeType =
   | PanelFrameNodeType
   | DashboardNodeType
   | BasicNodeType
-  | Model3DNodeType;
+  | Model3DNodeType
+  | Scene3DNodeType
+  | AssetDetailNodeType;
 
 export type CanvasThemeMode = "dark" | "light" | "custom";
 export type CanvasThemePresetId =
@@ -369,6 +373,22 @@ export type Model3DProps = {
   transformOverrides: Record<string, ModelNodeTransform>;
 };
 
+export type Scene3DProps = {
+  sceneProjectId: string | null;
+  interactionEnabled: boolean;
+};
+
+export type AssetDetailProps = {
+  title: string;
+  emptyText: string;
+  showMetadata: boolean;
+  maximumMetrics: number;
+  textColor: string;
+  accentColor: string;
+  fillColor: string;
+  borderColor: string;
+};
+
 export type CanvasNode = {
   id: string;
   type: CanvasNodeType;
@@ -377,7 +397,7 @@ export type CanvasNode = {
   width: number;
   height: number;
   zIndex: number;
-  props: ChartProps | ShapeProps | DecorationProps | PanelFrameProps | DashboardProps | BasicProps | Model3DProps | OrnamentProps;
+  props: ChartProps | ShapeProps | DecorationProps | PanelFrameProps | DashboardProps | BasicProps | Model3DProps | Scene3DProps | AssetDetailProps | OrnamentProps;
   resourceRefs: string[];
   dataBindingRefs: string[];
 };
@@ -492,6 +512,8 @@ const minimumNodeSizes: Record<CanvasNodeType, { width: number; height: number }
   "data-table": { width: 360, height: 220 },
   "event-timeline": { width: 320, height: 240 },
   "model-3d": { width: 360, height: 240 },
+  "scene-3d": { width: 480, height: 320 },
+  "asset-detail": { width: 300, height: 260 },
   "plain-text": { width: 160, height: 48 },
   "text-link": { width: 160, height: 48 },
   image: { width: 160, height: 100 },
@@ -912,6 +934,12 @@ const isPanelFrameNodeType = (value: unknown): value is PanelFrameNodeType =>
 const isModel3DNodeType = (value: unknown): value is Model3DNodeType =>
   value === "model-3d";
 
+const isScene3DNodeType = (value: unknown): value is Scene3DNodeType =>
+  value === "scene-3d";
+
+const isAssetDetailNodeType = (value: unknown): value is AssetDetailNodeType =>
+  value === "asset-detail";
+
 const isDashboardNodeType = (value: unknown): value is DashboardNodeType =>
   value === "metric-card" ||
   value === "radial-gauge" ||
@@ -948,7 +976,9 @@ const isCanvasNodeType = (value: unknown): value is CanvasNodeType =>
   isPanelFrameNodeType(value) ||
   isDashboardNodeType(value) ||
   isBasicNodeType(value) ||
-  isModel3DNodeType(value);
+  isModel3DNodeType(value) ||
+  isScene3DNodeType(value) ||
+  isAssetDetailNodeType(value);
 
 const validateNode = (value: unknown): CanvasNode => {
   const node = requireObject(value, "canvas node");
@@ -959,7 +989,7 @@ const validateNode = (value: unknown): CanvasNode => {
   const type = rawType as CanvasNodeType;
 
   const props = requireObject(node.props, "canvas node props");
-  let validatedProps: ChartProps | ShapeProps | DecorationProps | PanelFrameProps | DashboardProps | BasicProps | Model3DProps | OrnamentProps | null = null;
+  let validatedProps: ChartProps | ShapeProps | DecorationProps | PanelFrameProps | DashboardProps | BasicProps | Model3DProps | Scene3DProps | AssetDetailProps | OrnamentProps | null = null;
 
   if (isOrnamentNodeType(type)) {
     const parsed = parseOrnamentProps(type, props);
@@ -1311,7 +1341,29 @@ const validateNode = (value: unknown): CanvasNode => {
         }
       }
     }
-  } else {
+  } else if (isScene3DNodeType(type)) {
+    validatedProps = {
+      sceneProjectId: props.sceneProjectId === null
+        ? null
+        : requireIdentifier(props.sceneProjectId, "props.sceneProjectId"),
+      interactionEnabled: requireBoolean(props.interactionEnabled, "props.interactionEnabled"),
+    };
+  } else if (isAssetDetailNodeType(type)) {
+    const maximumMetrics = requireNumber(props.maximumMetrics, "props.maximumMetrics", 1, 12);
+    if (!Number.isInteger(maximumMetrics)) {
+      invalid("invalid_canvas_node", "props.maximumMetrics must be an integer.");
+    }
+    validatedProps = {
+      title: requireNonEmptyString(props.title, "props.title", 120),
+      emptyText: requireString(props.emptyText, "props.emptyText", 200),
+      showMetadata: requireBoolean(props.showMetadata, "props.showMetadata"),
+      maximumMetrics,
+      textColor: requireColor(props.textColor, "props.textColor"),
+      accentColor: requireColor(props.accentColor, "props.accentColor"),
+      fillColor: requireColor(props.fillColor, "props.fillColor"),
+      borderColor: requireColor(props.borderColor, "props.borderColor"),
+    };
+  } else if (isModel3DNodeType(type)) {
     const presentation = parseModelPresentation(props.presentation);
     if (!presentation.ok) throw new AppError(400, "invalid_model_presentation", presentation.message);
     validatedProps = {
@@ -1362,6 +1414,8 @@ const validateNode = (value: unknown): CanvasNode => {
       appearanceOverrides: requireModelNodeAppearances(props.appearanceOverrides),
       transformOverrides: requireModelNodeTransforms(props.transformOverrides),
     };
+  } else {
+    invalid("unsupported_canvas_node_type", `Canvas node type ${type} does not have a property validator.`);
   }
 
   const acceptedProps = validatedProps;
@@ -1390,6 +1444,9 @@ const validateNode = (value: unknown): CanvasNode => {
   const dataBindingRefs = requireStringArray(node.dataBindingRefs, "node.dataBindingRefs", true);
   if ((isOrnamentNodeType(type) || isAnimatedDecorationNodeType(type)) && (resourceRefs.length > 0 || dataBindingRefs.length > 0)) {
     invalid("invalid_canvas_node", "Title, local icon, and animated decoration components do not accept external resources or data bindings.");
+  }
+  if ((isScene3DNodeType(type) || isAssetDetailNodeType(type)) && (resourceRefs.length > 0 || dataBindingRefs.length > 0)) {
+    invalid("invalid_canvas_node", "3D scene references and asset detail components do not accept resource or data-binding references.");
   }
   if (type === "model-3d") {
     const modelProps = acceptedProps as Model3DProps;
@@ -1544,6 +1601,36 @@ export const applyCanvasPatch = async (
   userId: string,
   patch: CanvasPatch,
 ): Promise<CanvasDocument> => {
+  const sceneProjectIds = [...new Set(
+    patch.upsertNodes
+      .filter((node) => node.type === "scene-3d")
+      .map((node) => (node.props as Scene3DProps).sceneProjectId)
+      .filter((sceneProjectId): sceneProjectId is string => sceneProjectId !== null),
+  )];
+  for (const sceneProjectId of sceneProjectIds) {
+    const referencedProject = await env.DB.prepare(
+      `SELECT p.id
+       FROM projects p
+       LEFT JOIN project_members pm ON pm.project_id = p.id AND pm.user_id = ?
+       WHERE p.id = ?
+         AND p.project_type = '3d'
+         AND (
+           pm.user_id IS NOT NULL
+           OR EXISTS (
+             SELECT 1 FROM user_roles ur
+             WHERE ur.user_id = ? AND ur.role = 'platform_admin'
+           )
+         )`,
+    ).bind(userId, sceneProjectId, userId).first<{ id: string }>();
+    if (!referencedProject) {
+      throw new AppError(
+        400,
+        "invalid_scene_project_reference",
+        `Referenced 3D project ${sceneProjectId} does not exist or is not accessible to this user.`,
+      );
+    }
+  }
+
   const modelNodes = patch.upsertNodes.filter((node) => node.type === "model-3d");
   const modelAssetRefs = [...new Set(modelNodes.flatMap((node) => node.resourceRefs))];
   const duplicateNamesByAssetId = new Map<string, Set<string>>();

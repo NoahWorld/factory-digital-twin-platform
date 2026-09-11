@@ -24,6 +24,7 @@ export const BatchModel3DNode = memo(function BatchModel3DNode({
   onSceneNodeSelect,
   projectId,
   runtimeAppearanceOverrides = {},
+  selectionStyle = editable ? "editor" : "runtime",
   selectedModelInstanceId = null,
   selectedSceneNodePath,
 }: Model3DNodeProps) {
@@ -56,6 +57,7 @@ export const BatchModel3DNode = memo(function BatchModel3DNode({
   const input: SceneInput | null = parsed.ok ? {
     instances, settings: parsed.value, appearanceOverrides: runtimeAppearanceOverrides,
     selectedPath: selectedSceneNodePath, selectedInstanceId: selectedModelInstanceId,
+    selectionStyle,
     controlsEnabled: cameraControlsEnabled ?? !editable,
     instanceTransformMode,
   } : null;

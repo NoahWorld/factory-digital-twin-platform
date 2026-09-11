@@ -19,6 +19,7 @@
     "test:workshop-motion": "node scripts/test-workshop-motion.mjs",
     "test:models": "node scripts/test-builtin-models.mjs",
     "smoke:models": "node scripts/smoke-builtin-models.mjs",
-    "test:scene-runtime": "node scripts/test-scene-runtime.mjs"
+    "test:scene-runtime": "node scripts/test-scene-runtime.mjs",
+    "test:composable-dashboard": "node scripts/test-composable-dashboard.mjs"
   }
 }

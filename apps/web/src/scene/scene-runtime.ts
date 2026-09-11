@@ -22,12 +22,14 @@ type ColorMaterial = Material & { color?: { set: (value: string) => unknown }; m
 export type SceneStatus = { status: "empty" | "loading" | "ready" } | { status: "error"; message: string };
 export type NavigationStatus = { mode: "orbit" | "loading" | "walk"; message?: string } | { mode: "error"; message: string };
 export type SceneSnapshot = { scene: ModelSceneSnapshot; animationCount: number };
+export type SceneSelectionStyle = "editor" | "runtime" | "none";
 export type SceneInput = {
   instances: ModelAssetInstance[];
   settings: Model3DProps;
   appearanceOverrides: Record<string, ModelNodeAppearance>;
   selectedPath: string | null;
   selectedInstanceId: string | null;
+  selectionStyle: SceneSelectionStyle;
   controlsEnabled: boolean;
   instanceTransformMode: InstanceTransformMode | null;
 };
@@ -136,6 +138,11 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
     let primaryPathsByObject = new Map<Object3D, string>();
     let primaryObjectsByPath = new Map<string, Object3D>();
     let selectionHelper: InstanceType<typeof THREE.BoxHelper> | null = null;
+    let selectionRing: THREE.Mesh<THREE.RingGeometry, THREE.MeshBasicMaterial> | null = null;
+    let selectionTarget: Object3D | null = null;
+    const selectionBounds = new THREE.Box3();
+    const selectionSize = new THREE.Vector3();
+    const selectionCenter = new THREE.Vector3();
     let transformRecord: InstanceRecord | null = null;
     let transformDragging = false;
     let modelRadius: number | null = null;
@@ -219,11 +226,19 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
     };
 
     const clearSelection = () => {
-      if (!selectionHelper) return;
-      scene.remove(selectionHelper);
-      selectionHelper.geometry.dispose();
-      selectionHelper.material.dispose();
-      selectionHelper = null;
+      if (selectionHelper) {
+        scene.remove(selectionHelper);
+        selectionHelper.geometry.dispose();
+        selectionHelper.material.dispose();
+        selectionHelper = null;
+      }
+      if (selectionRing) {
+        scene.remove(selectionRing);
+        selectionRing.geometry.dispose();
+        selectionRing.material.dispose();
+        selectionRing = null;
+      }
+      selectionTarget = null;
     };
 
     const detachTransformControl = () => {
@@ -553,7 +568,24 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
       updateSceneBounds();
     };
 
-    const applySelection = (path: string | null, instanceId: string | null) => {
+    const updateRuntimeSelectionRing = (now: number) => {
+      if (!selectionRing || !selectionTarget) return;
+      selectionBounds.setFromObject(selectionTarget);
+      if (selectionBounds.isEmpty()) {
+        selectionRing.visible = false;
+        return;
+      }
+      selectionRing.visible = true;
+      selectionBounds.getSize(selectionSize);
+      selectionBounds.getCenter(selectionCenter);
+      const radius = Math.max(selectionSize.x, selectionSize.z, 0.12) * 0.68;
+      const pulse = 1 + Math.sin(now * 0.005) * 0.07;
+      selectionRing.position.set(selectionCenter.x, selectionBounds.min.y + Math.max(selectionSize.y * 0.01, 0.008), selectionCenter.z);
+      selectionRing.scale.setScalar(radius * pulse);
+      selectionRing.material.opacity = 0.68 + Math.sin(now * 0.005) * 0.16;
+    };
+
+    const applySelection = (path: string | null, instanceId: string | null, style: SceneSelectionStyle) => {
       clearSelection();
       let selected: Object3D | undefined;
       if (path !== null) {
@@ -563,15 +595,35 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
         selected = records.find((record) => record.id === instanceId)?.wrapper;
         if (!selected) throw new Error(`场景中找不到当前模型实例：${instanceId}`);
       }
-      if (!selected) return;
+      if (!selected || style === "none") return;
       if (new THREE.Box3().setFromObject(selected).isEmpty()) return;
-      selectionHelper = new THREE.BoxHelper(selected, 0x5ad8ff);
-      selectionHelper.material.depthTest = false;
-      selectionHelper.material.transparent = true;
-      selectionHelper.material.opacity = 0.95;
-      selectionHelper.material.toneMapped = false;
-      selectionHelper.renderOrder = 100000;
-      scene.add(selectionHelper);
+      if (style === "editor") {
+        selectionHelper = new THREE.BoxHelper(selected, 0x5ad8ff);
+        selectionHelper.material.depthTest = false;
+        selectionHelper.material.transparent = true;
+        selectionHelper.material.opacity = 0.95;
+        selectionHelper.material.toneMapped = false;
+        selectionHelper.renderOrder = 100000;
+        scene.add(selectionHelper);
+        return;
+      }
+      selectionTarget = selected;
+      selectionRing = new THREE.Mesh(
+        new THREE.RingGeometry(0.76, 1, 64),
+        new THREE.MeshBasicMaterial({
+          color: 0x35d8ff,
+          depthTest: false,
+          depthWrite: false,
+          opacity: 0.82,
+          side: THREE.DoubleSide,
+          toneMapped: false,
+          transparent: true,
+        }),
+      );
+      selectionRing.rotation.x = -Math.PI / 2;
+      selectionRing.renderOrder = 100000;
+      scene.add(selectionRing);
+      updateRuntimeSelectionRing(performance.now());
     };
 
     const pick = createPickingService(camera, renderer.domElement);
@@ -601,6 +653,7 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
       });
       if (settings.autoRotate) rotationPivot.rotation.y += deltaSeconds * settings.rotationSpeed;
       selectionHelper?.update();
+      updateRuntimeSelectionRing(now);
       if (walk) {
         try { walk.controls.update(Math.max(0, frameMs / 1000)); }
         catch (reason) { navigationError(reason); }
@@ -698,8 +751,8 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
         if (instancesChanged) applyInstances(next.instances);
         if (settingsChanged) applySceneSettings(next.settings);
         if (modelChanged) applyModelState(next.settings);
-        if (instancesChanged || modelChanged || appliedInput?.selectedPath !== next.selectedPath || appliedInput?.selectedInstanceId !== next.selectedInstanceId) {
-          applySelection(next.selectedPath, next.selectedInstanceId);
+        if (instancesChanged || modelChanged || appliedInput?.selectedPath !== next.selectedPath || appliedInput?.selectedInstanceId !== next.selectedInstanceId || appliedInput?.selectionStyle !== next.selectionStyle) {
+          applySelection(next.selectedPath, next.selectedInstanceId, next.selectionStyle);
         }
         syncTransformControl(next);
         if (!cameraInitialized) fitCameraToScene();

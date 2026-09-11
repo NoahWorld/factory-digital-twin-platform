@@ -28,6 +28,8 @@ export type DecorationNodeType =
   | AnimatedDecorationNodeType;
 export type PanelFrameNodeType = "panel-frame";
 export type Model3DNodeType = "model-3d";
+export type Scene3DNodeType = "scene-3d";
+export type AssetDetailNodeType = "asset-detail";
 export type DashboardNodeType =
   | "metric-card"
   | "radial-gauge"
@@ -55,6 +57,8 @@ export type CanvasNodeType =
   | DecorationNodeType
   | PanelFrameNodeType
   | Model3DNodeType
+  | Scene3DNodeType
+  | AssetDetailNodeType
   | DashboardNodeType
   | BasicNodeType;
 
@@ -404,6 +408,22 @@ export type Model3DProps = {
   transformOverrides: Record<string, ModelNodeTransform>;
 };
 
+export type Scene3DProps = {
+  sceneProjectId: string | null;
+  interactionEnabled: boolean;
+};
+
+export type AssetDetailProps = {
+  title: string;
+  emptyText: string;
+  showMetadata: boolean;
+  maximumMetrics: number;
+  textColor: string;
+  accentColor: string;
+  fillColor: string;
+  borderColor: string;
+};
+
 export type CanvasNode = {
   id: string;
   type: CanvasNodeType;
@@ -696,6 +716,26 @@ const model3DDefaults: Record<Model3DNodeType, Model3DProps> = {
   },
 };
 
+const scene3DDefaults: Record<Scene3DNodeType, Scene3DProps> = {
+  "scene-3d": {
+    sceneProjectId: null,
+    interactionEnabled: true,
+  },
+};
+
+const assetDetailDefaults: Record<AssetDetailNodeType, AssetDetailProps> = {
+  "asset-detail": {
+    title: "设备实时数据",
+    emptyText: "请点击 3D 场景中的设备",
+    showMetadata: true,
+    maximumMetrics: 6,
+    textColor: "#eafaff",
+    accentColor: "#55d8ff",
+    fillColor: "#0b2638",
+    borderColor: "#286783",
+  },
+};
+
 const dashboardDefaults: Record<DashboardNodeType, DashboardProps> = {
   "metric-card": {
     title: "设备在线率",
@@ -937,6 +977,8 @@ export const componentLabels: Record<CanvasNodeType, string> = {
   "icon-background": "小图标背景",
   "panel-frame": "科技面板",
   "model-3d": "3D 模型",
+  "scene-3d": "3D 场景",
+  "asset-detail": "设备数据",
   "metric-card": "指标卡",
   "radial-gauge": "环形进度",
   "progress-list": "进度排行",
@@ -981,6 +1023,8 @@ export const defaultNodeSizes: Record<CanvasNodeType, { width: number; height: n
   "icon-background": { width: 96, height: 96 },
   "panel-frame": { width: 560, height: 340 },
   "model-3d": { width: 720, height: 460 },
+  "scene-3d": { width: 980, height: 620 },
+  "asset-detail": { width: 420, height: 400 },
   "metric-card": { width: 280, height: 150 },
   "radial-gauge": { width: 320, height: 300 },
   "progress-list": { width: 420, height: 320 },
@@ -1025,6 +1069,8 @@ export const minimumNodeSizes: Record<CanvasNodeType, { width: number; height: n
   "icon-background": { width: 64, height: 64 },
   "panel-frame": { width: 260, height: 180 },
   "model-3d": { width: 360, height: 240 },
+  "scene-3d": { width: 480, height: 320 },
+  "asset-detail": { width: 300, height: 260 },
   "metric-card": { width: 200, height: 120 },
   "radial-gauge": { width: 240, height: 220 },
   "progress-list": { width: 280, height: 220 },
@@ -1078,6 +1124,12 @@ export const isPanelFrameNodeType = (value: string): value is PanelFrameNodeType
 
 export const isModel3DNodeType = (value: string): value is Model3DNodeType =>
   value === "model-3d";
+
+export const isScene3DNodeType = (value: string): value is Scene3DNodeType =>
+  value === "scene-3d";
+
+export const isAssetDetailNodeType = (value: string): value is AssetDetailNodeType =>
+  value === "asset-detail";
 
 export const isDashboardNodeType = (value: string): value is DashboardNodeType =>
   value === "metric-card" ||
@@ -1154,7 +1206,11 @@ export const createCanvasNode = (
                   ? { ...defaults, options: defaults.options.map((option) => ({ ...option })) }
                   : { ...defaults };
               })()
-            : { ...model3DDefaults[type] };
+            : isModel3DNodeType(type)
+              ? { ...model3DDefaults[type] }
+              : isScene3DNodeType(type)
+                ? { ...scene3DDefaults[type] }
+                : { ...assetDetailDefaults[type] };
 
   return {
     id: crypto.randomUUID(),
@@ -1177,6 +1233,8 @@ export const isCanvasNodeType = (value: string): value is CanvasNodeType =>
   isDecorationNodeType(value) ||
   isPanelFrameNodeType(value) ||
   isModel3DNodeType(value) ||
+  isScene3DNodeType(value) ||
+  isAssetDetailNodeType(value) ||
   isDashboardNodeType(value) ||
   isBasicNodeType(value);
 
@@ -1592,6 +1650,77 @@ export type DecorationPropsResult =
 
 const isHexColor = (value: unknown): value is string =>
   typeof value === "string" && /^#[0-9a-fA-F]{6}$/.test(value);
+
+export type Scene3DPropsResult =
+  | { ok: true; value: Scene3DProps }
+  | { ok: false; message: string };
+
+export const parseScene3DProps = (props: Record<string, unknown>): Scene3DPropsResult => {
+  if (
+    props.sceneProjectId !== null
+    && (
+      typeof props.sceneProjectId !== "string"
+      || !/^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,119}$/.test(props.sceneProjectId)
+    )
+  ) {
+    return { ok: false, message: "sceneProjectId 必须为空或合法的 3D 项目 ID" };
+  }
+  if (typeof props.interactionEnabled !== "boolean") {
+    return { ok: false, message: "interactionEnabled 必须是布尔值" };
+  }
+  return {
+    ok: true,
+    value: {
+      sceneProjectId: props.sceneProjectId,
+      interactionEnabled: props.interactionEnabled,
+    },
+  };
+};
+
+export type AssetDetailPropsResult =
+  | { ok: true; value: AssetDetailProps }
+  | { ok: false; message: string };
+
+export const parseAssetDetailProps = (props: Record<string, unknown>): AssetDetailPropsResult => {
+  if (typeof props.title !== "string" || props.title.trim().length === 0 || props.title.length > 120) {
+    return { ok: false, message: "title 必须是 1–120 个字符的文本" };
+  }
+  if (typeof props.emptyText !== "string" || props.emptyText.length > 200) {
+    return { ok: false, message: "emptyText 必须是不超过 200 个字符的文本" };
+  }
+  if (typeof props.showMetadata !== "boolean") {
+    return { ok: false, message: "showMetadata 必须是布尔值" };
+  }
+  if (
+    typeof props.maximumMetrics !== "number"
+    || !Number.isInteger(props.maximumMetrics)
+    || props.maximumMetrics < 1
+    || props.maximumMetrics > 12
+  ) {
+    return { ok: false, message: "maximumMetrics 必须是 1–12 之间的整数" };
+  }
+  if (
+    !isHexColor(props.textColor)
+    || !isHexColor(props.accentColor)
+    || !isHexColor(props.fillColor)
+    || !isHexColor(props.borderColor)
+  ) {
+    return { ok: false, message: "所有颜色字段都必须是六位十六进制颜色" };
+  }
+  return {
+    ok: true,
+    value: {
+      title: props.title,
+      emptyText: props.emptyText,
+      showMetadata: props.showMetadata,
+      maximumMetrics: props.maximumMetrics,
+      textColor: props.textColor,
+      accentColor: props.accentColor,
+      fillColor: props.fillColor,
+      borderColor: props.borderColor,
+    },
+  };
+};
 
 export const parseDecorationProps = (
   type: DecorationNodeType,

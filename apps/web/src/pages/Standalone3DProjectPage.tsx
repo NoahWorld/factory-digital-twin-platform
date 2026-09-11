@@ -648,6 +648,7 @@ export default function Standalone3DProjectPage({ mode, projectId }: Standalone3
       onSceneNodeSelect={ignoreSceneNodeSelection}
       projectId={projectId}
       runtimeControlsEnabled={false}
+      selectionStyle={mode === "edit" ? "editor" : "runtime"}
       selectedModelInstanceId={selectedInstanceId}
       selectedSceneNodePath={null}
     />

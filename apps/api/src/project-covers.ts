@@ -1,6 +1,7 @@
 import { isOrnamentNodeType } from "../../../shared/canvas-ornaments";
 import { renderOrnamentSvg } from "../../../shared/ornament-svg";
 import {
+  type AssetDetailProps,
   type BasicAppearanceProps,
   type AlarmListProps,
   type ButtonProps,
@@ -32,7 +33,7 @@ import {
 const COVER_WIDTH = 480;
 const COVER_HEIGHT = 270;
 const MAX_RENDERED_NODES = 160;
-const COVER_RENDERER_VERSION = 5;
+const COVER_RENDERER_VERSION = 6;
 
 const escapeXml = (value: string): string =>
   value.replace(/[&<>"']/gu, (character) => ({
@@ -99,6 +100,46 @@ const renderPanelFrame = (node: CanvasNode, canvas: CanvasDocument): string => {
     `<line x1="${(box.x + 14).toFixed(2)}" x2="${(box.x + box.width - 7).toFixed(2)}" y1="${(box.y + headerHeight).toFixed(2)}" y2="${(box.y + headerHeight).toFixed(2)}" stroke="${border}" stroke-width="0.8"/>`,
   ].join("") : "";
   return outline + corners + header;
+};
+
+const renderSceneReference = (node: CanvasNode, canvas: CanvasDocument): string => {
+  const box = scaledBox(node, canvas);
+  const accent = safeColor(canvas.theme.accentColor, "#5ad8ff");
+  const background = safeColor(canvas.theme.backgroundColor, "#071525");
+  const gridSize = Math.max(6, Math.min(box.width, box.height) / 10);
+  return [
+    panel(node, canvas, background, accent, 0.96),
+    `<pattern id="scene-grid-${escapeXml(node.id)}" width="${gridSize.toFixed(2)}" height="${gridSize.toFixed(2)}" patternUnits="userSpaceOnUse"><path d="M ${gridSize.toFixed(2)} 0 H 0 V ${gridSize.toFixed(2)}" fill="none" stroke="${accent}" stroke-width="0.4" stroke-opacity="0.24"/></pattern>`,
+    `<rect x="${box.x.toFixed(2)}" y="${box.y.toFixed(2)}" width="${box.width.toFixed(2)}" height="${box.height.toFixed(2)}" fill="url(#scene-grid-${escapeXml(node.id)})"/>`,
+    `<path d="M ${(box.x + box.width * 0.28).toFixed(2)} ${(box.y + box.height * 0.68).toFixed(2)} L ${(box.x + box.width * 0.5).toFixed(2)} ${(box.y + box.height * 0.42).toFixed(2)} L ${(box.x + box.width * 0.72).toFixed(2)} ${(box.y + box.height * 0.68).toFixed(2)} Z" fill="${accent}" fill-opacity="0.2" stroke="${accent}" stroke-opacity="0.68"/>`,
+    `<text x="${(box.x + 8).toFixed(2)}" y="${(box.y + 13).toFixed(2)}" fill="${accent}" font-size="7" font-weight="700">3D SCENE</text>`,
+  ].join("");
+};
+
+const renderAssetDetail = (node: CanvasNode, canvas: CanvasDocument): string => {
+  const props = node.props as AssetDetailProps;
+  const box = scaledBox(node, canvas);
+  const fill = safeColor(props.fillColor, canvas.theme.surfaceColor);
+  const border = safeColor(props.borderColor, canvas.theme.borderColor);
+  const accent = safeColor(props.accentColor, canvas.theme.accentColor);
+  const text = safeColor(props.textColor, canvas.theme.textColor);
+  const cards = [0, 1, 2, 3].map((index) => {
+    const column = index % 2;
+    const row = Math.floor(index / 2);
+    const width = Math.max(1, (box.width - 22) / 2);
+    const height = Math.max(1, (box.height - 44) / 2);
+    const x = box.x + 7 + column * (width + 8);
+    const y = box.y + 27 + row * (height + 6);
+    return `<rect x="${x.toFixed(2)}" y="${y.toFixed(2)}" width="${width.toFixed(2)}" height="${height.toFixed(2)}" rx="2" fill="${accent}" fill-opacity="0.08" stroke="${border}" stroke-opacity="0.5"/>`;
+  }).join("");
+  return [
+    panel(node, canvas, fill, border, 0.94),
+    `<text x="${(box.x + 8).toFixed(2)}" y="${(box.y + 15).toFixed(2)}" fill="${accent}" font-size="6" font-weight="700">${escapeXml(truncate(props.title, 38))}</text>`,
+    `<line x1="${(box.x + 7).toFixed(2)}" y1="${(box.y + 21).toFixed(2)}" x2="${(box.x + box.width - 7).toFixed(2)}" y2="${(box.y + 21).toFixed(2)}" stroke="${border}" stroke-opacity="0.6"/>`,
+    cards,
+    `<circle cx="${(box.x + box.width - 12).toFixed(2)}" cy="${(box.y + 12).toFixed(2)}" r="2.5" fill="${accent}"/>`,
+    `<text x="${(box.x + 8).toFixed(2)}" y="${(box.y + box.height - 6).toFixed(2)}" fill="${text}" fill-opacity="0.55" font-size="4.5">RUNTIME ASSET DATA</text>`,
+  ].join("");
 };
 
 const renderShape = (node: CanvasNode, canvas: CanvasDocument): string => {
@@ -482,6 +523,8 @@ const renderNode = (node: CanvasNode, canvas: CanvasDocument): string => {
     || node.type === "event-timeline"
   ) return renderDashboard(node, canvas);
   if (node.type === "model-3d") return renderModel(node, canvas);
+  if (node.type === "scene-3d") return renderSceneReference(node, canvas);
+  if (node.type === "asset-detail") return renderAssetDetail(node, canvas);
   if (
     node.type === "plain-text"
     || node.type === "text-link"

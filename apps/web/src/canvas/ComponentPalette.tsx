@@ -11,6 +11,7 @@ type PaletteGroup = {
 
 const groups: PaletteGroup[] = [
   { id: "model", label: "3D 场景", items: [
+      { type: "scene-3d", description: "引用已搭建的独立场景", icon: "◫" },
       { type: "model-3d", description: "导入 GLB 或 GLTF", icon: "⬡" },
   ] },
   { id: "chart", label: "图表", items: [
@@ -34,6 +35,7 @@ const groups: PaletteGroup[] = [
       { type: "select", description: "选项选择", icon: "⌄" },
   ] },
   { id: "dashboard", label: "数据展示", items: [
+      { type: "asset-detail", description: "展示当前选中设备的实时数据", icon: "⌖" },
       { type: "metric-card", description: "核心数字与摘要", icon: "#" },
       { type: "radial-gauge", description: "完成率与消耗率", icon: "◉" },
       { type: "progress-list", description: "多行进度与排行", icon: "≡" },
