@@ -1,4 +1,5 @@
 import { interactionAssetIds, ruleValues } from "../../../shared/interactions";
+import type { ModelAnimation } from "../../../shared/model-inspection";
 import { AppError, type AppEnv, type DatabaseResult } from "./auth";
 import { DEFAULT_THEME, validateNode } from "../../../shared/canvas-schema";
 import { applyProjectPatch, emptyProjectDefinition, parseProjectDefinition, type ProjectDefinition, type ProjectPatch } from "../../../shared/project-definition";
@@ -130,15 +131,24 @@ async function validateSceneResources(env: AppEnv, projectId: string, project: P
   const assets = await env.DB.prepare("SELECT id,asset_key FROM assets WHERE project_id=?").bind(projectId).all<{ id: string; asset_key: string }>();
   const assetRecords = new Map(assets.results.map((asset) => [asset.asset_key, asset.id]));
   const objects = new Map<string, Set<string>>();
+  const clips = new Map<string,ModelAnimation[]>();
+  const nativeAssets = new Set(project.scenes.flatMap((scene) => (scene.motions ?? []).flatMap((motion) => motion.tracks.flatMap((track) => track.type === "clip" ? [scene.instances.find((instance) => instance.id === track.target.instanceId)!.modelAssetId] : []))));
   for (const id of new Set(project.scenes.flatMap((scene) => scene.instances.map((instance) => instance.modelAssetId)))) {
     const model = await env.DB.prepare("SELECT inspection_json FROM model_assets WHERE project_id=? AND id=?").bind(projectId,id).first<{ inspection_json: string }>();
     if (!model) throw new AppError(400, "invalid_scene_resource", `模型资源 ${id} 不属于当前项目。`);
     let inspection = JSON.parse(model.inspection_json);
     if (inspection.reportVersion !== 2 || !Array.isArray(inspection.objects)) throw new AppError(400, "model_inspection_required", "请先为旧模型补充资源检查，再添加到可复用场景。");
-    if (inspection.objectManifestVersion !== 2 || inspection.objects.some((object: { inDefaultScene?: boolean }) => typeof object.inDefaultScene !== "boolean")) inspection = (await inspectStoredModelAsset(env, projectId, id)).inspection;
+    if (inspection.objectManifestVersion !== 2 || inspection.objects.some((object: { inDefaultScene?: boolean }) => typeof object.inDefaultScene !== "boolean") || (nativeAssets.has(id) && inspection.animationManifestVersion !== 1)) inspection = (await inspectStoredModelAsset(env, projectId, id)).inspection;
     objects.set(id, new Set(inspection.objects.filter((object: { inDefaultScene: boolean }) => object.inDefaultScene).map((object: { objectId: string }) => object.objectId)));
+    clips.set(id,inspection.clips ?? []);
   }
   for (const scene of project.scenes) {
+    for (const motion of scene.motions ?? []) for (const track of motion.tracks) if (track.type === "clip") {
+      const instance = scene.instances.find((instance) => instance.id === track.target.instanceId)!;
+      const clip = clips.get(instance.modelAssetId)?.find((clip) => clip.clipId === track.clipId);
+      if (!clip || !clip.inDefaultScene) throw new AppError(400,"invalid_motion_clip",`动画「${motion.name}」引用的原生片段不属于当前模型的可运行场景，请修复片段映射。`);
+      if (track.keyframes.some((frame) => frame.value > clip.duration + 1e-6)) throw new AppError(400,"invalid_motion_clip_time",`动画「${motion.name}」的原生片段时间超出源文件范围。`);
+    }
     for (const motion of scene.motions ?? []) for (const track of motion.tracks) if (track.type === "object" && track.target.objectId !== null) {
       const instance = scene.instances.find((instance) => instance.id === track.target.instanceId)!;
       if (!objects.get(instance.modelAssetId)?.has(track.target.objectId)) throw new AppError(400, "invalid_motion_object", `动画「${motion.name}」引用的对象不在当前模型版本中，请修复映射。`);

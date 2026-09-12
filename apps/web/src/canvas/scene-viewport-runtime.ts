@@ -10,7 +10,7 @@ import { acquireModelResource, disposeObjectResources } from "./model-resource-c
 import { createModelInstance, type ObjectTarget, type ModelInstanceController } from "./model-instance";
 import { ViewportResources } from "./viewport-resources";
 import { ResourcePool } from "../../../../shared/resource-pool";
-import type { ModelObject } from "../../../../shared/model-inspection";
+import type { ModelInspection } from "../../../../shared/model-inspection";
 import { SceneMotionPlayer } from "../../../../shared/scene-motion-player";
 import type { SceneMotionTrack } from "../../../../shared/scene-motion";
 
@@ -22,7 +22,7 @@ export type SceneViewportOptions = {
   onState: (state: ViewportState) => void;
   onSnapshot: (instanceId: string, snapshot: ModelSceneSnapshot | null) => void;
 };
-type RecordEntry = { assetId: string; lease: ReturnType<typeof acquireModelResource>; manifestLease?: ReturnType<ResourcePool<ModelObject[]>["acquire"]>; controller?: ModelInstanceController; releaseResources?: () => void; error?: string; signature?: string; pending: boolean; cancelled: boolean };
+type RecordEntry = { assetId: string; lease: ReturnType<typeof acquireModelResource>; manifestLease?: ReturnType<ResourcePool<ModelInspection>["acquire"]>; manifestKey?: string; controller?: ModelInstanceController; releaseResources?: () => void; error?: string; signature?: string; pending: boolean; cancelled: boolean };
 const diagnostics = new Map<string, () => unknown>();
 const objectInspections = new Map<string, (target: ObjectTarget) => unknown>();
 export const sceneViewportDiagnostics = () => [...diagnostics.values()].map((read) => read());
@@ -38,10 +38,11 @@ export function createSceneViewport(container: HTMLElement, initial: SceneViewpo
   renderer.outputColorSpace = THREE.SRGBColorSpace; renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
   const entries = new Map<string, RecordEntry>();
   const resources = new ViewportResources();
-  const manifests = new ResourcePool<ModelObject[]>(async (assetId, signal) => {
+  const manifests = new ResourcePool<ModelInspection>(async (key, signal) => {
+    const assetId = (JSON.parse(key) as [string,boolean])[0];
     const result = await request<{ modelAsset: ModelAsset }>(`${modelAssetsPath(initial.projectId)}/${encodeURIComponent(assetId)}`, { signal });
     if (!result.modelAsset.inspection.objects) throw new Error("模型缺少稳定对象清单，请补充资源检查。");
-    return result.modelAsset.inspection.objects;
+    return result.modelAsset.inspection;
   }, () => {});
   const selections = new Map<THREE.Object3D, THREE.BoxHelper>();
   let selectionObject: THREE.Object3D | null = null;
@@ -49,15 +50,16 @@ export function createSceneViewport(container: HTMLElement, initial: SceneViewpo
   let configurationKey = JSON.stringify(initial.scene), configurationGeneration = 0;
   const readiness = new Set<() => void>();
   const pendingMotions = new Map<string,AbortController>();
-  const controllerFor = (track: Extract<SceneMotionTrack, { type: "object" }>) => {
+  const controllerFor = (track: Exclude<SceneMotionTrack, { type: "camera" }>) => {
     const controller = entries.get(track.target.instanceId)?.controller;
     if (!controller) throw new Error("动画目标模型尚未就绪。"); return controller;
   };
   const cameraVector = (property: "position" | "target") => property === "position" ? camera.position : controls.target;
   const motionPlayer = new SceneMotionPlayer({
-    read: (track) => track.type === "camera" ? cameraVector(track.property).toArray() : controllerFor(track).readMotion(track.target.objectId,track.property),
+    read: (track) => track.type === "camera" ? cameraVector(track.property).toArray() : track.type === "clip" ? controllerFor(track).readNativeClip(track.clipId,track.keyframes.map((frame) => frame.value)) : controllerFor(track).readMotion(track.target.objectId,track.property),
     write: (track,value) => {
       if (track.type === "camera") cameraVector(track.property).fromArray(value as number[]);
+      else if (track.type === "clip") controllerFor(track).writeNativeClip(track.clipId,value as number);
       else controllerFor(track).writeMotion(track.target.objectId,track.property,value);
     },
     restore: (samples) => {
@@ -145,19 +147,21 @@ export function createSceneViewport(container: HTMLElement, initial: SceneViewpo
     controls.autoRotate = settings.autoRotate; controls.autoRotateSpeed = settings.rotationSpeed * 60 / (2 * Math.PI);
     // Acquire replacements before releasing old leases, keeping shared immutable resources alive.
     for (const definition of next.scene.instances) {
+      const requiresClips = (next.scene.motions ?? []).some((motion) => motion.tracks.some((track) => track.type === "clip" && track.target.instanceId === definition.id));
+      const manifestKey = JSON.stringify([definition.modelAssetId,requiresClips]);
       const previous = entries.get(definition.id);
-      if (previous?.assetId === definition.modelAssetId && oldLegacy === next.legacyNames) {
+      if (previous?.assetId === definition.modelAssetId && previous.manifestKey === manifestKey && oldLegacy === next.legacyNames) {
         if (previous.controller) { try { apply(definition.id, previous); previous.error = undefined; } catch (reason) { previous.error = String(reason); } }
         continue;
       }
-      const entry: RecordEntry = { assetId: definition.modelAssetId, lease: acquireModelResource(modelAssetContentUrl(next.projectId, definition.modelAssetId)), manifestLease: next.legacyNames ? undefined : manifests.acquire(definition.modelAssetId), pending: true, cancelled: false };
+      const entry: RecordEntry = { assetId: definition.modelAssetId, manifestKey, lease: acquireModelResource(modelAssetContentUrl(next.projectId, definition.modelAssetId)), manifestLease: next.legacyNames ? undefined : manifests.acquire(manifestKey), pending: true, cancelled: false };
       entries.set(definition.id, entry);
       if (previous) release(definition.id, previous);
-      const manifest = entry.manifestLease?.ready ?? Promise.resolve([]);
-      void Promise.all([entry.lease.ready, manifest]).then(([model, objects]) => {
+      const manifest = entry.manifestLease?.ready ?? Promise.resolve({ objects: [],clips: [] } as unknown as ModelInspection);
+      void Promise.all([entry.lease.ready, manifest]).then(([model, inspection]) => {
         if (disposed || entry.cancelled) return;
         entry.releaseResources = resources.acquire(model.scene);
-        entry.controller = createModelInstance(definition, model, objects, next.legacyNames); content.add(entry.controller.root);
+        entry.controller = createModelInstance(definition, model, inspection.objects ?? [], next.legacyNames, inspection.clips ?? []); content.add(entry.controller.root);
         apply(definition.id, entry); entry.pending = false;
         options.onSnapshot(definition.id, entry.controller.snapshot); updateSelection(); publish();
       }).catch((reason) => {
@@ -189,7 +193,7 @@ export function createSceneViewport(container: HTMLElement, initial: SceneViewpo
   });
   diagnostics.set(id, () => ({ id, sceneId: options.scene.id, instances: [...entries.values()].filter((entry) => entry.controller).length,
     ownedResources: resources.snapshot(), manifests: manifests.snapshot(), motion: motionPlayer.snapshot(), frame: renderer.info.render.frame,
-    instanceStates: [...entries].map(([instanceId, entry]) => ({ instanceId, position: entry.controller?.root.position.toArray(), visible: entry.controller?.root.visible, materialColors: entry.controller?.materialColors(), error: entry.error ?? null })),
+    instanceStates: [...entries].map(([instanceId, entry]) => ({ instanceId, position: entry.controller?.root.position.toArray(), nativeClip: entry.controller?.nativeAnimationState() ?? null, visible: entry.controller?.root.visible, materialColors: entry.controller?.materialColors(), error: entry.error ?? null })),
     selectedObjectName: selectionObject?.name ?? null, selectedCount: selections.size,
     pending: [...entries.values()].filter((entry) => entry.pending).length, geometries: renderer.info.memory.geometries, textures: renderer.info.memory.textures,
     calls: renderer.info.render.calls, triangles: renderer.info.render.triangles, camera: camera.position.toArray(), target: controls.target.toArray() }));
@@ -214,7 +218,7 @@ export function createSceneViewport(container: HTMLElement, initial: SceneViewpo
         const check = () => {
           if (signal.aborted || disposed || generation !== configurationGeneration) { abort(); return; }
           const hasCamera = motion.tracks.some((track) => track.type === "camera");
-          const targets = hasCamera ? options.scene.instances.map((instance) => entries.get(instance.id)) : motion.tracks.flatMap((track) => track.type === "object" ? [entries.get(track.target.instanceId)] : []);
+          const targets = hasCamera ? options.scene.instances.map((instance) => entries.get(instance.id)) : motion.tracks.flatMap((track) => track.type !== "camera" ? [entries.get(track.target.instanceId)] : []);
           const failed = targets.find((entry) => entry?.error);
           if (failed) { cleanup(); reject(new Error(failed.error)); }
           else if (targets.every((entry) => entry?.controller && !entry.pending) && (!hasCamera || !options.scene.instances.length || fitted)) { cleanup(); resolve(); }

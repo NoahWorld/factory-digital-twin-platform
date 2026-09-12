@@ -265,6 +265,9 @@ export const uploadModelAsset = async (
     const retained = new Map(inspection.objects.map((object) => [object.objectId,
       (previous.sha256 === sha256 ? oldIndices.get(modelObjectLocator(object)) : modelObjectSourceKey(object) ? oldSources.get(modelObjectSourceKey(object)) : undefined)?.objectId ?? object.objectId]));
     inspection.objects = inspection.objects.map((object) => ({ ...object, objectId: retained.get(object.objectId)!, parentObjectId: object.parentObjectId ? retained.get(object.parentObjectId)! : null }));
+    const oldClips = previous.inspection.clips ?? [];
+    inspection.clips = inspection.clips?.map((clip) => ({ ...clip,clipId: (previous.sha256 === sha256 ? oldClips.find((old) => old.animationIndex === clip.animationIndex) : clip.sourceId ? oldClips.find((old) => old.sourceId === clip.sourceId) : undefined)?.clipId ?? clip.clipId,
+      channels: clip.channels.map((channel) => ({ ...channel,objectId: retained.get(channel.objectId)! })) }));
   }
   const familyId = previous?.familyId ?? assetId;
   const objectKey = `${projectId}/${assetId}/original.${format}`;
@@ -320,7 +323,7 @@ export const modelAssetContentResponse = async (
 export async function inspectStoredModelAsset(env: AppEnv, projectId: string, assetId: string): Promise<ModelAsset> {
   const row = await getModelAssetRow(env, projectId, assetId);
   const previous = parseStoredInspection(row);
-  if (previous.reportVersion === 2 && previous.objectManifestVersion === 2 && previous.objects?.every((object) => typeof object.inDefaultScene === "boolean")) return presentModelAsset(row);
+  if (previous.reportVersion === 2 && previous.objectManifestVersion === 2 && previous.animationManifestVersion === 1 && Array.isArray(previous.clips) && previous.objects?.every((object) => typeof object.inDefaultScene === "boolean")) return presentModelAsset(row);
   const object = await requireModelStorage(env).get(row.object_key);
   if (!object) throw new AppError(500, "model_asset_object_missing", "模型原始文件缺失，无法补充检查。");
   const bytes = new Uint8Array(await new Response(object.body).arrayBuffer());
@@ -328,6 +331,8 @@ export async function inspectStoredModelAsset(env: AppEnv, projectId: string, as
   const oldIds = new Map(previous.objects?.map((object) => [modelObjectLocator(object), object.objectId]));
   const retainedIds = new Map(inspection.objects.map((object) => [object.objectId, oldIds.get(modelObjectLocator(object)) ?? object.objectId]));
   inspection.objects = inspection.objects.map((object) => ({ ...object, objectId: retainedIds.get(object.objectId)!, parentObjectId: object.parentObjectId ? retainedIds.get(object.parentObjectId)! : null }));
+  inspection.clips = inspection.clips.map((clip) => ({ ...clip,clipId: previous.clips?.find((old) => old.animationIndex === clip.animationIndex)?.clipId ?? clip.clipId,
+    channels: clip.channels.map((channel) => ({ ...channel,objectId: retainedIds.get(channel.objectId)! })) }));
   // Concurrent requests may assign different UUIDs; only the first report wins.
   await env.DB.prepare("UPDATE model_assets SET inspection_json = ? WHERE project_id = ? AND id = ? AND inspection_json = ?")
     .bind(JSON.stringify(inspection), projectId, assetId, row.inspection_json).run();

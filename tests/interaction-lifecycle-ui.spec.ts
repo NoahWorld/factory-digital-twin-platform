@@ -48,6 +48,23 @@ test("runtime navigation cancels page work, enters the actual new page and keeps
   } finally { await api.delete(path); await api.dispose(); }
 });
 
+test("clearing a legacy model selection emits the same asset event as selecting from the device picker", async ({ page }) => {
+  const api = await localApi(); const demo = await createDemo(api,true); const path = `/api/v1/projects/${demo.projectId}`;
+  try {
+    const definition = (await (await api.get(`${path}/definition`)).json()).definition;
+    const result = await api.patch(`${path}/definition`,{ data: { expectedRevision: definition.revision,upsertPages: [],deletePageIds: [],upsertNodes: [],deleteNodeIds: [],interactions: { states: [{ id: "selected",name: "事件中的设备",pageId: null,valueType: "string",initial: "initial" }],rules: [rule("选择记录","main",[{ type: "state.set",stateId: "selected",value: { kind: "event",field: "value" } }],{ type: "asset.select" })] } } }); expect(result.status()).toBe(200);
+    await login(page); await page.goto(`/#/projects/${demo.projectId}/preview`);
+    await expect(page.locator(".model-3d-edit-hint")).toBeVisible();
+    await page.getByLabel("当前设备",{ exact: true }).selectOption("DEVICE-002");
+    await page.getByRole("button",{ name: "交互调试",exact: true }).click();
+    const debug = page.getByRole("complementary",{ name: "交互调试",exact: true }); await expect(debug.locator("dd")).toHaveText('"DEVICE-002"');
+    await debug.getByRole("button",{ name: "关闭调试",exact: true }).click();
+    await page.locator(".model-3d-renderer canvas").click({ position: { x: 4,y: 4 } });
+    await expect(page.getByLabel("当前设备",{ exact: true })).toHaveValue("");
+    await page.getByRole("button",{ name: "交互调试",exact: true }).click(); await expect(debug.locator("dd")).toHaveText("null");
+  } finally { await api.delete(path); await api.dispose(); }
+});
+
 test("data-only rules request unbound assets once and stale or missing input cannot satisfy a negated numeric condition", async ({ page }) => {
   const api = await localApi(); const demo = await createDemo(api, false, false); const path = `/api/v1/projects/${demo.projectId}`;
   try {

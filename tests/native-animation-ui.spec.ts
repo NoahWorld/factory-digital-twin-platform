@@ -1,0 +1,81 @@
+import { test,expect } from "@playwright/test";
+import { createDemo,localApi } from "./demo";
+import { login } from "./support";
+import { createAnimatedMockGltf } from "../scripts/mock-model.mjs";
+import { createEditorState,executeEditorOperation } from "../shared/editor-operations";
+import { projectDefinitionPatch } from "../shared/project-definition";
+import { DEFAULT_SCENE_SETTINGS,IDENTITY_TRANSFORM } from "../shared/scene-definition";
+import { modelEditorRoutePath } from "../apps/web/src/canvas/routes";
+
+async function diagnostics(page: import("@playwright/test").Page) {
+  return page.evaluate(async () => { const url = performance.getEntriesByType("resource").map((entry) => entry.name).filter((url) => url.includes("/scene-viewport-runtime.ts")).at(-1); return url ? (await import(/* @vite-ignore */ url)).sceneViewportDiagnostics() : []; });
+}
+
+test("configure a native clip in the UI, play the saved project and repair a renamed shorter clip with saved undo", async ({ page },testInfo) => {
+  const api = await localApi(); const demo = await createDemo(api,true); const path = `/api/v1/projects/${demo.projectId}`;
+  try {
+    const originalBytes = createAnimatedMockGltf();
+    const upload = await api.post(`${path}/model-assets?filename=lift.gltf`,{ data: originalBytes,headers: { "content-type": "model/gltf+json" } }); expect(upload.status()).toBe(201); const original = (await upload.json()).modelAsset;
+    let state = createEditorState((await (await api.get(`${path}/definition`)).json()).definition);
+    const instance = { id: "one",name: "动画实例",modelAssetId: original.id,transform: IDENTITY_TRANSFORM,visible: true,appearance: null,objectTransforms: {},objectAppearances: {} };
+    state = executeEditorOperation(state,{ type: "scene.extract",nodeId: "demo-model",scene: { id: "native-scene",name: "原生动画",settings: DEFAULT_SCENE_SETTINGS,assetBindings: [],instances: [instance,{ ...instance,id: "two",name: "保持旧版",transform: { ...IDENTITY_TRANSFORM,position: [4,0,0] } }] } });
+    const saved = await api.patch(`${path}/definition`,{ data: projectDefinitionPatch(state.project,state.savedProject) }); expect(saved.status()).toBe(200);
+    await login(page); await page.goto(`/${modelEditorRoutePath(demo.projectId,"demo-model")}`);
+    await page.getByRole("button",{ name: "动画与路径",exact: true }).click();
+    const dialog = page.getByRole("dialog",{ name: "场景动画与路径",exact: true });
+    await dialog.getByRole("button",{ name: "从原生片段创建动画",exact: true }).click();
+    await dialog.getByLabel("动画名称",{ exact: true }).fill("原生提升动作");
+    await dialog.getByLabel("动画时长",{ exact: true }).fill("500"); await dialog.getByLabel("动画时长",{ exact: true }).press("Enter");
+    await dialog.getByLabel("关键帧 2 片段时间",{ exact: true }).fill("1"); await dialog.getByLabel("关键帧 2 片段时间",{ exact: true }).press("Enter");
+    await dialog.getByLabel("动画结束方式",{ exact: true }).selectOption("hold");
+    await dialog.getByRole("button",{ name: "播放动画",exact: true }).click();
+    await expect(dialog.getByRole("status")).toContainText("播放完成");
+    await expect.poll(async () => (await diagnostics(page)).some((item: any) => item.instanceStates[0]?.nativeClip?.time === 1)).toBe(true);
+    await page.screenshot({ path: testInfo.outputPath("native-clip-editor.png") });
+    await dialog.getByRole("button",{ name: "停止并恢复",exact: true }).click();
+    await dialog.getByRole("button",{ name: "应用场景动画",exact: true }).click();
+    await page.getByRole("button",{ name: "保存并返回",exact: true }).click();
+    await expect(page.getByRole("button",{ name: "交互编排",exact: true })).toBeVisible();
+    let project = (await (await api.get(`${path}/definition`)).json()).definition;
+    const motion = project.scenes[0].motions[0]; expect(motion.tracks[0]).toMatchObject({ type: "clip",clipId: original.inspection.clips[0].clipId });
+    const configured = await api.patch(`${path}/definition`,{ data: { expectedRevision: project.revision,upsertPages: [],deletePageIds: [],upsertNodes: [],deleteNodeIds: [],interactions: { states: [],rules: [{ id: "autoplay",name: "页面原生动画",pageId: "main",enabled: true,reentry: "restart",trigger: { type: "page.enter" },condition: null,actions: [{ type: "motion.play",nodeId: "demo-model",motionId: motion.id }] }] } } }); expect(configured.status()).toBe(200);
+    await page.goto(`/#/projects/${demo.projectId}/preview`); await page.reload();
+    await expect.poll(async () => (await diagnostics(page))[0]?.instanceStates[0].nativeClip?.time).toBe(1);
+    expect((await diagnostics(page))[0].instanceStates[1].nativeClip).toBeNull();
+    await page.goto(`/${modelEditorRoutePath(demo.projectId,"demo-model")}`);
+    await page.getByRole("button",{ name: "模型版本与替换",exact: true }).click();
+    const repair = page.getByRole("dialog",{ name: "模型版本与映射修复",exact: true });
+    const next = JSON.parse(originalBytes); next.animations[0].name = "LiftUpdated"; delete next.animations[0].extras.newpowerAnimationId;
+    const accessor = next.accessors[next.animations[0].samplers[0].input],view = next.bufferViews[accessor.bufferView];
+    const bytes = Buffer.from(next.buffers[0].uri.split(",")[1],"base64"); bytes.writeFloatLE(.5,view.byteOffset+4); bytes.writeFloatLE(1,view.byteOffset+8); accessor.max = [1]; next.buffers[0].uri = `data:application/octet-stream;base64,${bytes.toString("base64")}`;
+    const responsePromise = page.waitForResponse((response) => response.request().method() === "POST" && response.url().includes(`/model-assets/${original.id}/versions?`));
+    await repair.locator('input[type="file"]').setInputFiles({ name: "updated-lift.gltf",mimeType: "model/gltf+json",buffer: Buffer.from(JSON.stringify(next)) });
+    const updated = (await (await responsePromise).json()).modelAsset;
+    await expect(repair.getByLabel("片段映射 Lift",{ exact: true })).toHaveValue("");
+    await repair.getByLabel("片段映射 Lift",{ exact: true }).selectOption(updated.inspection.clips[0].clipId);
+    await expect(repair.getByRole("checkbox",{ name: "按新片段总时长同比调整采样时间",exact: true })).toBeChecked();
+    await repair.getByRole("button",{ name: "预览旧片段",exact: true }).click();
+    await expect.poll(async () => (await diagnostics(page)).find((item: any) => item.sceneId === `replacement-old-${original.id}`)?.motion.active).toBe(1);
+    await expect(repair.getByRole("status")).toContainText("片段预览完成");
+    await repair.getByRole("button",{ name: "预览新片段",exact: true }).click();
+    await expect.poll(async () => (await diagnostics(page)).find((item: any) => item.sceneId === `replacement-new-${updated.id}`)?.motion.active).toBe(1);
+    await expect(repair.getByRole("status")).toContainText("片段预览完成");
+    await repair.getByRole("button",{ name: "预览新片段",exact: true }).click();
+    await expect.poll(async () => (await diagnostics(page)).find((item: any) => item.sceneId === `replacement-new-${updated.id}`)?.motion.active).toBe(1);
+    await expect(repair.getByRole("status")).toContainText("片段预览完成");
+    await page.screenshot({ path: testInfo.outputPath("native-clip-version-repair.png") });
+    await repair.getByRole("button",{ name: "应用替换与修复",exact: true }).click(); await expect(repair).toHaveCount(0);
+    await page.getByRole("button",{ name: "保存并返回",exact: true }).click();
+    await expect(page.getByRole("button",{ name: "交互编排",exact: true })).toBeVisible();
+    project = (await (await api.get(`${path}/definition`)).json()).definition;
+    expect(project.scenes[0].motions[0].tracks[0]).toMatchObject({ clipId: updated.inspection.clips[0].clipId,keyframes: [{ timeMs: 0,value: 0 },{ timeMs: 500,value: .5 }] });
+    expect(project.scenes[0].instances[1].modelAssetId).toBe(original.id);
+    await page.getByRole("button",{ name: "预览",exact: true }).click();
+    await expect.poll(async () => (await diagnostics(page))[0]?.instanceStates[0].nativeClip?.time).toBe(.5);
+    await page.getByRole("link",{ name: "返回编辑",exact: true }).click();
+    await page.getByRole("button",{ name: "撤销",exact: true }).click(); await page.getByRole("button",{ name: "保存画布",exact: true }).click();
+    await expect.poll(async () => (await (await api.get(`${path}/definition`)).json()).definition.scenes[0].instances[0].modelAssetId).toBe(original.id);
+    const reverted = (await (await api.get(`${path}/definition`)).json()).definition; expect(reverted.scenes[0].motions[0].tracks[0].clipId).toBe(original.inspection.clips[0].clipId);
+    expect(await (await api.get(`${path}/model-assets/${original.id}/content`)).text()).toBe(originalBytes);
+  } finally { await api.delete(path); await api.dispose(); }
+});

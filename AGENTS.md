@@ -12,6 +12,7 @@
 - M2 的项目定义与操作由 `shared/project-definition.ts`、`shared/project-operations.ts` 共用；schema v2 管理多页，旧画布迁入稳定 `main` 页。绑定、资源与项目 CAS 属于全项目；`/canvas` 是指定页/入口页的兼容投影。二维和三维编辑共用项目历史与草稿；切换工作区保留未保存内容，三维保存仍写同一项目并返回所属页。
 - M3 的可复用场景使用项目 schema v3（v2 自动迁移），通过 `project_scenes` 与 `asset_model_bindings` 同根 CAS 保存。画布节点引用 `sceneId`，实例固定引用不可变资源 ID；新对象映射使用实例 ID 和报告对象 ID，名称/索引路径仅在旧单模型或单文件内部定位。旧 `assets.model_node` 与直接资源节点继续兼容，不用于限制新实例映射。场景与旧单模型共用同一渲染器，视窗拥有 GPU 资源副本，视窗内实例共享副本；原始资源加载由引用计数池复用。
 - M4 当前项目 schema v4 从 v3 自动迁移，`interactions` 包含状态与规则，与根 CAS、草稿和撤销一起保存。`shared/interaction-runtime.ts` 只执行白名单事件、条件和动作，不修改编辑配置。页面离开取消页面动作并使旧事件代次失效；衍生事件沿用原链预算，异步失败/取消可从调试记录读回。复制节点/页面只重映射正式引用字段；删除有依赖的实体须先修复引用。新动画或场景对象动作的引用必须加入模型替换检查与修复，不能沿用不完整的 M3 引用清单。
+- M4 场景 `motions` 使用同一帧循环播放对象/镜头关键帧和原生glTF片段。对象、片段ID及采样时间均进入替换修复；原生轨道按实例UUID重定向，mixer/姿态/材质独立，停止和释放恢复配置。原始clip数据不复制进项目JSON，片段名称与序号不能代替跨版本身份。M4本机技术验收后按 `docs/newpower/m6a-collection.md` 继续可移植宿主与集中采集，不能将现有单页请求去重称为服务端集中采集。
 - 当前进度和未完项见 [开发状态](docs/newpower/development-status.md)，任务及后续方向见 [研发指南](NewPower_Codex_Development_Start_Guide.md)。历史公司方案保留其背景，NewPower 状态以当前分支记录和实际验证为准。
 
 ## 产品定位

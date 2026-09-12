@@ -2,6 +2,7 @@ import { WebIO, MathUtils, type mat4, type vec3, type vec4, type GLTF, type Mesh
 import { ALL_EXTENSIONS, type InstancedMesh } from "@gltf-transform/extensions";
 import { AppError } from "./auth";
 import { modelSubObjectId, type ModelInspectionDetails, type ModelObject } from "../../../shared/model-inspection";
+import { inspectModelAnimations } from "./model-animation-inspection";
 
 /** Inspect embedded bytes only. readJSON/readBinary never fetch model URLs. */
 export async function inspectModelDetails(bytes: Uint8Array, format: "glb" | "gltf", assetId: string = crypto.randomUUID()): Promise<ModelInspectionDetails> {
@@ -138,7 +139,8 @@ export async function inspectModelDetails(bytes: Uint8Array, format: "glb" | "gl
       if (container && node.camera !== undefined) objects.push({ ...base, objectId: modelSubObjectId(assetId, nodeIndex, "camera"), attachment: "camera", name: json.json.cameras?.[node.camera]?.name || `${node.name || "节点"} 相机`, nameIsGenerated: !json.json.cameras?.[node.camera]?.name, parentObjectId: nodeId, mesh: false });
       if (container && light) objects.push({ ...base, objectId: modelSubObjectId(assetId, nodeIndex, "light"), attachment: "light", name: `${node.name || "节点"} 灯光`, nameIsGenerated: true, parentObjectId: nodeId, mesh: false });
     });
-    return { reportVersion: 2, objectManifestVersion: 2, triangleCount, sceneTriangleCount, vertexCount,
+    const clips = inspectModelAnimations(root,objects,visited,json.json);
+    return { reportVersion: 2, objectManifestVersion: 2, animationManifestVersion: 1, clips, triangleCount, sceneTriangleCount, vertexCount,
       bounds: min.every(Number.isFinite) ? { min, max, scope: "default-scene-rest-pose" } : null,
       textures, coordinateUnit: "metre-by-gltf-spec", warnings: [...new Set(warnings)],
       objects };

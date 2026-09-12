@@ -1,15 +1,15 @@
-import { Box3, Group, MathUtils, Vector3, type Material, type Object3D } from "three";
+import { AnimationMixer, LoopOnce, Box3, Group, MathUtils, Vector3, type AnimationClip, type AnimationAction, type Material, type Object3D } from "three";
 import type { ModelInstance } from "../../../../shared/scene-definition";
-import { modelObjectLocator, modelSubObjectId, type ModelObject } from "../../../../shared/model-inspection";
+import { modelObjectLocator, modelSubObjectId, type ModelObject, type ModelAnimation } from "../../../../shared/model-inspection";
 import type { ModelNodeAppearance, ModelNodeTransform } from "./types";
 import { buildModelSceneTree } from "./model-scene";
 import type { MotionProperty, MotionValue, MotionVector } from "../../../../shared/scene-motion";
 
 export type ObjectTarget = { instanceId: string; objectId: string | null };
 type MaterialOwner = Object3D & { material?: Material | Material[] };
-type LoadedModel = { scene: Object3D; nodesByIndex: Map<number, Object3D>; objectsByLocator?: Map<string, Object3D> };
+type LoadedModel = { scene: Object3D; nodesByIndex: Map<number, Object3D>; objectsByLocator?: Map<string, Object3D>; animationClip?: (index: number) => AnimationClip };
 
-export function createModelInstance(definition: ModelInstance, model: LoadedModel, objects: ModelObject[], legacyNames = false) {
+export function createModelInstance(definition: ModelInstance, model: LoadedModel, objects: ModelObject[], legacyNames = false, clips: ModelAnimation[] = []) {
   const root = new Group(); root.name = definition.name; root.add(model.scene);
   const byId = new Map<string, Object3D>(); const byObject = new Map<Object3D, string>();
   const byName = new Map<string, Object3D[]>();
@@ -71,8 +71,8 @@ export function createModelInstance(definition: ModelInstance, model: LoadedMode
   let transformSignature: string | undefined, appearanceSignature: string | undefined;
   let latestDefinition = definition;
   let latestRuntime: Record<string, ModelNodeAppearance> = {};
-  const restorePose = () => {
-    transform(root, latestDefinition.transform);
+  const restorePose = (includeRoot = true) => {
+    if (includeRoot) transform(root, latestDefinition.transform);
     originals.forEach((original, object) => {
       transform(object, original);
       const weights = (object as Object3D & { morphTargetInfluences?: number[] }).morphTargetInfluences;
@@ -171,8 +171,33 @@ export function createModelInstance(definition: ModelInstance, model: LoadedMode
     if (["color", "opacity", "visible"].includes(property)) for (const [id, appearanceValue] of Object.entries(latestRuntime)) appearance(resolve(id),appearanceValue);
     root.updateMatrixWorld(true);
   };
-  const restoreConfiguration = () => { transformSignature = undefined; appearanceSignature = undefined; apply(latestDefinition,latestRuntime); restorePose(); };
-  return { root, apply, restorePose, restoreConfiguration, readMotion, writeMotion, bounds: () => new Box3().setFromObject(root), targetFor, targetsForObject,
+  let native: { id: string; clip: AnimationClip; mixer: AnimationMixer; action: AnimationAction; time: number } | null = null;
+  const stopNativeClip = (restore = true) => {
+    if (native) { native.action.stop(); native.mixer.uncacheClip(native.clip); native.mixer.uncacheRoot(model.scene); native = null; }
+    if (restore) restorePose(false);
+  };
+  const readNativeClip = (clipId: string, times: number[]) => {
+    const clip = clips.find((clip) => clip.clipId === clipId);
+    if (!clip || !clip.inDefaultScene || !model.animationClip) throw new Error("模型动画片段不存在或不属于当前可运行场景。");
+    if (times.some((time) => time < 0 || time > clip.duration + 1e-6)) throw new Error("动画关键帧超出源片段时间范围。");
+    return native?.id === clipId ? native.time : 0;
+  };
+  const writeNativeClip = (clipId: string, time: number) => {
+    const metadata = clips.find((clip) => clip.clipId === clipId);
+    if (!metadata || !model.animationClip) throw new Error("模型动画片段不存在。");
+    if (native?.id !== clipId) {
+      stopNativeClip();
+      const clip = model.animationClip(metadata.animationIndex), mixer = new AnimationMixer(model.scene), action = mixer.clipAction(clip);
+      action.setLoop(LoopOnce,1); action.clampWhenFinished = true;
+      native = { id: clipId,clip,mixer,action,time: 0 };
+    }
+    native!.action.reset().play(); native!.mixer.setTime(Math.min(time,metadata.duration)); native!.time = time;
+    root.updateMatrixWorld(true);
+  };
+  const restoreConfiguration = () => { stopNativeClip(false); transformSignature = undefined; appearanceSignature = undefined; apply(latestDefinition,latestRuntime); restorePose(); };
+  return { root, apply, restorePose, restoreConfiguration, readMotion, writeMotion, readNativeClip, writeNativeClip,
+    nativeAnimationState: () => native ? { clipId: native.id,time: native.time } : null,
+    bounds: () => new Box3().setFromObject(root), targetFor, targetsForObject,
     materialColors: () => {
       const colors = new Set<string>();
       root.traverse((object) => { const material = (object as MaterialOwner).material;
@@ -191,7 +216,7 @@ export function createModelInstance(definition: ModelInstance, model: LoadedMode
         }
       });
       const bounds = new Box3().setFromObject(object);
-      return { name: object.name, colors: [...colors], center: bounds.isEmpty() ? null : bounds.getCenter(new Vector3()).toArray() };
+      return { name: object.name, colors: [...colors], position: object.position.toArray(), morphWeights: (object as Object3D & { morphTargetInfluences?: number[] }).morphTargetInfluences?.slice() ?? null, center: bounds.isEmpty() ? null : bounds.getCenter(new Vector3()).toArray() };
     },
     resolveTarget: (target: ObjectTarget) => target.objectId === null ? root : byId.get(target.objectId) ?? null,
     pathFor: (target: ObjectTarget) => target.objectId ? objectPaths.get(byId.get(target.objectId)!) ?? null : null,
@@ -199,7 +224,7 @@ export function createModelInstance(definition: ModelInstance, model: LoadedMode
     pathForObject: (object: Object3D) => objectPaths.get(object) ?? null,
     targetAtPath: (path: string) => paths.has(path) ? targetFor(paths.get(path)!) : null,
     snapshot: { ...tree, assetId: definition.modelAssetId },
-    dispose: () => { restoreAppearances(); root.removeFromParent(); },
+    dispose: () => { stopNativeClip(false); restoreAppearances(); root.removeFromParent(); },
   };
 }
 export type ModelInstanceController = ReturnType<typeof createModelInstance>;

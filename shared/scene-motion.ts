@@ -7,7 +7,8 @@ export type MotionTarget = { instanceId: string; objectId: string | null };
 export type MotionProperty = "position" | "rotation" | "scale" | "color" | "opacity" | "visible";
 export type MotionKeyframe<T = MotionValue> = { timeMs: number; value: T };
 export type SceneMotionTrack = { id: string; type: "object"; target: MotionTarget; property: MotionProperty; easing: "linear" | "smooth"; keyframes: MotionKeyframe[] }
-  | { id: string; type: "camera"; property: "position" | "target"; easing: "linear" | "smooth"; keyframes: MotionKeyframe<MotionVector>[] };
+  | { id: string; type: "camera"; property: "position" | "target"; easing: "linear" | "smooth"; keyframes: MotionKeyframe<MotionVector>[] }
+  | { id: string; type: "clip"; target: { instanceId: string; objectId: null }; property: "clip"; clipId: string; easing: "linear" | "smooth"; keyframes: MotionKeyframe<number>[] };
 export type SceneMotion = { id: string; name: string; version: 1; durationMs: number; repeat: number; fill: "hold" | "restore"; tracks: SceneMotionTrack[] };
 const invalid = (message: string): never => { throw new AppError(400, "invalid_scene_motion", message); };
 const object = (value: unknown, fields: string[]): Record<string, unknown> => {
@@ -23,6 +24,12 @@ function vector(value: unknown): MotionVector {
   return [...value] as MotionVector;
 }
 export const motionChannel = (track: SceneMotionTrack) => track.type === "camera" ? `camera:${track.property}` : JSON.stringify(["object", track.target.instanceId, track.target.objectId, track.property]);
+export function motionTracksConflict(first: SceneMotionTrack, second: SceneMotionTrack): boolean {
+  if (motionChannel(first) === motionChannel(second)) return true;
+  if (first.type === "camera" || second.type === "camera" || first.target.instanceId !== second.target.instanceId) return false;
+  const object = first.type === "clip" ? second : second.type === "clip" ? first : null;
+  return !!object && object.type === "object" && object.target.objectId !== null && ["position","rotation","scale"].includes(object.property);
+}
 export function validateSceneMotions(value: unknown): SceneMotion[] {
   if (!Array.isArray(value) || value.length > 100) return invalid("单场景最多100个动画。");
   const motions = value.map((value): SceneMotion => {
@@ -34,15 +41,17 @@ export function validateSceneMotions(value: unknown): SceneMotion[] {
     if (input.fill !== "hold" && input.fill !== "restore") invalid("动画结束方式必须为 hold 或 restore。");
     if (!Array.isArray(input.tracks) || !input.tracks.length || input.tracks.length > 64) invalid("每个动画必须包含1–64条轨道。");
     const tracks = (input.tracks as unknown[]).map((value): SceneMotionTrack => {
-      const track = object(value, ["id", "type", "target", "property", "easing", "keyframes"]);
-      if (track.type !== "object" && track.type !== "camera") invalid("轨道类型不支持。");
+      const track = object(value, ["id", "type", "target", "property", "easing", "keyframes", "clipId"]);
+      if (track.type !== "object" && track.type !== "camera" && track.type !== "clip") invalid("轨道类型不支持。");
+      if (track.type !== "clip" && track.clipId !== undefined) invalid("只有原生动画轨道可以引用 clipId。");
       if (track.easing !== "linear" && track.easing !== "smooth") invalid("插值方式不支持。");
       const isCamera = track.type === "camera";
-      if (!(isCamera ? ["position", "target"] : ["position", "rotation", "scale", "color", "opacity", "visible"]).includes(String(track.property))) invalid("轨道属性不支持。");
+      if (!(isCamera ? ["position", "target"] : track.type === "clip" ? ["clip"] : ["position", "rotation", "scale", "color", "opacity", "visible"]).includes(String(track.property))) invalid("轨道属性不支持。");
       if (!Array.isArray(track.keyframes) || track.keyframes.length < 2 || track.keyframes.length > 128) invalid("轨道必须包含2–128个关键帧。");
       const keyframes = (track.keyframes as unknown[]).map((value): MotionKeyframe => {
         const frame = object(value, ["timeMs", "value"]); const timeMs = duration(frame.timeMs, 0, durationMs);
         const input = frame.value;
+        if (track.type === "clip") { if (typeof input !== "number" || !Number.isFinite(input) || input < 0 || input > 10000000) invalid("原生动画时间必须是0–10000000秒的有限值。"); return { timeMs,value: input as number }; }
         if (["position", "target", "rotation", "scale"].includes(String(track.property))) {
           const value = vector(input);
           if (track.property === "scale" && value.some((item) => Math.abs(item) < .001)) invalid("动画缩放不能退化为零。");
@@ -60,9 +69,14 @@ export function validateSceneMotions(value: unknown): SceneMotion[] {
       const id = requireIdentifier(track.id, "track.id");
       if (isCamera) { if (track.target !== undefined) invalid("镜头轨道不能指定模型对象。"); return { id, type: "camera", property: track.property as "position" | "target", easing: track.easing as "linear", keyframes: keyframes as MotionKeyframe<MotionVector>[] }; }
       const target = object(track.target, ["instanceId", "objectId"]);
+      if (track.type === "clip") {
+        if (target.objectId !== null) invalid("原生动画作用于整个模型实例。");
+        return { id,type: "clip",target: { instanceId: requireIdentifier(target.instanceId,"instanceId"),objectId: null },property: "clip",clipId: requireIdentifier(track.clipId,"clipId"),easing: track.easing as "linear",keyframes: keyframes as MotionKeyframe<number>[] };
+      }
       return { id, type: "object", target: { instanceId: requireIdentifier(target.instanceId, "instanceId"), objectId: target.objectId === null ? null : requireIdentifier(target.objectId, "objectId") }, property: track.property as MotionProperty, easing: track.easing as "linear", keyframes };
     });
     if (new Set(tracks.map((track) => track.id)).size !== tracks.length || new Set(tracks.map(motionChannel)).size !== tracks.length) invalid("轨道ID或动画目标属性重复。");
+    if (tracks.some((track,index) => tracks.slice(index+1).some((other) => motionTracksConflict(track,other)))) invalid("原生动画与同实例内部对象的变换轨道不能同时占用姿态；整个实例的路径可以独立叠加。");
     return { id: requireIdentifier(input.id, "motion.id"), name: (input.name as string).trim(), version: 1, durationMs, repeat, fill: input.fill as "hold" | "restore", tracks };
   });
   if (new Set(motions.map((motion) => motion.id)).size !== motions.length) invalid("动画ID不能重复。");

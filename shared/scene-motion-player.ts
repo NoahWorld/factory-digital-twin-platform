@@ -1,4 +1,4 @@
-import { motionChannel, sampleMotionTrack, validateSceneMotions, type SceneMotion, type SceneMotionTrack, type MotionValue } from "./scene-motion";
+import { motionChannel, motionTracksConflict, sampleMotionTrack, validateSceneMotions, type SceneMotion, type SceneMotionTrack, type MotionValue } from "./scene-motion";
 
 export type MotionAdapter = {
   read: (track: SceneMotionTrack) => MotionValue;
@@ -20,7 +20,7 @@ export class SceneMotionPlayer {
   cancelCamera() {
     const ids = new Set([...this.jobs.values()].filter((job) => job.samples.some((sample) => sample.track.type === "camera")).map((job) => job.motion.id));
     for (const sample of this.held.values()) if (sample.track.type === "camera") ids.add(sample.motionId);
-    const objectSamples = [...this.jobs.values()].filter((job) => ids.has(job.motion.id)).flatMap((job) => job.samples).concat([...this.held.values()].filter((sample) => ids.has(sample.motionId))).filter((sample) => sample.track.type === "object");
+    const objectSamples = [...this.jobs.values()].filter((job) => ids.has(job.motion.id)).flatMap((job) => job.samples).concat([...this.held.values()].filter((sample) => ids.has(sample.motionId))).filter((sample) => sample.track.type !== "camera");
     ids.forEach((id) => this.cancel(id,false));
     if (objectSamples.length) this.adapter.restore(objectSamples);
     this.reapply();
@@ -28,11 +28,10 @@ export class SceneMotionPlayer {
   play(input: SceneMotion, signal: AbortSignal): Promise<void> {
     if (this.disposed || signal.aborted) return Promise.reject(cancelled());
     const motion = validateSceneMotions([input])[0];
-    const channels = new Set(motion.tracks.map(motionChannel));
     // Resolve all targets before cancelling another valid animation.
     motion.tracks.forEach((track) => this.adapter.read(track));
-    for (const [id, job] of this.jobs) if (id === motion.id || job.samples.some((sample) => channels.has(motionChannel(sample.track)))) this.cancel(id);
-    const previous = [...this.held].filter(([key]) => channels.has(key));
+    for (const [id, job] of this.jobs) if (id === motion.id || job.samples.some((sample) => motion.tracks.some((track) => motionTracksConflict(track,sample.track)))) this.cancel(id);
+    const previous = [...this.held].filter(([,sample]) => motion.tracks.some((track) => motionTracksConflict(track,sample.track)));
     for (const [key] of previous) this.held.delete(key);
     if (previous.length) this.adapter.restore(previous.map(([, sample]) => sample));
     this.reapply();

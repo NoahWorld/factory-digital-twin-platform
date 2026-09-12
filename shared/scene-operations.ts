@@ -15,7 +15,7 @@ export type SceneOperation =
   | { type: "scene.settings"; sceneId: string; settings: SceneSettings }
   | { type: "scene.motions"; sceneId: string; motions: SceneMotion[] }
   | { type: "instance.upsert"; sceneId: string; instance: ModelInstance }
-  | { type: "instance.replace-resource"; sceneId: string; instanceId: string; expectedAssetId: string; newAssetId: string; objectMap: ObjectReplacementMap }
+  | { type: "instance.replace-resource"; sceneId: string; instanceId: string; expectedAssetId: string; newAssetId: string; objectMap: ObjectReplacementMap; clipMap?: ObjectReplacementMap; clipTimeScales?: Record<string,number> }
   | { type: "instance.delete" | "instance.duplicate"; sceneId: string; instanceId: string };
 
 const invalid = (message: string): never => { throw new AppError(400, "invalid_scene_operation", message); };
@@ -25,7 +25,7 @@ const fields: Record<SceneOperation["type"], string[]> = {
   "scene.duplicate": ["type", "sceneId", "nodeId", "pageId"], "scene.delete": ["type", "sceneId", "detachReferences"],
   "scene.settings": ["type", "sceneId", "settings"], "instance.upsert": ["type", "sceneId", "instance"],
   "scene.motions": ["type", "sceneId", "motions"],
-  "instance.replace-resource": ["type", "sceneId", "instanceId", "expectedAssetId", "newAssetId", "objectMap"],
+  "instance.replace-resource": ["type", "sceneId", "instanceId", "expectedAssetId", "newAssetId", "objectMap", "clipMap", "clipTimeScales"],
   "instance.delete": ["type", "sceneId", "instanceId"], "instance.duplicate": ["type", "sceneId", "instanceId"],
 };
 
@@ -69,7 +69,7 @@ export function applySceneOperation(project: ProjectDefinition, operation: Recor
       const copy: SceneDefinition = { ...structuredClone(source), id: crypto.randomUUID(), name: `${source.name.slice(0, 95)} 副本`,
         instances: source.instances.map((instance) => ({ ...structuredClone(instance), id: instanceIds.get(instance.id)! })),
         assetBindings: source.assetBindings.map((binding) => ({ ...binding, id: crypto.randomUUID(), instanceId: instanceIds.get(binding.instanceId)! })) };
-      if (copy.motions) copy.motions = copy.motions.map((motion) => ({ ...motion, id: crypto.randomUUID(), tracks: motion.tracks.map((track) => ({ ...track, id: crypto.randomUUID(), ...(track.type === "object" ? { target: { ...track.target, instanceId: instanceIds.get(track.target.instanceId)! } } : {}) })) }));
+      if (copy.motions) copy.motions = copy.motions.map((motion) => ({ ...motion, id: crypto.randomUUID(), tracks: motion.tracks.map((track) => { const next = structuredClone(track); next.id = crypto.randomUUID(); if (next.type !== "camera") next.target.instanceId = instanceIds.get(next.target.instanceId)!; return next; }) }));
       project.scenes.push(copy);
       if (operation.nodeId !== undefined) { const node = nodeFor();
         const motionIds = new Map((source.motions ?? []).map((motion,index) => [motion.id,copy.motions![index].id]));
@@ -80,7 +80,7 @@ export function applySceneOperation(project: ProjectDefinition, operation: Recor
     case "scene.motions": sceneFor().motions = validateSceneMotions(operation.motions); break;
     case "instance.replace-resource": {
       const scene = sceneFor();
-      const next = replaceInstanceResource(scene, requireIdentifier(operation.instanceId, "instanceId"), requireIdentifier(operation.expectedAssetId, "expectedAssetId"), requireIdentifier(operation.newAssetId, "newAssetId"), operation.objectMap);
+      const next = replaceInstanceResource(scene, requireIdentifier(operation.instanceId, "instanceId"), requireIdentifier(operation.expectedAssetId, "expectedAssetId"), requireIdentifier(operation.newAssetId, "newAssetId"), operation.objectMap, operation.clipMap === undefined ? {} : operation.clipMap, operation.clipTimeScales as Record<string,number> | undefined);
       project.scenes[project.scenes.indexOf(scene)] = next; break;
     }
     case "instance.upsert": {

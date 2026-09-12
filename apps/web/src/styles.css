@@ -10584,3 +10584,13 @@ input:focus {
 .scene-motion-config label { white-space: nowrap; }
 .scene-motion-config label > input { width: 0; flex: 1; }
 .scene-motion-frame-heading { color: #9cbdcf; font-size: 12px; }
+
+.model-clip-repairs { border: 1px solid #355b70; border-radius: 6px; padding: 14px; margin: 16px 0; }
+.model-clip-repairs label { display: flex; align-items: center; gap: 12px; margin: 10px 0; }
+.model-clip-repairs input[type=checkbox] { width: auto; margin: 0; flex: 0 0 auto; }
+.model-clip-repairs label > span { flex: 1; }
+.model-clip-repairs select { max-width: 60%; }
+.model-clip-repairs p { color: #a6c7d7; font-size: 13px; }
+
+.model-clip-repairs label { flex-wrap: wrap; }
+.model-clip-repairs label > span { flex-basis: 220px; }

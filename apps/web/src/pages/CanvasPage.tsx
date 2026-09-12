@@ -265,6 +265,8 @@ export function CanvasPage({ initialTemplateId, mode, projectId }: CanvasPagePro
     setSelectedModelSceneNodePath(sceneNodePath);
     if (mode !== "preview") return;
     if (sceneNodePath === null) {
+      emitAssetSelection(null);
+      interactions.emit({ type: "node.click",sourceId: canvasNodeId });
       setSelectedRuntimeAssetId(null);
       setRuntimeSelectionMessage(null);
       return;
@@ -272,6 +274,8 @@ export function CanvasPage({ initialTemplateId, mode, projectId }: CanvasPagePro
 
     const snapshot = modelScenes[canvasNodeId];
     if (!snapshot) {
+      emitAssetSelection(null);
+      interactions.emit({ type: "node.click",sourceId: canvasNodeId });
       setSelectedRuntimeAssetId(null);
       setRuntimeSelectionMessage("3D 场景节点树尚未就绪，请等待模型加载完成后重试。");
       return;
