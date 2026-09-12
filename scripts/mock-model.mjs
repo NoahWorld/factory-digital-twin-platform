@@ -95,3 +95,22 @@ export const createMultiPrimitiveGltf = (reverse = false) => {
   if (reverse) document.meshes[0].primitives.reverse();
   return JSON.stringify(document);
 };
+
+export function createAnimatedMockGltf({ interpolation = "LINEAR", start = 0, duplicateNames = false } = {}) {
+  const gltf = JSON.parse(createMockGltf([{ children: [1], extras: { newpowerObjectId: "moving-group" } }, { mesh: 0, name: "AnimatedPart" }]));
+  gltf.scenes[0].nodes = [0];
+  const previous = Buffer.from(gltf.buffers[0].uri.split(",")[1], "base64");
+  const times = Buffer.from(new Float32Array([start, start + 1, start + 2]).buffer);
+  const positions = [[0,0,0],[0,2,0],[0,0,0]];
+  const output = interpolation === "CUBICSPLINE" ? positions.flatMap((position) => [0,0,0,...position,0,0,0]) : positions.flat();
+  const values = Buffer.from(new Float32Array(output).buffer);
+  const binary = Buffer.concat([previous,times,values]);
+  gltf.buffers[0] = { byteLength: binary.length, uri: `data:application/octet-stream;base64,${binary.toString("base64")}` };
+  const timeView = gltf.bufferViews.length, valueView = timeView + 1;
+  gltf.bufferViews.push({ buffer: 0, byteOffset: previous.length, byteLength: times.length }, { buffer: 0, byteOffset: previous.length + times.length, byteLength: values.length });
+  const input = gltf.accessors.length, out = input + 1;
+  gltf.accessors.push({ bufferView: timeView, componentType: 5126, count: 3, type: "SCALAR", min: [start], max: [start+2] }, { bufferView: valueView, componentType: 5126, count: output.length / 3, type: "VEC3" });
+  gltf.animations = [{ name: "Lift", extras: { newpowerAnimationId: "lift" }, channels: [{ sampler: 0, target: { node: 0, path: "translation" } }], samplers: [{ input, output: out, interpolation }] }];
+  if (duplicateNames) gltf.animations.push({ ...structuredClone(gltf.animations[0]), extras: { newpowerAnimationId: "lift-copy" } });
+  return JSON.stringify(gltf);
+}

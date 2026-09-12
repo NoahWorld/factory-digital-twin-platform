@@ -1,3 +1,4 @@
+import type { SceneViewportRuntime } from "../canvas/scene-viewport-runtime";
 import { flushSync } from "react-dom";
 import { InteractionEditor } from "../canvas/InteractionEditor";
 import { InteractionDebugger } from "../canvas/InteractionDebugger";
@@ -60,6 +61,10 @@ const formatRuntimeTime = (value: string | undefined): string => {
 export function CanvasPage({ initialTemplateId, mode, projectId }: CanvasPageProps) {
   const { editor, document, projectName, canEdit, loading, loadError, saveError, setSaveError, saving, dirty,
     execute, travel: travelProject, selectPage: choosePage, save: saveProject, pendingDraft, draftNotice, draftDifferences, restoreDraft, discardDraft } = useProjectEditorContext();
+  const viewports = useRef(new Map<string,SceneViewportRuntime>());
+  const motionCommands = useRef(new Map<string,{ nodeId: string; controller: AbortController }>());
+  const viewportWaiters = useRef(new Set<() => void>());
+  const registerViewport = useCallback((id: string,engine: SceneViewportRuntime | null) => { if (engine) viewports.current.set(id,engine); else { viewports.current.delete(id); motionCommands.current.forEach((command) => { if (command.nodeId === id) command.controller.abort(); }); } viewportWaiters.current.forEach((notify) => notify()); },[]);
   const [hiddenInteractionNodes, setHiddenInteractionNodes] = useState<Set<string>>(new Set());
   const [showInteractions, setShowInteractions] = useState(false);
   const [showInteractionDebug, setShowInteractionDebug] = useState(false);
@@ -133,6 +138,23 @@ export function CanvasPage({ initialTemplateId, mode, projectId }: CanvasPagePro
   const runtimeConnections = useProjectRuntime(projectId, catalogProjectId === projectId ? projectAssets : [], neededAssetIds);
   const interactionHost: InteractionHost["perform"] = (action, value, signal) => {
     if (signal.aborted) throw new Error("交互已取消。");
+    if (action.type === "motion.play" || action.type === "motion.stop") {
+      const key = JSON.stringify([action.nodeId,action.motionId]);
+      motionCommands.current.get(key)?.controller.abort();
+      if (action.type === "motion.stop") { viewports.current.get(action.nodeId)?.stopMotion(action.motionId); return; }
+      const controller = new AbortController(), parentSignal = signal;
+      const abortCommand = () => controller.abort(); parentSignal.addEventListener("abort",abortCommand,{ once: true });
+      signal = controller.signal; motionCommands.current.set(key,{ nodeId: action.nodeId,controller });
+      const wait = new Promise<SceneViewportRuntime>((resolve,reject) => {
+        const cleanup = () => { clearTimeout(timer); viewportWaiters.current.delete(check); signal.removeEventListener("abort",abort); };
+        const abort = () => { cleanup(); reject(Object.assign(new Error("动画视窗等待已取消。"),{ name: "AbortError" })); };
+        const check = () => { if (signal.aborted) { abort(); return; } const engine = viewports.current.get(action.nodeId); if (engine) { cleanup(); resolve(engine); } };
+        const timer = setTimeout(() => { cleanup(); reject(new Error("等待三维视窗超过5秒。")); },5000);
+        signal.addEventListener("abort",abort,{ once: true }); viewportWaiters.current.add(check); check();
+      });
+      return wait.then(async (engine) => { if (signal.aborted) throw Object.assign(new Error("动画已取消。"),{ name: "AbortError" }); await engine.playMotion(action.motionId,signal); })
+        .finally(() => { parentSignal.removeEventListener("abort",abortCommand); if (motionCommands.current.get(key)?.controller === controller) motionCommands.current.delete(key); });
+    }
     if (action.type === "asset.select") {
       if (value !== null && (typeof value !== "string" || !projectAssets.some((asset) => asset.assetId === value))) throw new Error("目标设备不存在或资产列表尚未就绪。");
       const assetId = value as string | null;
@@ -439,7 +461,7 @@ export function CanvasPage({ initialTemplateId, mode, projectId }: CanvasPagePro
   const editable = mode === "edit" && canEdit && !saving;
   const selectedNode = selectedNodeId ? document.nodes.find((node) => node.id === selectedNodeId) ?? null : null;
   return (
-    <InteractionContext.Provider value={{ emit: interactions.emit, hiddenNodes: hiddenInteractionNodes }}>
+    <InteractionContext.Provider value={{ emit: interactions.emit, hiddenNodes: hiddenInteractionNodes, registerViewport }}>
     <ProjectRuntimeContext.Provider value={{ assets: projectAssets, metrics: metricCatalog, enabled: true, loading: assetListLoading, error: assetLoadError, bindings: activeBindings, connections: runtimeConnections, selectedAssetId: selectedRuntimeAssetId, selectAsset: selectRuntimeAsset, changeBinding }}>
     <main className={`canvas-page canvas-page-${mode}`}>
       <header className="canvas-toolbar">

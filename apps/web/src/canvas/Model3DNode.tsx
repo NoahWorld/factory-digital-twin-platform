@@ -1,3 +1,5 @@
+import { useInteractionContext } from "../interaction-session";
+import type { SceneViewportRuntime } from "./scene-viewport-runtime";
 import { memo, useCallback, useMemo } from "react";
 import { SceneViewport } from "./SceneViewport";
 import { useSceneCatalog } from "./scene-context";
@@ -22,6 +24,8 @@ type Model3DNodeProps = {
 export const Model3DNode = memo(function Model3DNode({ cameraControlsEnabled, editable, interactive = false, interactionHint, node, projectId,
   onSceneChange, onSceneNodeSelect, selectedSceneNodePath, runtimeAppearanceOverrides, selectedTarget, selectedTargets, onObjectSelect, runtimeSceneAppearances }: Model3DNodeProps) {
   const catalog = useSceneCatalog();
+  const interactions = useInteractionContext();
+  const onReady = useCallback((engine: SceneViewportRuntime | null) => interactions?.registerViewport(node.id,engine),[node.id,interactions?.registerViewport]);
   const parsed = parseModel3DProps(node.props);
   const scene = useMemo<SceneDefinition | null>(() => {
     if (node.sceneId) return catalog.find((scene) => scene.id === node.sceneId) ?? null;
@@ -38,7 +42,7 @@ export const Model3DNode = memo(function Model3DNode({ cameraControlsEnabled, ed
   if (!scene) return <div className="model-3d-message" role={node.sceneId ? "alert" : undefined}><strong>{node.sceneId ? "引用的三维场景不存在" : "尚未绑定模型"}</strong><span>请在 3D 编辑器配置模型或关联场景</span></div>;
   return <SceneViewport scene={scene} projectId={projectId} legacyNames={!node.sceneId} cameraControlsEnabled={cameraControlsEnabled ?? !editable}
     selectedTarget={selectedTarget} selectedTargets={selectedTargets} selectedLegacyPath={!node.sceneId ? selectedSceneNodePath : null} selectedDisplayPath={selectedSceneNodePath}
-    interactive={editable || interactive} runtimeAppearances={runtime} onSnapshot={onSnapshot}
+    onReady={onReady} interactive={editable || interactive} runtimeAppearances={runtime} onSnapshot={onSnapshot}
     onPick={(target, path, ancestors) => { if (node.sceneId) onObjectSelect?.(target, ancestors); else onSceneNodeSelect(node.id, path); }}
     hint={editable || interactive ? interactionHint ?? (interactive && !editable ? "点击设备查看 2D 详情 · 拖动旋转视角" : "点击对象选中 · 拖动可移动组件") : undefined} />;
 });

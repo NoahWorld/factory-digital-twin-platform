@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useRef, useState, type InputHTMLAttributes } from "react";
+import { NumberField } from "./NumberField";
+import { SceneMotionEditor } from "./SceneMotionEditor";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useProjectEditorContext } from "../project-editor";
 import { request, errorMessage } from "../api";
 import { AssetPanel } from "../AssetPanel";
@@ -13,12 +15,6 @@ import type { ModelSceneNode, ModelSceneSnapshot } from "./model-scene";
 import type { SceneViewportRuntime } from "./scene-viewport-runtime";
 import type { ObjectTarget } from "./model-instance";
 
-function NumberField({ value, onCommit, ...props }: Omit<InputHTMLAttributes<HTMLInputElement>, "value" | "onChange"> & { value: number; onCommit: (value: number) => void }) {
-  const [draft, setDraft] = useState(String(value)); useEffect(() => setDraft(String(value)), [value]);
-  return <input {...props} type="number" value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }} onBlur={() => {
-    const number = Number(draft); if (!draft.trim() || !Number.isFinite(number)) setDraft(String(value)); else if (number !== value) onCommit(number);
-  }} />;
-}
 function TransformFields({ label, value, disabled, onChange }: { label: string; value: ModelNodeTransform; disabled: boolean; onChange: (value: ModelNodeTransform) => void }) {
   return <div className="scene-transform-fields">{(["position", "rotation", "scale"] as const).map((field) => <div key={field}><span>{field === "position" ? "位置（米）" : field === "rotation" ? "旋转（度）" : "缩放"}</span><div>{["X", "Y", "Z"].map((axis, index) => <label key={axis}>{axis}<NumberField step={field === "rotation" ? 1 : .1} aria-label={`${label}${field === "position" ? "位置" : field === "rotation" ? "旋转" : "缩放"} ${axis}`} disabled={disabled} value={value[field][index]} onCommit={(number) => {
     const next = structuredClone(value); next[field][index] = number; onChange(next);
@@ -29,6 +25,7 @@ const defaultAppearance = (node?: ModelSceneNode): ModelNodeAppearance => ({ col
 
 export function SceneModelEditor({ projectId, scene, editable }: { projectId: string; scene: SceneDefinition; editable: boolean }) {
   const { execute, setSaveError } = useProjectEditorContext();
+  const [showMotions,setShowMotions] = useState(false);
   const [models, setModels] = useState<ModelAsset[]>([]); const [assets, setAssets] = useState<ProjectAsset[]>([]);
   const [resource, setResource] = useState(""); const [busy, setBusy] = useState(false);
   const [selected, setSelected] = useState<ObjectTarget | null>(scene.instances[0] ? { instanceId: scene.instances[0].id, objectId: null } : null);
@@ -81,7 +78,7 @@ export function SceneModelEditor({ projectId, scene, editable }: { projectId: st
   return <>
     <div className="model-editor-workbench scene-editor-workbench">
       <section className="model-editor-stage" aria-label="3D 场景编辑视口">
-        <header className="model-editor-stage-heading"><div><span className="eyebrow">Shared scene</span><h1>{scene.name}</h1></div><div className="scene-view-actions"><span>{scene.instances.length} 个模型实例</span><button type="button" onClick={() => engine.current?.fit()}>查看全部</button><button type="button" disabled={!instance} onClick={() => engine.current?.fit(instance?.id)}>定位实例</button></div></header>
+        <header className="model-editor-stage-heading"><div><span className="eyebrow">Shared scene</span><h1>{scene.name}</h1></div><div className="scene-view-actions"><span>{scene.instances.length} 个模型实例</span><button type="button" onClick={() => setShowMotions(true)}>动画与路径</button><button type="button" onClick={() => engine.current?.fit()}>查看全部</button><button type="button" disabled={!instance} onClick={() => engine.current?.fit(instance?.id)}>定位实例</button></div></header>
         <div className="model-editor-viewport"><SceneViewport projectId={projectId} scene={scene} cameraControlsEnabled interactive selectedTarget={selected} onSnapshot={onSnapshot} onReady={onReady} onPick={(target) => setSelected(target)} hint="选择对象 · 拖动旋转镜头 · 变换不会重置镜头" /></div>
         <footer className="model-editor-stage-footer"><span>实例配置独立；相同模型资源共用加载。</span><span>对象选择使用稳定标识。</span></footer>
       </section>
@@ -133,6 +130,7 @@ export function SceneModelEditor({ projectId, scene, editable }: { projectId: st
         </section>
       </aside>
     </div>
+    {showMotions ? <SceneMotionEditor projectId={projectId} scene={scene} snapshots={snapshots} editable={editable} onApply={(motions) => !!execute({ type: "scene.motions",sceneId: scene.id,motions })} onClose={() => setShowMotions(false)} /> : null}
     {showAssets ? <AssetPanel projectId={projectId} editable={editable} onClose={() => { setShowAssets(false); setReload((value) => value + 1); }} /> : null}
     {replacementInstanceId && scene.instances.some((instance) => instance.id === replacementInstanceId) ? <ModelReplacementDialog projectId={projectId} scene={scene} instanceId={replacementInstanceId} onClose={() => setReplacementInstanceId(null)} onModelAdded={(model) => setModels((models) => [model, ...models.filter((item) => item.id !== model.id)])} onApply={(replacement) => !!execute({ type: "instance.replace-resource", sceneId: scene.id, instanceId: replacement.instanceId, expectedAssetId: replacement.expectedAssetId, newAssetId: replacement.newAssetId, objectMap: replacement.objectMap })} /> : null}
   </>;

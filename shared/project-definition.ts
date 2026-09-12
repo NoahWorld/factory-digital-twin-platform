@@ -82,7 +82,7 @@ export function parseProjectDefinition(value: unknown): ProjectDefinition {
   }
   validateLocalComponentReferences(nodes, dataBindings);
   const interactions = validateInteractions(input.interactions);
-  validateInteractionReferences(interactions, pages);
+  validateInteractionReferences(interactions, pages, scenes);
   return { kind: "newpower.project", schemaVersion: 4, interactions, projectId, revision: Number(input.revision), updatedAt: input.updatedAt as string | null, entryPageId, pages, dataBindings, scenes };
 }
 

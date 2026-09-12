@@ -1,4 +1,5 @@
 import { AppError } from "./errors";
+import { validateSceneMotions, type SceneMotion } from "./scene-motion";
 import { requireIdentifier, validateNode, type Model3DProps, type ModelNodeAppearance, type ModelNodeTransform } from "./canvas-schema";
 
 export type SceneSettings = Omit<Model3DProps, "appearanceOverrides" | "transformOverrides">;
@@ -9,7 +10,7 @@ export type ModelInstance = {
   objectAppearances: Record<string, ModelNodeAppearance>;
 };
 export type SceneAssetBinding = { id: string; assetId: string; instanceId: string; objectId: string };
-export type SceneDefinition = { id: string; name: string; settings: SceneSettings; instances: ModelInstance[]; assetBindings: SceneAssetBinding[] };
+export type SceneDefinition = { id: string; name: string; settings: SceneSettings; instances: ModelInstance[]; assetBindings: SceneAssetBinding[]; motions?: SceneMotion[] };
 
 export const IDENTITY_TRANSFORM: ModelNodeTransform = { position: [0,0,0], rotation: [0,0,0], scale: [1,1,1] };
 export const DEFAULT_SCENE_SETTINGS: SceneSettings = {
@@ -43,7 +44,7 @@ export function validateInstance(value: unknown): ModelInstance {
     objectTransforms: validated.transformOverrides, objectAppearances: validated.appearanceOverrides };
 }
 export function validateScene(value: unknown): SceneDefinition {
-  const input = object(value, ["id", "name", "settings", "instances", "assetBindings"], "场景");
+  const input = object(value, ["id", "name", "settings", "instances", "assetBindings", "motions"], "场景");
   if (!Array.isArray(input.instances) || input.instances.length > 1000) invalid("单场景最多包含 1000 个模型实例。");
   const instances = (input.instances as unknown[]).map(validateInstance);
   if (new Set(instances.map((instance) => instance.id)).size !== instances.length) invalid("模型实例 ID 重复。");
@@ -55,7 +56,9 @@ export function validateScene(value: unknown): SceneDefinition {
     return { id: requireIdentifier(binding.id, "binding.id"), assetId: requireIdentifier(binding.assetId, "assetId"), instanceId, objectId: requireIdentifier(binding.objectId, "objectId") };
   });
   if (new Set(assetBindings.map((binding) => binding.id)).size !== assetBindings.length || new Set(assetBindings.map((binding) => JSON.stringify([binding.instanceId, binding.objectId]))).size !== assetBindings.length) invalid("映射 ID 或目标对象重复。");
-  return { id: requireIdentifier(input.id, "scene.id"), name: name(input.name), settings: validateSceneSettings(input.settings), instances, assetBindings };
+  const motions = input.motions === undefined ? undefined : validateSceneMotions(input.motions);
+  for (const motion of motions ?? []) for (const track of motion.tracks) if (track.type === "object" && !instances.some((instance) => instance.id === track.target.instanceId)) invalid(`动画「${motion.name}」引用的实例不存在。`);
+  return { id: requireIdentifier(input.id, "scene.id"), name: name(input.name), settings: validateSceneSettings(input.settings), instances, assetBindings, ...(motions === undefined ? {} : { motions }) };
 }
 export function validateScenes(value: unknown): SceneDefinition[] {
   if (!Array.isArray(value) || value.length > 100) invalid("项目最多包含 100 个场景。");

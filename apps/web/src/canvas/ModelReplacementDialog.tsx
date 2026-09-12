@@ -95,7 +95,7 @@ export function ModelReplacementDialog({ projectId, scene, instanceId, initialAs
       </section>
       {plan ? <div className="model-replacement-grid">
         <section className="model-reference-list"><h3>受影响对象 · {plan.references.length}</h3><input aria-label="搜索受影响对象" placeholder="搜索旧对象名称" value={referenceSearch} onChange={(event) => setReferenceSearch(event.target.value)} />
-          {filteredRefs.slice(0,200).map((ref) => <button key={ref.objectId} type="button" className={`${activeReference === ref.objectId ? "is-selected" : ""} ${!choices[ref.objectId] ? "is-unresolved" : ""}`} onClick={() => setActiveReference(ref.objectId)}><strong>{ref.name}</strong><span>资产绑定 {ref.bindings}{ref.transform ? " · 变换" : ""}{ref.appearance ? " · 外观" : ""}</span><small>{choices[ref.objectId] === "__remove__" ? "明确移除" : !choices[ref.objectId] ? "需要选择" : choices[ref.objectId] !== ref.suggestedId ? "手动对应" : matchLabels[ref.match]}</small></button>)}
+          {filteredRefs.slice(0,200).map((ref) => <button key={ref.objectId} type="button" className={`${activeReference === ref.objectId ? "is-selected" : ""} ${!choices[ref.objectId] ? "is-unresolved" : ""}`} onClick={() => setActiveReference(ref.objectId)}><strong>{ref.name}</strong><span>资产绑定 {ref.bindings}{ref.transform ? " · 变换" : ""}{ref.appearance ? " · 外观" : ""}{ref.motionTracks ? ` · 动画轨道 ${ref.motionTracks}` : ""}</span><small>{choices[ref.objectId] === "__remove__" ? "明确移除" : !choices[ref.objectId] ? "需要选择" : choices[ref.objectId] !== ref.suggestedId ? "手动对应" : matchLabels[ref.match]}</small></button>)}
           {!plan.references.length ? <p>当前实例没有需要迁移的对象绑定或覆盖。</p> : null}
           {filteredRefs.length > 200 ? <p>显示前 200 项，请搜索其余对象。</p> : null}
         </section>

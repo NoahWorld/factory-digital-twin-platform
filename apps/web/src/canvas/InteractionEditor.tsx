@@ -5,7 +5,7 @@ import type { ProjectAsset } from "./assets";
 import type { MetricCatalogEntry } from "../../../../shared/component-bindings";
 
 const eventNames: Record<string, string> = { "page.enter": "进入页面", "node.click": "点击组件或模型", "node.change": "控件值改变", "asset.select": "选择设备", "data.change": "指标值变化", "connection.change": "连接状态变化", "state.change": "状态变量变化", custom: "自定义事件" };
-const actionNames: Record<InteractionAction["type"], string> = { "state.set": "设置状态", "asset.select": "选择设备", "node.visible": "组件显隐", "page.navigate": "切换页面", delay: "等待", "event.emit": "发出自定义事件" };
+const actionNames: Record<InteractionAction["type"], string> = { "state.set": "设置状态", "asset.select": "选择设备", "node.visible": "组件显隐", "page.navigate": "切换页面", delay: "等待", "event.emit": "发出自定义事件", "motion.play": "播放场景动画", "motion.stop": "停止场景动画" };
 type Catalog = { states: InteractionDefinition["states"]; assets: ProjectAsset[]; metrics: MetricCatalogEntry[] };
 const literal = (value: Scalar): InteractionValue => ({ kind: "literal", value });
 
@@ -40,6 +40,10 @@ export function InteractionEditor({ project, pageId, assets, metrics, editable, 
   const catalog: Catalog = { assets, metrics, states: config.states.filter((state) => state.pageId === null || state.pageId === rule?.pageId) };
   const updateRule = (patch: Partial<InteractionRule>) => setConfig({ ...config, rules: config.rules.map((item) => item.id === selected ? { ...item, ...patch } : item) });
   const newAction = (type: InteractionAction["type"]): InteractionAction => {
+    if (type === "motion.play" || type === "motion.stop") {
+      const node = nodes.find((node) => node.sceneId && project.scenes.find((scene) => scene.id === node.sceneId)?.motions?.length);
+      return { type,nodeId: node?.id ?? "",motionId: project.scenes.find((scene) => scene.id === node?.sceneId)?.motions?.[0]?.id ?? "" };
+    }
     if (type === "state.set") return { type, stateId: catalog.states[0]?.id ?? "", value: literal(catalog.states[0]?.initial ?? "") };
     if (type === "asset.select") return { type, value: literal(assets[0]?.assetId ?? null), details: true };
     if (type === "node.visible") return { type, nodeId: nodes[0]?.id ?? "", visible: false };
@@ -69,6 +73,7 @@ export function InteractionEditor({ project, pageId, assets, metrics, editable, 
           {rule.trigger.type === "data.change" ? <input aria-label="触发指标" placeholder="全部指标" list="interaction-metrics" value={rule.trigger.metricKey ?? ""} onChange={(event) => updateRule({ trigger: { ...rule.trigger, metricKey: event.target.value || undefined } })} /> : null}</div>
         <h3>条件</h3>{rule.condition ? <><ConditionEditor condition={rule.condition} catalog={catalog} onChange={(condition) => updateRule({ condition })} /><button type="button" onClick={() => updateRule({ condition: null })}>移除条件</button></> : <button type="button" onClick={() => updateRule({ condition: comparison() })}>添加条件</button>}
         <h3>顺序动作</h3>{rule.actions.map((action, index) => <fieldset className="interaction-action" key={index}><legend>动作 {index + 1}</legend><div className="interaction-fields"><select aria-label={`动作 ${index + 1} 类型`} value={action.type} onChange={(event) => updateAction(index, newAction(event.target.value as InteractionAction["type"]))}>{Object.entries(actionNames).map(([type, name]) => <option key={type} value={type}>{name}</option>)}</select><button type="button" aria-label={`上移动作 ${index + 1}`} disabled={index === 0} onClick={() => { const actions = [...rule.actions]; [actions[index-1], actions[index]] = [actions[index], actions[index-1]]; updateRule({ actions }); }}>↑</button><button type="button" aria-label={`删除动作 ${index + 1}`} onClick={() => updateRule({ actions: rule.actions.filter((_, i) => i !== index) })}>删除</button></div>
+          {action.type === "motion.play" || action.type === "motion.stop" ? <div className="interaction-fields"><select aria-label="动画视窗" value={action.nodeId} onChange={(event) => { const node = nodes.find((node) => node.id === event.target.value); updateAction(index,{ ...action,nodeId: event.target.value,motionId: project.scenes.find((scene) => scene.id === node?.sceneId)?.motions?.[0]?.id ?? "" }); }}><option value="">选择三维视窗</option>{nodes.filter((node) => node.sceneId).map((node) => <option key={node.id} value={node.id}>{node.label}</option>)}</select><select aria-label="动作场景动画" value={action.motionId} onChange={(event) => updateAction(index,{ ...action,motionId: event.target.value })}><option value="">选择动画</option>{(project.scenes.find((scene) => scene.id === nodes.find((node) => node.id === action.nodeId)?.sceneId)?.motions ?? []).map((motion) => <option key={motion.id} value={motion.id}>{motion.name}</option>)}</select><span>播放等待完成后继续；切页取消。</span></div> : null}
           {action.type === "state.set" ? <select aria-label="目标状态" value={action.stateId} onChange={(event) => updateAction(index, { ...action, stateId: event.target.value })}><option value="">选择状态</option>{catalog.states.map((state) => <option key={state.id} value={state.id}>{state.name}</option>)}</select> : null}
           {"value" in action ? <ValueEditor value={action.value} catalog={catalog} literalAssets={action.type === "asset.select"} onChange={(value) => updateAction(index, { ...action, value })} /> : null}
           {action.type === "asset.select" ? <label><input type="checkbox" checked={action.details} onChange={(event) => updateAction(index, { ...action, details: event.target.checked })} />同时打开详情</label> : null}
@@ -80,6 +85,6 @@ export function InteractionEditor({ project, pageId, assets, metrics, editable, 
       </fieldset> : <p>选择或添加一条规则，配置触发事件、条件和动作。</p>}
       <datalist id="interaction-metrics">{[...new Set(metrics.map((metric) => metric.metricKey))].map((key) => <option key={key} value={key} />)}</datalist>
     </section></div>
-    <footer><span role={error ? "alert" : undefined}>{error ?? `${config.rules.length} 条规则 · ${config.states.length} 个状态`}</span><button type="button" onClick={onClose}>取消</button><button type="button" disabled={!editable} onClick={() => { try { const next = validateInteractions(config); validateInteractionReferences(next, project.pages); if (onApply(next)) onClose(); } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)); } }}>应用交互配置</button></footer>
+    <footer><span role={error ? "alert" : undefined}>{error ?? `${config.rules.length} 条规则 · ${config.states.length} 个状态`}</span><button type="button" onClick={onClose}>取消</button><button type="button" disabled={!editable} onClick={() => { try { const next = validateInteractions(config); validateInteractionReferences(next, project.pages, project.scenes); if (onApply(next)) onClose(); } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)); } }}>应用交互配置</button></footer>
   </dialog>;
 }

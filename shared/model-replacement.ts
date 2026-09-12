@@ -5,14 +5,15 @@ import { modelObjectSourceKey, type ModelObject } from "./model-inspection";
 import { validateScene, type SceneDefinition } from "./scene-definition";
 
 export type ObjectReplacementMap = Record<string, string | null>;
-export type ReplacementReference = { objectId: string; name: string; bindings: number; transform: boolean; appearance: boolean; suggestedId: string | null; match: "identity" | "source" | "name" | "unresolved" };
+export type ReplacementReference = { objectId: string; name: string; bindings: number; motionTracks: number; transform: boolean; appearance: boolean; suggestedId: string | null; match: "identity" | "source" | "name" | "unresolved" };
 export type ReplacementPlan = { instanceId: string; oldAssetId: string; newAssetId: string; references: ReplacementReference[]; candidates: ModelObject[]; addedObjects: number; removedObjects: number };
 const invalid = (message: string): never => { throw new AppError(400, "invalid_model_replacement", message); };
 
 export function referencedInstanceObjects(scene: SceneDefinition, instanceId: string) {
   const instance = scene.instances.find((instance) => instance.id === instanceId);
   if (!instance) invalid("要替换的模型实例不存在。");
-  return new Set([...Object.keys(instance!.objectTransforms), ...Object.keys(instance!.objectAppearances), ...scene.assetBindings.filter((binding) => binding.instanceId === instanceId).map((binding) => binding.objectId)]);
+  return new Set([...Object.keys(instance!.objectTransforms), ...Object.keys(instance!.objectAppearances), ...scene.assetBindings.filter((binding) => binding.instanceId === instanceId).map((binding) => binding.objectId),
+    ...(scene.motions ?? []).flatMap((motion) => motion.tracks.flatMap((track) => track.type === "object" && track.target.instanceId === instanceId && track.target.objectId !== null ? [track.target.objectId] : []))]);
 }
 export function planModelReplacement(scene: SceneDefinition, instanceId: string, previous: ModelAsset, next: ModelAsset): ReplacementPlan {
   const instance = scene.instances.find((instance) => instance.id === instanceId);
@@ -31,6 +32,7 @@ export function planModelReplacement(scene: SceneDefinition, instanceId: string,
   return { instanceId, oldAssetId: previous.id, newAssetId: next.id, candidates,
     references: [...referencedInstanceObjects(scene, instanceId)].map((objectId) => ({ objectId, name: old.find((object) => object.objectId === objectId)?.name || `已失效对象 ${objectId.slice(0,8)}`,
       bindings: scene.assetBindings.filter((binding) => binding.instanceId === instanceId && binding.objectId === objectId).length,
+      motionTracks: (scene.motions ?? []).flatMap((motion) => motion.tracks).filter((track) => track.type === "object" && track.target.instanceId === instanceId && track.target.objectId === objectId).length,
       transform: !!instance!.objectTransforms[objectId], appearance: !!instance!.objectAppearances[objectId], ...choose(old.find((object) => object.objectId === objectId)) })),
     addedObjects: candidates.filter((candidate) => !old.some((object) => object.objectId === candidate.objectId)).length,
     removedObjects: old.filter((object) => !candidates.some((candidate) => candidate.objectId === object.objectId)).length };
@@ -49,7 +51,12 @@ export function replaceInstanceResource(scene: SceneDefinition, instanceId: stri
   const replacement = structuredClone(instance!); replacement.modelAssetId = newAssetId;
   const remap = <T>(values: Record<string, T>) => Object.fromEntries(Object.entries(values).flatMap(([id, value]) => map[id] === null ? [] : [[map[id]!, value]]));
   replacement.objectTransforms = remap(replacement.objectTransforms); replacement.objectAppearances = remap(replacement.objectAppearances);
-  return validateScene({ ...scene, instances: scene.instances.map((item) => item.id === instanceId ? replacement : item),
+  const motions = scene.motions?.map((motion) => ({ ...motion, tracks: motion.tracks.flatMap((track) => {
+    if (track.type !== "object" || track.target.instanceId !== instanceId || track.target.objectId === null) return [track];
+    const nextId = map[track.target.objectId];
+    return nextId === null ? [] : [{ ...track, target: { ...track.target, objectId: nextId } }];
+  }) })).filter((motion) => motion.tracks.length);
+  return validateScene({ ...scene, ...(motions === undefined ? {} : { motions }), instances: scene.instances.map((item) => item.id === instanceId ? replacement : item),
     assetBindings: scene.assetBindings.flatMap((binding) => binding.instanceId !== instanceId ? [binding] : map[binding.objectId] === null ? [] : [{ ...binding, objectId: map[binding.objectId]! }]) });
 }
 

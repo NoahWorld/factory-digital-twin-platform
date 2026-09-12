@@ -1,5 +1,6 @@
 import { AppError } from "./errors";
 import { requireIdentifier } from "./canvas-schema";
+import type { SceneDefinition } from "./scene-definition";
 
 export type Scalar = string | number | boolean | null;
 export type InteractionValue = { kind: "literal"; value: Scalar } | { kind: "state"; stateId: string }
@@ -18,6 +19,7 @@ export type InteractionAction = { type: "state.set"; stateId: string; value: Int
   | { type: "asset.select"; value: InteractionValue; details: boolean }
   | { type: "page.navigate"; pageId: string }
   | { type: "node.visible"; nodeId: string; visible: boolean }
+  | { type: "motion.play" | "motion.stop"; nodeId: string; motionId: string }
   | { type: "delay"; milliseconds: number }
   | { type: "event.emit"; name: string; value: InteractionValue };
 export type InteractionRule = { id: string; name: string; pageId: string | null; enabled: boolean; reentry: "restart" | "ignore";
@@ -75,10 +77,11 @@ export function validateInteractionCondition(value: unknown, depth = 0, budget =
   return { op: input.op as "eq", left: validateInteractionValue(input.left), right: validateInteractionValue(input.right) };
 }
 export function validateInteractionAction(value: unknown): InteractionAction {
-  const input = record(value, ["type", "stateId", "value", "details", "pageId", "nodeId", "visible", "milliseconds", "name"], "动作");
+  const input = record(value, ["type", "stateId", "value", "details", "pageId", "nodeId", "visible", "milliseconds", "name", "motionId"], "动作");
   const fields: Record<string, string[]> = {
     "state.set": ["type", "stateId", "value"], "asset.select": ["type", "value", "details"], "page.navigate": ["type", "pageId"],
     "node.visible": ["type", "nodeId", "visible"], delay: ["type", "milliseconds"], "event.emit": ["type", "name", "value"],
+    "motion.play": ["type", "nodeId", "motionId"], "motion.stop": ["type", "nodeId", "motionId"],
   };
   if (typeof input.type !== "string" || !Object.hasOwn(fields, input.type)) return invalid("不支持的交互动作。");
   record(input, fields[input.type], "动作");
@@ -91,6 +94,7 @@ export function validateInteractionAction(value: unknown): InteractionAction {
     }
     case "page.navigate": return { type: input.type, pageId: requireIdentifier(input.pageId, "pageId") };
     case "node.visible": return { type: input.type, nodeId: requireIdentifier(input.nodeId, "nodeId"), visible: boolean(input.visible, "显隐") };
+    case "motion.play": case "motion.stop": return { type: input.type, nodeId: requireIdentifier(input.nodeId,"nodeId"), motionId: requireIdentifier(input.motionId,"motionId") };
     case "event.emit": return { type: input.type, name: requireIdentifier(input.name, "event.name"), value: validateInteractionValue(input.value) };
     default:
       if (typeof input.milliseconds !== "number" || !Number.isInteger(input.milliseconds) || input.milliseconds < 0 || input.milliseconds > 60000) return invalid("等待时间必须是 0–60000 毫秒的整数。");
@@ -137,7 +141,7 @@ export function interactionAssetIds(config: InteractionDefinition): string[] {
     ...rule.actions.flatMap((action) => action.type === "asset.select" && action.value.kind === "literal" && typeof action.value.value === "string" ? [action.value.value] : []),
   ]))];
 }
-export function validateInteractionReferences(config: InteractionDefinition, pages: Array<{ id: string; nodes: Array<{ id: string }> }>) {
+export function validateInteractionReferences(config: InteractionDefinition, pages: Array<{ id: string; nodes: Array<{ id: string; sceneId?: string }> }>, scenes: SceneDefinition[] = []) {
   const pageIds = new Set(pages.map((page) => page.id));
   const nodes = new Map(pages.flatMap((page) => page.nodes.map((node) => [node.id, page.id] as const)));
   for (const item of [...config.states, ...config.rules]) if (item.pageId !== null && !pageIds.has(item.pageId)) invalid(`交互「${item.name}」所属页面不存在，请先修复引用。`);
@@ -163,6 +167,11 @@ export function validateInteractionReferences(config: InteractionDefinition, pag
         if (action.value.kind === "literal" && action.value.value !== null && typeof action.value.value !== state.valueType) invalid("设置状态的常量类型不匹配。");
       }
       if (action.type === "node.visible") nodeRef(action.nodeId);
+      if (action.type === "motion.play" || action.type === "motion.stop") {
+        nodeRef(action.nodeId);
+        const node = pages.flatMap((page) => page.nodes).find((node) => node.id === action.nodeId);
+        if (!node?.sceneId || !scenes.find((scene) => scene.id === node.sceneId)?.motions?.some((motion) => motion.id === action.motionId)) invalid(`规则「${rule.name}」引用的场景动画不存在，请先修复或移除关联动作。`);
+      }
       if (action.type === "page.navigate" && !pageIds.has(action.pageId)) invalid("跳转页面不存在。");
     }
   }

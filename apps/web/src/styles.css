@@ -10569,3 +10569,18 @@ input:focus {
 @media (max-width: 850px) { .interaction-editor-body { grid-template-columns: 220px minmax(0,1fr); } }
 
 .interaction-editor-body input[type=checkbox] { width: auto; flex: 0 0 auto; margin: 0; padding: 0; }
+
+.scene-motion-body { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(400px,1fr) minmax(340px,1fr); }
+.scene-motion-config { overflow: auto; padding: 20px; }
+.scene-motion-config > fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+.scene-motion-config label { display: flex; gap: 8px; align-items: center; }
+.scene-motion-config input, .scene-motion-config select { min-width: 0; max-width: 100%; }
+.scene-motion-frame { display: grid; grid-template-columns: 80px repeat(3,minmax(50px,1fr)) 30px; gap: 6px; margin: 8px 0; }
+.scene-motion-frame > * { min-width: 0; }
+.scene-motion-preview { display: flex; flex-direction: column; min-width: 0; padding: 20px; border-left: 1px solid #355b70; }
+.scene-motion-preview > .model-3d-node { position: relative; flex: 1; min-height: 260px; }
+.scene-motion-preview p { font-size: 13px; line-height: 1.5; color: #aed0e2; }
+
+.scene-motion-config label { white-space: nowrap; }
+.scene-motion-config label > input { width: 0; flex: 1; }
+.scene-motion-frame-heading { color: #9cbdcf; font-size: 12px; }

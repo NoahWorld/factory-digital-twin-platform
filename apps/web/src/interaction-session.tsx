@@ -1,10 +1,11 @@
+import type { SceneViewportRuntime } from "./canvas/scene-viewport-runtime";
 import { createContext, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { InteractionRuntime, type InteractionHost, type InteractionSnapshot } from "../../../shared/interaction-runtime";
 import type { InteractionEvent, InteractionDefinition } from "../../../shared/interactions";
 import type { RuntimeAssetConnection } from "./runtime-state";
 
 const EMPTY: InteractionSnapshot = { states: {}, traces: [], active: 0, pageId: null };
-export const InteractionContext = createContext<{ emit: (event: InteractionEvent) => void; hiddenNodes: Set<string> } | null>(null);
+export const InteractionContext = createContext<{ emit: (event: InteractionEvent) => void; hiddenNodes: Set<string>; registerViewport: (id: string,engine: SceneViewportRuntime | null) => void } | null>(null);
 export const useInteractionContext = () => useContext(InteractionContext);
 
 /** CanvasPage retains this session across page routes; edit/preview or project changes dispose it. */

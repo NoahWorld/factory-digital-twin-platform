@@ -3,6 +3,7 @@ import { requireIdentifier } from "./canvas-schema";
 import { validateScene, validateInstance, validateSceneSettings, type SceneDefinition, type SceneSettings, type ModelInstance } from "./scene-definition";
 import type { ProjectDefinition } from "./project-definition";
 import { replaceInstanceResource, type ObjectReplacementMap } from "./model-replacement";
+import { validateSceneMotions, type SceneMotion } from "./scene-motion";
 
 export type SceneOperation =
   | { type: "scene.create" | "scene.update"; scene: SceneDefinition }
@@ -12,6 +13,7 @@ export type SceneOperation =
   | { type: "scene.duplicate"; sceneId: string; nodeId?: string; pageId?: string }
   | { type: "scene.delete"; sceneId: string; detachReferences?: boolean }
   | { type: "scene.settings"; sceneId: string; settings: SceneSettings }
+  | { type: "scene.motions"; sceneId: string; motions: SceneMotion[] }
   | { type: "instance.upsert"; sceneId: string; instance: ModelInstance }
   | { type: "instance.replace-resource"; sceneId: string; instanceId: string; expectedAssetId: string; newAssetId: string; objectMap: ObjectReplacementMap }
   | { type: "instance.delete" | "instance.duplicate"; sceneId: string; instanceId: string };
@@ -22,6 +24,7 @@ const fields: Record<SceneOperation["type"], string[]> = {
   "scene.attach": ["type", "sceneId", "nodeId", "pageId"], "scene.detach": ["type", "nodeId", "pageId"],
   "scene.duplicate": ["type", "sceneId", "nodeId", "pageId"], "scene.delete": ["type", "sceneId", "detachReferences"],
   "scene.settings": ["type", "sceneId", "settings"], "instance.upsert": ["type", "sceneId", "instance"],
+  "scene.motions": ["type", "sceneId", "motions"],
   "instance.replace-resource": ["type", "sceneId", "instanceId", "expectedAssetId", "newAssetId", "objectMap"],
   "instance.delete": ["type", "sceneId", "instanceId"], "instance.duplicate": ["type", "sceneId", "instanceId"],
 };
@@ -66,10 +69,15 @@ export function applySceneOperation(project: ProjectDefinition, operation: Recor
       const copy: SceneDefinition = { ...structuredClone(source), id: crypto.randomUUID(), name: `${source.name.slice(0, 95)} 副本`,
         instances: source.instances.map((instance) => ({ ...structuredClone(instance), id: instanceIds.get(instance.id)! })),
         assetBindings: source.assetBindings.map((binding) => ({ ...binding, id: crypto.randomUUID(), instanceId: instanceIds.get(binding.instanceId)! })) };
+      if (copy.motions) copy.motions = copy.motions.map((motion) => ({ ...motion, id: crypto.randomUUID(), tracks: motion.tracks.map((track) => ({ ...track, id: crypto.randomUUID(), ...(track.type === "object" ? { target: { ...track.target, instanceId: instanceIds.get(track.target.instanceId)! } } : {}) })) }));
       project.scenes.push(copy);
-      if (operation.nodeId !== undefined) { const node = nodeFor(); node.sceneId = copy.id; node.resourceRefs = []; node.props = { ...node.props, transformOverrides: {}, appearanceOverrides: {} }; } break;
+      if (operation.nodeId !== undefined) { const node = nodeFor();
+        const motionIds = new Map((source.motions ?? []).map((motion,index) => [motion.id,copy.motions![index].id]));
+        for (const rule of project.interactions.rules) rule.actions = rule.actions.map((action) => (action.type === "motion.play" || action.type === "motion.stop") && action.nodeId === node.id ? { ...action,motionId: motionIds.get(action.motionId) ?? action.motionId } : action);
+        node.sceneId = copy.id; node.resourceRefs = []; node.props = { ...node.props, transformOverrides: {}, appearanceOverrides: {} }; } break;
     }
     case "scene.settings": sceneFor().settings = validateSceneSettings(operation.settings); break;
+    case "scene.motions": sceneFor().motions = validateSceneMotions(operation.motions); break;
     case "instance.replace-resource": {
       const scene = sceneFor();
       const next = replaceInstanceResource(scene, requireIdentifier(operation.instanceId, "instanceId"), requireIdentifier(operation.expectedAssetId, "expectedAssetId"), requireIdentifier(operation.newAssetId, "newAssetId"), operation.objectMap);

@@ -1,4 +1,4 @@
-import type { BufferGeometry, Material, Object3D, Skeleton, Texture } from "three";
+import { AnimationClip, PropertyBinding, type BufferGeometry, type Material, type Object3D, type Skeleton, type Texture } from "three";
 import { GLTFLoader, type GLTF } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { clone } from "three/examples/jsm/utils/SkeletonUtils.js";
 import { ResourcePool } from "../../../../shared/resource-pool";
@@ -51,9 +51,11 @@ export function acquireModelResource(url: string) {
       instance = clone(gltf.scene);
       const nodesByIndex = new Map<number, Object3D>();
       const objectsByLocator = new Map<string, Object3D>();
+      const cloneBySource = new Map<Object3D, Object3D>();
       const stack: Array<{ source: Object3D; target: Object3D; nodeIndex?: number }> = [{ source: gltf.scene, target: instance }];
       while (stack.length) {
         const { source, target, nodeIndex: inheritedIndex } = stack.pop()!;
+        cloneBySource.set(source, target);
         // Three r185 records primitives at runtime; its separate types omit that field.
         const association = gltf.parser.associations.get(source) as { nodes?: number; meshes?: number; primitives?: number } | undefined;
         const nodeIndex = association?.nodes ?? inheritedIndex;
@@ -66,7 +68,24 @@ export function acquireModelResource(url: string) {
         }
         source.children.forEach((child, index) => stack.push({ source: child, target: target.children[index], nodeIndex }));
       }
-      return { scene: instance, animations: gltf.animations, nodesByIndex, objectsByLocator };
+      return { scene: instance, animations: gltf.animations, nodesByIndex, objectsByLocator,
+        animationClip: (index: number) => {
+          if (released) throw new Error("模型实例已释放。");
+          const source = gltf.animations[index];
+          if (!source) throw new Error("模型动画不存在。");
+          const tracks = source.tracks.map((track) => {
+            const binding = PropertyBinding.parseTrackName(track.name);
+            const original = PropertyBinding.findNode(gltf.scene, binding.nodeName);
+            const target = original ? cloneBySource.get(original as Object3D) : undefined;
+            if (!target || binding.objectName) throw new Error(`动画目标无法映射到当前实例：${track.name}`);
+            // clone() preserves GLTFLoader's CUBICSPLINE createInterpolant.
+            const copy = track.clone();
+            copy.name = `${target.uuid}.${binding.propertyName}${binding.propertyIndex === undefined ? "" : `[${binding.propertyIndex}]`}`;
+            return copy;
+          });
+          return new AnimationClip(source.name, source.duration, tracks, source.blendMode);
+        },
+      };
     }),
     release: () => {
       if (released) return;

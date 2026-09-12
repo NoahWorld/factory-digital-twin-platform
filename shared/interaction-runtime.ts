@@ -150,7 +150,7 @@ export class InteractionRuntime {
         } else if (action.type === "delay") {
           await abortableWait(action.milliseconds, signal);
         } else {
-          const result = await abortableEffect(() => this.host.perform(action, value, signal), signal);
+          const result = await abortableEffect(() => this.host.perform(action, value, signal), signal, action.type === "motion.play" ? 100000 : 60000);
           if (signal.aborted) throw abortError();
           for (const emitted of result ?? []) this.enqueue(emitted, chain, rule.pageId);
           if (action.type === "page.navigate") this.setPage(action.pageId, chain);
@@ -160,7 +160,7 @@ export class InteractionRuntime {
       }
       this.log("succeeded", "规则执行完成。", chain, rule.id);
     } catch (reason) {
-      const cancelled = signal.aborted || chain.controller.signal.aborted;
+      const cancelled = signal.aborted || chain.controller.signal.aborted || (reason instanceof Error && reason.name === "AbortError");
       controller.abort();
       this.log(cancelled ? "cancelled" : "failed", reason instanceof Error ? reason.message : String(reason), chain, rule.id, index);
     }
@@ -193,12 +193,12 @@ function abortableWait(milliseconds: number, signal: AbortSignal): Promise<void>
   });
 }
 /** Bounds a host failure even if its implementation ignores cancellation. */
-function abortableEffect(effect: () => ReturnType<InteractionHost["perform"]>, signal: AbortSignal): Promise<InteractionEvent[] | void> {
+function abortableEffect(effect: () => ReturnType<InteractionHost["perform"]>, signal: AbortSignal, timeoutMs: number): Promise<InteractionEvent[] | void> {
   return new Promise((resolve, reject) => {
     if (signal.aborted) { reject(abortError()); return; }
     const cleanup = () => { clearTimeout(timer); signal.removeEventListener("abort", abort); };
     const abort = () => { cleanup(); reject(abortError()); };
-    const timer = setTimeout(() => { cleanup(); reject(new Error("动作执行超过 60 秒。")); }, 60000);
+    const timer = setTimeout(() => { cleanup(); reject(new Error(`动作执行超过 ${timeoutMs / 1000} 秒。`)); }, timeoutMs);
     signal.addEventListener("abort", abort, { once: true });
     Promise.resolve().then(() => { if (signal.aborted) throw abortError(); return effect(); }).then((result) => { cleanup(); resolve(result); }, (reason) => { cleanup(); reject(reason); });
   });

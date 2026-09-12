@@ -26,7 +26,7 @@ export function cloneInteractionScope(config: InteractionDefinition, nodes: Read
       rule.condition = mapCondition(rule.condition);
       rule.actions = rule.actions.map((action) => {
         if (action.type === "state.set") return { ...action, stateId: stateMap.get(action.stateId) ?? action.stateId, value: mapValue(action.value) };
-        if (action.type === "node.visible") return { ...action, nodeId: nodes.get(action.nodeId) ?? action.nodeId };
+        if (action.type === "node.visible" || action.type === "motion.play" || action.type === "motion.stop") return { ...action, nodeId: nodes.get(action.nodeId) ?? action.nodeId };
         if (action.type === "page.navigate") return { ...action, pageId: mapPage(action.pageId) };
         return "value" in action ? { ...action, value: mapValue(action.value) } : action;
       });

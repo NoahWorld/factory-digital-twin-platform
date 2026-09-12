@@ -139,6 +139,10 @@ async function validateSceneResources(env: AppEnv, projectId: string, project: P
     objects.set(id, new Set(inspection.objects.filter((object: { inDefaultScene: boolean }) => object.inDefaultScene).map((object: { objectId: string }) => object.objectId)));
   }
   for (const scene of project.scenes) {
+    for (const motion of scene.motions ?? []) for (const track of motion.tracks) if (track.type === "object" && track.target.objectId !== null) {
+      const instance = scene.instances.find((instance) => instance.id === track.target.instanceId)!;
+      if (!objects.get(instance.modelAssetId)?.has(track.target.objectId)) throw new AppError(400, "invalid_motion_object", `动画「${motion.name}」引用的对象不在当前模型版本中，请修复映射。`);
+    }
     for (const instance of scene.instances) for (const id of [...Object.keys(instance.objectTransforms), ...Object.keys(instance.objectAppearances)]) {
       if (!objects.get(instance.modelAssetId)?.has(id)) throw new AppError(400, "invalid_scene_object", `模型实例 ${instance.name} 的对象 ${id} 不在当前资源版本中，请修复映射。`);
     }

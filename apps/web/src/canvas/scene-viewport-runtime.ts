@@ -11,6 +11,8 @@ import { createModelInstance, type ObjectTarget, type ModelInstanceController } 
 import { ViewportResources } from "./viewport-resources";
 import { ResourcePool } from "../../../../shared/resource-pool";
 import type { ModelObject } from "../../../../shared/model-inspection";
+import { SceneMotionPlayer } from "../../../../shared/scene-motion-player";
+import type { SceneMotionTrack } from "../../../../shared/scene-motion";
 
 export type ViewportState = { status: "loading" | "ready" | "error"; loaded: number; total: number; message?: string };
 export type SceneViewportOptions = {
@@ -44,6 +46,32 @@ export function createSceneViewport(container: HTMLElement, initial: SceneViewpo
   const selections = new Map<THREE.Object3D, THREE.BoxHelper>();
   let selectionObject: THREE.Object3D | null = null;
   const controls = new OrbitControls(camera, renderer.domElement); controls.enableDamping = true; controls.dampingFactor = .08;
+  let configurationKey = JSON.stringify(initial.scene), configurationGeneration = 0;
+  const readiness = new Set<() => void>();
+  const pendingMotions = new Map<string,AbortController>();
+  const controllerFor = (track: Extract<SceneMotionTrack, { type: "object" }>) => {
+    const controller = entries.get(track.target.instanceId)?.controller;
+    if (!controller) throw new Error("动画目标模型尚未就绪。"); return controller;
+  };
+  const cameraVector = (property: "position" | "target") => property === "position" ? camera.position : controls.target;
+  const motionPlayer = new SceneMotionPlayer({
+    read: (track) => track.type === "camera" ? cameraVector(track.property).toArray() : controllerFor(track).readMotion(track.target.objectId,track.property),
+    write: (track,value) => {
+      if (track.type === "camera") cameraVector(track.property).fromArray(value as number[]);
+      else controllerFor(track).writeMotion(track.target.objectId,track.property,value);
+    },
+    restore: (samples) => {
+      const ids = new Set<string>();
+      for (const { track,initial } of samples) {
+        if (track.type === "camera") cameraVector(track.property).fromArray(initial as number[]);
+        else ids.add(track.target.instanceId);
+      }
+      ids.forEach((id) => entries.get(id)?.controller?.restoreConfiguration());
+      camera.lookAt(controls.target);
+    },
+  });
+  const takeCameraControl = () => motionPlayer.cancelCamera();
+  controls.addEventListener("start",takeCameraControl);
   const environment = new THREE.HemisphereLight(0xffffff, 0x14202a, 2); scene.add(environment);
   const key = new THREE.DirectionalLight(0xffffff, 2.4); key.position.set(4,8,6); scene.add(key);
   const grid = new THREE.GridHelper(10,20,0x2a7590,0x163d50); scene.add(grid);
@@ -89,6 +117,7 @@ export function createSceneViewport(container: HTMLElement, initial: SceneViewpo
     if (disposed) return;
     const values = [...entries.values()]; const errors = values.flatMap((entry) => entry.error ? [entry.error] : []);
     if (!values.some((entry) => entry.pending) && !fitted) fit();
+    readiness.forEach((notify) => notify());
     options.onState({ status: errors.length ? "error" : values.some((entry) => entry.pending) ? "loading" : "ready", loaded: values.filter((entry) => entry.controller).length, total: options.scene.instances.length, message: errors.length ? errors.slice(0,5).join("；") + (errors.length > 5 ? `；另有 ${errors.length - 5} 个实例错误。` : "") : undefined });
   };
   const release = (instanceId: string, entry: RecordEntry) => {
@@ -103,6 +132,8 @@ export function createSceneViewport(container: HTMLElement, initial: SceneViewpo
   };
   const update = (next: SceneViewportOptions) => {
     if (disposed) return;
+    const nextKey = JSON.stringify(next.scene);
+    if (nextKey !== configurationKey) { motionPlayer.cancel(); configurationGeneration++; configurationKey = nextKey; }
     const oldSceneId = options.scene.id, oldView = options.scene.settings.cameraView, oldLegacy = options.legacyNames;
     options = next;
     if (oldSceneId !== next.scene.id) fitted = false;
@@ -143,9 +174,21 @@ export function createSceneViewport(container: HTMLElement, initial: SceneViewpo
   const resizeObserver = new ResizeObserver(resize); const intersectionObserver = new IntersectionObserver(([entry]) => { visible = entry?.isIntersecting ?? false; });
   container.replaceChildren(renderer.domElement); resizeObserver.observe(container); intersectionObserver.observe(container); resize();
   let lastFrame = performance.now();
-  renderer.setAnimationLoop((now) => { const delta = Math.min((now - lastFrame) / 1000, .1); lastFrame = now; if (disposed || !visible || document.hidden) return; controls.update(delta); selections.forEach((helper) => helper.update()); renderer.render(scene, camera); });
+  renderer.setAnimationLoop((now) => {
+    const elapsedMs = Math.max(0,now-lastFrame), delta = Math.min(elapsedMs / 1000, .1); lastFrame = now;
+    if (disposed) return;
+    try {
+      const motion = motionPlayer.snapshot();
+      controls.autoRotate = options.scene.settings.autoRotate && !motionPlayer.ownsCamera();
+      controls.update(delta); motionPlayer.tick(elapsedMs); camera.lookAt(controls.target);
+      if (motion.active || motion.heldChannels) { refreshBounds(); updateSelection(); }
+    }
+    catch (reason) { options.onState({ status: "error", loaded: entries.size, total: options.scene.instances.length, message: `动画执行失败：${String(reason)}` }); }
+    if (!visible || document.hidden) return;
+    selections.forEach((helper) => helper.update()); renderer.render(scene,camera);
+  });
   diagnostics.set(id, () => ({ id, sceneId: options.scene.id, instances: [...entries.values()].filter((entry) => entry.controller).length,
-    ownedResources: resources.snapshot(), manifests: manifests.snapshot(), frame: renderer.info.render.frame,
+    ownedResources: resources.snapshot(), manifests: manifests.snapshot(), motion: motionPlayer.snapshot(), frame: renderer.info.render.frame,
     instanceStates: [...entries].map(([instanceId, entry]) => ({ instanceId, position: entry.controller?.root.position.toArray(), visible: entry.controller?.root.visible, materialColors: entry.controller?.materialColors(), error: entry.error ?? null })),
     selectedObjectName: selectionObject?.name ?? null, selectedCount: selections.size,
     pending: [...entries.values()].filter((entry) => entry.pending).length, geometries: renderer.info.memory.geometries, textures: renderer.info.memory.textures,
@@ -153,7 +196,37 @@ export function createSceneViewport(container: HTMLElement, initial: SceneViewpo
   objectInspections.set(id, (target) => entries.get(target.instanceId)?.controller?.inspectObject(target.objectId));
   const raycaster = new THREE.Raycaster(); const pointer = new THREE.Vector2();
   return {
-    update, fit,
+    update, fit: (instanceId?: string) => { takeCameraControl(); fit(instanceId); },
+    cameraState: () => ({ position: camera.position.toArray(), target: controls.target.toArray(), fitted }),
+    playMotion: async (motionId: string, signal: AbortSignal) => {
+      const motion = options.scene.motions?.find((motion) => motion.id === motionId);
+      if (!motion) throw new Error("场景动画不存在。");
+      pendingMotions.get(motionId)?.abort();
+      const command = new AbortController(), parentSignal = signal;
+      const cancel = () => command.abort();
+      parentSignal.addEventListener("abort",cancel,{ once: true }); if (parentSignal.aborted) command.abort();
+      signal = command.signal; pendingMotions.set(motionId,command);
+      try {
+      const generation = configurationGeneration;
+      await new Promise<void>((resolve,reject) => {
+        const cleanup = () => { clearTimeout(timer); readiness.delete(check); signal.removeEventListener("abort",abort); };
+        const abort = () => { cleanup(); reject(Object.assign(new Error("动画等待已取消。"),{ name: "AbortError" })); };
+        const check = () => {
+          if (signal.aborted || disposed || generation !== configurationGeneration) { abort(); return; }
+          const hasCamera = motion.tracks.some((track) => track.type === "camera");
+          const targets = hasCamera ? options.scene.instances.map((instance) => entries.get(instance.id)) : motion.tracks.flatMap((track) => track.type === "object" ? [entries.get(track.target.instanceId)] : []);
+          const failed = targets.find((entry) => entry?.error);
+          if (failed) { cleanup(); reject(new Error(failed.error)); }
+          else if (targets.every((entry) => entry?.controller && !entry.pending) && (!hasCamera || !options.scene.instances.length || fitted)) { cleanup(); resolve(); }
+        };
+        const timer = setTimeout(() => { cleanup(); reject(new Error("动画等待模型超过30秒。")); },30000);
+        signal.addEventListener("abort",abort,{ once: true }); readiness.add(check); check();
+      });
+      if (signal.aborted || disposed || generation !== configurationGeneration) throw Object.assign(new Error("动画配置已改变。"),{ name: "AbortError" });
+      await motionPlayer.play(motion,signal);
+      } finally { parentSignal.removeEventListener("abort",cancel); if (pendingMotions.get(motionId) === command) pendingMotions.delete(motionId); }
+    },
+    stopMotion: (motionId?: string) => { for (const [id,command] of pendingMotions) if (!motionId || id === motionId) command.abort(); motionPlayer.cancel(motionId); },
     retry: () => { for (const [instanceId, entry] of entries) if (entry.error) { release(instanceId, entry); entries.delete(instanceId); } update(options); },
     pick: (clientX: number, clientY: number) => {
       const rect = renderer.domElement.getBoundingClientRect(); pointer.set((clientX - rect.left) / rect.width * 2 - 1, -(clientY - rect.top) / rect.height * 2 + 1); raycaster.setFromCamera(pointer, camera);
@@ -164,7 +237,7 @@ export function createSceneViewport(container: HTMLElement, initial: SceneViewpo
       return null;
     },
     dispose: () => {
-      if (disposed) return; disposed = true; renderer.setAnimationLoop(null); resizeObserver.disconnect(); intersectionObserver.disconnect(); controls.dispose(); clearSelection();
+      if (disposed) return; pendingMotions.forEach((command) => command.abort()); motionPlayer.dispose(); disposed = true; readiness.forEach((notify) => notify()); renderer.setAnimationLoop(null); resizeObserver.disconnect(); intersectionObserver.disconnect(); controls.removeEventListener("start",takeCameraControl); controls.dispose(); clearSelection();
       for (const [instanceId, entry] of entries) release(instanceId, entry); entries.clear(); disposeObjectResources([scene]); renderer.dispose(); renderer.forceContextLoss(); diagnostics.delete(id); objectInspections.delete(id);
       if (container.contains(renderer.domElement)) container.replaceChildren();
     },
