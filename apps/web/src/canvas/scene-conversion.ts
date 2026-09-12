@@ -3,6 +3,7 @@ import { parseModel3DProps, type CanvasNode } from "./types";
 import type { ModelAsset } from "./model-assets";
 import type { ModelSceneNode, ModelSceneSnapshot } from "./model-scene";
 import type { ProjectAsset } from "./assets";
+import { modelObjectLocator } from "../../../../shared/model-inspection";
 
 export function extractLegacyScene(node: CanvasNode, model: ModelAsset | null, snapshot: ModelSceneSnapshot | null, assets: ProjectAsset[]): SceneDefinition {
   const parsed = parseModel3DProps(node.props); if (!parsed.ok) throw new Error(parsed.message);
@@ -15,7 +16,8 @@ export function extractLegacyScene(node: CanvasNode, model: ModelAsset | null, s
   const objectIdForName = (name: string) => {
     const matches = nodes.filter((node) => node.name === name && node.nodeIndex !== undefined);
     if (matches.length !== 1) throw new Error(`旧模型对象「${name}」缺失或重名，请先修复旧配置。`);
-    const object = model.inspection.objects!.find((object) => object.nodeIndex === matches[0].nodeIndex);
+    const locator = modelObjectLocator({ ...matches[0], nodeIndex: matches[0].nodeIndex! });
+    const object = model.inspection.objects!.find((object) => modelObjectLocator(object) === locator);
     if (!object) throw new Error(`对象「${name}」的清单与已加载模型不匹配。`); return object.objectId;
   };
   const instanceId = crypto.randomUUID();

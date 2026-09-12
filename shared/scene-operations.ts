@@ -2,6 +2,7 @@ import { AppError } from "./errors";
 import { requireIdentifier } from "./canvas-schema";
 import { validateScene, validateInstance, validateSceneSettings, type SceneDefinition, type SceneSettings, type ModelInstance } from "./scene-definition";
 import type { ProjectDefinition } from "./project-definition";
+import { replaceInstanceResource, type ObjectReplacementMap } from "./model-replacement";
 
 export type SceneOperation =
   | { type: "scene.create" | "scene.update"; scene: SceneDefinition }
@@ -12,6 +13,7 @@ export type SceneOperation =
   | { type: "scene.delete"; sceneId: string; detachReferences?: boolean }
   | { type: "scene.settings"; sceneId: string; settings: SceneSettings }
   | { type: "instance.upsert"; sceneId: string; instance: ModelInstance }
+  | { type: "instance.replace-resource"; sceneId: string; instanceId: string; expectedAssetId: string; newAssetId: string; objectMap: ObjectReplacementMap }
   | { type: "instance.delete" | "instance.duplicate"; sceneId: string; instanceId: string };
 
 const invalid = (message: string): never => { throw new AppError(400, "invalid_scene_operation", message); };
@@ -20,6 +22,7 @@ const fields: Record<SceneOperation["type"], string[]> = {
   "scene.attach": ["type", "sceneId", "nodeId", "pageId"], "scene.detach": ["type", "nodeId", "pageId"],
   "scene.duplicate": ["type", "sceneId", "nodeId", "pageId"], "scene.delete": ["type", "sceneId", "detachReferences"],
   "scene.settings": ["type", "sceneId", "settings"], "instance.upsert": ["type", "sceneId", "instance"],
+  "instance.replace-resource": ["type", "sceneId", "instanceId", "expectedAssetId", "newAssetId", "objectMap"],
   "instance.delete": ["type", "sceneId", "instanceId"], "instance.duplicate": ["type", "sceneId", "instanceId"],
 };
 
@@ -67,6 +70,11 @@ export function applySceneOperation(project: ProjectDefinition, operation: Recor
       if (operation.nodeId !== undefined) { const node = nodeFor(); node.sceneId = copy.id; node.resourceRefs = []; node.props = { ...node.props, transformOverrides: {}, appearanceOverrides: {} }; } break;
     }
     case "scene.settings": sceneFor().settings = validateSceneSettings(operation.settings); break;
+    case "instance.replace-resource": {
+      const scene = sceneFor();
+      const next = replaceInstanceResource(scene, requireIdentifier(operation.instanceId, "instanceId"), requireIdentifier(operation.expectedAssetId, "expectedAssetId"), requireIdentifier(operation.newAssetId, "newAssetId"), operation.objectMap);
+      project.scenes[project.scenes.indexOf(scene)] = next; break;
+    }
     case "instance.upsert": {
       const scene = sceneFor(); const instance = validateInstance(operation.instance);
       const index = scene.instances.findIndex((item) => item.id === instance.id);

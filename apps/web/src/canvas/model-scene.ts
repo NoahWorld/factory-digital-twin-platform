@@ -12,6 +12,8 @@ export type ModelSceneNode = {
   objectId?: string | null;
   instanceId?: string;
   nodeIndex?: number;
+  primitiveIndex?: number;
+  attachment?: "mesh" | "camera" | "light";
   path: string;
   name: string;
   objectType: string;

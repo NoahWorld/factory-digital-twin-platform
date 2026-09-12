@@ -44,6 +44,13 @@ const affected = (result: DatabaseResult | undefined) => {
 export async function persistProjectPatch(env: AppEnv, projectId: string, userId: string, patch: ProjectPatch): Promise<ProjectDefinition> {
   const current = await getProjectDefinition(env, projectId);
   const next = applyProjectPatch(current, patch);
+  const oldNodes = new Map(current.pages.flatMap((page) => page.nodes).map((node) => [node.id, node]));
+  for (const node of patch.upsertNodes) {
+    const old = oldNodes.get(node.id);
+    if (old?.type === "model-3d" && !old.sceneId && !node.sceneId && old.resourceRefs[0] && node.resourceRefs[0] && old.resourceRefs[0] !== node.resourceRefs[0]) {
+      throw new AppError(400, "model_replacement_requires_scene", "更换已有模型请使用场景替换预览，明确迁移对象绑定与覆盖。");
+    }
+  }
   next.dataBindings = await validateComponentReferences(env, projectId, next.pages.flatMap((page) => page.nodes), next.dataBindings);
   await validateCanvasResources(env, projectId, patch.upsertNodes.filter((node) => !node.sceneId));
   const sceneAssetRecords = await validateSceneResources(env, projectId, next);
@@ -117,7 +124,7 @@ async function validateSceneResources(env: AppEnv, projectId: string, project: P
     if (!model) throw new AppError(400, "invalid_scene_resource", `模型资源 ${id} 不属于当前项目。`);
     let inspection = JSON.parse(model.inspection_json);
     if (inspection.reportVersion !== 2 || !Array.isArray(inspection.objects)) throw new AppError(400, "model_inspection_required", "请先为旧模型补充资源检查，再添加到可复用场景。");
-    if (inspection.objects.some((object: { inDefaultScene?: boolean }) => typeof object.inDefaultScene !== "boolean")) inspection = (await inspectStoredModelAsset(env, projectId, id)).inspection;
+    if (inspection.objectManifestVersion !== 2 || inspection.objects.some((object: { inDefaultScene?: boolean }) => typeof object.inDefaultScene !== "boolean")) inspection = (await inspectStoredModelAsset(env, projectId, id)).inspection;
     objects.set(id, new Set(inspection.objects.filter((object: { inDefaultScene: boolean }) => object.inDefaultScene).map((object: { objectId: string }) => object.objectId)));
   }
   for (const scene of project.scenes) {

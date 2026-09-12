@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { SceneViewportOptions, SceneViewportRuntime, ViewportState } from "./scene-viewport-runtime";
 import type { ObjectTarget } from "./model-instance";
 
@@ -31,7 +31,7 @@ export function SceneViewport(props: Props) {
     });
     return () => { cancelled = true; runtime.current?.dispose(); runtime.current = null; latest.current.onReady?.(null); };
   }, [props.projectId, attempt]);
-  useEffect(() => {
+  useLayoutEffect(() => {
     try { runtime.current?.update({ ...props, onState: report }); }
     catch (reason) { report({ status: "error", loaded: 0, total: props.scene.instances.length, message: `场景配置无法应用：${String(reason)}` }); }
   }, [props.scene, props.legacyNames, props.cameraControlsEnabled, props.selectedTarget, props.selectedTargets, props.selectedLegacyPath, props.runtimeAppearances, props.onSnapshot]);

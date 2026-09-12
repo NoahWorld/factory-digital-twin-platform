@@ -3,20 +3,12 @@ import { AppError, type AppEnv } from "./auth";
 export type ModelFormat = "glb" | "gltf";
 
 export type { ModelInspection } from "../../../shared/model-inspection";
-import type { ModelInspection } from "../../../shared/model-inspection";
+import { modelObjectLocator, modelObjectSourceKey, type ModelInspection } from "../../../shared/model-inspection";
 import { inspectModelDetails } from "./model-inspection";
 
-export type ModelAsset = {
-  id: string;
-  projectId: string;
-  originalFilename: string;
-  format: ModelFormat;
-  contentType: string;
-  byteSize: number;
-  sha256: string;
-  inspection: ModelInspection;
-  createdAt: string;
-};
+export type { ModelAsset } from "../../../shared/model-assets";
+import type { ModelAsset } from "../../../shared/model-assets";
+import { readUploadBytes } from "./upload-body";
 
 type ModelAssetRow = {
   id: string;
@@ -29,6 +21,7 @@ type ModelAssetRow = {
   object_key: string;
   inspection_json: string;
   created_at: string;
+  family_id: string; version_number: number; previous_version_id: string | null;
 };
 
 type GltfDocument = {
@@ -225,11 +218,11 @@ export const presentModelAsset = (row: ModelAssetRow): ModelAsset => ({
   byteSize: row.byte_size,
   sha256: row.sha256,
   inspection: parseStoredInspection(row),
-  createdAt: row.created_at,
+  createdAt: row.created_at, familyId: row.family_id, versionNumber: row.version_number, previousVersionId: row.previous_version_id,
 });
 
 const selectColumns =
-  "id, project_id, original_filename, format, content_type, byte_size, sha256, object_key, inspection_json, created_at";
+  "id, project_id, original_filename, format, content_type, byte_size, sha256, object_key, inspection_json, created_at, family_id, version_number, previous_version_id";
 
 export const listModelAssets = async (env: AppEnv, projectId: string): Promise<ModelAsset[]> => {
   const result = await env.DB.prepare(
@@ -254,27 +247,26 @@ export const uploadModelAsset = async (
   projectId: string,
   userId: string,
   rawFilename: string | null,
+  previousAssetId?: string,
 ): Promise<ModelAsset> => {
   const modelStorage = requireModelStorage(env);
   const { filename, format } = validateFilename(rawFilename);
-  const contentLength = Number(request.headers.get("content-length"));
-  if (Number.isFinite(contentLength) && contentLength > MAX_MODEL_BYTES) {
-    throw new AppError(413, "model_file_too_large", `Model files cannot exceed ${MAX_MODEL_BYTES} bytes.`);
-  }
-
-  const buffer = await request.arrayBuffer();
-  if (buffer.byteLength === 0) {
-    throw new AppError(400, "empty_model_file", "The uploaded model file is empty.");
-  }
-  if (buffer.byteLength > MAX_MODEL_BYTES) {
-    throw new AppError(413, "model_file_too_large", `Model files cannot exceed ${MAX_MODEL_BYTES} bytes.`);
-  }
-
-  const bytes = new Uint8Array(buffer);
-  const basicInspection = format === "glb" ? inspectGlb(bytes) : inspectGltf(bytes);
-  const inspection: ModelInspection = { ...basicInspection, ...await inspectModelDetails(bytes, format) };
-  const sha256 = await sha256Hex(bytes);
+  const previous = previousAssetId ? await inspectStoredModelAsset(env, projectId, previousAssetId) : null;
+  const bytes = await readUploadBytes(request, MAX_MODEL_BYTES, "model_file_too_large");
+  if (!bytes.byteLength) throw new AppError(400, "empty_model_file", "上传的模型文件为空。");
+  const buffer = bytes.buffer as ArrayBuffer;
   const assetId = crypto.randomUUID();
+  const basicInspection = format === "glb" ? inspectGlb(bytes) : inspectGltf(bytes);
+  const inspection: ModelInspection = { ...basicInspection, ...await inspectModelDetails(bytes, format, assetId) };
+  const sha256 = await sha256Hex(bytes);
+  if (previous && inspection.objects) {
+    const oldIndices = new Map(previous.inspection.objects?.map((object) => [modelObjectLocator(object), object]));
+    const oldSources = new Map(previous.inspection.objects?.filter((object) => modelObjectSourceKey(object)).map((object) => [modelObjectSourceKey(object), object]));
+    const retained = new Map(inspection.objects.map((object) => [object.objectId,
+      (previous.sha256 === sha256 ? oldIndices.get(modelObjectLocator(object)) : modelObjectSourceKey(object) ? oldSources.get(modelObjectSourceKey(object)) : undefined)?.objectId ?? object.objectId]));
+    inspection.objects = inspection.objects.map((object) => ({ ...object, objectId: retained.get(object.objectId)!, parentObjectId: object.parentObjectId ? retained.get(object.parentObjectId)! : null }));
+  }
+  const familyId = previous?.familyId ?? assetId;
   const objectKey = `${projectId}/${assetId}/original.${format}`;
   const contentType = format === "glb" ? "model/gltf-binary" : "model/gltf+json";
   const now = new Date().toISOString();
@@ -285,43 +277,16 @@ export const uploadModelAsset = async (
   });
 
   try {
-    await env.DB.prepare(
-      `INSERT INTO model_assets
-       (id, project_id, original_filename, format, content_type, byte_size, sha256, object_key, inspection_json, created_by_user_id, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    ).bind(
-      assetId,
-      projectId,
-      filename,
-      format,
-      contentType,
-      buffer.byteLength,
-      sha256,
-      objectKey,
-      JSON.stringify(inspection),
-      userId,
-      now,
-    ).run();
+    await env.DB.prepare(`INSERT INTO model_assets
+      (id,project_id,original_filename,format,content_type,byte_size,sha256,object_key,inspection_json,created_by_user_id,created_at,family_id,version_number,previous_version_id)
+      SELECT ?,?,?,?,?,?,?,?,?,?,?,?,COALESCE((SELECT MAX(version_number) FROM model_assets WHERE project_id=? AND family_id=?),0)+1,?`)
+      .bind(assetId,projectId,filename,format,contentType,buffer.byteLength,sha256,objectKey,JSON.stringify(inspection),userId,now,familyId,projectId,familyId,previous?.id ?? null).run();
   } catch (error) {
-    await modelStorage.delete(objectKey);
-    throw new AppError(
-      500,
-      "model_asset_metadata_write_failed",
-      `The model file was validated but its metadata could not be saved: ${error instanceof Error ? error.message : String(error)}`,
-    );
+    try { await modelStorage.delete(objectKey); }
+    catch (cleanupError) { throw new AppError(500, "model_asset_cleanup_failed", `模型元数据保存失败，临时对象 ${assetId} 清理也失败：${String(cleanupError)}；原始错误：${String(error)}`); }
+    throw new AppError(500, "model_asset_metadata_write_failed", `模型已检查但元数据保存失败：${error instanceof Error ? error.message : String(error)}`);
   }
-
-  return {
-    id: assetId,
-    projectId,
-    originalFilename: filename,
-    format,
-    contentType,
-    byteSize: buffer.byteLength,
-    sha256,
-    inspection,
-    createdAt: now,
-  };
+  return presentModelAsset(await getModelAssetRow(env, projectId, assetId));
 };
 
 export const modelAssetContentResponse = async (
@@ -355,16 +320,22 @@ export const modelAssetContentResponse = async (
 export async function inspectStoredModelAsset(env: AppEnv, projectId: string, assetId: string): Promise<ModelAsset> {
   const row = await getModelAssetRow(env, projectId, assetId);
   const previous = parseStoredInspection(row);
-  if (previous.reportVersion === 2 && previous.objects?.every((object) => typeof object.inDefaultScene === "boolean")) return presentModelAsset(row);
+  if (previous.reportVersion === 2 && previous.objectManifestVersion === 2 && previous.objects?.every((object) => typeof object.inDefaultScene === "boolean")) return presentModelAsset(row);
   const object = await requireModelStorage(env).get(row.object_key);
   if (!object) throw new AppError(500, "model_asset_object_missing", "模型原始文件缺失，无法补充检查。");
   const bytes = new Uint8Array(await new Response(object.body).arrayBuffer());
-  const inspection = { ...(row.format === "glb" ? inspectGlb(bytes) : inspectGltf(bytes)), ...await inspectModelDetails(bytes, row.format) };
-  const oldIds = new Map(previous.objects?.map((object) => [object.nodeIndex, object.objectId]));
-  const retainedIds = new Map(inspection.objects.map((object) => [object.objectId, oldIds.get(object.nodeIndex) ?? object.objectId]));
+  const inspection = { ...(row.format === "glb" ? inspectGlb(bytes) : inspectGltf(bytes)), ...await inspectModelDetails(bytes, row.format, row.id) };
+  const oldIds = new Map(previous.objects?.map((object) => [modelObjectLocator(object), object.objectId]));
+  const retainedIds = new Map(inspection.objects.map((object) => [object.objectId, oldIds.get(modelObjectLocator(object)) ?? object.objectId]));
   inspection.objects = inspection.objects.map((object) => ({ ...object, objectId: retainedIds.get(object.objectId)!, parentObjectId: object.parentObjectId ? retainedIds.get(object.parentObjectId)! : null }));
   // Concurrent requests may assign different UUIDs; only the first report wins.
   await env.DB.prepare("UPDATE model_assets SET inspection_json = ? WHERE project_id = ? AND id = ? AND inspection_json = ?")
     .bind(JSON.stringify(inspection), projectId, assetId, row.inspection_json).run();
   return presentModelAsset(await getModelAssetRow(env, projectId, assetId));
+}
+
+export async function listModelVersions(env: AppEnv, projectId: string, assetId: string): Promise<ModelAsset[]> {
+  const source = await getModelAssetRow(env, projectId, assetId);
+  const rows = await env.DB.prepare(`SELECT ${selectColumns} FROM model_assets WHERE project_id=? AND family_id=? ORDER BY version_number DESC`).bind(projectId,source.family_id).all<ModelAssetRow>();
+  return rows.results.map(presentModelAsset);
 }

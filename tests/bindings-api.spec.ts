@@ -41,7 +41,7 @@ test("authenticated viewer can read but cannot write; outsider and anonymous can
   const path = `/api/v1/projects/${demo.projectId}`;
   const modelId = demo.canvas.nodes.find((node: { type: string }) => node.type === "model-3d").resourceRefs[0];
   try {
-    for (const endpoint of [`${path}/canvas`, `${path}/definition`, `${path}/model-assets/${modelId}`, `${path}/runtime-catalog`, `${path}/assets/${demo.assets[0].id}/runtime-state`]) {
+    for (const endpoint of [`${path}/canvas`, `${path}/definition`, `${path}/model-assets/${modelId}`, `${path}/model-assets/${modelId}/versions`, `${path}/runtime-catalog`, `${path}/assets/${demo.assets[0].id}/runtime-state`]) {
       expect((await viewer.api.get(endpoint)).status()).toBe(200);
       expect((await outsider.api.get(endpoint)).status()).toBe(404);
       expect((await anonymous.get(endpoint)).status()).toBe(401);
@@ -56,6 +56,9 @@ test("authenticated viewer can read but cannot write; outsider and anonymous can
     expect((await viewer.api.post(`${path}/model-assets/unknown-model/inspect`)).status()).toBe(403);
     expect((await outsider.api.post(`${path}/model-assets/unknown-model/inspect`)).status()).toBe(404);
     expect((await anonymous.post(`${path}/model-assets/unknown-model/inspect`)).status()).toBe(401);
+    expect((await viewer.api.post(`${path}/model-assets/${modelId}/versions?filename=denied.gltf`, { data: "{}" })).status()).toBe(403);
+    expect((await outsider.api.post(`${path}/model-assets/${modelId}/versions?filename=denied.gltf`, { data: "{}" })).status()).toBe(404);
+    expect((await anonymous.post(`${path}/model-assets/${modelId}/versions?filename=denied.gltf`, { data: "{}" })).status()).toBe(401);
     expect((await (await api.get(`${path}/canvas`)).json()).canvas).toEqual(demo.canvas);
   } finally { await viewer.dispose(); await outsider.dispose(); await anonymous.dispose(); await api.delete(path); await api.dispose(); }
 });

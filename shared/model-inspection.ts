@@ -1,6 +1,16 @@
-export type ModelObject = { objectId: string; nodeIndex: number; name: string; parentObjectId: string | null; sourceId: string | null; mesh: boolean; inDefaultScene?: boolean };
+export type ModelObject = { objectId: string; nodeIndex: number; primitiveIndex?: number; attachment?: "mesh" | "camera" | "light"; name: string; nameIsGenerated?: boolean; parentObjectId: string | null; sourceId: string | null; nodeSourceId?: string | null; primitiveSourceId?: string | null; mesh: boolean; inDefaultScene?: boolean };
+export const modelObjectLocator = (object: Pick<ModelObject, "nodeIndex" | "primitiveIndex" | "attachment">) => JSON.stringify([object.nodeIndex, object.attachment ?? null, object.primitiveIndex ?? null]);
+// Assigned within an immutable file version. These IDs are opaque references;
+// changing versions requires source identity or an explicit repair map.
+export const modelSubObjectId = (assetId: string, nodeIndex: number, kind: string) => `${assetId}:${nodeIndex}:${kind}`;
+export function modelObjectSourceKey(object: ModelObject): string | null {
+  if (object.primitiveIndex !== undefined) return object.nodeSourceId && object.primitiveSourceId ? JSON.stringify(["primitive", object.nodeSourceId, object.primitiveSourceId]) : null;
+  if (object.attachment) return object.nodeSourceId ? JSON.stringify(["attachment", object.nodeSourceId, object.attachment]) : null;
+  return object.sourceId ? JSON.stringify(["node", object.sourceId]) : null;
+}
 export type ModelInspectionDetails = {
   reportVersion: 2;
+  objectManifestVersion: 2;
   triangleCount: number;
   sceneTriangleCount: number;
   vertexCount: number;

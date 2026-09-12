@@ -22,7 +22,9 @@ export type SceneViewportOptions = {
 };
 type RecordEntry = { assetId: string; lease: ReturnType<typeof acquireModelResource>; manifestLease?: ReturnType<ResourcePool<ModelObject[]>["acquire"]>; controller?: ModelInstanceController; releaseResources?: () => void; error?: string; signature?: string; pending: boolean; cancelled: boolean };
 const diagnostics = new Map<string, () => unknown>();
+const objectInspections = new Map<string, (target: ObjectTarget) => unknown>();
 export const sceneViewportDiagnostics = () => [...diagnostics.values()].map((read) => read());
+export const inspectSceneViewportObject = (viewportId: string, target: ObjectTarget) => objectInspections.get(viewportId)?.(target) ?? null;
 
 export function createSceneViewport(container: HTMLElement, initial: SceneViewportOptions) {
   let options = initial, disposed = false, fitted = false;
@@ -148,6 +150,7 @@ export function createSceneViewport(container: HTMLElement, initial: SceneViewpo
     selectedObjectName: selectionObject?.name ?? null, selectedCount: selections.size,
     pending: [...entries.values()].filter((entry) => entry.pending).length, geometries: renderer.info.memory.geometries, textures: renderer.info.memory.textures,
     calls: renderer.info.render.calls, triangles: renderer.info.render.triangles, camera: camera.position.toArray(), target: controls.target.toArray() }));
+  objectInspections.set(id, (target) => entries.get(target.instanceId)?.controller?.inspectObject(target.objectId));
   const raycaster = new THREE.Raycaster(); const pointer = new THREE.Vector2();
   return {
     update, fit,
@@ -162,7 +165,7 @@ export function createSceneViewport(container: HTMLElement, initial: SceneViewpo
     },
     dispose: () => {
       if (disposed) return; disposed = true; renderer.setAnimationLoop(null); resizeObserver.disconnect(); intersectionObserver.disconnect(); controls.dispose(); clearSelection();
-      for (const [instanceId, entry] of entries) release(instanceId, entry); entries.clear(); disposeObjectResources([scene]); renderer.dispose(); renderer.forceContextLoss(); diagnostics.delete(id);
+      for (const [instanceId, entry] of entries) release(instanceId, entry); entries.clear(); disposeObjectResources([scene]); renderer.dispose(); renderer.forceContextLoss(); diagnostics.delete(id); objectInspections.delete(id);
       if (container.contains(renderer.domElement)) container.replaceChildren();
     },
   };

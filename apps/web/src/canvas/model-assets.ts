@@ -3,17 +3,8 @@ import { apiUrl } from "../api";
 export type { ModelInspection } from "../../../../shared/model-inspection";
 import type { ModelInspection } from "../../../../shared/model-inspection";
 
-export type ModelAsset = {
-  id: string;
-  projectId: string;
-  originalFilename: string;
-  format: "glb" | "gltf";
-  contentType: string;
-  byteSize: number;
-  sha256: string;
-  inspection: ModelInspection;
-  createdAt: string;
-};
+export type { ModelAsset } from "../../../../shared/model-assets";
+import type { ModelAsset } from "../../../../shared/model-assets";
 
 export type ModelAssetListResponse = {
   modelAssets: ModelAsset[];

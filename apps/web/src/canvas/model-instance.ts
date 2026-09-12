@@ -1,12 +1,12 @@
-import { Box3, Group, MathUtils, type Material, type Object3D } from "three";
+import { Box3, Group, MathUtils, Vector3, type Material, type Object3D } from "three";
 import type { ModelInstance } from "../../../../shared/scene-definition";
-import type { ModelObject } from "../../../../shared/model-inspection";
+import { modelObjectLocator, modelSubObjectId, type ModelObject } from "../../../../shared/model-inspection";
 import type { ModelNodeAppearance, ModelNodeTransform } from "./types";
 import { buildModelSceneTree } from "./model-scene";
 
 export type ObjectTarget = { instanceId: string; objectId: string | null };
 type MaterialOwner = Object3D & { material?: Material | Material[] };
-type LoadedModel = { scene: Object3D; nodesByIndex: Map<number, Object3D> };
+type LoadedModel = { scene: Object3D; nodesByIndex: Map<number, Object3D>; objectsByLocator?: Map<string, Object3D> };
 
 export function createModelInstance(definition: ModelInstance, model: LoadedModel, objects: ModelObject[], legacyNames = false) {
   const root = new Group(); root.name = definition.name; root.add(model.scene);
@@ -16,11 +16,19 @@ export function createModelInstance(definition: ModelInstance, model: LoadedMode
   const originals = new Map<Object3D, { position: ModelNodeTransform["position"]; rotation: ModelNodeTransform["rotation"]; scale: ModelNodeTransform["scale"]; visible: boolean; material?: Material | Material[] }>();
   const clones = new Map<MaterialOwner, Material[]>();
   for (const object of objects) {
-    const target = model.nodesByIndex.get(object.nodeIndex);
+    const target = model.objectsByLocator?.get(modelObjectLocator(object)) ?? (object.primitiveIndex === undefined && !object.attachment ? model.nodesByIndex.get(object.nodeIndex) : undefined);
     if (target) { byId.set(object.objectId, target); byObject.set(target, object.objectId); }
   }
   // Old files without an upgraded manifest still have session-only node identities.
   for (const [index, target] of model.nodesByIndex) if (!byObject.has(target)) { const id = `legacy-node-${index}`; byId.set(id, target); byObject.set(target, id); }
+  // Older reports can be upgraded without changing their node IDs. Sub-object
+  // identifiers are deterministic within this immutable resource version.
+  for (const [locator, target] of model.objectsByLocator ?? []) if (!byObject.has(target)) {
+    const [nodeIndex, attachment, primitiveIndex] = JSON.parse(locator) as [number, ModelObject["attachment"] | null, number | null];
+    if (!attachment && primitiveIndex === null) continue;
+    const id = modelSubObjectId(definition.modelAssetId, nodeIndex, attachment ?? `primitive-${primitiveIndex}`);
+    byId.set(id, target); byObject.set(target, id);
+  }
   const stack = model.scene.children.map((object, index) => ({ object, path: String(index) }));
   while (stack.length) {
     const { object, path } = stack.pop()!; paths.set(path, object); objectPaths.set(object, path);
@@ -81,8 +89,15 @@ export function createModelInstance(definition: ModelInstance, model: LoadedMode
   const targetFor = (object: Object3D): ObjectTarget | null => targetsForObject(object)[0] ?? null;
   const tree = buildModelSceneTree(model.scene);
   const nodeIndices = new Map([...model.nodesByIndex].map(([index, object]) => [object, index]));
+  const locators = new Map<Object3D, { nodeIndex: number; attachment?: ModelObject["attachment"]; primitiveIndex?: number }>();
+  nodeIndices.forEach((nodeIndex, object) => locators.set(object, { nodeIndex }));
+  for (const [locator, object] of model.objectsByLocator ?? []) if (!locators.has(object)) {
+    const [nodeIndex, attachment, primitiveIndex] = JSON.parse(locator) as [number, ModelObject["attachment"] | null, number | null];
+    locators.set(object, { nodeIndex, ...(attachment ? { attachment } : {}), ...(primitiveIndex !== null ? { primitiveIndex } : {}) });
+  }
   const annotate = (nodes: typeof tree.roots) => nodes.forEach((node) => {
-    node.objectId = byObject.get(paths.get(node.path)!) ?? null; node.instanceId = definition.id; node.nodeIndex = nodeIndices.get(paths.get(node.path)!); annotate(node.children);
+    const object = paths.get(node.path)!;
+    node.objectId = byObject.get(object) ?? null; node.instanceId = definition.id; Object.assign(node, locators.get(object)); annotate(node.children);
   });
   annotate(tree.roots);
   return { root, apply, bounds: () => new Box3().setFromObject(root), targetFor, targetsForObject,
@@ -93,6 +108,18 @@ export function createModelInstance(definition: ModelInstance, model: LoadedMode
           const color = (value as Material & { color?: { getHexString: () => string } }).color; if (color) colors.add(`#${color.getHexString()}`);
         }
       }); return [...colors];
+    },
+    inspectObject: (objectId: string | null) => {
+      const object = objectId === null ? root : byId.get(objectId); if (!object) return null;
+      const colors = new Set<string>();
+      object.traverse((item) => {
+        const material = (item as MaterialOwner).material;
+        for (const value of material ? Array.isArray(material) ? material : [material] : []) {
+          const color = (value as Material & { color?: { getHexString: () => string } }).color; if (color) colors.add(`#${color.getHexString()}`);
+        }
+      });
+      const bounds = new Box3().setFromObject(object);
+      return { name: object.name, colors: [...colors], center: bounds.isEmpty() ? null : bounds.getCenter(new Vector3()).toArray() };
     },
     resolveTarget: (target: ObjectTarget) => target.objectId === null ? root : byId.get(target.objectId) ?? null,
     pathFor: (target: ObjectTarget) => target.objectId ? objectPaths.get(byId.get(target.objectId)!) ?? null : null,

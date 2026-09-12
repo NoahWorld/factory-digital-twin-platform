@@ -76,3 +76,22 @@ export const createMockGltf = (nodes = [{ mesh: 0, name: "SmokeDeviceNode" }]) =
     scenes: [{ name: "RuntimeSmokeScene", nodes: nodes.map((_, index) => index) }],
   });
 };
+
+// Two independently addressable material primitives, with optional reordered export.
+export const createMultiPrimitiveGltf = (reverse = false) => {
+  const document = JSON.parse(createMockGltf([{ mesh: 0, name: "Assembly", extras: { newpowerObjectId: "assembly" } }]));
+  const binary = Buffer.from(document.buffers[0].uri.split(",")[1], "base64");
+  const positions = new Float32Array(binary.buffer.slice(binary.byteOffset, binary.byteOffset + 96));
+  for (let index = 0; index < positions.length; index += 3) positions[index] += 4;
+  const appended = Buffer.from(positions.buffer);
+  document.buffers[0] = { byteLength: binary.length + appended.length, uri: `data:application/octet-stream;base64,${Buffer.concat([binary, appended]).toString("base64")}` };
+  document.bufferViews.push({ buffer: 0, byteOffset: binary.length, byteLength: appended.length, target: 34962 });
+  document.accessors.push({ bufferView: 2, componentType: 5126, count: 8, type: "VEC3", min: [3,-1,-1], max: [5,1,1] });
+  document.materials[0].name = "LeftSurface";
+  document.materials.push({ ...structuredClone(document.materials[0]), name: "RightSurface" });
+  document.meshes[0].name = "MachineMesh";
+  document.meshes[0].primitives[0].extras = { newpowerObjectId: "part-a" };
+  document.meshes[0].primitives.push({ attributes: { POSITION: 2 }, indices: 1, material: 1, extras: { newpowerObjectId: "part-b" } });
+  if (reverse) document.meshes[0].primitives.reverse();
+  return JSON.stringify(document);
+};

@@ -46,6 +46,7 @@ import {
   inspectStoredModelAsset,
   getModelAssetRow,
   presentModelAsset,
+  listModelVersions,
 } from "./model-assets";
 import {
   imageAssetContentResponse,
@@ -454,6 +455,19 @@ const handleApiRequest = async (
       projectId,
       decodePathSegment(modelAssetContentMatch[2]),
     );
+  }
+
+  const modelVersionsMatch = pathname.match(/^\/api\/v1\/projects\/([^/]+)\/model-assets\/([^/]+)\/versions$/);
+  if ((method === "GET" || method === "POST") && modelVersionsMatch) {
+    const startedAt = Date.now();
+    const user = await getAuthenticatedUser(env, request);
+    const projectId = decodePathSegment(modelVersionsMatch[1]), modelAssetId = decodePathSegment(modelVersionsMatch[2]);
+    const project = await requireProjectAccess(env, user, projectId);
+    if (method === "GET") return json({ modelAssets: await listModelVersions(env, projectId, modelAssetId), requestId });
+    if (!canEditProject(user, project)) throw new AppError(403, "permission_denied", "当前权限不能上传模型版本。");
+    const modelAsset = await uploadModelAsset(request, env, projectId, user.id, url.searchParams.get("filename"), modelAssetId);
+    console.log(JSON.stringify({ event: "model_version_uploaded", requestId, projectId, familyId: modelAsset.familyId, modelAssetId: modelAsset.id, previousVersionId: modelAssetId, versionNumber: modelAsset.versionNumber, durationMs: Date.now() - startedAt }));
+    return json({ modelAsset, requestId }, 201);
   }
 
   const modelAssetInfoMatch = pathname.match(/^\/api\/v1\/projects\/([^/]+)\/model-assets\/([^/]+)$/);

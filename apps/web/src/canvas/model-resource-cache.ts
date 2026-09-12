@@ -2,6 +2,7 @@ import type { BufferGeometry, Material, Object3D, Skeleton, Texture } from "thre
 import { GLTFLoader, type GLTF } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { clone } from "three/examples/jsm/utils/SkeletonUtils.js";
 import { ResourcePool } from "../../../../shared/resource-pool";
+import { modelObjectLocator } from "../../../../shared/model-inspection";
 
 type RenderObject = Object3D & { geometry?: BufferGeometry; material?: Material | Material[]; skeleton?: Skeleton };
 
@@ -49,14 +50,23 @@ export function acquireModelResource(url: string) {
       if (released) throw new DOMException("Model instance released", "AbortError");
       instance = clone(gltf.scene);
       const nodesByIndex = new Map<number, Object3D>();
-      const stack = [{ source: gltf.scene as Object3D, target: instance }];
+      const objectsByLocator = new Map<string, Object3D>();
+      const stack: Array<{ source: Object3D; target: Object3D; nodeIndex?: number }> = [{ source: gltf.scene, target: instance }];
       while (stack.length) {
-        const { source, target } = stack.pop()!;
-        const nodeIndex = gltf.parser.associations.get(source)?.nodes;
-        if (nodeIndex !== undefined) nodesByIndex.set(nodeIndex, target);
-        source.children.forEach((child, index) => stack.push({ source: child, target: target.children[index] }));
+        const { source, target, nodeIndex: inheritedIndex } = stack.pop()!;
+        // Three r185 records primitives at runtime; its separate types omit that field.
+        const association = gltf.parser.associations.get(source) as { nodes?: number; meshes?: number; primitives?: number } | undefined;
+        const nodeIndex = association?.nodes ?? inheritedIndex;
+        if (association?.nodes !== undefined) { nodesByIndex.set(association.nodes, target); objectsByLocator.set(modelObjectLocator({ nodeIndex: association.nodes }), target); }
+        if (nodeIndex !== undefined) {
+          if (association?.primitives !== undefined) objectsByLocator.set(modelObjectLocator({ nodeIndex, primitiveIndex: association.primitives }), target);
+          else if (association?.meshes !== undefined && association.nodes === undefined) objectsByLocator.set(modelObjectLocator({ nodeIndex, attachment: "mesh" }), target);
+          if (association?.nodes === undefined && "isCamera" in source && source.isCamera) objectsByLocator.set(modelObjectLocator({ nodeIndex, attachment: "camera" }), target);
+          if (association?.nodes === undefined && "isLight" in source && source.isLight) objectsByLocator.set(modelObjectLocator({ nodeIndex, attachment: "light" }), target);
+        }
+        source.children.forEach((child, index) => stack.push({ source: child, target: target.children[index], nodeIndex }));
       }
-      return { scene: instance, animations: gltf.animations, nodesByIndex };
+      return { scene: instance, animations: gltf.animations, nodesByIndex, objectsByLocator };
     }),
     release: () => {
       if (released) return;

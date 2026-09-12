@@ -134,9 +134,15 @@ test("the upload interface inspects and renders an embedded PNG texture", async 
     json.images = [{ uri: imageURI }]; json.textures = [{ source: 0 }];
     json.materials[0].pbrMetallicRoughness.baseColorTexture = { index: 0 };
     await page.locator('input[type="file"]').setInputFiles({ name: "embedded-texture.gltf", mimeType: "model/gltf+json", buffer: Buffer.from(JSON.stringify(json)) });
-    await expect(page.locator(".model-inspection-card")).toContainText("embedded-texture.gltf");
-    await page.getByText("纹理与导入提示", { exact: true }).click();
-    await expect(page.locator(".model-inspection-card")).toContainText("4 × 8");
+    const dialog = page.getByRole("dialog", { name: "模型版本与映射修复", exact: true });
+    await expect(dialog).toBeVisible(); await expect(dialog).toContainText("4 × 8");
+    const uploaded = (await (await api.get(`/api/v1/projects/${demo.projectId}/model-assets`)).json()).modelAssets.find((model: { originalFilename: string }) => model.originalFilename === "embedded-texture.gltf");
+    await dialog.locator(".model-reference-list button").filter({ hasText: "DemoDevice001" }).click();
+    await dialog.getByLabel("新对象映射", { exact: true }).selectOption(uploaded.inspection.objects[0].objectId);
+    await dialog.locator(".model-reference-list button").filter({ hasText: "DemoDevice002" }).click();
+    await dialog.getByLabel("新对象映射", { exact: true }).selectOption("__remove__");
+    await dialog.getByRole("button", { name: "应用替换与修复", exact: true }).click();
+    await expect(dialog).toHaveCount(0);
     await expect(page.locator(".model-3d-edit-hint")).toBeVisible();
     await page.getByRole("button", { name: "保存并返回", exact: true }).click();
     await expect(page.locator(".canvas-document-meta")).toContainText("已保存");

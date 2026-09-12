@@ -10511,3 +10511,31 @@ input:focus {
 .scene-instance-list .is-selected, .scene-object-tree .is-selected { background: #245468; border-color: #64c7e5; }
 .scene-object-tree, .scene-object-tree ul { list-style: none; padding: 0; margin: 4px 0; }
 .scene-object-tree button { margin: 2px 0; }
+
+.model-replacement-dialog { width: min(1240px, calc(100vw - 48px)); height: min(860px, calc(100vh - 48px)); max-width: none; max-height: none; padding: 0; border: 1px solid #355b70; border-radius: 12px; color: #e1f1fb; background: #091a26; box-shadow: 0 24px 100px #000a; }
+.model-replacement-dialog[open] { display: flex; flex-direction: column; }
+.model-replacement-dialog::backdrop { background: #020b14c9; }
+.model-replacement-dialog > header, .model-replacement-dialog > footer { display: flex; gap: 12px; align-items: center; padding: 15px 22px; background: #112b3a; }
+.model-replacement-dialog h2 { margin: 3px 0 0; font-size: 19px; }
+.model-replacement-dialog > header > div, .model-replacement-dialog > footer > span { flex: 1; }
+.model-replacement-body { flex: 1; min-height: 0; overflow: auto; padding: 18px 22px; }
+.model-replacement-dialog button, .model-replacement-dialog input, .model-replacement-dialog select { padding: 8px 11px; border: 1px solid #34596c; border-radius: 5px; color: #ddecf7; background: #102a39; }
+.model-replacement-dialog button { cursor: pointer; }
+.model-replacement-dialog button:disabled, .model-replacement-dialog select:disabled { opacity: .45; cursor: default; }
+.model-version-controls label { display: inline-flex; align-items: center; gap: 10px; margin-right: 10px; }
+.model-version-controls select { max-width: 500px; }
+.model-version-diff { margin: 10px 0 16px; font-size: 12px; color: #95bacd; }
+.model-version-diff p { margin: 5px 0; }
+.model-replacement-grid { display: grid; grid-template-columns: 300px minmax(0,1fr); gap: 18px; }
+.model-reference-list { max-height: 510px; overflow: auto; }
+.model-reference-list h3 { margin: 0 0 10px; font-size: 14px; }
+.model-reference-list input { width: 100%; box-sizing: border-box; }
+.model-reference-list > button { display: grid; gap: 5px; text-align: left; width: 100%; margin-top: 7px; }
+.model-reference-list span, .model-reference-list small { font-size: 11px; color: #91b7cc; }
+.model-reference-list > button.is-selected { border-color: #75d0ed; background: #1d485a; }
+.model-reference-list > button.is-unresolved small { color: #ffc578; }
+.model-candidate-preview { min-width: 0; }
+.replacement-viewport { position: relative; height: 320px; margin-top: 10px; border: 1px solid #34596c; }
+.model-object-mapping { display: grid; gap: 8px; margin-top: 12px; }
+.model-object-mapping p { margin: 0; font-size: 12px; color: #a2bbc8; }
+.model-object-mapping input, .model-object-mapping select { width: 100%; min-width: 0; box-sizing: border-box; }

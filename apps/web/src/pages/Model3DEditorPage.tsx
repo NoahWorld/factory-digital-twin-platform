@@ -1,10 +1,15 @@
 import { useProjectEditorContext } from "../project-editor";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { errorMessage, request } from "../api";
 import { Model3DInspector } from "../canvas/Model3DInspector";
 import { Model3DNode } from "../canvas/Model3DNode";
 import { SceneAssignmentPanel } from "../canvas/SceneAssignmentPanel";
 import { SceneModelEditor } from "../canvas/SceneModelEditor";
+import { ModelReplacementDialog } from "../canvas/ModelReplacementDialog";
+import { extractLegacyScene } from "../canvas/scene-conversion";
+import { modelAssetsPath, type ModelAsset } from "../canvas/model-assets";
+import { projectAssetsPath, type ProjectAssetListResponse } from "../canvas/assets";
+import type { SceneDefinition } from "../../../../shared/scene-definition";
 import type { ModelSceneSnapshot } from "../canvas/model-scene";
 import { canvasRoutePath, projectCanvasPath } from "../canvas/routes";
 import {
@@ -32,14 +37,39 @@ export default function Model3DEditorPage({
   const [modelScene, setModelScene] = useState<ModelSceneSnapshot | null>(null);
   const [selectedSceneNodePath, setSelectedSceneNodePath] = useState<string | null>(null);
   const [configurationError, setConfigurationError] = useState<string | null>(null);
+  const [legacyReplacement, setLegacyReplacement] = useState<{ scene: SceneDefinition; instanceId: string; newAssetId: string } | null>(null);
+  const [preparingReplacement, setPreparingReplacement] = useState(false);
+  const liveNode = useRef(node); liveNode.current = node;
+  const liveSnapshot = useRef(modelScene); liveSnapshot.current = modelScene;
+  const alive = useRef(true); const replacementRequest = useRef(0);
+  useEffect(() => { alive.current = true; return () => { alive.current = false; replacementRequest.current++; }; }, []);
 
   useEffect(() => {
     if (modelPage && editor?.pageId !== modelPage.id) selectPage(modelPage.id);
   }, [modelPage?.id, editor?.pageId, selectPage]);
   useEffect(() => { setModelScene(null); setSelectedSceneNodePath(null); setConfigurationError(null); }, [nodeId]);
   const updateNode = useCallback((nextNode: CanvasNode) => {
-    if (modelPage) execute({ type: "nodes.upsert", pageId: modelPage.id, nodes: [nextNode] });
-  }, [modelPage?.id, execute]);
+    const current = liveNode.current;
+    if (!alive.current || !modelPage || !current || current.id !== nextNode.id || current.sceneId) return;
+    const targetId = nextNode.resourceRefs[0];
+    if (current.resourceRefs[0] && targetId && current.resourceRefs[0] !== targetId) {
+      const token = ++replacementRequest.current; const sourceId = current.resourceRefs[0];
+      setPreparingReplacement(true); setSaveError(null);
+      void Promise.all([request<{ modelAsset: ModelAsset }>(`${modelAssetsPath(projectId)}/${encodeURIComponent(sourceId)}/inspect`, { method: "POST" }), request<ProjectAssetListResponse>(projectAssetsPath(projectId))])
+        .then(([model, assets]) => {
+          if (!alive.current || token !== replacementRequest.current) return;
+          const latest = liveNode.current;
+          if (!latest || latest.id !== current.id || latest.sceneId || latest.resourceRefs[0] !== sourceId) throw new Error("当前模型已改变，请重新选择要替换的资源。");
+          const scene = extractLegacyScene(latest, model.modelAsset, liveSnapshot.current, assets.assets);
+          setLegacyReplacement({ scene, instanceId: scene.instances[0].id, newAssetId: targetId });
+        }).catch((reason) => { if (alive.current && token === replacementRequest.current) setSaveError(errorMessage(reason)); })
+        .finally(() => { if (alive.current && token === replacementRequest.current) setPreparingReplacement(false); });
+      return;
+    }
+    const changedResource = current.resourceRefs[0] !== targetId;
+    const updated = changedResource ? { ...current, resourceRefs: nextNode.resourceRefs, props: targetId ? current.props : { ...current.props, transformOverrides: {}, appearanceOverrides: {} } } : nextNode;
+    execute({ type: "nodes.upsert", pageId: modelPage.id, nodes: [updated] });
+  }, [modelPage?.id, projectId, execute, setSaveError]);
 
   const updateModelScene = useCallback((
     canvasNodeId: string,
@@ -80,7 +110,7 @@ export default function Model3DEditorPage({
     );
   }
 
-  const editable = canEdit && !saving;
+  const editable = canEdit && !saving && !preparingReplacement;
   return (
     <main className="model-editor-page">
       <header className="canvas-toolbar model-editor-toolbar">
@@ -120,6 +150,7 @@ export default function Model3DEditorPage({
 
       <div className="canvas-message-stack">
       {draftNotice ? <div className="canvas-theme-notice" role="status">{draftNotice}</div> : null}
+      {preparingReplacement ? <div className="canvas-theme-notice" role="status">正在读取旧模型的绑定与覆盖，准备替换预览…</div> : null}
       {saveError ? <div className="canvas-save-error" role="alert">保存失败：{saveError}</div> : null}
       {!canEdit ? <div className="canvas-readonly-notice">当前项目权限为只读，可以查看场景，但不能修改或保存配置。</div> : null}
 
@@ -166,6 +197,7 @@ export default function Model3DEditorPage({
           selectedSceneNodePath={selectedSceneNodePath}
         />
       </div>}
+      {legacyReplacement ? <ModelReplacementDialog projectId={projectId} scene={legacyReplacement.scene} instanceId={legacyReplacement.instanceId} initialAssetId={legacyReplacement.newAssetId} onClose={() => setLegacyReplacement(null)} onApply={(replacement) => !!execute({ type: "scene.extract", nodeId, pageId: modelPage!.id, scene: replacement.scene })} /> : null}
     </main>
   );
 }

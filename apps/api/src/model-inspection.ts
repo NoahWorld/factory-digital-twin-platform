@@ -1,10 +1,10 @@
 import { WebIO, MathUtils, type mat4, type vec3, type vec4, type GLTF, type Mesh, type Node } from "@gltf-transform/core";
 import { ALL_EXTENSIONS, type InstancedMesh } from "@gltf-transform/extensions";
 import { AppError } from "./auth";
-import type { ModelInspectionDetails } from "../../../shared/model-inspection";
+import { modelSubObjectId, type ModelInspectionDetails, type ModelObject } from "../../../shared/model-inspection";
 
 /** Inspect embedded bytes only. readJSON/readBinary never fetch model URLs. */
-export async function inspectModelDetails(bytes: Uint8Array, format: "glb" | "gltf"): Promise<ModelInspectionDetails> {
+export async function inspectModelDetails(bytes: Uint8Array, format: "glb" | "gltf", assetId: string = crypto.randomUUID()): Promise<ModelInspectionDetails> {
   const warnings: string[] = [];
   const io = new WebIO().registerExtensions(ALL_EXTENSIONS).setLogger({ debug() {}, info() {}, warn(message) { warnings.push(message); }, error(message) { warnings.push(message); } });
   try {
@@ -112,10 +112,36 @@ export async function inspectModelDetails(bytes: Uint8Array, format: "glb" | "gl
     warnings.push("坐标按 glTF 米制约定解释；源文件导出比例仍需现场核对。");
     if (!scene) warnings.push("没有可运行的场景。");
     const decodedNodes = root.listNodes();
-    return { reportVersion: 2, triangleCount, sceneTriangleCount, vertexCount,
+    const objects: ModelObject[] = nodes.map((node, index) => ({ ...objectIds[index], nodeIndex: index, name: node.name ?? "", mesh: node.mesh !== undefined, inDefaultScene: visited.has(decodedNodes[index]), parentObjectId: parents.has(index) ? objectIds[parents.get(index)!].objectId : null }));
+    const joints = new Set(json.json.skins?.flatMap((skin) => skin.joints) ?? []);
+    nodes.forEach((node, nodeIndex) => {
+      const mesh = node.mesh === undefined ? undefined : json.json.meshes?.[node.mesh];
+      const light = node.extensions?.KHR_lights_punctual;
+      const container = joints.has(nodeIndex) || Number(!!mesh) + Number(node.camera !== undefined) + Number(!!light) > 1;
+      const base = { nodeIndex, sourceId: null, nodeSourceId: objectIds[nodeIndex].sourceId, inDefaultScene: visited.has(decodedNodes[nodeIndex]) };
+      const nodeId = objectIds[nodeIndex].objectId;
+      let meshParentId: string = nodeId;
+      if (mesh && container && mesh.primitives.length > 1) {
+        meshParentId = modelSubObjectId(assetId, nodeIndex, "mesh");
+        objects.push({ ...base, objectId: meshParentId, attachment: "mesh", name: mesh.name || `${node.name || "节点"} 网格`, nameIsGenerated: !mesh.name, parentObjectId: nodeId, mesh: true });
+      }
+      const primitiveSources = new Set<string>();
+      if (mesh && (container || mesh.primitives.length > 1)) mesh.primitives.forEach((primitive, primitiveIndex) => {
+        const sourceId = primitive.extras?.newpowerObjectId;
+        if (sourceId !== undefined && (typeof sourceId !== "string" || !sourceId.trim() || sourceId.length > 200 || primitiveSources.has(sourceId))) throw new Error(`mesh ${node.mesh} 的子网格源标识必须非空且唯一`);
+        if (typeof sourceId === "string") primitiveSources.add(sourceId);
+        const materialName = primitive.material === undefined ? undefined : json.json.materials?.[primitive.material]?.name;
+        const authored = typeof primitive.extras?.name === "string" ? primitive.extras.name : materialName;
+        objects.push({ ...base, objectId: modelSubObjectId(assetId, nodeIndex, `primitive-${primitiveIndex}`), primitiveIndex, primitiveSourceId: typeof sourceId === "string" ? sourceId : null,
+          name: `${node.name || `节点 ${nodeIndex}`} / ${authored || `子网格 ${primitiveIndex}`}`, nameIsGenerated: !node.name || !authored, parentObjectId: meshParentId, mesh: true });
+      });
+      if (container && node.camera !== undefined) objects.push({ ...base, objectId: modelSubObjectId(assetId, nodeIndex, "camera"), attachment: "camera", name: json.json.cameras?.[node.camera]?.name || `${node.name || "节点"} 相机`, nameIsGenerated: !json.json.cameras?.[node.camera]?.name, parentObjectId: nodeId, mesh: false });
+      if (container && light) objects.push({ ...base, objectId: modelSubObjectId(assetId, nodeIndex, "light"), attachment: "light", name: `${node.name || "节点"} 灯光`, nameIsGenerated: true, parentObjectId: nodeId, mesh: false });
+    });
+    return { reportVersion: 2, objectManifestVersion: 2, triangleCount, sceneTriangleCount, vertexCount,
       bounds: min.every(Number.isFinite) ? { min, max, scope: "default-scene-rest-pose" } : null,
       textures, coordinateUnit: "metre-by-gltf-spec", warnings: [...new Set(warnings)],
-      objects: nodes.map((node, index) => ({ ...objectIds[index], nodeIndex: index, name: node.name ?? "", mesh: node.mesh !== undefined, inDefaultScene: visited.has(decodedNodes[index]), parentObjectId: parents.has(index) ? objectIds[parents.get(index)!].objectId : null })) };
+      objects };
   } catch (reason) {
     throw new AppError(400, "model_inspection_failed", `模型检查失败：${reason instanceof Error ? reason.message : String(reason)}`);
   }

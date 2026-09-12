@@ -4,6 +4,7 @@ import { request, errorMessage } from "../api";
 import { AssetPanel } from "../AssetPanel";
 import { AssetDataBindingSection } from "./AssetDataBindingSection";
 import { SceneViewport } from "./SceneViewport";
+import { ModelReplacementDialog } from "./ModelReplacementDialog";
 import { IDENTITY_TRANSFORM, type SceneDefinition, type ModelInstance } from "../../../../shared/scene-definition";
 import type { ModelNodeTransform, ModelNodeAppearance } from "./types";
 import { modelAssetsPath, type ModelAsset, type ModelAssetListResponse } from "./model-assets";
@@ -33,6 +34,7 @@ export function SceneModelEditor({ projectId, scene, editable }: { projectId: st
   const [selected, setSelected] = useState<ObjectTarget | null>(scene.instances[0] ? { instanceId: scene.instances[0].id, objectId: null } : null);
   const [snapshots, setSnapshots] = useState<Record<string, ModelSceneSnapshot>>({});
   const [objectSearch, setObjectSearch] = useState("");
+  const [replacementInstanceId, setReplacementInstanceId] = useState<string | null>(null);
   const [assetChoice, setAssetChoice] = useState(""); const [showAssets, setShowAssets] = useState(false); const [reload, setReload] = useState(0);
   const engine = useRef<SceneViewportRuntime | null>(null); const fileInput = useRef<HTMLInputElement>(null); const mounted = useRef(true);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
@@ -87,7 +89,7 @@ export function SceneModelEditor({ projectId, scene, editable }: { projectId: st
         <header className="inspector-heading"><span className="eyebrow">Scene & instances</span><h2>场景与实例</h2></header>
         <section className="inspector-section">
           <label>场景名称<input aria-label="场景名称" value={scene.name} disabled={!editable} onChange={(event) => { if (event.target.value.trim()) updateScene({ ...scene, name: event.target.value }); }} /></label>
-          <label>添加资源<select aria-label="添加模型资源" value={resource} disabled={!editable || busy} onChange={(event) => setResource(event.target.value)}><option value="">选择模型</option>{models.map((model) => <option key={model.id} value={model.id}>{model.originalFilename}</option>)}</select></label>
+          <label>添加资源<select aria-label="添加模型资源" value={resource} disabled={!editable || busy} onChange={(event) => setResource(event.target.value)}><option value="">选择模型</option>{models.map((model) => <option key={model.id} value={model.id}>{model.originalFilename} · v{model.versionNumber}</option>)}</select></label>
           <div className="scene-editor-actions"><button type="button" disabled={!editable || busy || !resource} onClick={() => void add()}>添加模型实例</button><button type="button" disabled={!editable || busy} onClick={() => fileInput.current?.click()}>导入模型资源</button></div>
           <input type="file" ref={fileInput} hidden accept=".gltf,.glb" onChange={async (event) => {
             const file = event.target.files?.[0]; event.target.value = ""; if (!file) return; setBusy(true); setSaveError(null);
@@ -101,6 +103,8 @@ export function SceneModelEditor({ projectId, scene, editable }: { projectId: st
         <section className="inspector-section"><strong>模型实例</strong><div className="scene-instance-list">{scene.instances.map((item) => <button key={item.id} type="button" className={item.id === instance?.id ? "is-selected" : ""} onClick={() => setSelected({ instanceId: item.id, objectId: null })}>{item.visible ? "◉" : "○"} {item.name}</button>)}</div></section>
         {instance ? <>
           <section className="inspector-section"><label>实例名称<input aria-label="实例名称" value={instance.name} disabled={!editable} onChange={(event) => { if (event.target.value.trim()) updateInstance({ ...instance, name: event.target.value }); }} /></label>
+            <p className="inspector-help">资源：{models.find((model) => model.id === instance.modelAssetId)?.originalFilename ?? "正在读取…"} · v{models.find((model) => model.id === instance.modelAssetId)?.versionNumber ?? "—"}</p>
+            <button type="button" disabled={!editable || busy} onClick={() => { setSaveError(null); setReplacementInstanceId(instance.id); }}>模型版本与替换</button>
             <label><input aria-label="显示实例" type="checkbox" disabled={!editable} checked={instance.visible} onChange={(event) => updateInstance({ ...instance, visible: event.target.checked })} />显示实例</label>
             <TransformFields label="实例" value={instance.transform} disabled={!editable} onChange={(transform) => updateInstance({ ...instance, transform })} />
             <label>整体颜色<input aria-label="实例颜色" type="color" value={instance.appearance?.color ?? "#55b8d2"} disabled={!editable} onChange={(event) => updateInstance({ ...instance, appearance: { ...(instance.appearance ?? defaultAppearance()), color: event.target.value } })} /></label>
@@ -110,8 +114,8 @@ export function SceneModelEditor({ projectId, scene, editable }: { projectId: st
           <section className="inspector-section"><strong>模型对象树</strong><input aria-label="搜索场景对象" placeholder="搜索对象名称" value={objectSearch} onChange={(event) => setObjectSearch(event.target.value)} />{snapshot ? <><ul className="scene-object-tree">{tree(objectSearch.trim() ? flatten(snapshot.roots).filter((node) => node.name.toLowerCase().includes(objectSearch.toLowerCase())).map((node) => ({ ...node, children: [] })) : snapshot.roots)}</ul>{remainingRows < 0 ? <p className="inspector-help">本次显示前 400 项，请搜索具体对象。</p> : null}</> : <p>模型对象正在加载…</p>}</section>
           {object && selectedTransform && selectedAppearance ? <section className="inspector-section"><strong>对象：{object.name || "未命名对象"}</strong>
             <TransformFields label="对象" value={selectedTransform} disabled={!editable} onChange={(transform) => updateInstance({ ...instance, objectTransforms: { ...instance.objectTransforms, [object.objectId!]: transform } })} />
-            <label>对象颜色<input type="color" aria-label="对象颜色" value={selectedAppearance.color} disabled={!editable} onChange={(event) => updateInstance({ ...instance, objectAppearances: { ...instance.objectAppearances, [object.objectId!]: { ...selectedAppearance, color: event.target.value } } })} /></label>
-            <label>对象透明度<NumberField aria-label="对象透明度" min={0} max={1} step={.05} value={selectedAppearance.opacity} disabled={!editable} onCommit={(opacity) => updateInstance({ ...instance, objectAppearances: { ...instance.objectAppearances, [object.objectId!]: { ...selectedAppearance, opacity } } })} /></label>
+            <label>对象颜色<input type="color" aria-label="对象颜色" value={selectedAppearance.color} disabled={!editable || !object.appearance.materialCount} onChange={(event) => updateInstance({ ...instance, objectAppearances: { ...instance.objectAppearances, [object.objectId!]: { ...selectedAppearance, color: event.target.value } } })} /></label>
+            <label>对象透明度<NumberField aria-label="对象透明度" min={0} max={1} step={.05} value={selectedAppearance.opacity} disabled={!editable || !object.appearance.materialCount} onCommit={(opacity) => updateInstance({ ...instance, objectAppearances: { ...instance.objectAppearances, [object.objectId!]: { ...selectedAppearance, opacity } } })} /></label>
             <label><input type="checkbox" aria-label="显示对象" checked={selectedAppearance.visible} disabled={!editable} onChange={(event) => updateInstance({ ...instance, objectAppearances: { ...instance.objectAppearances, [object.objectId!]: { ...selectedAppearance, visible: event.target.checked } } })} />显示对象</label>
             <button type="button" disabled={!editable || (!instance.objectTransforms[object.objectId!] && !instance.objectAppearances[object.objectId!])} onClick={() => { const next = structuredClone(instance); delete next.objectTransforms[object.objectId!]; delete next.objectAppearances[object.objectId!]; updateInstance(next); }}>恢复对象原值</button>
             <label>资产<select aria-label="对象绑定资产" disabled={!editable} value={assetChoice} onChange={(event) => setAssetChoice(event.target.value)}><option value="">不绑定资产</option>{assets.map((asset) => <option key={asset.id} value={asset.assetId}>{asset.name} · {asset.assetId}</option>)}</select></label>
@@ -130,5 +134,6 @@ export function SceneModelEditor({ projectId, scene, editable }: { projectId: st
       </aside>
     </div>
     {showAssets ? <AssetPanel projectId={projectId} editable={editable} onClose={() => { setShowAssets(false); setReload((value) => value + 1); }} /> : null}
+    {replacementInstanceId && scene.instances.some((instance) => instance.id === replacementInstanceId) ? <ModelReplacementDialog projectId={projectId} scene={scene} instanceId={replacementInstanceId} onClose={() => setReplacementInstanceId(null)} onModelAdded={(model) => setModels((models) => [model, ...models.filter((item) => item.id !== model.id)])} onApply={(replacement) => !!execute({ type: "instance.replace-resource", sceneId: scene.id, instanceId: replacement.instanceId, expectedAssetId: replacement.expectedAssetId, newAssetId: replacement.newAssetId, objectMap: replacement.objectMap })} /> : null}
   </>;
 }
