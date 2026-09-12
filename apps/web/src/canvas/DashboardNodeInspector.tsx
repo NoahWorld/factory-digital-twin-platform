@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { ComponentBindingInspector } from "./ComponentBindingInspector";
 import {
   componentLabels,
   isDashboardNodeType,
@@ -169,6 +170,7 @@ export function DashboardNodeInspector({
       </header>
 
       <section className="inspector-section">
+        <ComponentBindingInspector editable={editable} node={node} />
         <div className="inspector-section-title"><strong>内容配置</strong><span>公共组件</span></div>
         <label><span>标题</span><input disabled={!editable} maxLength={120} onChange={(event) => setField("title", event.target.value)} value={inputValue(draft.title)} /></label>
 
@@ -296,7 +298,7 @@ export function DashboardNodeInspector({
         {!validation.ok ? <p className="inspector-validation-error" role="alert">{validation.message}</p> : null}
       </section>
 
-      <div className="inspector-note"><strong>数据边界</strong><p>模板只提供明确标识的示例值。接入实时数据后取消“示例数据”标记，并通过数据绑定 ID 关联标准指标。</p></div>
+      <div className="inspector-note"><strong>数据边界</strong><p>{nodeType === "metric-card" || nodeType === "data-table" ? "在上方配置设备数据绑定；原有静态内容会保留，移除绑定后可恢复。运行数据不会写入画布配置。" : "此组件使用静态演示数据；指标卡与业务表格支持设备数据绑定。"}</p></div>
     </aside>
   );
 }

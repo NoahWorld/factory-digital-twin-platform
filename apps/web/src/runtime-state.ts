@@ -1,6 +1,6 @@
 import type { ProjectAsset } from "./canvas/assets";
 
-export type RuntimeMetricValue = number | string | boolean;
+export type RuntimeMetricValue = number | string | boolean | null;
 
 export type AssetRuntimeState = {
   asset: Pick<ProjectAsset, "id" | "assetId" | "assetType" | "modelNode" | "name">;
@@ -21,6 +21,7 @@ export type AssetRuntimeState = {
     collectedAt: string;
     sourceTimestamp: string | null;
     durationMs: number;
+    staleAfterSeconds?: number;
   }>;
   pollAfterSeconds: number;
   staleAfterSeconds: number;

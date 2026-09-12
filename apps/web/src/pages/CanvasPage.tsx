@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from "react";
-import { ApiRequestError, errorMessage, request } from "../api";
+import { errorMessage, request } from "../api";
 import { ComponentInspector } from "../canvas/ComponentInspector";
 import { CanvasSurface } from "../canvas/CanvasSurface";
-import { projectAssetsPath, type ProjectAsset, type ProjectAssetListResponse } from "../canvas/assets";
+import type { ProjectAsset } from "../canvas/assets";
+import { AssetPanel } from "../AssetPanel";
+import { ProjectRuntimeContext, runtimeCatalogPath, useProjectRuntime, type RuntimeCatalog } from "../project-runtime";
+import type { ComponentBinding, MetricCatalogEntry } from "../../../../shared/component-bindings";
 import { findModelSceneNode, type ModelSceneSnapshot } from "../canvas/model-scene";
 import { canvasRoutePath, modelEditorRoutePath, projectCanvasPath } from "../canvas/routes";
 import { TemplateDialog } from "../canvas/TemplateDialog";
@@ -11,17 +14,13 @@ import { ThemeDialog } from "../canvas/ThemeDialog";
 import { applyCanvasThemeToNode, applyCanvasThemeToNodes, canvasThemePresetLabels } from "../canvas/themes";
 import { CANVAS_DRAG_TYPE, componentLabels, createCanvasNode, isBackgroundNodeType, isModel3DNodeType, type CanvasDocument, type CanvasNode, type CanvasNodeType, type CanvasPatchResponse, type CanvasResponse, type CanvasTheme, type ModelNodeAppearance } from "../canvas/types";
 import { DataSourcePanel } from "../DataSourcePanel";
-import { assetRuntimeStatePath, deviceVisualStatus, deviceVisualStatusLabel, type AssetRuntimeStateResponse, type DeviceVisualStatus, type RuntimeAssetConnection, type RuntimeMetricValue } from "../runtime-state";
+import { deviceVisualStatus, deviceVisualStatusLabel, type DeviceVisualStatus, type RuntimeMetricValue } from "../runtime-state";
 
 type CanvasPageProps = {
   initialTemplateId?: CanvasTemplateId;
   mode: "edit" | "preview";
   projectId: string;
 };
-
-type AssetRuntimePollOutcome =
-  | { asset: ProjectAsset; kind: "success"; result: AssetRuntimeStateResponse }
-  | { asset: ProjectAsset; failureCount: number; kind: "failure"; reason: unknown };
 
 const runtimeAppearances: Partial<Record<DeviceVisualStatus, ModelNodeAppearance>> = {
   alarm: { color: "#ff4d5f", opacity: 1, visible: true },
@@ -32,6 +31,7 @@ const runtimeAppearances: Partial<Record<DeviceVisualStatus, ModelNodeAppearance
 };
 
 const formatRuntimeValue = (value: RuntimeMetricValue): string => {
+  if (value === null) return "空值";
   if (typeof value === "boolean") return value ? "是" : "否";
   return String(value);
 };
@@ -59,6 +59,10 @@ export function CanvasPage({ initialTemplateId, mode, projectId }: CanvasPagePro
   const [saveError, setSaveError] = useState<string | null>(null);
   const [configurationError, setConfigurationError] = useState<string | null>(null);
   const [showDataSources, setShowDataSources] = useState(false);
+  const [showAssets, setShowAssets] = useState(false);
+  const [catalogRevision, setCatalogRevision] = useState(0);
+  const [catalogProjectId, setCatalogProjectId] = useState<string | null>(null);
+  const [metricCatalog, setMetricCatalog] = useState<MetricCatalogEntry[]>([]);
   const [showTemplates, setShowTemplates] = useState(false);
   const [showThemes, setShowThemes] = useState(false);
   const [themeNotice, setThemeNotice] = useState<string | null>(null);
@@ -68,7 +72,7 @@ export function CanvasPage({ initialTemplateId, mode, projectId }: CanvasPagePro
   const [assetLoadError, setAssetLoadError] = useState<string | null>(null);
   const [assetListLoading, setAssetListLoading] = useState(mode === "preview");
   const [modelScenes, setModelScenes] = useState<Record<string, ModelSceneSnapshot>>({});
-  const [runtimeConnections, setRuntimeConnections] = useState<Record<string, RuntimeAssetConnection>>({});
+  const [showRuntimeDetails, setShowRuntimeDetails] = useState(false);
   const [selectedRuntimeAssetId, setSelectedRuntimeAssetId] = useState<string | null>(null);
   const [runtimeSelectionMessage, setRuntimeSelectionMessage] = useState<string | null>(null);
   const dirtyNodeIdsRef = useRef(new Set<string>());
@@ -98,163 +102,58 @@ export function CanvasPage({ initialTemplateId, mode, projectId }: CanvasPagePro
   }, [projectId]);
 
   useEffect(() => {
-    let active = true;
-    setProjectAssets([]);
-    setAssetLoadError(null);
-    setRuntimeConnections({});
-    setModelScenes({});
-    setSelectedRuntimeAssetId(null);
-    setRuntimeSelectionMessage(null);
-    if (mode !== "preview") {
-      setAssetListLoading(false);
-      return () => { active = false; };
-    }
-
-    setAssetListLoading(true);
-    void request<ProjectAssetListResponse>(projectAssetsPath(projectId))
+    const controller = new AbortController();
+    setProjectAssets([]); setMetricCatalog([]); setCatalogProjectId(null);
+    setAssetLoadError(null); setAssetListLoading(true);
+    void request<RuntimeCatalog>(runtimeCatalogPath(projectId), { signal: controller.signal })
       .then((result) => {
-        if (active) setProjectAssets(result.assets);
+        if (controller.signal.aborted) return;
+        setProjectAssets(result.assets); setMetricCatalog(result.metrics); setCatalogProjectId(projectId);
       })
-      .catch((reason) => {
-        if (active) setAssetLoadError(errorMessage(reason));
-      })
-      .finally(() => {
-        if (active) setAssetListLoading(false);
-      });
-    return () => { active = false; };
-  }, [mode, projectId]);
-
-  const model3DNodeCount = useMemo(
-    () => document?.nodes.filter((node) => isModel3DNodeType(node.type)).length ?? 0,
-    [document],
-  );
-  const mappedRuntimeAssets = useMemo(
-    () => projectAssets.filter((asset) => asset.modelNode !== null),
-    [projectAssets],
-  );
-  const runtimeSetupError = useMemo(() => {
-    if (mode !== "preview" || assetListLoading) return null;
-    if (assetLoadError) return `资产台账加载失败：${assetLoadError}`;
-    if (model3DNodeCount !== 1) {
-      return `本地纵向测试要求画布中恰好有 1 个 3D 组件，当前为 ${model3DNodeCount} 个。`;
-    }
-    if (mappedRuntimeAssets.length === 0) {
-      return "没有绑定模型节点的资产，请先在 3D 编辑器中完成设备与模型节点绑定。";
-    }
-    if (mappedRuntimeAssets.length > 50) {
-      return `当前有 ${mappedRuntimeAssets.length} 个模型资产；本地直连轮询上限为 50，请使用服务端批量采集器。`;
-    }
-    return null;
-  }, [assetListLoading, assetLoadError, mappedRuntimeAssets.length, mode, model3DNodeCount]);
+      .catch((reason) => { if (!controller.signal.aborted) setAssetLoadError(errorMessage(reason)); })
+      .finally(() => { if (!controller.signal.aborted) setAssetListLoading(false); });
+    return () => controller.abort();
+  }, [projectId, catalogRevision]);
 
   useEffect(() => {
-    if (
-      mode !== "preview"
-      || assetListLoading
-      || runtimeSetupError
-      || mappedRuntimeAssets.length === 0
-    ) {
-      return;
+    setModelScenes({}); setSelectedRuntimeAssetId(null); setRuntimeSelectionMessage(null);
+  }, [projectId, mode]);
+
+  const model3DNodeCount = document?.nodes.filter((node) => isModel3DNodeType(node.type)).length ?? 0;
+  const mappedRuntimeAssets = useMemo(() => projectAssets.filter((asset) => asset.modelNode !== null), [projectAssets]);
+  const activeBindings = useMemo(() => {
+    const refs = new Set(document?.nodes.flatMap((node) => node.dataBindingRefs) ?? []);
+    return (document?.dataBindings ?? []).filter((binding) => refs.has(binding.id));
+  }, [document]);
+  const neededAssetIds = useMemo(() => {
+    if (catalogProjectId !== projectId || document?.projectId !== projectId) return [];
+    const ids = new Set<string>();
+    for (const binding of activeBindings) {
+      if (binding.selection === "fixed") binding.assetIds.forEach((id) => ids.add(id));
+      else if (selectedRuntimeAssetId && binding.assetIds.includes(selectedRuntimeAssetId)) ids.add(selectedRuntimeAssetId);
     }
-
-    let cancelled = false;
-    let nextPollTimer: number | null = null;
-    const failureCounts = new Map<string, number>();
-    setRuntimeConnections(Object.fromEntries(
-      mappedRuntimeAssets.map((asset) => [
-        asset.id,
-        { status: "loading", failureCount: 0 } satisfies RuntimeAssetConnection,
-      ]),
-    ));
-
-    const poll = async () => {
-      const outcomes: AssetRuntimePollOutcome[] = await Promise.all(mappedRuntimeAssets.map(async (asset) => {
-        try {
-          const result = await request<AssetRuntimeStateResponse>(
-            assetRuntimeStatePath(projectId, asset.id),
-          );
-          failureCounts.set(asset.id, 0);
-          return { asset, kind: "success", result } as const;
-        } catch (reason) {
-          const failureCount = (failureCounts.get(asset.id) ?? 0) + 1;
-          failureCounts.set(asset.id, failureCount);
-          const apiError = reason instanceof ApiRequestError ? reason : null;
-          console.error("Asset runtime polling failed.", {
-            assetId: asset.assetId,
-            assetRecordId: asset.id,
-            errorCode: apiError?.code ?? "runtime_request_failed",
-            failureCount,
-            projectId,
-            reason,
-            requestId: apiError?.requestId,
-          });
-          return { asset, failureCount, kind: "failure", reason } as const;
-        }
-      }));
-
-      if (cancelled) return;
-      setRuntimeConnections((current) => {
-        const next = { ...current };
-        for (const outcome of outcomes) {
-          if (outcome.kind === "success") {
-            next[outcome.asset.id] = {
-              status: "live",
-              snapshot: outcome.result.runtimeState,
-              failureCount: 0,
-              lastSuccessAt: outcome.result.runtimeState.timestamp,
-            };
-          } else {
-            const previous = current[outcome.asset.id];
-            const apiError = outcome.reason instanceof ApiRequestError
-              ? outcome.reason
-              : null;
-            next[outcome.asset.id] = {
-              status: "offline",
-              snapshot: previous?.snapshot,
-              errorCode: apiError?.code ?? "runtime_request_failed",
-              errorMessage: errorMessage(outcome.reason),
-              failedAt: new Date().toISOString(),
-              failureCount: outcome.failureCount,
-              lastSuccessAt: previous?.lastSuccessAt,
-            };
-          }
-        }
-        return next;
-      });
-
-      const successfulIntervals = outcomes.flatMap((outcome) => (
-        outcome.kind === "success" ? [outcome.result.runtimeState.pollAfterSeconds] : []
-      ));
-      const maximumFailureCount = Math.max(0, ...failureCounts.values());
-      const nextSeconds = successfulIntervals.length > 0
-        ? Math.min(...successfulIntervals)
-        : Math.min(2 ** Math.max(maximumFailureCount - 1, 0), 30);
-      nextPollTimer = window.setTimeout(() => void poll(), nextSeconds * 1000);
-    };
-
-    void poll();
-    return () => {
-      cancelled = true;
-      if (nextPollTimer !== null) window.clearTimeout(nextPollTimer);
-    };
-  }, [assetListLoading, mappedRuntimeAssets, mode, projectId, runtimeSetupError]);
+    if (mode === "preview" && model3DNodeCount > 0) mappedRuntimeAssets.forEach((asset) => ids.add(asset.assetId));
+    return [...ids];
+  }, [activeBindings, catalogProjectId, document?.projectId, mappedRuntimeAssets, mode, model3DNodeCount, projectId, selectedRuntimeAssetId]);
+  const runtimeConnections = useProjectRuntime(projectId, catalogProjectId === projectId ? projectAssets : [], neededAssetIds);
+  const runtimeSetupError = assetLoadError ? `资产与指标加载失败：${assetLoadError}` : null;
 
   const runtimeAppearanceOverrides = useMemo(() => {
     const overrides: Record<string, ModelNodeAppearance> = {};
     if (mode !== "preview" || runtimeSetupError) return overrides;
     for (const asset of mappedRuntimeAssets) {
       if (!asset.modelNode) continue;
-      const appearance = runtimeAppearances[deviceVisualStatus(runtimeConnections[asset.id])];
+      const appearance = runtimeAppearances[deviceVisualStatus(runtimeConnections[asset.assetId])];
       if (appearance) overrides[asset.modelNode] = appearance;
     }
     return overrides;
   }, [mappedRuntimeAssets, mode, runtimeConnections, runtimeSetupError]);
 
   const selectedRuntimeAsset = selectedRuntimeAssetId
-    ? projectAssets.find((asset) => asset.id === selectedRuntimeAssetId) ?? null
+    ? projectAssets.find((asset) => asset.assetId === selectedRuntimeAssetId) ?? null
     : null;
   const selectedRuntimeConnection = selectedRuntimeAsset
-    ? runtimeConnections[selectedRuntimeAsset.id]
+    ? runtimeConnections[selectedRuntimeAsset.assetId]
     : undefined;
   const selectedDeviceStatus = deviceVisualStatus(selectedRuntimeConnection);
   const runtimeConnectionList = Object.values(runtimeConnections);
@@ -309,7 +208,8 @@ export function CanvasPage({ initialTemplateId, mode, projectId }: CanvasPagePro
         ? projectAssets.find((item) => item.modelNode === candidate.name)
         : undefined;
       if (asset) {
-        setSelectedRuntimeAssetId(asset.id);
+        setSelectedRuntimeAssetId(asset.assetId);
+        setShowRuntimeDetails(true);
         setRuntimeSelectionMessage(null);
         return;
       }
@@ -334,6 +234,41 @@ export function CanvasPage({ initialTemplateId, mode, projectId }: CanvasPagePro
     setDocument((current) => current ? { ...current, nodes: current.nodes.map((item) => item.id === node.id ? node : item) } : current);
     markNodeDirty(node.id);
   }, [markNodeDirty]);
+
+  const changeBinding = useCallback((node: CanvasNode, binding: ComponentBinding | null) => {
+    setDocument((current) => {
+      if (!current) return current;
+      const nodes = current.nodes.map((item) => item.id === node.id ? { ...item, dataBindingRefs: binding ? [binding.id] : [] } : item);
+      const definitions = new Map((current.dataBindings ?? []).map((item) => [item.id, item]));
+      if (binding) definitions.set(binding.id, binding);
+      const refs = new Set(nodes.flatMap((item) => item.dataBindingRefs));
+      return { ...current, nodes, dataBindings: [...definitions.values()].filter((item) => refs.has(item.id)) };
+    });
+    markNodeDirty(node.id);
+  }, [markNodeDirty]);
+
+  const selectRuntimeAsset = useCallback((assetId: string | null) => {
+    setSelectedRuntimeAssetId(assetId); setRuntimeSelectionMessage(null); setShowRuntimeDetails(false);
+    setSelectedModelSceneNodePath(null);
+  }, []);
+
+  // A table selection can happen before GLTF finishes loading. Reconcile it
+  // when the scene arrives as well as when the selected asset changes.
+  useEffect(() => {
+    if (!selectedRuntimeAssetId || mode !== "preview") return;
+    const asset = projectAssets.find((item) => item.assetId === selectedRuntimeAssetId);
+    if (!asset?.modelNode) return;
+    const matches: Array<{ nodeId: string; path: string }> = [];
+    const visit = (nodeId: string, nodes: ModelSceneSnapshot["roots"]) => {
+      for (const node of nodes) {
+        if (node.name === asset.modelNode) matches.push({ nodeId, path: node.path });
+        visit(nodeId, node.children);
+      }
+    };
+    Object.entries(modelScenes).forEach(([nodeId, scene]) => visit(nodeId, scene.roots));
+    if (matches.length === 1) { setSelectedNodeId(matches[0].nodeId); setSelectedModelSceneNodePath(matches[0].path); }
+    else if (matches.length > 1) setRuntimeSelectionMessage("该设备匹配多个模型对象，请修正映射；二维数据仍可使用。");
+  }, [modelScenes, projectAssets, selectedRuntimeAssetId, mode]);
 
   const createNode = useCallback((type: CanvasNodeType, x: number, y: number) => {
     if (!document) return;
@@ -372,6 +307,7 @@ export function CanvasPage({ initialTemplateId, mode, projectId }: CanvasPagePro
         body: JSON.stringify({
           expectedRevision: document.revision,
           theme: document.theme,
+          dataBindings: document.dataBindings ?? [],
           upsertNodes: document.nodes.filter((node) => dirtyNodeIds.has(node.id)),
           deleteNodeIds: [...deletedNodeIdsRef.current],
         }),
@@ -465,6 +401,7 @@ export function CanvasPage({ initialTemplateId, mode, projectId }: CanvasPagePro
   const editable = mode === "edit" && canEdit && !saving;
   const selectedNode = selectedNodeId ? document.nodes.find((node) => node.id === selectedNodeId) ?? null : null;
   return (
+    <ProjectRuntimeContext.Provider value={{ assets: projectAssets, metrics: metricCatalog, enabled: true, loading: assetListLoading, error: assetLoadError, bindings: activeBindings, connections: runtimeConnections, selectedAssetId: selectedRuntimeAssetId, selectAsset: selectRuntimeAsset, changeBinding }}>
     <main className={`canvas-page canvas-page-${mode}`}>
       <header className="canvas-toolbar">
         <div className="canvas-toolbar-title"><a aria-label="返回项目列表" className="canvas-back-link" href="#/projects">←</a><div><span>{mode === "edit" ? "2D 画布" : "可视化预览"}</span><strong>{projectName}</strong></div></div>
@@ -476,6 +413,7 @@ export function CanvasPage({ initialTemplateId, mode, projectId }: CanvasPagePro
               <span aria-hidden="true" style={{ backgroundColor: document.theme.accentColor }} />
               主题
             </button>
+            <button className="secondary-button compact-button" onClick={() => setShowAssets(true)} type="button">资产与指标</button>
             <button className="secondary-button compact-button" onClick={() => setShowDataSources(true)} type="button">数据源</button>
             <button className="secondary-button compact-button" disabled={!selectedNodeId || !canEdit || saving} onClick={deleteSelectedNode} type="button">删除组件</button>
             <button className="secondary-button compact-button" disabled={saving || configurationError !== null} onClick={() => void openPreview()} title={configurationError ?? undefined} type="button">预览</button>
@@ -568,7 +506,7 @@ export function CanvasPage({ initialTemplateId, mode, projectId }: CanvasPagePro
               className={`runtime-status-banner${runtimeSetupError ? " is-error" : offlineDeviceCount > 0 ? staleDeviceCount === offlineDeviceCount ? " is-stale" : " is-offline" : liveDeviceCount > 0 ? " is-live" : " is-loading"}`}
               role={runtimeSetupError || offlineDeviceCount > 0 ? "alert" : "status"}
             >
-              <strong>REST 模拟采集</strong>
+              <strong>{projectAssets.some((asset) => neededAssetIds.includes(asset.assetId) && asset.metadata.simulated === true) ? "项目数据 · 含模拟设备" : "项目数据"}</strong>
               <span>
                 {assetListLoading
                   ? "🟡 正在读取资产映射…"
@@ -577,9 +515,11 @@ export function CanvasPage({ initialTemplateId, mode, projectId }: CanvasPagePro
                     : offlineDeviceCount > 0
                       ? `${staleDeviceCount === offlineDeviceCount ? "🟠" : "🔴"} ${offlineSummary} · 正在重连（第 ${Math.max(...runtimeConnectionList.map((state) => state.failureCount))} 次）`
                       : liveDeviceCount > 0
-                        ? `🟢 在线 ${liveDeviceCount} 台 · 字段映射与 3D 状态已生效`
-                        : "🟡 正在连接设备数据…"}
+                        ? `🟢 在线 ${liveDeviceCount} 台 · 共享设备数据`
+                        : neededAssetIds.length === 0 ? "未选择设备或未配置数据绑定" : "🟡 正在连接设备数据…"}
               </span>
+              <label className="runtime-asset-picker"><span>当前设备</span><select aria-label="当前设备" value={selectedRuntimeAssetId ?? ""} onChange={(event) => selectRuntimeAsset(event.target.value || null)}><option value="">请选择设备</option>{projectAssets.map((asset) => <option key={asset.assetId} value={asset.assetId}>{asset.name}</option>)}</select></label>
+              {selectedRuntimeAsset ? <button className="secondary-button compact-button" onClick={() => setShowRuntimeDetails((value) => !value)} type="button">设备详情</button> : null}
             </div>
             {runtimeSelectionMessage ? (
               <div className="runtime-selection-message" role="alert">
@@ -587,14 +527,14 @@ export function CanvasPage({ initialTemplateId, mode, projectId }: CanvasPagePro
                 <button aria-label="关闭提示" onClick={() => setRuntimeSelectionMessage(null)} type="button">×</button>
               </div>
             ) : null}
-            {selectedRuntimeAsset ? (
+            {selectedRuntimeAsset && showRuntimeDetails ? (
               <aside className="runtime-detail-panel" aria-label={`${selectedRuntimeAsset.name} 设备详情`}>
                 <header>
                   <div>
                     <span className="eyebrow">2D DEVICE DETAIL</span>
                     <h2>{selectedRuntimeAsset.name}</h2>
                   </div>
-                  <button aria-label="关闭设备详情" onClick={() => setSelectedRuntimeAssetId(null)} type="button">×</button>
+                  <button aria-label="关闭设备详情" onClick={() => setShowRuntimeDetails(false)} type="button">×</button>
                 </header>
                 <div className={`runtime-device-state is-${selectedDeviceStatus}${selectedRuntimeIsStale ? " is-stale" : ""}`}>
                   <i aria-hidden="true" />
@@ -642,10 +582,11 @@ export function CanvasPage({ initialTemplateId, mode, projectId }: CanvasPagePro
         ) : null}
         {mode === "edit" ? <ComponentInspector editable={editable} node={selectedNode} onModelEditorOpen={(nodeId) => void openModelEditor(nodeId)} onNodeChange={updateNode} onValidationChange={setConfigurationError} projectId={projectId} /> : null}
       </div>
+      {showAssets ? <AssetPanel projectId={projectId} editable={canEdit && !saving} onClose={() => { setShowAssets(false); setCatalogRevision((value) => value + 1); }} /> : null}
       {showDataSources ? (
         <DataSourcePanel
           editable={canEdit && !saving}
-          onClose={() => setShowDataSources(false)}
+          onClose={() => { setShowDataSources(false); setCatalogRevision((value) => value + 1); }}
           projectId={projectId}
         />
       ) : null}
@@ -665,5 +606,6 @@ export function CanvasPage({ initialTemplateId, mode, projectId }: CanvasPagePro
         />
       ) : null}
     </main>
+    </ProjectRuntimeContext.Provider>
   );
 }

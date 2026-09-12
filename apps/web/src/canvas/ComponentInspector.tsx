@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { BasicNodeInspector } from "./BasicNodeInspector";
+import { ComponentBindingInspector } from "./ComponentBindingInspector";
 import { DashboardNodeInspector } from "./DashboardNodeInspector";
 import { PanelFrameInspector } from "./PanelFrameInspector";
 import {
@@ -218,6 +219,7 @@ function ValidChartInspector({ editable, node, props, onNodeChange, onValidation
         <p>组件 ID：{node.id.slice(0, 8)}</p>
       </header>
 
+      <ComponentBindingInspector editable={editable} node={node} />
       <section className="inspector-section">
         <div className="inspector-section-title"><strong>基础配置</strong><span>{Math.round(node.width)} × {Math.round(node.height)}</span></div>
         <label><span>图表标题</span><input disabled={!editable} maxLength={120} onChange={(event) => changeDraft({ ...draft, title: event.target.value })} value={draft.title} /></label>

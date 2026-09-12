@@ -107,13 +107,20 @@ const AlarmList = ({ props }: { props: AlarmListProps }) => (
   </div>
 );
 
-const DataTable = ({ props }: { props: DataTableProps }) => (
+type TableInteraction = { rowAssetIds?: string[]; onAssetSelect?: (assetId: string) => void; selectedAssetId?: string | null };
+const DataTable = ({ props, rowAssetIds, onAssetSelect, selectedAssetId }: { props: DataTableProps } & TableInteraction) => (
   <div className="dashboard-table-wrap">
     <table className="dashboard-data-table">
       <thead><tr>{props.columns.map((column, index) => <th className={index === props.highlightColumn ? "is-highlight" : undefined} key={`${column}-${index}`}>{column}</th>)}</tr></thead>
       <tbody>
         {props.rows.map((row, rowIndex) => (
-          <tr key={rowIndex}>{row.map((cell, columnIndex) => <td className={columnIndex === props.highlightColumn ? "is-highlight" : undefined} key={columnIndex}>{cell}</td>)}</tr>
+          <tr key={rowAssetIds?.[rowIndex] ?? rowIndex} data-asset-id={rowAssetIds?.[rowIndex]} className={rowAssetIds?.[rowIndex] === selectedAssetId ? "is-selected" : undefined}>
+            {row.map((cell, columnIndex) => <td className={columnIndex === props.highlightColumn ? "is-highlight" : undefined} key={columnIndex}>
+              {columnIndex === 0 && rowAssetIds?.[rowIndex] && onAssetSelect
+                ? <button className="dashboard-asset-select" aria-label={`选择设备 ${rowAssetIds[rowIndex]}`} aria-pressed={rowAssetIds[rowIndex] === selectedAssetId} onClick={() => onAssetSelect(rowAssetIds[rowIndex])} type="button">{cell}</button>
+                : cell}
+            </td>)}
+          </tr>
         ))}
       </tbody>
     </table>
@@ -131,20 +138,20 @@ const EventTimeline = ({ props }: { props: EventTimelineProps }) => (
   </ol>
 );
 
-const dashboardBody = (node: CanvasNode, props: DashboardBaseProps): ReactNode => {
+const dashboardBody = (node: CanvasNode, props: DashboardBaseProps, interaction: TableInteraction): ReactNode => {
   switch (node.type) {
     case "radial-gauge": return <RadialGauge props={props as RadialGaugeProps} />;
     case "progress-list": return <ProgressList props={props as ProgressListProps} />;
     case "status-grid": return <StatusGrid props={props as StatusGridProps} />;
     case "ranking-list": return <RankingList props={props as RankingListProps} />;
     case "alarm-list": return <AlarmList props={props as AlarmListProps} />;
-    case "data-table": return <DataTable props={props as DataTableProps} />;
+    case "data-table": return <DataTable props={props as DataTableProps} {...interaction} />;
     case "event-timeline": return <EventTimeline props={props as EventTimelineProps} />;
     default: throw new Error(`DashboardNode body received unsupported node type: ${node.type}`);
   }
 };
 
-export const DashboardNode = memo(function DashboardNode({ node }: { node: CanvasNode }) {
+export const DashboardNode = memo(function DashboardNode({ node, ...interaction }: { node: CanvasNode } & TableInteraction) {
   if (!isDashboardNodeType(node.type)) {
     throw new Error(`DashboardNode received unsupported node type: ${node.type}`);
   }
@@ -172,7 +179,7 @@ export const DashboardNode = memo(function DashboardNode({ node }: { node: Canva
   return (
     <article className={`dashboard-component dashboard-${node.type}`} style={dashboardStyle(props)}>
       <header className="dashboard-component-header"><strong>{props.title}</strong><SampleBadge visible={props.sample} /></header>
-      {dashboardBody(node, props)}
+      {dashboardBody(node, props, interaction)}
     </article>
   );
 });

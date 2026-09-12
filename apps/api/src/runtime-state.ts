@@ -9,7 +9,7 @@ const MAX_DISCOVERY_DEPTH = 8;
 const MAX_DISCOVERED_ARRAY_ITEMS = 10;
 const MAX_SAMPLE_STRING_LENGTH = 160;
 
-export type RuntimeMetricValue = number | string | boolean;
+export type RuntimeMetricValue = number | string | boolean | null;
 
 export type AssetRuntimeState = {
   asset: Pick<Asset, "id" | "assetId" | "assetType" | "modelNode" | "name">;
@@ -30,6 +30,7 @@ export type AssetRuntimeState = {
     collectedAt: string;
     sourceTimestamp: string | null;
     durationMs: number;
+    staleAfterSeconds: number;
   }>;
   pollAfterSeconds: number;
   staleAfterSeconds: number;
@@ -267,6 +268,8 @@ const validateMetricValue = (
   binding: AssetDataBinding,
   value: unknown,
 ): RuntimeMetricValue => {
+  // Null means the upstream has no value. Keep it distinct from numeric zero.
+  if (value === null) return null;
   if (binding.valueType === "number") {
     if (typeof value !== "number" || !Number.isFinite(value)) {
       throw new AppError(422, "metric_type_mismatch", `Metric ${binding.metricKey} must resolve to a finite number.`);
@@ -512,6 +515,7 @@ export const collectAssetRuntimeState = async (
       collectedAt: result.collectedAt,
       sourceTimestamp: result.sourceTimestamp,
       durationMs: result.durationMs,
+      staleAfterSeconds: Math.min(...result.bindings.map((binding) => binding.staleAfterSeconds)),
     });
     for (const binding of result.bindings) {
       const value = validateMetricValue(

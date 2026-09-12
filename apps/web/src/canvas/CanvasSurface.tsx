@@ -1,6 +1,7 @@
 import { memo, useCallback, useEffect, useRef, useState, type CSSProperties, type DragEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { BasicNode } from "./BasicNode";
 import { ChartNode } from "./ChartNode";
+import { BoundNode } from "./BoundNode";
 import { DashboardNode } from "./DashboardNode";
 import { DecorationNode } from "./DecorationNode";
 import { buildSnapTargets, resizeCanvasNode, snapNodePosition, type ResizeDirection, type SnapTargets, type SnappedPosition } from "./geometry";
@@ -77,7 +78,9 @@ const CanvasNodeView = memo(function CanvasNodeView({ editable, modelInteraction
       role="group"
       style={{ height: node.height, transform: `translate3d(${node.x}px, ${node.y}px, 0)`, width: node.width, zIndex: renderZIndex }}
     >
-      {isShapeNodeType(node.type)
+      {node.dataBindingRefs.length > 0
+        ? <BoundNode node={node} interactive={modelInteractionEnabled} />
+        : isShapeNodeType(node.type)
         ? <ShapeNode node={node} />
         : isDecorationNodeType(node.type)
           ? <DecorationNode node={node} />

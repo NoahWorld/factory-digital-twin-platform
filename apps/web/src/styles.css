@@ -10429,3 +10429,41 @@ input:focus {
     justify-content: start;
   }
 }
+/* NewPower: binding state stays visible without changing persisted node props. */
+.bound-node { position: relative; width: 100%; height: 100%; }
+.bound-data-badge { position: absolute; right: 12px; bottom: 6px; z-index: 1; padding: 2px 6px; border-radius: 4px; background: #0b2734; color: #91e0ef; font-size: 12px; pointer-events: none; }
+.bound-node-message { display: flex; flex-direction: column; justify-content: center; gap: 12px; width: 100%; height: 100%; padding: 24px; border: 1px solid var(--canvas-theme-border); background: var(--canvas-theme-surface); color: var(--canvas-theme-text); overflow: auto; }
+.bound-node-message strong { font-size: 20px; }
+.bound-node-message p { font-size: 16px; line-height: 1.6; }
+.bound-data-error { position: absolute; left: 16px; right: 16px; bottom: 22px; margin: 0; color: #f2bc75; font-size: 13px; white-space: nowrap; text-overflow: ellipsis; overflow: hidden; }
+.dashboard-asset-select { border: 0; border-bottom: 1px dashed currentColor; padding: 4px 0; text-align: left; background: transparent; color: inherit; font: inherit; cursor: pointer; pointer-events: auto; }
+.bound-node .dashboard-data-table { height: auto; }
+.bound-node .dashboard-metric-card > header > strong { font-size: 16px; }
+.bound-node .dashboard-data-table th, .bound-node .dashboard-data-table td { padding: 16px 12px; font-size: 15px; }
+.dashboard-data-table tr.is-selected { background: color-mix(in srgb, var(--dashboard-accent) 20%, transparent); }
+.dashboard-asset-select:focus-visible { outline: 2px solid var(--dashboard-accent); outline-offset: 3px; }
+.component-binding-inspector { border-bottom: 1px solid #264455; padding-bottom: 18px; }
+.component-binding-inspector select, .newpower-asset-panel select, .newpower-asset-panel input:not([type="checkbox"]), .runtime-asset-picker select { min-width: 0; width: 100%; padding: 8px; border: 1px solid #35576a; border-radius: 6px; color: #e2f3fa; background: #0b2030; font: inherit; }
+.component-binding-inspector .secondary-button { margin-top: 8px; width: 100%; }
+.binding-help { color: #9eb9c9; font-size: 12px; line-height: 1.6; }
+.binding-choice-list { border: 1px solid #264455; border-radius: 6px; padding: 8px; margin: 12px 0; max-height: 210px; overflow: auto; }
+.binding-choice-list legend { font-size: 12px; color: #a9cbdc; }
+.binding-choice-list label, .binding-checkbox { display: flex !important; flex-direction: row !important; gap: 10px !important; align-items: center; margin: 6px 0; cursor: pointer; }
+.binding-choice-list input, .binding-checkbox input { width: 16px !important; height: 16px; flex: 0 0 16px; accent-color: #59d8e6; }
+.binding-choice-list small { display: block; font-size: 11px; opacity: .7; margin-top: 2px; }
+.binding-form-error { color: #ffb9a3; line-height: 1.5; font-size: 13px; overflow-wrap: anywhere; }
+.binding-result-preview { padding: 10px; background: #0e2c39; border-radius: 6px; margin-top: 12px; font-size: 12px; }
+.binding-result-preview p { margin: 6px 0; }
+.runtime-asset-picker { display: flex; align-items: center; gap: 8px; margin-left: 8px; }
+.runtime-asset-picker select { width: 160px; padding: 4px 8px; }
+.newpower-asset-backdrop { position: fixed; inset: 0; display: grid; place-items: center; background: #020912b8; z-index: 100; padding: 24px; }
+.newpower-asset-panel { width: min(1000px, 100%); max-height: 90vh; padding: 24px; background: #0c1e2b; color: #ddecf6; border: 1px solid #315065; border-radius: 12px; overflow: auto; box-shadow: 0 20px 80px #0008; }
+.newpower-asset-panel > header { display: flex; justify-content: space-between; align-items: start; gap: 16px; margin-bottom: 24px; }
+.newpower-asset-panel h2 { margin: 0 0 8px; }
+.newpower-asset-panel p { line-height: 1.6; }
+.newpower-asset-columns { display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 24px; }
+.newpower-asset-panel label { display: grid; gap: 6px; margin-bottom: 12px; }
+.newpower-asset-panel form { margin-top: 24px; padding-top: 16px; border-top: 1px solid #264455; }
+.newpower-asset-metrics { min-width: 0; }
+.newpower-asset-panel .asset-data-binding-section { margin-top: 0; }
+@media (max-width: 1000px) { .runtime-status-banner { flex-wrap: wrap; } .newpower-asset-columns { grid-template-columns: 1fr; } }

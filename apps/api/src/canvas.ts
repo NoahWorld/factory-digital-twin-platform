@@ -1,4 +1,6 @@
 import { AppError, type AppEnv, type DatabaseResult } from "./auth";
+import type { ComponentBinding } from "../../../shared/component-bindings";
+import { listComponentBindings, validateComponentBindings, validateComponentReferences } from "./component-data-bindings";
 
 export type ChartNodeType =
   | "line-chart"
@@ -354,6 +356,7 @@ export type CanvasDocument = {
   revision: number;
   updatedAt: string | null;
   nodes: CanvasNode[];
+  dataBindings?: ComponentBinding[];
 };
 
 export type CanvasPatch = {
@@ -361,6 +364,7 @@ export type CanvasPatch = {
   theme?: CanvasTheme;
   upsertNodes: CanvasNode[];
   deleteNodeIds: string[];
+  dataBindings?: ComponentBinding[];
 };
 
 type CanvasRow = {
@@ -1309,7 +1313,7 @@ export const validateCanvasPatch = (value: Record<string, unknown>): CanvasPatch
   const upsertValues = value.upsertNodes as unknown[];
   const deleteValues = value.deleteNodeIds as unknown[];
   const theme = value.theme === undefined ? undefined : validateCanvasTheme(value.theme);
-  if (upsertValues.length + deleteValues.length === 0 && theme === undefined) {
+  if (upsertValues.length + deleteValues.length === 0 && theme === undefined && value.dataBindings === undefined) {
     invalid("empty_canvas_patch", "A canvas patch must contain at least one change.");
   }
   if (upsertValues.length + deleteValues.length > MAX_PATCH_NODES) {
@@ -1322,7 +1326,8 @@ export const validateCanvasPatch = (value: Record<string, unknown>): CanvasPatch
   if (new Set(allIds).size !== allIds.length) {
     invalid("duplicate_canvas_node_id", "Node IDs must not be duplicated across upserts and deletes.");
   }
-  return { expectedRevision: expectedRevision as number, theme, upsertNodes, deleteNodeIds };
+  const dataBindings = value.dataBindings === undefined ? undefined : validateComponentBindings(value.dataBindings);
+  return { expectedRevision: expectedRevision as number, theme, upsertNodes, deleteNodeIds, dataBindings };
 };
 
 const parseStoredArray = (json: string, label: string): unknown[] => {
@@ -1364,7 +1369,7 @@ export const getCanvas = async (env: AppEnv, projectId: string): Promise<CanvasD
      FROM project_canvases WHERE project_id = ?`,
   ).bind(projectId).first<CanvasRow>();
   if (!canvas) {
-    return { projectId, width: DEFAULT_WIDTH, height: DEFAULT_HEIGHT, theme: { ...DEFAULT_THEME }, revision: 0, updatedAt: null, nodes: [] };
+    return { projectId, width: DEFAULT_WIDTH, height: DEFAULT_HEIGHT, theme: { ...DEFAULT_THEME }, revision: 0, updatedAt: null, nodes: [], dataBindings: [] };
   }
   const rows = await env.DB.prepare(
     `SELECT id, node_type, x, y, width, height, z_index, props_json, resource_refs_json, data_binding_refs_json
@@ -1375,6 +1380,7 @@ export const getCanvas = async (env: AppEnv, projectId: string): Promise<CanvasD
     theme: presentStoredTheme(canvas),
     revision: canvas.revision, updatedAt: canvas.updated_at,
     nodes: rows.results.map(presentStoredNode),
+    dataBindings: await listComponentBindings(env, projectId),
   };
 };
 
@@ -1392,6 +1398,16 @@ export const applyCanvasPatch = async (
   userId: string,
   patch: CanvasPatch,
 ): Promise<CanvasDocument> => {
+  const current = await getCanvas(env, projectId);
+  if (current.revision !== patch.expectedRevision) {
+    throw new AppError(409, "canvas_revision_conflict", "The canvas changed since it was loaded. Reload it before saving again.");
+  }
+  const finalNodes = new Map(current.nodes.map((node) => [node.id, node]));
+  patch.deleteNodeIds.forEach((id) => finalNodes.delete(id));
+  patch.upsertNodes.forEach((node) => finalNodes.set(node.id, node));
+  const dataBindings = await validateComponentReferences(
+    env, projectId, [...finalNodes.values()], patch.dataBindings ?? current.dataBindings ?? [],
+  );
   const modelNodes = patch.upsertNodes.filter((node) => node.type === "model-3d");
   const modelAssetRefs = [...new Set(modelNodes.flatMap((node) => node.resourceRefs))];
   const duplicateNamesByAssetId = new Map<string, Set<string>>();
@@ -1525,6 +1541,16 @@ export const applyCanvasPatch = async (
       now,
     ),
   ];
+
+  // Definitions and their references share the existing canvas compare-and-swap.
+  statements.push(env.DB.prepare(`DELETE FROM component_data_bindings WHERE project_id = ?
+    AND EXISTS (SELECT 1 FROM project_canvases WHERE project_id = ? AND revision = ?)`)
+    .bind(projectId, projectId, patch.expectedRevision));
+  for (const binding of dataBindings) {
+    statements.push(env.DB.prepare(`INSERT INTO component_data_bindings (project_id, id, config_json)
+      SELECT ?, ?, ? WHERE EXISTS (SELECT 1 FROM project_canvases WHERE project_id = ? AND revision = ?)`)
+      .bind(projectId, binding.id, JSON.stringify(binding), projectId, patch.expectedRevision));
+  }
 
   for (const node of patch.upsertNodes) {
     statements.push(env.DB.prepare(

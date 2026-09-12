@@ -2,6 +2,8 @@
 
 当前 `newpower` 的本地接手、运行与通用数据绑定研发见 [开发状态](docs/newpower/development-status.md) 和 [研发指南](NewPower_Codex_Development_Start_Guide.md)。本分支持续本地开发、验证和提交，不推送、不操作远端数据库。
 
+NewPower 已增加独立的“资产与指标”入口，以及指标卡、柱状图、业务表格的设备数据绑定。纯二维页面可采集数据，表格与三维模型共享设备选择；绑定与画布一起保存，静态模板仍可编辑。当前验收使用两台明确标为模拟的设备，详见 [操作与验证](docs/newpower/acceptance.md)。
+
 面向交付人员的工厂数字孪生项目生成器，用行业模板、标准 glTF 2.x 模型、资产台账与统一数据契约，快速交付 **2D + 3D 组合大屏**。
 
 ## 当前结构
@@ -88,7 +90,7 @@ pnpm check
 pnpm build
 ```
 
-本地迁移以 `apps/api/migrations/` 为准，当前包含 `0001`–`0011`；`db:migrate:local` 会应用全部迁移。必须先构建 web 再启动依赖 `web/dist` 的 Worker。历史云端迁移状态不能替代当前读回；NewPower 本地研发不执行下方远端配置示例。模型和图片在本地使用 Wrangler 的 R2 模拟存储。
+本地迁移以 `apps/api/migrations/` 为准，当前包含 `0001`–`0012`；`db:migrate:local` 会应用全部迁移。必须先构建 web 再启动依赖 `web/dist` 的 Worker。历史云端迁移状态不能替代当前读回；NewPower 本地研发不执行下方远端配置示例。模型和图片在本地使用 Wrangler 的 R2 模拟存储。
 
 ```bash
 npx wrangler r2 bucket create factory-digital-twin-project-files

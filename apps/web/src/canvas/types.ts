@@ -364,6 +364,7 @@ export type CanvasDocument = {
   revision: number;
   updatedAt: string | null;
   nodes: CanvasNode[];
+  dataBindings?: import("../../../../shared/component-bindings").ComponentBinding[];
 };
 
 export type CanvasProject = {

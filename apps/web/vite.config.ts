@@ -8,6 +8,11 @@ export default defineConfig(({ mode }) => {
     plugins: [react()],
     server: {
       port: 5173,
+      // Some local automation filesystems do not deliver native change events.
+      // Set both options: Chokidar's environment override can leave FsEvents on.
+      watch: process.env.NEWPOWER_POLL_WATCH === "true"
+        ? { usePolling: true, useFsEvents: false }
+        : undefined,
       proxy: {
         "/api": {
           target: environment.VITE_DEV_API_TARGET || "http://127.0.0.1:8787",

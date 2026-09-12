@@ -49,6 +49,7 @@ import {
 } from "./image-assets";
 import { projectCoverResponse } from "./project-covers";
 import { collectAssetRuntimeState, probeRestDataSource } from "./runtime-state";
+import { listMetricCatalog } from "./component-data-bindings";
 
 type ProjectStatus = "draft" | "published" | "archived";
 
@@ -877,6 +878,15 @@ const handleApiRequest = async (
       durationMs: Date.now() - startedAt,
     }));
     return json({ dataSource, requestId });
+  }
+
+  const runtimeCatalogMatch = pathname.match(/^\/api\/v1\/projects\/([^/]+)\/runtime-catalog$/);
+  if (method === "GET" && runtimeCatalogMatch) {
+    const user = await getAuthenticatedUser(env, request);
+    const projectId = decodePathSegment(runtimeCatalogMatch[1]);
+    await requireProjectAccess(env, user, projectId);
+    const [assets, metrics] = await Promise.all([listAssets(env, projectId), listMetricCatalog(env, projectId)]);
+    return json({ assets, metrics, requestId });
   }
 
   const canvasMatch = pathname.match(/^\/api\/v1\/projects\/([^/]+)\/canvas$/);

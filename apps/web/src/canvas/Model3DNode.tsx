@@ -729,6 +729,7 @@ export const Model3DNode = memo(function Model3DNode({
     <div className="model-3d-node">
       <div
         className="model-3d-renderer"
+        data-selected-scene-node={selectedSceneNodePath ?? ""}
         onPointerCancel={() => {
           pointerStartRef.current = null;
         }}
