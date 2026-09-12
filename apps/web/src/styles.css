@@ -10437,7 +10437,7 @@ input:focus {
 .bound-node-message p { font-size: 16px; line-height: 1.6; }
 .bound-data-error { position: absolute; left: 16px; right: 16px; bottom: 22px; margin: 0; color: #f2bc75; font-size: 13px; white-space: nowrap; text-overflow: ellipsis; overflow: hidden; }
 .dashboard-asset-select { border: 0; border-bottom: 1px dashed currentColor; padding: 4px 0; text-align: left; background: transparent; color: inherit; font: inherit; cursor: pointer; pointer-events: auto; }
-.bound-node .dashboard-data-table { height: auto; }
+.bound-node table.dashboard-data-table { height: auto; }
 .bound-node .dashboard-metric-card > header > strong { font-size: 16px; }
 .bound-node .dashboard-data-table th, .bound-node .dashboard-data-table td { padding: 16px 12px; font-size: 15px; }
 .dashboard-data-table tr.is-selected { background: color-mix(in srgb, var(--dashboard-accent) 20%, transparent); }

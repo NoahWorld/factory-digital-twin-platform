@@ -40,7 +40,7 @@ M0 只证明旧链路；新增能力见下方 M1 实际验收。
 | 服务端边界 | 外项目引用、缺失引用、错误目标/类型、未知字段被拒绝；旧版本保存返回 409；只读成员可读不可写，无项目权限及匿名读取被拒绝 |
 | 旧功能回归 | 原静态模板、旧单设备三维、保存重开、旧版 API smoke 均通过 |
 
-综合运行 `pnpm test:newpower`：**13 项通过，1 项示例创建入口按设计跳过**（`acceptance.log`）。随后完成表格逐设备单位显示的 1 项专项复验（`units-recheck.log`）；功能检查合计 14 项。`pnpm check` 和最终 `pnpm build` 通过，API 构建仍为 dry-run。旧版 smoke 的 12 项检查复验通过（`m1-legacy-smoke.log`）。
+综合运行 `pnpm test:newpower`：**13 项通过，1 项示例创建入口按设计跳过**（`acceptance.log`）。随后完成表格逐设备单位显示的 1 项专项复验（`units-recheck.log`）；功能检查合计 14 项。单位专项还校验表格外框遵守画布配置高度，避免表格与外框同名样式相互覆盖；对应最新复验见 `final-layout.log`。`pnpm check` 和最终 `pnpm build` 通过，API 构建仍为 dry-run。旧版 smoke 的 12 项检查复验通过（`m1-legacy-smoke.log`）。
 
 完整回归在构建后的 `http://127.0.0.1:8791` 进行；专项也验证了 5173 开发页面。`acceptance/` 保存真实 UI 截图和相关失败时的 trace；`m1-model/` 保存选择框、独立设备告警颜色及删除三维后的截图；`m1-final-recheck/` 保存独立资产配置操作。失败的旧检查保留原始日志，已通过上述修复复验，不记为未解决缺陷。
 

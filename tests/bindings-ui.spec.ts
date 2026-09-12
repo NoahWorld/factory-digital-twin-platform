@@ -119,6 +119,9 @@ test("table retains each asset's unit and chart rejects incompatible units", asy
     const table = page.locator('[data-node-id="device-table"]');
     await expect(table.locator('[data-asset-id="DEVICE-001"]')).toContainText("°C");
     await expect(table.locator('[data-asset-id="DEVICE-002"]')).toContainText(" K");
+    const frame = await table.boundingBox();
+    const panel = await table.locator(".dashboard-component").boundingBox();
+    expect(Math.abs(panel!.height - frame!.height)).toBeLessThan(2);
     await expect(page.locator('[data-node-id="device-chart"]')).toContainText("相同单位");
     await page.screenshot({ path: testInfo.outputPath("per-asset-units.png") });
   } finally { await api.delete(path); await api.dispose(); }
