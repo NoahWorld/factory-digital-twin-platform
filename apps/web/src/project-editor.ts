@@ -1,3 +1,4 @@
+import { SceneCatalogContext } from "./canvas/scene-context";
 import { createContext, createElement, useContext, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { errorMessage, request } from "./api";
 import { createEditorState, executeEditorOperation, isEditorDirty, markEditorSaved, restoreEditorDraft, switchEditorPage, travelEditorHistory, type EditorState, type ProjectOperation } from "../../../shared/editor-operations";
@@ -5,7 +6,7 @@ import { parseProjectDefinition, projectContent, projectDefinitionPatch, type Pr
 
 export const projectDefinitionPath = (id: string) => `/api/v1/projects/${encodeURIComponent(id)}/definition`;
 type DefinitionResponse = { definition: ProjectDefinition; project: { name: string }; editable: boolean };
-type Draft = { schemaVersion: 2; userId: string; projectId: string; baseRevision: number; pageId: string; content: ProjectContent; savedAt: string };
+type Draft = { id: string; schemaVersion: 3; userId: string; projectId: string; baseRevision: number; pageId: string; content: ProjectContent; savedAt: string };
 
 export function useProjectEditor(projectId: string, userId: string, editing: boolean, requestedPageId?: string) {
   const [editor, setEditor] = useState<EditorState | null>(null);
@@ -47,7 +48,7 @@ export function useProjectEditor(projectId: string, userId: string, editing: boo
     if (!editing || !canEdit || !draftWritable.current) return false;
     try {
       if (isEditorDirty(next)) {
-        const draft: Draft = { schemaVersion: 2, userId, projectId, baseRevision: next.project.revision, pageId: next.pageId, content: projectContent(next.project), savedAt: new Date().toISOString() };
+        const draft: Draft = { id: crypto.randomUUID(), schemaVersion: 3, userId, projectId, baseRevision: next.project.revision, pageId: next.pageId, content: projectContent(next.project), savedAt: new Date().toISOString() };
         localStorage.setItem(draftKey, JSON.stringify(draft));
         setDraftNotice("已在本机暂存，仍需保存画布。");
       } else { localStorage.removeItem(draftKey); setDraftNotice(null); }
@@ -68,9 +69,9 @@ export function useProjectEditor(projectId: string, userId: string, editing: boo
         try {
           const validateDraft = (value: unknown): Draft => {
             const draft = value as Draft;
-            if (!draft || draft.schemaVersion !== 2 || draft.userId !== userId || draft.projectId !== projectId || !Number.isSafeInteger(draft.baseRevision) || draft.baseRevision < 0) throw new Error("草稿身份或版本不匹配");
-            const candidate = parseProjectDefinition({ ...result.definition, entryPageId: draft.content?.entryPageId, pages: draft.content?.pages, dataBindings: draft.content?.dataBindings });
-            return { ...draft, content: projectContent(candidate) };
+            if (!draft || ![2, 3].includes(draft.schemaVersion) || draft.userId !== userId || draft.projectId !== projectId || !Number.isSafeInteger(draft.baseRevision) || draft.baseRevision < 0) throw new Error("草稿身份或版本不匹配");
+            const candidate = parseProjectDefinition({ ...result.definition, entryPageId: draft.content?.entryPageId, pages: draft.content?.pages, dataBindings: draft.content?.dataBindings, scenes: draft.content?.scenes ?? [] });
+            return { ...draft, id: typeof draft.id === "string" ? draft.id : crypto.randomUUID(), schemaVersion: 3, content: projectContent(candidate) };
           };
           const storedConflicts: unknown = JSON.parse(localStorage.getItem(conflictKey) ?? "[]");
           if (!Array.isArray(storedConflicts)) throw new Error("冲突草稿记录无效");
@@ -82,13 +83,14 @@ export function useProjectEditor(projectId: string, userId: string, editing: boo
               state = restoreEditorDraft(state, draft.content, requestedPageRef.current ?? draft.pageId);
               setDraftNotice("已恢复本机未保存草稿；服务器内容尚未改变。");
             } else {
-              if (!conflicts.some((item) => JSON.stringify(item) === JSON.stringify(draft))) conflicts.push(draft);
+              if (!conflicts.some((item) => item.id === draft.id)) conflicts.push(draft);
               // Back up first. A storage failure must leave the active draft intact.
               localStorage.setItem(conflictKey, JSON.stringify(conflicts));
               localStorage.removeItem(draftKey);
             }
           }
           if (conflicts.length) {
+            localStorage.setItem(conflictKey, JSON.stringify(conflicts));
             setPendingDraft(conflicts[0]);
             setDraftNotice(`另有 ${conflicts.length} 份冲突草稿保留在本机。当前服务器版本 ${result.definition.revision}，该草稿基线 ${conflicts[0].baseRevision}。`);
           }
@@ -145,7 +147,7 @@ export function useProjectEditor(projectId: string, userId: string, editing: boo
   const resolvePendingDraft = useCallback(() => {
     if (!pendingDraft) return;
     const conflicts = JSON.parse(localStorage.getItem(conflictKey) ?? "[]") as Draft[];
-    const remaining = conflicts.filter((draft) => JSON.stringify(draft) !== JSON.stringify(pendingDraft));
+    const remaining = conflicts.filter((draft) => draft.id !== pendingDraft.id);
     if (remaining.length) localStorage.setItem(conflictKey, JSON.stringify(remaining));
     else localStorage.removeItem(conflictKey);
     setPendingDraft(remaining[0] ?? null);
@@ -174,7 +176,7 @@ export function useProjectEditor(projectId: string, userId: string, editing: boo
 const ProjectEditorContext = createContext<ReturnType<typeof useProjectEditor> | null>(null);
 export function ProjectEditorProvider({ projectId, userId, editing, pageId, children }: { projectId: string; userId: string; editing: boolean; pageId?: string; children: ReactNode }) {
   const value = useProjectEditor(projectId, userId, editing, pageId);
-  return createElement(ProjectEditorContext.Provider, { value }, children);
+  return createElement(ProjectEditorContext.Provider, { value }, createElement(SceneCatalogContext.Provider, { value: value.editor?.project.scenes ?? [] }, children));
 }
 export function useProjectEditorContext() {
   const value = useContext(ProjectEditorContext);

@@ -34,13 +34,14 @@ test("server rejects dangling, foreign and invalid bindings without changing the
 
 test("authenticated viewer can read but cannot write; outsider and anonymous cannot read project data", async () => {
   test.setTimeout(60_000);
-  const api = await localApi(); const demo = await createDemo(api);
+  const api = await localApi(); const demo = await createDemo(api, true);
   const viewer = await permissionFixture(demo.projectId, true);
   const outsider = await permissionFixture(demo.projectId, false);
   const anonymous = await request.newContext({ baseURL: session().apiBase });
   const path = `/api/v1/projects/${demo.projectId}`;
+  const modelId = demo.canvas.nodes.find((node: { type: string }) => node.type === "model-3d").resourceRefs[0];
   try {
-    for (const endpoint of [`${path}/canvas`, `${path}/definition`, `${path}/runtime-catalog`, `${path}/assets/${demo.assets[0].id}/runtime-state`]) {
+    for (const endpoint of [`${path}/canvas`, `${path}/definition`, `${path}/model-assets/${modelId}`, `${path}/runtime-catalog`, `${path}/assets/${demo.assets[0].id}/runtime-state`]) {
       expect((await viewer.api.get(endpoint)).status()).toBe(200);
       expect((await outsider.api.get(endpoint)).status()).toBe(404);
       expect((await anonymous.get(endpoint)).status()).toBe(401);

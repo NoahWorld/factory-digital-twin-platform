@@ -10491,3 +10491,23 @@ input:focus {
 .newpower-asset-metrics { min-width: 0; }
 .newpower-asset-panel .asset-data-binding-section { margin-top: 0; }
 @media (max-width: 1000px) { .runtime-status-banner { flex-wrap: wrap; } .newpower-asset-columns { grid-template-columns: 1fr; } }
+
+.scene-assignment-bar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; padding: 12px 20px; background: #102431; border-bottom: 1px solid #294556; }
+.scene-assignment-bar label { display: flex; align-items: center; gap: 8px; }
+.scene-assignment-bar span { color: #8fb3c5; font-size: 12px; }
+.scene-assignment-bar select, .scene-instance-inspector input:not([type=checkbox]):not([type=color]), .scene-instance-inspector select { padding: 8px; background: #091a27; color: #e1f3ff; border: 1px solid #355568; border-radius: 5px; min-width: 0; }
+.scene-assignment-bar button, .scene-view-actions button, .scene-instance-inspector button { background: #153143; color: #d6efff; border: 1px solid #36576b; border-radius: 5px; padding: 7px 10px; cursor: pointer; }
+.scene-assignment-bar button:disabled, .scene-instance-inspector button:disabled { opacity: .45; cursor: default; }
+.scene-view-actions, .scene-editor-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.scene-instance-inspector label { display: flex; gap: 8px; align-items: center; justify-content: space-between; margin: 9px 0; font-size: 12px; }
+.scene-instance-inspector input[type=checkbox] { width: 16px; flex: 0 0 16px; margin: 0; }
+.scene-instance-inspector label input:not([type=checkbox]):not([type=color]), .scene-instance-inspector label select { max-width: 230px; }
+.scene-transform-fields > div > span { color: #91b4c8; font-size: 11px; }
+.scene-transform-fields > div > div { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 6px; }
+.scene-transform-fields label { min-width: 0; }
+.scene-transform-fields input { width: 100%; }
+.scene-instance-list { display: grid; gap: 6px; margin-top: 10px; }
+.scene-instance-list button, .scene-object-tree button { text-align: left; width: 100%; overflow-wrap: anywhere; }
+.scene-instance-list .is-selected, .scene-object-tree .is-selected { background: #245468; border-color: #64c7e5; }
+.scene-object-tree, .scene-object-tree ul { list-style: none; padding: 0; margin: 4px 0; }
+.scene-object-tree button { margin: 2px 0; }

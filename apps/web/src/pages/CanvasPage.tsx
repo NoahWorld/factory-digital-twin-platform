@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } fro
 import { errorMessage, request } from "../api";
 import { ComponentInspector } from "../canvas/ComponentInspector";
 import { CanvasSurface } from "../canvas/CanvasSurface";
+import type { ObjectTarget } from "../canvas/model-instance";
 import type { ProjectAsset } from "../canvas/assets";
 import { AssetPanel } from "../AssetPanel";
 import { ProjectRuntimeContext, runtimeCatalogPath, useProjectRuntime, type RuntimeCatalog } from "../project-runtime";
@@ -56,6 +57,7 @@ export function CanvasPage({ initialTemplateId, mode, projectId }: CanvasPagePro
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>([]);
   const [selectedModelSceneNodePath, setSelectedModelSceneNodePath] = useState<string | null>(null);
+  const [selectedSceneObject, setSelectedSceneObject] = useState<{ nodeId: string; target: ObjectTarget } | null>(null);
   const [configurationError, setConfigurationError] = useState<string | null>(null);
   const [showDataSources, setShowDataSources] = useState(false);
   const [showAssets, setShowAssets] = useState(false);
@@ -93,6 +95,11 @@ export function CanvasPage({ initialTemplateId, mode, projectId }: CanvasPagePro
   }, [projectId, mode]);
 
   const model3DNodeCount = document?.nodes.filter((node) => isModel3DNodeType(node.type)).length ?? 0;
+  const legacyModelCount = document?.nodes.filter((node) => isModel3DNodeType(node.type) && !node.sceneId).length ?? 0;
+  const visibleScenes = useMemo(() => {
+    const ids = new Set(document?.nodes.map((node) => node.sceneId));
+    return editor?.project.scenes.filter((scene) => ids.has(scene.id)) ?? [];
+  }, [document?.nodes, editor?.project.scenes]);
   const mappedRuntimeAssets = useMemo(() => projectAssets.filter((asset) => asset.modelNode !== null), [projectAssets]);
   const activeBindings = useMemo(() => {
     const refs = new Set(document?.nodes.flatMap((node) => node.dataBindingRefs) ?? []);
@@ -105,9 +112,12 @@ export function CanvasPage({ initialTemplateId, mode, projectId }: CanvasPagePro
       if (binding.selection === "fixed") binding.assetIds.forEach((id) => ids.add(id));
       else if (selectedRuntimeAssetId && binding.assetIds.includes(selectedRuntimeAssetId)) ids.add(selectedRuntimeAssetId);
     }
-    if (mode === "preview" && model3DNodeCount > 0) mappedRuntimeAssets.forEach((asset) => ids.add(asset.assetId));
+    if (mode === "preview") {
+      if (legacyModelCount > 0) mappedRuntimeAssets.forEach((asset) => ids.add(asset.assetId));
+      visibleScenes.forEach((scene) => scene.assetBindings.forEach((binding) => ids.add(binding.assetId)));
+    }
     return [...ids];
-  }, [activeBindings, catalogProjectId, document?.projectId, mappedRuntimeAssets, mode, model3DNodeCount, projectId, selectedRuntimeAssetId]);
+  }, [activeBindings, catalogProjectId, document?.projectId, mappedRuntimeAssets, mode, legacyModelCount, visibleScenes, projectId, selectedRuntimeAssetId]);
   const runtimeConnections = useProjectRuntime(projectId, catalogProjectId === projectId ? projectAssets : [], neededAssetIds);
   const runtimeSetupError = assetLoadError ? `资产与指标加载失败：${assetLoadError}` : null;
 
@@ -121,6 +131,32 @@ export function CanvasPage({ initialTemplateId, mode, projectId }: CanvasPagePro
     }
     return overrides;
   }, [mappedRuntimeAssets, mode, runtimeConnections, runtimeSetupError]);
+  const sceneAppearances = useMemo(() => {
+    const result: Record<string, Record<string, Record<string, ModelNodeAppearance>>> = {};
+    if (mode !== "preview" || runtimeSetupError) return result;
+    for (const scene of visibleScenes) for (const binding of scene.assetBindings) {
+      const appearance = runtimeAppearances[deviceVisualStatus(runtimeConnections[binding.assetId])];
+      if (appearance) ((result[scene.id] ??= {})[binding.instanceId] ??= {})[binding.objectId] = appearance;
+    }
+    return result;
+  }, [visibleScenes, mode, runtimeSetupError, runtimeConnections]);
+  const sceneTargets = useMemo(() => {
+    const result: Record<string, ObjectTarget[]> = {};
+    for (const node of document?.nodes ?? []) if (node.sceneId) {
+      const scene = visibleScenes.find((scene) => scene.id === node.sceneId);
+      result[node.id] = selectedRuntimeAssetId ? (scene?.assetBindings.filter((binding) => binding.assetId === selectedRuntimeAssetId).map((binding) => ({ instanceId: binding.instanceId, objectId: binding.objectId })) ?? [])
+        : selectedSceneObject?.nodeId === node.id ? [selectedSceneObject.target] : [];
+    }
+    return result;
+  }, [document?.nodes, visibleScenes, selectedRuntimeAssetId, selectedSceneObject]);
+  const selectSceneObject = useCallback((nodeId: string, target: ObjectTarget | null, ancestors: ObjectTarget[]) => {
+    setSelectedNodeId(nodeId); setSelectedNodeIds([nodeId]); setSelectedSceneObject(target ? { nodeId, target } : null);
+    if (mode !== "preview") return;
+    const node = document?.nodes.find((node) => node.id === nodeId); const scene = visibleScenes.find((scene) => scene.id === node?.sceneId);
+    const binding = (ancestors.length ? ancestors : target ? [target] : []).map((target) => scene?.assetBindings.find((binding) => binding.instanceId === target.instanceId && binding.objectId === target.objectId)).find(Boolean);
+    setSelectedRuntimeAssetId(binding?.assetId ?? null); setShowRuntimeDetails(!!binding);
+    setRuntimeSelectionMessage(target && !binding ? "所选模型对象尚未绑定资产。" : null);
+  }, [document?.nodes, mode, visibleScenes]);
 
   const selectedRuntimeAsset = selectedRuntimeAssetId
     ? projectAssets.find((asset) => asset.assetId === selectedRuntimeAssetId) ?? null
@@ -219,6 +255,7 @@ export function CanvasPage({ initialTemplateId, mode, projectId }: CanvasPagePro
   const selectRuntimeAsset = useCallback((assetId: string | null) => {
     setSelectedRuntimeAssetId(assetId); setRuntimeSelectionMessage(null); setShowRuntimeDetails(false);
     setSelectedModelSceneNodePath(null);
+    setSelectedSceneObject(null);
   }, []);
 
   // A table selection can happen before GLTF finishes loading. Reconcile it
@@ -463,6 +500,9 @@ export function CanvasPage({ initialTemplateId, mode, projectId }: CanvasPagePro
           onCreateNode={createNode}
           onModelSceneChange={mode === "preview" ? handleModelSceneChange : undefined}
           onModelSceneNodeSelect={selectModelSceneNode}
+          onModelObjectSelect={selectSceneObject}
+          sceneTargets={sceneTargets}
+          sceneAppearances={sceneAppearances}
           onNodesChange={updateNodes}
           onNodeChange={updateNode}
           onSelectNode={selectCanvasNode}

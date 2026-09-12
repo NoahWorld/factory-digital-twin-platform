@@ -844,7 +844,7 @@ export function Model3DInspector({
           {([
             ["position", "位置", "-1000000", "1000000", "0.1"],
             ["rotation", "旋转", "-3600", "3600", "1"],
-            ["scale", "缩放", "0.001", "1000", "0.01"],
+            ["scale", "缩放", "-1000", "1000", "0.01"],
           ] as const).map(([field, label, min, max, step]) => (
             <fieldset className="model-transform-fieldset" key={field}>
               <legend>{label}{field === "rotation" ? "（度）" : ""}</legend>

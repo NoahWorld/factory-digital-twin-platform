@@ -1,4 +1,4 @@
-export type ModelObject = { objectId: string; nodeIndex: number; name: string; parentObjectId: string | null; sourceId: string | null; mesh: boolean };
+export type ModelObject = { objectId: string; nodeIndex: number; name: string; parentObjectId: string | null; sourceId: string | null; mesh: boolean; inDefaultScene?: boolean };
 export type ModelInspectionDetails = {
   reportVersion: 2;
   triangleCount: number;

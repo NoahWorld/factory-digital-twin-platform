@@ -44,6 +44,8 @@ import {
   modelAssetContentResponse,
   uploadModelAsset,
   inspectStoredModelAsset,
+  getModelAssetRow,
+  presentModelAsset,
 } from "./model-assets";
 import {
   imageAssetContentResponse,
@@ -288,6 +290,7 @@ const deleteProject = async (
       `DELETE FROM asset_data_bindings
        WHERE data_source_id IN (SELECT id FROM data_sources WHERE project_id = ?)`,
     ).bind(projectId),
+    env.DB.prepare("DELETE FROM project_scenes WHERE project_id = ?").bind(projectId),
     env.DB.prepare("DELETE FROM assets WHERE project_id = ?").bind(projectId),
     env.DB.prepare("DELETE FROM data_sources WHERE project_id = ?").bind(projectId),
     env.DB.prepare("DELETE FROM project_versions WHERE project_id = ?").bind(projectId),
@@ -451,6 +454,14 @@ const handleApiRequest = async (
       projectId,
       decodePathSegment(modelAssetContentMatch[2]),
     );
+  }
+
+  const modelAssetInfoMatch = pathname.match(/^\/api\/v1\/projects\/([^/]+)\/model-assets\/([^/]+)$/);
+  if (method === "GET" && modelAssetInfoMatch) {
+    const user = await getAuthenticatedUser(env, request);
+    const projectId = decodePathSegment(modelAssetInfoMatch[1]);
+    await requireProjectAccess(env, user, projectId);
+    return json({ modelAsset: presentModelAsset(await getModelAssetRow(env, projectId, decodePathSegment(modelAssetInfoMatch[2]))), requestId });
   }
 
   const modelInspectionMatch = pathname.match(/^\/api\/v1\/projects\/([^/]+)\/model-assets\/([^/]+)\/inspect$/);

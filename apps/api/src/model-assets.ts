@@ -355,11 +355,14 @@ export const modelAssetContentResponse = async (
 export async function inspectStoredModelAsset(env: AppEnv, projectId: string, assetId: string): Promise<ModelAsset> {
   const row = await getModelAssetRow(env, projectId, assetId);
   const previous = parseStoredInspection(row);
-  if (previous.reportVersion === 2) return presentModelAsset(row);
+  if (previous.reportVersion === 2 && previous.objects?.every((object) => typeof object.inDefaultScene === "boolean")) return presentModelAsset(row);
   const object = await requireModelStorage(env).get(row.object_key);
   if (!object) throw new AppError(500, "model_asset_object_missing", "模型原始文件缺失，无法补充检查。");
   const bytes = new Uint8Array(await new Response(object.body).arrayBuffer());
   const inspection = { ...(row.format === "glb" ? inspectGlb(bytes) : inspectGltf(bytes)), ...await inspectModelDetails(bytes, row.format) };
+  const oldIds = new Map(previous.objects?.map((object) => [object.nodeIndex, object.objectId]));
+  const retainedIds = new Map(inspection.objects.map((object) => [object.objectId, oldIds.get(object.nodeIndex) ?? object.objectId]));
+  inspection.objects = inspection.objects.map((object) => ({ ...object, objectId: retainedIds.get(object.objectId)!, parentObjectId: object.parentObjectId ? retainedIds.get(object.parentObjectId)! : null }));
   // Concurrent requests may assign different UUIDs; only the first report wins.
   await env.DB.prepare("UPDATE model_assets SET inspection_json = ? WHERE project_id = ? AND id = ? AND inspection_json = ?")
     .bind(JSON.stringify(inspection), projectId, assetId, row.inspection_json).run();

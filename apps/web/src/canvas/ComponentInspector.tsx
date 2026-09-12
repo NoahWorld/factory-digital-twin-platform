@@ -74,7 +74,7 @@ function Model3DLaunchInspector({
       <section className="inspector-section model-editor-summary">
         <div className="inspector-section-title"><strong>配置摘要</strong><span>保存后回传画布</span></div>
         <dl>
-          <div><dt>模型资源</dt><dd>{node.resourceRefs[0] ? "已绑定" : "未绑定"}</dd></div>
+          <div><dt>模型资源</dt><dd>{node.sceneId ? "已关联可复用场景" : node.resourceRefs[0] ? "已绑定" : "未绑定"}</dd></div>
           <div><dt>节点变换</dt><dd>{Object.keys(parsed.value.transformOverrides).length} 项</dd></div>
           <div><dt>节点外观</dt><dd>{Object.keys(parsed.value.appearanceOverrides).length} 项</dd></div>
           <div><dt>初始镜头</dt><dd>{parsed.value.cameraView === "isometric" ? "等距" : parsed.value.cameraView === "front" ? "正面" : "顶部"}</dd></div>

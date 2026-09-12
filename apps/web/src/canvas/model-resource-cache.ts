@@ -48,7 +48,15 @@ export function acquireModelResource(url: string) {
     ready: lease.ready.then((gltf) => {
       if (released) throw new DOMException("Model instance released", "AbortError");
       instance = clone(gltf.scene);
-      return { scene: instance, animations: gltf.animations };
+      const nodesByIndex = new Map<number, Object3D>();
+      const stack = [{ source: gltf.scene as Object3D, target: instance }];
+      while (stack.length) {
+        const { source, target } = stack.pop()!;
+        const nodeIndex = gltf.parser.associations.get(source)?.nodes;
+        if (nodeIndex !== undefined) nodesByIndex.set(nodeIndex, target);
+        source.children.forEach((child, index) => stack.push({ source: child, target: target.children[index] }));
+      }
+      return { scene: instance, animations: gltf.animations, nodesByIndex };
     }),
     release: () => {
       if (released) return;

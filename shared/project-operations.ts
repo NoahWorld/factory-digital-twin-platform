@@ -1,10 +1,11 @@
 import { AppError } from "./errors";
+import { applySceneOperation, type SceneOperation } from "./scene-operations";
 import { requireIdentifier } from "./canvas-schema";
 import { applyEditorOperation, cloneCanvasEntities, validateEditorOperation, type EditorOperation } from "./canvas-operations";
 import { parseProjectDefinition, projectPageView, pageName, type ProjectDefinition, type ProjectContent } from "./project-definition";
 import { validateLocalComponentReferences } from "./component-bindings";
 
-export type ProjectOperation = (EditorOperation & { pageId?: string })
+export type ProjectOperation = SceneOperation | (EditorOperation & { pageId?: string })
   | { type: "page.add"; id?: string; name: string }
   | { type: "page.rename"; pageId: string; name: string }
   | { type: "page.configure"; pageId: string; width: number; height: number }
@@ -27,7 +28,9 @@ export function applyProjectOperation(input: ProjectDefinition, value: unknown, 
   const pageId = requireIdentifier(operation.pageId ?? activePageId, "operation.pageId");
   const page = project.pages.find((page) => page.id === pageId);
   if (!page) throw new AppError(404, "page_not_found", "操作页面不存在。");
-  if (pageOperations.has(operation.type as string)) {
+  if ((operation.type as string).startsWith("scene.") || (operation.type as string).startsWith("instance.")) {
+    applySceneOperation(project, operation, activePageId);
+  } else if (pageOperations.has(operation.type as string)) {
     const { pageId: _page, ...base } = operation;
     const next = applyEditorOperation(projectPageView(project, pageId), validateEditorOperation(base));
     page.nodes = next.nodes; page.theme = next.theme;
@@ -95,9 +98,9 @@ export function applyProjectOperation(input: ProjectDefinition, value: unknown, 
       }
       case "project.restore": {
         const content = operation.content as ProjectContent;
-        if (!content || typeof content !== "object" || Array.isArray(content) || Object.keys(content).some((key) => !["pages", "entryPageId", "dataBindings"].includes(key))) invalid("草稿内容不支持。");
-        const restored = parseProjectDefinition({ ...project, pages: content.pages, entryPageId: content.entryPageId, dataBindings: content.dataBindings });
-        project.pages = restored.pages; project.entryPageId = restored.entryPageId; project.dataBindings = restored.dataBindings; break;
+        if (!content || typeof content !== "object" || Array.isArray(content) || Object.keys(content).some((key) => !["pages", "entryPageId", "dataBindings", "scenes"].includes(key))) invalid("草稿内容不支持。");
+        const restored = parseProjectDefinition({ ...project, pages: content.pages, entryPageId: content.entryPageId, dataBindings: content.dataBindings, scenes: content.scenes });
+        project.pages = restored.pages; project.entryPageId = restored.entryPageId; project.dataBindings = restored.dataBindings; project.scenes = restored.scenes; break;
       }
       default: invalid("不支持的项目操作。");
     }

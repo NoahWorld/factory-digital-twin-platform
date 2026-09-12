@@ -1,3 +1,4 @@
+import type { ObjectTarget } from "./model-instance";
 import { memo, useCallback, useEffect, useRef, useState, type CSSProperties, type DragEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { BasicNode } from "./BasicNode";
 import { ChartNode } from "./ChartNode";
@@ -46,6 +47,9 @@ type CanvasNodeViewProps = {
   node: CanvasNode;
   onModelSceneChange?: (canvasNodeId: string, snapshot: ModelSceneSnapshot | null) => void;
   onModelSceneNodeSelect: (canvasNodeId: string, sceneNodePath: string | null) => void;
+  onModelObjectSelect?: (canvasNodeId: string, target: ObjectTarget | null, ancestors: ObjectTarget[]) => void;
+  sceneTargets?: Record<string, ObjectTarget[]>;
+  sceneAppearances?: Record<string, Record<string, Record<string, ModelNodeAppearance>>>;
   projectId: string;
   runtimeAppearanceOverrides: Record<string, ModelNodeAppearance>;
   selected: boolean;
@@ -70,7 +74,7 @@ const hasGeometryChanged = (previous: CanvasNode, next: CanvasNode) => (
   || previous.height !== next.height
 );
 
-const CanvasNodeView = memo(function CanvasNodeView({ editable, modelInteractionEnabled, node, onModelSceneChange, onModelSceneNodeSelect, projectId, renderZIndex, runtimeAppearanceOverrides, selected, resizeEnabled, selectedModelSceneNodePath, onPointerDown, onResizePointerDown }: CanvasNodeViewProps) {
+const CanvasNodeView = memo(function CanvasNodeView({ editable, modelInteractionEnabled, node, onModelSceneChange, onModelSceneNodeSelect, onModelObjectSelect, sceneTargets, sceneAppearances, projectId, renderZIndex, runtimeAppearanceOverrides, selected, resizeEnabled, selectedModelSceneNodePath, onPointerDown, onResizePointerDown }: CanvasNodeViewProps) {
   return (
     <div
       aria-label={`${node.type} 组件`}
@@ -100,6 +104,9 @@ const CanvasNodeView = memo(function CanvasNodeView({ editable, modelInteraction
                   node={node}
                   onSceneChange={onModelSceneChange}
                   onSceneNodeSelect={onModelSceneNodeSelect}
+                  onObjectSelect={(target, ancestors) => onModelObjectSelect?.(node.id, target, ancestors)}
+                  selectedTargets={sceneTargets?.[node.id]}
+                  runtimeSceneAppearances={node.sceneId ? sceneAppearances?.[node.sceneId] : undefined}
                   projectId={projectId}
                   runtimeAppearanceOverrides={runtimeAppearanceOverrides}
                   selectedSceneNodePath={selectedModelSceneNodePath}
@@ -129,6 +136,9 @@ type CanvasSurfaceProps = {
   onCreateNode: (type: CanvasNodeType, x: number, y: number) => void;
   onModelSceneChange?: (canvasNodeId: string, snapshot: ModelSceneSnapshot | null) => void;
   onModelSceneNodeSelect: (canvasNodeId: string, sceneNodePath: string | null) => void;
+  onModelObjectSelect?: (canvasNodeId: string, target: ObjectTarget | null, ancestors: ObjectTarget[]) => void;
+  sceneTargets?: Record<string, ObjectTarget[]>;
+  sceneAppearances?: Record<string, Record<string, Record<string, ModelNodeAppearance>>>;
   onNodeChange: (node: CanvasNode) => void;
   onNodesChange?: (nodes: CanvasNode[]) => void;
   onSelectNode: (nodeId: string | null, additive?: boolean, individual?: boolean) => void;
@@ -144,7 +154,7 @@ const isCanvasBackdropNode = (node: CanvasNode, document: CanvasDocument) => (
   && node.height >= document.height
 );
 
-export function CanvasSurface({ document, editable, modelInteractionEnabled = false, selectedNodeId, selectedNodeIds, selectedModelSceneNodePath, onCreateNode, onModelSceneChange, onModelSceneNodeSelect, onNodeChange, onNodesChange, onSelectNode, runtimeAppearanceOverrides = {} }: CanvasSurfaceProps) {
+export function CanvasSurface({ document, editable, modelInteractionEnabled = false, selectedNodeId, selectedNodeIds, selectedModelSceneNodePath, onCreateNode, onModelSceneChange, onModelSceneNodeSelect, onModelObjectSelect, sceneTargets, sceneAppearances, onNodeChange, onNodesChange, onSelectNode, runtimeAppearanceOverrides = {} }: CanvasSurfaceProps) {
   const selection = selectedNodeIds ?? (selectedNodeId ? [selectedNodeId] : []);
   const viewportRef = useRef<HTMLDivElement>(null);
   const surfaceRef = useRef<HTMLDivElement>(null);
@@ -371,6 +381,9 @@ export function CanvasSurface({ document, editable, modelInteractionEnabled = fa
               node={node}
               onModelSceneChange={onModelSceneChange}
               onModelSceneNodeSelect={onModelSceneNodeSelect}
+              onModelObjectSelect={onModelObjectSelect}
+              sceneTargets={sceneTargets}
+              sceneAppearances={sceneAppearances}
               onPointerDown={startPointerDrag}
               onResizePointerDown={startPointerResize}
               projectId={document.projectId}

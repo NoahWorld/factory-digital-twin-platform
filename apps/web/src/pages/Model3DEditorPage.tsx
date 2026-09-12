@@ -3,6 +3,8 @@ import { useCallback, useEffect, useState } from "react";
 import { errorMessage, request } from "../api";
 import { Model3DInspector } from "../canvas/Model3DInspector";
 import { Model3DNode } from "../canvas/Model3DNode";
+import { SceneAssignmentPanel } from "../canvas/SceneAssignmentPanel";
+import { SceneModelEditor } from "../canvas/SceneModelEditor";
 import type { ModelSceneSnapshot } from "../canvas/model-scene";
 import { canvasRoutePath, projectCanvasPath } from "../canvas/routes";
 import {
@@ -24,6 +26,7 @@ export default function Model3DEditorPage({
   const { editor, projectName, canEdit, loading, loadError: projectLoadError, saveError, setSaveError, saving, dirty, execute, travel, selectPage, save: saveProject, draftNotice } = useProjectEditorContext();
   const modelPage = editor?.project.pages.find((page) => page.nodes.some((node) => node.id === nodeId));
   const node = modelPage?.nodes.find((node) => node.id === nodeId) ?? null;
+  const reusableScene = editor?.project.scenes.find((scene) => scene.id === node?.sceneId);
   const revision = editor?.project.revision ?? 0;
   const loadError = projectLoadError ?? (!loading && (!node || !isModel3DNodeType(node.type)) ? "此项目中没有对应的 3D 组件。" : null);
   const [modelScene, setModelScene] = useState<ModelSceneSnapshot | null>(null);
@@ -115,11 +118,14 @@ export default function Model3DEditorPage({
         </div>
       </header>
 
+      <div className="canvas-message-stack">
       {draftNotice ? <div className="canvas-theme-notice" role="status">{draftNotice}</div> : null}
       {saveError ? <div className="canvas-save-error" role="alert">保存失败：{saveError}</div> : null}
       {!canEdit ? <div className="canvas-readonly-notice">当前项目权限为只读，可以查看场景，但不能修改或保存配置。</div> : null}
 
-      <div className="model-editor-workbench">
+      <SceneAssignmentPanel node={node} snapshot={modelScene} projectId={projectId} pageId={modelPage!.id} editable={editable} />
+      </div>
+      {reusableScene ? <SceneModelEditor key={reusableScene.id} projectId={projectId} scene={reusableScene} editable={editable} /> : <div className="model-editor-workbench">
         <section className="model-editor-stage" aria-label="3D 场景编辑视口">
           <header className="model-editor-stage-heading">
             <div>
@@ -159,7 +165,7 @@ export default function Model3DEditorPage({
           projectId={projectId}
           selectedSceneNodePath={selectedSceneNodePath}
         />
-      </div>
+      </div>}
     </main>
   );
 }

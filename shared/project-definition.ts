@@ -1,21 +1,23 @@
+import { validateScenes, type SceneDefinition } from "./scene-definition";
 import { AppError } from "./errors";
 import { DEFAULT_THEME, parseCanvasDocument, validateNode, validateCanvasTheme, requireIdentifier, type CanvasDocument, type CanvasNode, type CanvasTheme } from "./canvas-schema";
 import { validateComponentBindings, validateLocalComponentReferences, type ComponentBinding } from "./component-bindings";
 
-export const PROJECT_SCHEMA_VERSION = 2;
+export const PROJECT_SCHEMA_VERSION = 3;
 export type ProjectPage = { id: string; name: string; width: number; height: number; theme: CanvasTheme; nodes: CanvasNode[] };
 export type PageMetadata = Omit<ProjectPage, "nodes">;
 export type ProjectDefinition = {
   kind: "newpower.project";
-  schemaVersion: 2;
+  schemaVersion: 3;
   projectId: string;
   revision: number;
   updatedAt: string | null;
   entryPageId: string;
   pages: ProjectPage[];
   dataBindings: ComponentBinding[];
+  scenes: SceneDefinition[];
 };
-export type ProjectContent = Pick<ProjectDefinition, "entryPageId" | "pages" | "dataBindings">;
+export type ProjectContent = Pick<ProjectDefinition, "entryPageId" | "pages" | "dataBindings" | "scenes">;
 export type ProjectPatch = {
   expectedRevision: number;
   upsertPages: PageMetadata[];
@@ -25,6 +27,8 @@ export type ProjectPatch = {
   pageOrder?: string[];
   entryPageId?: string;
   dataBindings?: ComponentBinding[];
+  upsertScenes?: SceneDefinition[];
+  deleteSceneIds?: string[];
 };
 
 const invalid = (message: string): never => { throw new AppError(400, "invalid_project_definition", message); };
@@ -34,7 +38,7 @@ export const pageName = (value: unknown): string => {
 };
 
 export function emptyProjectDefinition(projectId: string): ProjectDefinition {
-  return { kind: "newpower.project", schemaVersion: 2, projectId, revision: 0, updatedAt: null, entryPageId: "main", pages: [{ id: "main", name: "首页", width: 1920, height: 1080, theme: { ...DEFAULT_THEME }, nodes: [] }], dataBindings: [] };
+  return { kind: "newpower.project", schemaVersion: 3, projectId, revision: 0, updatedAt: null, entryPageId: "main", pages: [{ id: "main", name: "首页", width: 1920, height: 1080, theme: { ...DEFAULT_THEME }, nodes: [] }], dataBindings: [], scenes: [] };
 }
 
 export function parseProjectDefinition(value: unknown): ProjectDefinition {
@@ -42,8 +46,9 @@ export function parseProjectDefinition(value: unknown): ProjectDefinition {
   const input = value as Record<string, unknown>;
   if (input.kind === undefined && (input.schemaVersion === undefined || input.schemaVersion === 0 || input.schemaVersion === 1) && Array.isArray(input.nodes)) {
     const legacy = parseCanvasDocument(input);
-    return parseProjectDefinition({ kind: "newpower.project", schemaVersion: 2, projectId: legacy.projectId, revision: legacy.revision, updatedAt: legacy.updatedAt, entryPageId: "main", pages: [{ id: "main", name: "首页", width: legacy.width, height: legacy.height, theme: legacy.theme, nodes: legacy.nodes }], dataBindings: legacy.dataBindings ?? [] });
+    return parseProjectDefinition({ kind: "newpower.project", schemaVersion: 3, projectId: legacy.projectId, revision: legacy.revision, updatedAt: legacy.updatedAt, entryPageId: "main", pages: [{ id: "main", name: "首页", width: legacy.width, height: legacy.height, theme: legacy.theme, nodes: legacy.nodes }], dataBindings: legacy.dataBindings ?? [], scenes: [] });
   }
+  if (input.kind === "newpower.project" && input.schemaVersion === 2) return parseProjectDefinition({ ...input, schemaVersion: 3, scenes: [] });
   if (input.kind !== "newpower.project" || input.schemaVersion !== PROJECT_SCHEMA_VERSION) throw new AppError(400, "unsupported_project_schema", "不支持的项目定义类型或版本。");
   const projectId = requireIdentifier(input.projectId, "project.projectId");
   if (!Number.isSafeInteger(input.revision) || Number(input.revision) < 0) invalid("项目 revision 必须是非负整数。");
@@ -61,7 +66,9 @@ export function parseProjectDefinition(value: unknown): ProjectDefinition {
   if (new Set(pages.map((page) => page.id)).size !== pages.length) invalid("页面 ID 不能重复。");
   const entryPageId = requireIdentifier(input.entryPageId, "project.entryPageId");
   if (!pages.some((page) => page.id === entryPageId)) invalid("项目入口页不存在。");
+  const scenes = validateScenes(input.scenes);
   const nodes = pages.flatMap((page) => page.nodes);
+  for (const node of nodes) if (node.sceneId && !scenes.some((scene) => scene.id === node.sceneId)) invalid(`3D 视窗 ${node.id} 引用的场景不存在。`);
   if (nodes.length > 2000 || new Set(nodes.map((node) => node.id)).size !== nodes.length) invalid("项目节点最多 2000 个，且 ID 必须在整个项目内唯一。");
   const groupPages = new Map<string, string>();
   for (const page of pages) for (const node of page.nodes) {
@@ -70,7 +77,7 @@ export function parseProjectDefinition(value: unknown): ProjectDefinition {
     groupPages.set(node.groupId, page.id);
   }
   validateLocalComponentReferences(nodes, dataBindings);
-  return { kind: "newpower.project", schemaVersion: 2, projectId, revision: Number(input.revision), updatedAt: input.updatedAt as string | null, entryPageId, pages, dataBindings };
+  return { kind: "newpower.project", schemaVersion: 3, projectId, revision: Number(input.revision), updatedAt: input.updatedAt as string | null, entryPageId, pages, dataBindings, scenes };
 }
 
 export function projectPageView(project: ProjectDefinition, id = project.entryPageId): CanvasDocument {
@@ -81,15 +88,17 @@ export function projectPageView(project: ProjectDefinition, id = project.entryPa
 }
 
 export function projectContent(project: ProjectDefinition): ProjectContent {
-  return structuredClone({ entryPageId: project.entryPageId, pages: project.pages, dataBindings: project.dataBindings });
+  return structuredClone({ entryPageId: project.entryPageId, pages: project.pages, dataBindings: project.dataBindings, scenes: project.scenes });
 }
 export function projectContentKey(project: ProjectContent): string {
   return JSON.stringify({ entryPageId: project.entryPageId,
     pages: project.pages.map((page) => ({ ...page, nodes: [...page.nodes].sort((a, b) => a.id.localeCompare(b.id)) })),
     dataBindings: [...project.dataBindings].sort((a, b) => a.id.localeCompare(b.id)),
+    scenes: [...project.scenes].sort((a, b) => a.id.localeCompare(b.id)).map((scene) => ({ ...scene, assetBindings: [...scene.assetBindings].sort((a, b) => a.id.localeCompare(b.id)) })),
   });
 }
 export function projectDefinitionPatch(current: ProjectDefinition, saved: ProjectContent): ProjectPatch {
+  const oldScenes = new Map(saved.scenes.map((scene) => [scene.id, scene]));
   const oldPages = new Map(saved.pages.map((page) => [page.id, page]));
   const oldNodes = new Map(saved.pages.flatMap((page) => page.nodes.map((node) => [node.id, { ...node, pageId: page.id }] as const)));
   const currentNodes = current.pages.flatMap((page) => page.nodes.map((node) => ({ ...node, pageId: page.id })));
@@ -97,6 +106,8 @@ export function projectDefinitionPatch(current: ProjectDefinition, saved: Projec
   const metadata = ({ nodes: _nodes, ...page }: ProjectPage): PageMetadata => page;
   return {
     expectedRevision: current.revision,
+    upsertScenes: current.scenes.filter((scene) => JSON.stringify(oldScenes.get(scene.id)) !== JSON.stringify(scene)),
+    deleteSceneIds: saved.scenes.filter((scene) => !current.scenes.some((item) => item.id === scene.id)).map((scene) => scene.id),
     upsertPages: current.pages.filter((page) => !oldPages.has(page.id) || JSON.stringify(metadata(page)) !== JSON.stringify(metadata(oldPages.get(page.id)!))).map(metadata),
     deletePageIds: saved.pages.filter((page) => !current.pages.some((item) => item.id === page.id)).map((page) => page.id),
     upsertNodes: currentNodes.filter((node) => JSON.stringify(oldNodes.get(node.id)) !== JSON.stringify(node)),
@@ -108,7 +119,7 @@ export function projectDefinitionPatch(current: ProjectDefinition, saved: Projec
 export function validateProjectPatch(value: unknown): ProjectPatch {
   if (!value || typeof value !== "object" || Array.isArray(value)) invalid("项目修改必须是对象。");
   const input = value as Record<string, unknown>;
-  const fields = ["expectedRevision", "upsertPages", "deletePageIds", "upsertNodes", "deleteNodeIds", "pageOrder", "entryPageId", "dataBindings"];
+  const fields = ["expectedRevision", "upsertPages", "deletePageIds", "upsertNodes", "deleteNodeIds", "pageOrder", "entryPageId", "dataBindings", "upsertScenes", "deleteSceneIds"];
   if (Object.keys(input).some((field) => !fields.includes(field))) invalid("项目修改包含未知字段。");
   if (!Number.isSafeInteger(input.expectedRevision) || Number(input.expectedRevision) < 0) invalid("expectedRevision 必须是非负整数。");
   for (const field of ["upsertPages", "deletePageIds", "upsertNodes", "deleteNodeIds"]) if (!Array.isArray(input[field])) invalid(`${field} 必须是数组。`);
@@ -137,7 +148,10 @@ export function validateProjectPatch(value: unknown): ProjectPatch {
   const pageIds = [...upsertPages.map((page) => page.id), ...deletePageIds];
   const nodeIds = [...upsertNodes.map((node) => node.id), ...deleteNodeIds];
   if (new Set(pageIds).size !== pageIds.length || new Set(nodeIds).size !== nodeIds.length) invalid("同一修改中的实体 ID 不能重复或同时删除和更新。");
-  return { expectedRevision: Number(input.expectedRevision), upsertPages, deletePageIds, upsertNodes, deleteNodeIds,
+  const upsertScenes = input.upsertScenes === undefined ? undefined : validateScenes(input.upsertScenes);
+  const deleteSceneIds = input.deleteSceneIds === undefined ? undefined : ids(input.deleteSceneIds, "deleteSceneIds");
+  if (deleteSceneIds?.some((id) => upsertScenes?.some((scene) => scene.id === id))) invalid("同一场景不能同时更新和删除。");
+  return { upsertScenes, deleteSceneIds, expectedRevision: Number(input.expectedRevision), upsertPages, deletePageIds, upsertNodes, deleteNodeIds,
     pageOrder: input.pageOrder === undefined ? undefined : ids(input.pageOrder, "pageOrder"),
     entryPageId: input.entryPageId === undefined ? undefined : requireIdentifier(input.entryPageId, "entryPageId"),
     dataBindings: input.dataBindings === undefined ? undefined : validateComponentBindings(input.dataBindings),
@@ -159,5 +173,7 @@ export function applyProjectPatch(current: ProjectDefinition, patch: ProjectPatc
   if (order.length !== pages.size || order.some((id) => !pages.has(id))) invalid("页面顺序必须恰好包含所有页面。");
   const pageList = order.map((id) => pages.get(id)!);
   const bindings = validateLocalComponentReferences(pageList.flatMap((page) => page.nodes), patch.dataBindings ?? current.dataBindings);
-  return parseProjectDefinition({ ...current, pages: pageList, entryPageId: patch.entryPageId ?? current.entryPageId, dataBindings: bindings });
+  const scenes = new Map(current.scenes.filter((scene) => !patch.deleteSceneIds?.includes(scene.id)).map((scene) => [scene.id, scene]));
+  for (const scene of patch.upsertScenes ?? []) scenes.set(scene.id, scene);
+  return parseProjectDefinition({ ...current, scenes: [...scenes.values()], pages: pageList, entryPageId: patch.entryPageId ?? current.entryPageId, dataBindings: bindings });
 }

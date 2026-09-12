@@ -10,6 +10,7 @@
 - 首次先 `pnpm install --frozen-lockfile`、构建 web，再执行全部本地迁移并启动 API、web、mock；使用根 `package.json` 锁定的 pnpm。检查入口为 `pnpm check`、`pnpm build`、`pnpm smoke:runtime`、`pnpm test:newpower`；测试环境变量见验收记录。已有本地数据库的后续迁移使用 `NEWPOWER_TEST_STATE_DIR=绝对路径 NEWPOWER_TEST_CONFIG=绝对路径 pnpm migrate:newpower`；入口先执行 SQLite 在线备份并验证，任何备份错误都会阻止迁移，不得跳过失败继续操作。
 - M1 的组件绑定契约由 `shared/component-bindings.ts` 共用，定义保存在 `component_data_bindings`，节点仅引用 ID，与画布在同一版本事务内保存。资产指标映射仍由 `asset_data_bindings` 拥有；实际值、连接与选择仅在页面运行层，不写回编辑配置。
 - M2 的项目定义与操作由 `shared/project-definition.ts`、`shared/project-operations.ts` 共用；schema v2 管理多页，旧画布迁入稳定 `main` 页。绑定、资源与项目 CAS 属于全项目；`/canvas` 是指定页/入口页的兼容投影。二维和三维编辑共用项目历史与草稿；切换工作区保留未保存内容，三维保存仍写同一项目并返回所属页。
+- M3 的可复用场景使用项目 schema v3（v2 自动迁移），通过 `project_scenes` 与 `asset_model_bindings` 同根 CAS 保存。画布节点引用 `sceneId`，实例固定引用不可变资源 ID；新对象映射使用实例 ID 和报告对象 ID，名称/索引路径仅在旧单模型或单文件内部定位。旧 `assets.model_node` 与直接资源节点继续兼容，不用于限制新实例映射。场景与旧单模型共用同一渲染器，视窗拥有 GPU 资源副本，视窗内实例共享副本；原始资源加载由引用计数池复用。
 - 当前进度和未完项见 [开发状态](docs/newpower/development-status.md)，任务及后续方向见 [研发指南](NewPower_Codex_Development_Start_Guide.md)。历史公司方案保留其背景，NewPower 状态以当前分支记录和实际验证为准。
 
 ## 产品定位

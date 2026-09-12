@@ -1,8 +1,15 @@
 import { test, expect } from "@playwright/test";
 import { createDemo, localApi } from "./demo";
 import { login } from "./support";
+import { DEFAULT_SCENE_SETTINGS, IDENTITY_TRANSFORM } from "../shared/scene-definition";
 
-const diagnostics = (page: import("@playwright/test").Page) => page.evaluate(`import('/src/canvas/model-resource-cache.ts').then(m => m.modelResourceDiagnostics())`);
+// Vite may version modules with ?t= after edits. Read the module actually loaded
+// by this page rather than importing a second, empty copy for instrumentation.
+const diagnostics = (page: import("@playwright/test").Page) => page.evaluate(async () => {
+  const url = performance.getEntriesByType("resource").map((entry) => entry.name).filter((name) => name.includes("/src/canvas/model-resource-cache.ts")).at(-1);
+  if (!url) throw new Error("The model resource module has not loaded.");
+  return (await import(/* @vite-ignore */ url)).modelResourceDiagnostics();
+});
 
 test("two rendered model consumers share a resource and repeated exits release all leases", async ({ page }, testInfo) => {
   const api = await localApi(); const demo = await createDemo(api, true);
@@ -72,5 +79,37 @@ test("a failed model load releases its lease and the visible retry recovers", as
     await expect.poll(async () => (await diagnostics(page)).leases).toBe(1);
     await page.getByRole("link", { name: "返回项目列表", exact: true }).click();
     await expect.poll(async () => await diagnostics(page)).toMatchObject({ resources: 0, leases: 0, pending: 0 });
+  } finally { await api.delete(`/api/v1/projects/${demo.projectId}`); await api.dispose(); }
+});
+
+test("closing additional viewports cannot retain renderer listeners on a shared live model", async ({ page }) => {
+  const api = await localApi(); const demo = await createDemo(api, true);
+  try {
+    await login(page);
+    const model = demo.canvas.nodes.find((node: { type: string }) => node.type === "model-3d");
+    const scene = { id: "listener-scene", name: "Listener check", settings: DEFAULT_SCENE_SETTINGS, assetBindings: [], instances: [{ id: "instance", name: "Device", modelAssetId: model.resourceRefs[0], transform: IDENTITY_TRANSFORM, visible: true, appearance: null, objectTransforms: {}, objectAppearances: {} }] };
+    const counts = await page.evaluate(async ({ scene, projectId }) => {
+      const runtimePath = "/src/canvas/scene-viewport-runtime.ts"; const { createSceneViewport } = await import(/* @vite-ignore */ runtimePath);
+      const cachePath = performance.getEntriesByType("resource").map((entry) => entry.name).filter((name) => name.includes("/src/canvas/model-resource-cache.ts")).at(-1)!;
+      const { acquireModelResource } = await import(/* @vite-ignore */ cachePath);
+      const url = `/api/v1/projects/${projectId}/model-assets/${scene.instances[0].modelAssetId}/content`;
+      const probe = acquireModelResource(url); const model = await probe.ready;
+      let geometry: any; model.scene.traverse((object: any) => { if (object.geometry) geometry = object.geometry; });
+      const frames = () => new Promise<void>((resolve) => { let count = 0; const frame = () => ++count === 3 ? resolve() : requestAnimationFrame(frame); requestAnimationFrame(frame); });
+      const open = async () => {
+        const container = document.createElement("div"); container.style.cssText = "position:fixed;left:0;top:0;width:400px;height:300px;z-index:9999"; document.body.append(container);
+        let ready!: () => void; const loaded = new Promise<void>((resolve) => { ready = resolve; });
+        const options = { projectId, scene, legacyNames: true, cameraControlsEnabled: false, onSnapshot() {}, onState(state: { loaded: number }) { if (state.loaded === 1) ready(); } };
+        const engine = createSceneViewport(container, options); engine.update(options); await loaded; await frames();
+        return () => { engine.dispose(); container.remove(); };
+      };
+      const closeFirst = await open();
+      const counts = [geometry._listeners?.dispose?.length ?? 0];
+      try { for (let index = 0; index < 3; index++) { const close = await open(); close(); counts.push(geometry._listeners?.dispose?.length ?? 0); } }
+      finally { closeFirst(); probe.release(); }
+      return counts;
+    }, { scene, projectId: demo.projectId });
+    console.log(JSON.stringify({ check: "shared-model-renderer-dispose-listeners", counts }));
+    expect(counts).toEqual(counts.map(() => counts[0]));
   } finally { await api.delete(`/api/v1/projects/${demo.projectId}`); await api.dispose(); }
 });

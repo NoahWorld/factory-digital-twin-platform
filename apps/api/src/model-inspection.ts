@@ -111,10 +111,11 @@ export async function inspectModelDetails(bytes: Uint8Array, format: "glb" | "gl
     });
     warnings.push("坐标按 glTF 米制约定解释；源文件导出比例仍需现场核对。");
     if (!scene) warnings.push("没有可运行的场景。");
+    const decodedNodes = root.listNodes();
     return { reportVersion: 2, triangleCount, sceneTriangleCount, vertexCount,
       bounds: min.every(Number.isFinite) ? { min, max, scope: "default-scene-rest-pose" } : null,
       textures, coordinateUnit: "metre-by-gltf-spec", warnings: [...new Set(warnings)],
-      objects: nodes.map((node, index) => ({ ...objectIds[index], nodeIndex: index, name: node.name ?? "", mesh: node.mesh !== undefined, parentObjectId: parents.has(index) ? objectIds[parents.get(index)!].objectId : null })) };
+      objects: nodes.map((node, index) => ({ ...objectIds[index], nodeIndex: index, name: node.name ?? "", mesh: node.mesh !== undefined, inDefaultScene: visited.has(decodedNodes[index]), parentObjectId: parents.has(index) ? objectIds[parents.get(index)!].objectId : null })) };
   } catch (reason) {
     throw new AppError(400, "model_inspection_failed", `模型检查失败：${reason instanceof Error ? reason.message : String(reason)}`);
   }

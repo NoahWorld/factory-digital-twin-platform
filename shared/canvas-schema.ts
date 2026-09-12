@@ -348,6 +348,7 @@ export type CanvasNode = {
   resourceRefs: string[];
   dataBindingRefs: string[];
   groupId?: string;
+  sceneId?: string;
 };
 
 export type CanvasDocument = {
@@ -613,10 +614,11 @@ const requireModelNodeTransforms = (
       scale: requireVector3Tuple(
         transform.scale,
         `props.transformOverrides[${JSON.stringify(nodeName)}].scale`,
-        0.001,
+        -1_000,
         1_000,
       ),
     };
+    if (result[nodeName].scale.some((value) => Math.abs(value) < 0.001)) invalid("invalid_canvas_node", "模型缩放的绝对值必须至少为 0.001，不能产生退化几何。");
   }
   return result;
 };
@@ -1206,6 +1208,7 @@ export const validateNode = (value: unknown): CanvasNode => {
     invalid("invalid_canvas_node", "Square canvas nodes must keep a 1:1 width-to-height ratio.");
   }
   const resourceRefs = requireStringArray(node.resourceRefs, "node.resourceRefs", true);
+  if (node.sceneId !== undefined && (type !== "model-3d" || resourceRefs.length)) invalid("invalid_scene_reference", "只有不直接引用模型文件的 3D 视窗可以引用场景。");
   if (type === "model-3d" && resourceRefs.length > 1) {
     invalid("invalid_canvas_node", "A 3D model component can reference at most one model asset.");
   }
@@ -1236,6 +1239,7 @@ export const validateNode = (value: unknown): CanvasNode => {
     resourceRefs,
     dataBindingRefs: requireStringArray(node.dataBindingRefs, "node.dataBindingRefs", true),
     ...(node.groupId === undefined ? {} : { groupId: requireIdentifier(node.groupId, "node.groupId") }),
+    ...(node.sceneId === undefined ? {} : { sceneId: requireIdentifier(node.sceneId, "node.sceneId") }),
   };
 
   if (!Number.isInteger(validated.zIndex)) {

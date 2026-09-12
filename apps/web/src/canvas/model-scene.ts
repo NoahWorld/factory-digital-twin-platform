@@ -9,6 +9,9 @@ export type ModelSceneNodeAppearance = {
 };
 
 export type ModelSceneNode = {
+  objectId?: string | null;
+  instanceId?: string;
+  nodeIndex?: number;
   path: string;
   name: string;
   objectType: string;
