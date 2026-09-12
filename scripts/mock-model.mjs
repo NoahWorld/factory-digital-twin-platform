@@ -76,4 +76,3 @@ export const createMockGltf = (nodes = [{ mesh: 0, name: "SmokeDeviceNode" }]) =
     scenes: [{ name: "RuntimeSmokeScene", nodes: nodes.map((_, index) => index) }],
   });
 };
-
