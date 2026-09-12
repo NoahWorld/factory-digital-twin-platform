@@ -43,6 +43,7 @@ import {
   listModelAssets,
   modelAssetContentResponse,
   uploadModelAsset,
+  inspectStoredModelAsset,
 } from "./model-assets";
 import {
   imageAssetContentResponse,
@@ -450,6 +451,18 @@ const handleApiRequest = async (
       projectId,
       decodePathSegment(modelAssetContentMatch[2]),
     );
+  }
+
+  const modelInspectionMatch = pathname.match(/^\/api\/v1\/projects\/([^/]+)\/model-assets\/([^/]+)\/inspect$/);
+  if (method === "POST" && modelInspectionMatch) {
+    const startedAt = Date.now();
+    const user = await getAuthenticatedUser(env, request);
+    const projectId = decodePathSegment(modelInspectionMatch[1]);
+    const project = await requireProjectAccess(env, user, projectId);
+    if (!canEditProject(user, project)) throw new AppError(403, "permission_denied", "当前权限不能更新模型检查报告。");
+    const modelAsset = await inspectStoredModelAsset(env, projectId, decodePathSegment(modelInspectionMatch[2]));
+    console.log(JSON.stringify({ event: "model_asset_inspected", requestId, projectId, modelAssetId: modelAsset.id, durationMs: Date.now() - startedAt }));
+    return json({ modelAsset, requestId });
   }
 
   const modelAssetsMatch = pathname.match(/^\/api\/v1\/projects\/([^/]+)\/model-assets$/);

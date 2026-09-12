@@ -2,20 +2,9 @@ import { AppError, type AppEnv } from "./auth";
 
 export type ModelFormat = "glb" | "gltf";
 
-export type ModelInspection = {
-  format: ModelFormat;
-  gltfVersion: string;
-  sceneCount: number;
-  nodeCount: number;
-  meshCount: number;
-  materialCount: number;
-  textureCount: number;
-  imageCount: number;
-  animationCount: number;
-  namedNodeCount: number;
-  duplicateNodeNames: string[];
-  externalResourceCount: number;
-};
+export type { ModelInspection } from "../../../shared/model-inspection";
+import type { ModelInspection } from "../../../shared/model-inspection";
+import { inspectModelDetails } from "./model-inspection";
 
 export type ModelAsset = {
   id: string;
@@ -282,7 +271,8 @@ export const uploadModelAsset = async (
   }
 
   const bytes = new Uint8Array(buffer);
-  const inspection = format === "glb" ? inspectGlb(bytes) : inspectGltf(bytes);
+  const basicInspection = format === "glb" ? inspectGlb(bytes) : inspectGltf(bytes);
+  const inspection: ModelInspection = { ...basicInspection, ...await inspectModelDetails(bytes, format) };
   const sha256 = await sha256Hex(bytes);
   const assetId = crypto.randomUUID();
   const objectKey = `${projectId}/${assetId}/original.${format}`;
@@ -360,3 +350,18 @@ export const modelAssetContentResponse = async (
   }
   return new Response(object.body, { headers });
 };
+
+/** Upgrade a legacy report once, preserving resource bytes and assigned object identities. */
+export async function inspectStoredModelAsset(env: AppEnv, projectId: string, assetId: string): Promise<ModelAsset> {
+  const row = await getModelAssetRow(env, projectId, assetId);
+  const previous = parseStoredInspection(row);
+  if (previous.reportVersion === 2) return presentModelAsset(row);
+  const object = await requireModelStorage(env).get(row.object_key);
+  if (!object) throw new AppError(500, "model_asset_object_missing", "模型原始文件缺失，无法补充检查。");
+  const bytes = new Uint8Array(await new Response(object.body).arrayBuffer());
+  const inspection = { ...(row.format === "glb" ? inspectGlb(bytes) : inspectGltf(bytes)), ...await inspectModelDetails(bytes, row.format) };
+  // Concurrent requests may assign different UUIDs; only the first report wins.
+  await env.DB.prepare("UPDATE model_assets SET inspection_json = ? WHERE project_id = ? AND id = ? AND inspection_json = ?")
+    .bind(JSON.stringify(inspection), projectId, assetId, row.inspection_json).run();
+  return presentModelAsset(await getModelAssetRow(env, projectId, assetId));
+}

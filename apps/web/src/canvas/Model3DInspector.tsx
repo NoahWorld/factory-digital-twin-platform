@@ -113,6 +113,7 @@ export function Model3DInspector({
   const [modelAssets, setModelAssets] = useState<ModelAsset[]>([]);
   const [loadingAssets, setLoadingAssets] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [inspecting, setInspecting] = useState(false);
   const [assetError, setAssetError] = useState<string | null>(null);
   const [projectAssets, setProjectAssets] = useState<ProjectAsset[]>([]);
   const [loadingProjectAssets, setLoadingProjectAssets] = useState(true);
@@ -554,7 +555,26 @@ export function Model3DInspector({
             <div><dt>网格</dt><dd>{selectedModelAsset.inspection.meshCount}</dd></div>
             <div><dt>材质</dt><dd>{selectedModelAsset.inspection.materialCount}</dd></div>
             <div><dt>动画</dt><dd>{selectedModelAsset.inspection.animationCount}</dd></div>
+            <div><dt>资源三角面</dt><dd>{selectedModelAsset.inspection.triangleCount?.toLocaleString() ?? "待检查"}</dd></div>
+            <div><dt>场景三角面</dt><dd>{selectedModelAsset.inspection.sceneTriangleCount?.toLocaleString() ?? "待检查"}</dd></div>
+            <div><dt>顶点</dt><dd>{selectedModelAsset.inspection.vertexCount?.toLocaleString() ?? "待检查"}</dd></div>
+            <div><dt>对象标识</dt><dd>{selectedModelAsset.inspection.objects?.length ?? "待检查"}</dd></div>
           </dl>
+          {selectedModelAsset.inspection.reportVersion === 2 ? <>
+            <p>坐标单位：米（glTF 约定）</p>
+            {selectedModelAsset.inspection.bounds ? <p>静态边界：{selectedModelAsset.inspection.bounds.min.map((value) => value.toFixed(2)).join(", ")} → {selectedModelAsset.inspection.bounds.max.map((value) => value.toFixed(2)).join(", ")}</p> : <p className="model-inspection-warning">无可显示的空间边界</p>}
+            <details><summary>纹理与导入提示</summary>
+              {selectedModelAsset.inspection.textures?.length ? selectedModelAsset.inspection.textures.map((texture, index) => <p key={index}>{texture.name || `纹理 ${index + 1}`} · {texture.width} × {texture.height} · {formatFileSize(texture.byteSize)}</p>) : <p>没有纹理图像</p>}
+              {selectedModelAsset.inspection.warnings?.map((warning, index) => <p key={index}>{warning}</p>)}
+            </details>
+          </> : <button type="button" disabled={!editable || inspecting} onClick={async () => {
+            setInspecting(true); setAssetError(null);
+            try {
+              const result = await request<ModelAssetUploadResponse>(`${modelAssetsPath(projectId)}/${encodeURIComponent(selectedModelAsset.id)}/inspect`, { method: "POST" });
+              setModelAssets((current) => current.map((asset) => asset.id === result.modelAsset.id ? result.modelAsset : asset));
+            } catch (reason) { setAssetError(errorMessage(reason)); }
+            finally { setInspecting(false); }
+          }}>{inspecting ? "正在检查…" : "补充资源检查"}</button>}
           {selectedModelAsset.inspection.duplicateNodeNames.length > 0 ? (
             <p className="model-inspection-warning">存在 {selectedModelAsset.inspection.duplicateNodeNames.length} 个重复节点名，发布前必须处理。</p>
           ) : <p className="model-inspection-ok">节点名称检查通过</p>}

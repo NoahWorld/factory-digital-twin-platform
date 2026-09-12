@@ -52,6 +52,9 @@ test("authenticated viewer can read but cannot write; outsider and anonymous can
     expect((await viewer.api.patch(`${path}/definition`, { data: projectUpdate })).status()).toBe(403);
     expect((await outsider.api.patch(`${path}/definition`, { data: projectUpdate })).status()).toBe(404);
     expect((await anonymous.patch(`${path}/definition`, { data: projectUpdate })).status()).toBe(401);
+    expect((await viewer.api.post(`${path}/model-assets/unknown-model/inspect`)).status()).toBe(403);
+    expect((await outsider.api.post(`${path}/model-assets/unknown-model/inspect`)).status()).toBe(404);
+    expect((await anonymous.post(`${path}/model-assets/unknown-model/inspect`)).status()).toBe(401);
     expect((await (await api.get(`${path}/canvas`)).json()).canvas).toEqual(demo.canvas);
   } finally { await viewer.dispose(); await outsider.dispose(); await anonymous.dispose(); await api.delete(path); await api.dispose(); }
 });

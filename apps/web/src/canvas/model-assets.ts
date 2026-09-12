@@ -1,19 +1,7 @@
 import { apiUrl } from "../api";
 
-export type ModelInspection = {
-  format: "glb" | "gltf";
-  gltfVersion: string;
-  sceneCount: number;
-  nodeCount: number;
-  meshCount: number;
-  materialCount: number;
-  textureCount: number;
-  imageCount: number;
-  animationCount: number;
-  namedNodeCount: number;
-  duplicateNodeNames: string[];
-  externalResourceCount: number;
-};
+export type { ModelInspection } from "../../../../shared/model-inspection";
+import type { ModelInspection } from "../../../../shared/model-inspection";
 
 export type ModelAsset = {
   id: string;
