@@ -1,4 +1,5 @@
-import { createEditorState, executeEditorOperation, travelEditorHistory, markEditorSaved, editorPatch, editableContent, contentKey, type EditorOperation, type EditorState } from "../../../../shared/editor-operations";
+import { ProjectPageBar } from "../canvas/ProjectPageBar";
+import { useProjectEditorContext } from "../project-editor";
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import { errorMessage, request } from "../api";
 import { ComponentInspector } from "../canvas/ComponentInspector";
@@ -50,16 +51,11 @@ const formatRuntimeTime = (value: string | undefined): string => {
 };
 
 export function CanvasPage({ initialTemplateId, mode, projectId }: CanvasPageProps) {
-  const [editor, setEditor] = useState<EditorState | null>(null);
-  const document = editor?.document ?? null;
-  const dirty = useMemo(() => editor ? contentKey(editableContent(editor.document)) !== contentKey(editor.saved) : false, [editor]);
-  const [projectName, setProjectName] = useState("");
-  const [canEdit, setCanEdit] = useState(false);
+  const { editor, document, projectName, canEdit, loading, loadError, saveError, setSaveError, saving, dirty,
+    execute, travel: travelProject, selectPage: choosePage, save: saveProject, pendingDraft, draftNotice, draftDifferences, restoreDraft, discardDraft } = useProjectEditorContext();
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>([]);
   const [selectedModelSceneNodePath, setSelectedModelSceneNodePath] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const [saveError, setSaveError] = useState<string | null>(null);
   const [configurationError, setConfigurationError] = useState<string | null>(null);
   const [showDataSources, setShowDataSources] = useState(false);
   const [showAssets, setShowAssets] = useState(false);
@@ -69,7 +65,6 @@ export function CanvasPage({ initialTemplateId, mode, projectId }: CanvasPagePro
   const [showTemplates, setShowTemplates] = useState(false);
   const [showThemes, setShowThemes] = useState(false);
   const [themeNotice, setThemeNotice] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
   const [projectAssets, setProjectAssets] = useState<ProjectAsset[]>([]);
   const [assetLoadError, setAssetLoadError] = useState<string | null>(null);
   const [assetListLoading, setAssetListLoading] = useState(mode === "preview");
@@ -78,26 +73,6 @@ export function CanvasPage({ initialTemplateId, mode, projectId }: CanvasPagePro
   const [selectedRuntimeAssetId, setSelectedRuntimeAssetId] = useState<string | null>(null);
   const [runtimeSelectionMessage, setRuntimeSelectionMessage] = useState<string | null>(null);
   const initialTemplateAppliedRef = useRef(false);
-
-  useEffect(() => {
-    let active = true;
-    setLoading(true);
-    setLoadError(null);
-    setSelectedNodeId(null);
-    setSelectedModelSceneNodePath(null);
-    setConfigurationError(null);
-    setEditor(null);
-    void request<CanvasResponse>(projectCanvasPath(projectId))
-      .then((result) => {
-        if (!active) return;
-        setEditor(createEditorState(result.canvas));
-        setProjectName(result.project.name);
-        setCanEdit(result.editable);
-      })
-      .catch((reason) => { if (active) setLoadError(errorMessage(reason)); })
-      .finally(() => { if (active) setLoading(false); });
-    return () => { active = false; };
-  }, [projectId]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -168,24 +143,30 @@ export function CanvasPage({ initialTemplateId, mode, projectId }: CanvasPagePro
       ? `数据陈旧 ${staleDeviceCount} 台`
       : `数据失联 ${disconnectedDeviceCount} 台`;
 
-  const execute = useCallback((operation: EditorOperation) => {
-    if (!editor || !canEdit || mode !== "edit" || saving) return null;
-    try {
-      const next = executeEditorOperation(editor, operation);
-      setEditor(next); setSaveError(null); return next.document;
-    } catch (reason) { setSaveError(errorMessage(reason)); return null; }
-  }, [editor, canEdit, mode, saving]);
-
-  const selectCanvasNode = useCallback((nodeId: string | null) => {
-    setSelectedNodeId(nodeId);
+  const selectCanvasNode = useCallback((nodeId: string | null, additive = false, individual = false) => {
     setSelectedModelSceneNodePath(null);
-  }, []);
+    if (!nodeId) { setSelectedNodeIds([]); setSelectedNodeId(null); return; }
+    const node = document?.nodes.find((node) => node.id === nodeId);
+    const cohort = !individual && node?.groupId ? document!.nodes.filter((item) => item.groupId === node.groupId).map((item) => item.id) : [nodeId];
+    const next = additive
+      ? cohort.every((id) => selectedNodeIds.includes(id)) ? selectedNodeIds.filter((id) => !cohort.includes(id)) : [...new Set([...selectedNodeIds, ...cohort])]
+      : !individual && selectedNodeIds.includes(nodeId) ? selectedNodeIds : cohort;
+    setSelectedNodeIds(next); setSelectedNodeId(next.includes(nodeId) ? nodeId : next.at(-1) ?? null);
+  }, [document, selectedNodeIds]);
+
+  useEffect(() => {
+    if (!document) return;
+    const ids = new Set(document.nodes.map((node) => node.id));
+    setSelectedNodeIds((current) => current.every((id) => ids.has(id)) ? current : current.filter((id) => ids.has(id)));
+    setSelectedNodeId((current) => current && ids.has(current) ? current : null);
+    setModelScenes((current) => Object.keys(current).every((id) => ids.has(id)) ? current : Object.fromEntries(Object.entries(current).filter(([id]) => ids.has(id))));
+  }, [document?.nodes]);
 
   const selectModelSceneNode = useCallback((
     canvasNodeId: string,
     sceneNodePath: string | null,
   ) => {
-    setSelectedNodeId(canvasNodeId);
+    setSelectedNodeId(canvasNodeId); setSelectedNodeIds([canvasNodeId]);
     setSelectedModelSceneNodePath(sceneNodePath);
     if (mode !== "preview") return;
     if (sceneNodePath === null) {
@@ -230,6 +211,7 @@ export function CanvasPage({ initialTemplateId, mode, projectId }: CanvasPagePro
   }, []);
 
   const updateNode = useCallback((node: CanvasNode) => { execute({ type: "nodes.upsert", nodes: [node] }); }, [execute]);
+  const updateNodes = useCallback((nodes: CanvasNode[]) => { execute({ type: "nodes.upsert", nodes }); }, [execute]);
   const changeBinding = useCallback((node: CanvasNode, binding: ComponentBinding | null) => {
     execute({ type: "binding.set", nodeId: node.id, binding });
   }, [execute]);
@@ -253,7 +235,7 @@ export function CanvasPage({ initialTemplateId, mode, projectId }: CanvasPagePro
       }
     };
     Object.entries(modelScenes).forEach(([nodeId, scene]) => visit(nodeId, scene.roots));
-    if (matches.length === 1) { setSelectedNodeId(matches[0].nodeId); setSelectedModelSceneNodePath(matches[0].path); }
+    if (matches.length === 1) { setSelectedNodeId(matches[0].nodeId); setSelectedNodeIds([matches[0].nodeId]); setSelectedModelSceneNodePath(matches[0].path); }
     else if (matches.length > 1) setRuntimeSelectionMessage("该设备匹配多个模型对象，请修正映射；二维数据仍可使用。");
   }, [modelScenes, projectAssets, selectedRuntimeAssetId, mode]);
 
@@ -268,21 +250,23 @@ export function CanvasPage({ initialTemplateId, mode, projectId }: CanvasPagePro
   }, [document, execute, selectCanvasNode]);
 
   const deleteSelectedNode = () => {
-    if (selectedNodeId && execute({ type: "nodes.delete", nodeIds: [selectedNodeId] })) selectCanvasNode(null);
+    if (selectedNodeIds.length && execute({ type: "nodes.delete", nodeIds: selectedNodeIds })) selectCanvasNode(null);
   };
   const duplicateSelectedNode = () => {
-    if (!selectedNodeId || !document) return;
+    if (!selectedNodeIds.length || !document) return;
     const previous = new Set(document.nodes.map((node) => node.id));
-    const next = execute({ type: "nodes.duplicate", nodeIds: [selectedNodeId] });
-    if (next) selectCanvasNode(next.nodes.find((node) => !previous.has(node.id))?.id ?? null);
+    const next = execute({ type: "nodes.duplicate", nodeIds: selectedNodeIds });
+    if (next) { const copies = next.nodes.filter((node) => !previous.has(node.id)).map((node) => node.id); setSelectedNodeIds(copies); setSelectedNodeId(copies.at(-1) ?? null); }
   };
   const travel = (direction: "undo" | "redo") => {
     if (!editor || !canEdit || mode !== "edit" || saving) return;
-    const next = travelEditorHistory(editor, direction);
-    const restored = next.document.nodes.find((node) => !editor.document.nodes.some((item) => item.id === node.id));
-    setEditor(next); setSaveError(null); setConfigurationError(null);
-    if (restored) selectCanvasNode(restored.id);
-    else if (!next.document.nodes.some((node) => node.id === selectedNodeId)) selectCanvasNode(null);
+    const next = travelProject(direction);
+    if (!next) return;
+    if (next.pageId !== document?.pageId) window.location.hash = canvasRoutePath(projectId, "canvas", next.pageId).slice(1);
+    const restored = next.nodes.find((node) => !editor.document.nodes.some((item) => item.id === node.id));
+    setConfigurationError(null);
+    if (restored) { const ids = next.nodes.filter((node) => !editor.document.nodes.some((item) => item.id === node.id)).map((node) => node.id); setSelectedNodeIds(ids); setSelectedNodeId(restored.id); }
+    else if (!next.nodes.some((node) => node.id === selectedNodeId)) selectCanvasNode(null);
   };
 
   const save = async (): Promise<boolean> => {
@@ -290,32 +274,17 @@ export function CanvasPage({ initialTemplateId, mode, projectId }: CanvasPagePro
       setSaveError(`组件配置无效：${configurationError}`);
       return false;
     }
-    if (!editor || !document || !dirty || saving || !canEdit) return !dirty;
-    setSaving(true);
-    setSaveError(null);
-    try {
-      const result = await request<CanvasPatchResponse>(projectCanvasPath(projectId), {
-        method: "PATCH",
-        body: JSON.stringify(editorPatch(editor)),
-      });
-      setEditor((current) => current ? markEditorSaved(current, result.canvas) : createEditorState(result.canvas));
-      return true;
-    } catch (reason) {
-      setSaveError(errorMessage(reason));
-      return false;
-    } finally {
-      setSaving(false);
-    }
+    return saveProject();
   };
 
   const openPreview = async () => {
     if (dirty && !(await save())) return;
-    window.location.hash = canvasRoutePath(projectId, "preview").slice(1);
+    window.location.hash = canvasRoutePath(projectId, "preview", document?.pageId).slice(1);
   };
 
   const openModelEditor = async (nodeId: string) => {
     if (dirty && !(await save())) return;
-    window.location.hash = modelEditorRoutePath(projectId, nodeId).slice(1);
+    window.location.hash = modelEditorRoutePath(projectId, nodeId, document?.pageId).slice(1);
   };
 
   const startPaletteDrag = (event: DragEvent<HTMLButtonElement>, type: CanvasNodeType) => {
@@ -355,7 +324,7 @@ export function CanvasPage({ initialTemplateId, mode, projectId }: CanvasPagePro
   }, [canEdit, document, execute, saving]);
 
   useEffect(() => {
-    if (!initialTemplateId || loading || !document || initialTemplateAppliedRef.current) return;
+    if (!initialTemplateId || loading || !document || document.projectId !== projectId || initialTemplateAppliedRef.current) return;
     initialTemplateAppliedRef.current = true;
 
     if (mode !== "edit") {
@@ -366,7 +335,7 @@ export function CanvasPage({ initialTemplateId, mode, projectId }: CanvasPagePro
       applyTemplate(initialTemplateId);
     }
 
-    window.history.replaceState(null, "", canvasRoutePath(projectId, "canvas"));
+    window.history.replaceState(null, "", canvasRoutePath(projectId, "canvas", document?.pageId));
   }, [applyTemplate, canEdit, document, initialTemplateId, loading, mode, projectId]);
 
   useEffect(() => {
@@ -381,10 +350,10 @@ export function CanvasPage({ initialTemplateId, mode, projectId }: CanvasPagePro
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [editor, canEdit, mode, saving, selectedNodeId]);
+  }, [editor, canEdit, mode, saving, selectedNodeId, selectedNodeIds]);
 
   if (loading) return <main className="canvas-page-state"><p className="eyebrow">Canvas</p><h1>正在加载画布…</h1></main>;
-  if (loadError || !document) {
+  if (loadError || !document || !editor) {
     return <main className="canvas-page-state error-state"><p className="eyebrow">Canvas error</p><h1>画布加载失败</h1><p>{loadError ?? "接口没有返回画布文档。"}</p><a className="secondary-button" href="#/projects">返回项目列表</a></main>;
   }
 
@@ -400,7 +369,9 @@ export function CanvasPage({ initialTemplateId, mode, projectId }: CanvasPagePro
           {mode === "edit" ? <>
             <button className="secondary-button compact-button" disabled={!canEdit || saving || !editor?.past.length} onClick={() => travel("undo")} title="撤销（⌘/Ctrl+Z）" type="button">撤销</button>
             <button className="secondary-button compact-button" disabled={!canEdit || saving || !editor?.future.length} onClick={() => travel("redo")} title="重做（⌘/Ctrl+Shift+Z）" type="button">重做</button>
-            <button className="secondary-button compact-button" disabled={!selectedNodeId || !canEdit || saving} onClick={duplicateSelectedNode} title="复制组件（⌘/Ctrl+D）" type="button">复制组件</button>
+            <button className="secondary-button compact-button" disabled={!canEdit || saving || selectedNodeIds.length < 2} onClick={() => execute({ type: "nodes.group", nodeIds: selectedNodeIds })} type="button">分组</button>
+            <button className="secondary-button compact-button" disabled={!canEdit || saving || !document.nodes.some((node) => selectedNodeIds.includes(node.id) && node.groupId)} onClick={() => execute({ type: "nodes.ungroup", nodeIds: selectedNodeIds })} type="button">解组</button>
+            <button className="secondary-button compact-button" disabled={!selectedNodeIds.length || !canEdit || saving} onClick={duplicateSelectedNode} title="复制组件（⌘/Ctrl+D）" type="button">复制组件</button>
             <button className="secondary-button compact-button" disabled={!canEdit || saving} onClick={() => setShowTemplates(true)} type="button">模板</button>
             <button className="secondary-button compact-button canvas-theme-button" disabled={!canEdit || saving} onClick={() => setShowThemes(true)} type="button">
               <span aria-hidden="true" style={{ backgroundColor: document.theme.accentColor }} />
@@ -411,16 +382,21 @@ export function CanvasPage({ initialTemplateId, mode, projectId }: CanvasPagePro
             <button className="secondary-button compact-button" disabled={!selectedNodeId || !canEdit || saving} onClick={deleteSelectedNode} type="button">删除组件</button>
             <button className="secondary-button compact-button" disabled={saving || configurationError !== null} onClick={() => void openPreview()} title={configurationError ?? undefined} type="button">预览</button>
             <button className="primary-button compact-button" disabled={!dirty || saving || !canEdit || configurationError !== null} onClick={() => void save()} title={configurationError ?? undefined} type="button">{saving ? "保存中…" : "保存画布"}</button>
-          </> : <a className="secondary-button compact-button" href={canvasRoutePath(projectId, "canvas")}>返回编辑</a>}
+          </> : <a className="secondary-button compact-button" href={canvasRoutePath(projectId, "canvas", document?.pageId)}>返回编辑</a>}
         </div>
       </header>
-      {saveError || themeNotice || (mode === "edit" && !canEdit) ? (
-        <div className="canvas-message-stack">
-          {saveError ? <div className="canvas-save-error" role="alert">保存失败：{saveError}</div> : null}
+      <div className="canvas-message-stack">
+          <ProjectPageBar project={editor.project} pageId={editor.pageId} editable={mode === "edit" && canEdit && !saving} selectedIds={selectedNodeIds}
+            onSelect={(id) => { choosePage(id); window.location.hash = canvasRoutePath(projectId, mode === "edit" ? "canvas" : "preview", id).slice(1); }}
+            onOperation={(operation) => { const next = execute(operation); if (next?.pageId) window.location.hash = canvasRoutePath(projectId, "canvas", next.pageId).slice(1); }} />
+          {mode === "edit" && draftNotice ? <div className="project-draft-notice" role="status"><span>{draftNotice}</span>
+            {pendingDraft ? <><span>草稿含 {pendingDraft.content.pages.length} 页、{pendingDraft.content.pages.reduce((count, page) => count + page.nodes.length, 0)} 个组件。</span><details><summary>恢复后的差异</summary><ul>{draftDifferences.map((line, index) => <li key={index}>{line}</li>)}</ul></details><button onClick={restoreDraft} type="button">恢复草稿到编辑器</button></> : null}
+            <button onClick={discardDraft} type="button">{pendingDraft ? "放弃此冲突草稿" : "使用服务器内容"}</button>
+          </div> : null}
+          {saveError ? <div className="canvas-save-error" role="alert">操作失败：{saveError}</div> : null}
           {themeNotice ? <div className="canvas-theme-notice" role="status"><span>{themeNotice}</span><button aria-label="关闭主题提示" onClick={() => setThemeNotice(null)} type="button">×</button></div> : null}
           {mode === "edit" && !canEdit ? <div className="canvas-readonly-notice">当前项目权限为只读，不能移动或保存组件。</div> : null}
         </div>
-      ) : null}
       <div className={`canvas-workbench${mode === "preview" ? " is-preview" : ""}`}>
         {mode === "edit" ? <aside className="component-palette">
           <div className="component-palette-heading"><span className="eyebrow">Components</span><h2>组件库</h2><p>拖到画布中创建组件</p></div>
@@ -487,11 +463,13 @@ export function CanvasPage({ initialTemplateId, mode, projectId }: CanvasPagePro
           onCreateNode={createNode}
           onModelSceneChange={mode === "preview" ? handleModelSceneChange : undefined}
           onModelSceneNodeSelect={selectModelSceneNode}
+          onNodesChange={updateNodes}
           onNodeChange={updateNode}
           onSelectNode={selectCanvasNode}
           runtimeAppearanceOverrides={runtimeAppearanceOverrides}
           selectedModelSceneNodePath={selectedModelSceneNodePath}
           selectedNodeId={selectedNodeId}
+          selectedNodeIds={selectedNodeIds}
         />
         {mode === "preview" ? (
           <>
@@ -573,7 +551,7 @@ export function CanvasPage({ initialTemplateId, mode, projectId }: CanvasPagePro
             ) : null}
           </>
         ) : null}
-        {mode === "edit" ? <ComponentInspector editable={editable} node={selectedNode} onModelEditorOpen={(nodeId) => void openModelEditor(nodeId)} onNodeChange={updateNode} onValidationChange={setConfigurationError} projectId={projectId} /> : null}
+        {mode === "edit" && selectedNodeIds.length > 1 ? <aside className="component-inspector"><h2>已选择 {selectedNodeIds.length} 个组件</h2><p>拖动任意已选组件一起移动；Shift 增减选择，Alt 可选组内单个组件。复制、删除、分组和跨页移动都会进入同一撤销链。</p></aside> : mode === "edit" ? <ComponentInspector editable={editable} node={selectedNode} onModelEditorOpen={(nodeId) => void openModelEditor(nodeId)} onNodeChange={updateNode} onValidationChange={setConfigurationError} projectId={projectId} /> : null}
       </div>
       {showAssets ? <AssetPanel projectId={projectId} editable={canEdit && !saving} onClose={() => { setShowAssets(false); setCatalogRevision((value) => value + 1); }} /> : null}
       {showDataSources ? (

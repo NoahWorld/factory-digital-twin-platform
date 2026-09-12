@@ -1,13 +1,14 @@
 import type { CanvasTemplateId } from "./templates";
 
-export const projectCanvasPath = (projectId: string): string =>
-  `/api/v1/projects/${encodeURIComponent(projectId)}/canvas`;
+export const projectCanvasPath = (projectId: string, pageId?: string): string =>
+  `/api/v1/projects/${encodeURIComponent(projectId)}/canvas${pageId ? `?page=${encodeURIComponent(pageId)}` : ""}`;
 
 export const canvasRoutePath = (
   projectId: string,
   suffix: "canvas" | "preview",
+  pageId?: string,
 ): string =>
-  `#/projects/${encodeURIComponent(projectId)}/${suffix}`;
+  `#/projects/${encodeURIComponent(projectId)}/${suffix}${pageId ? `?page=${encodeURIComponent(pageId)}` : ""}`;
 
 export const projectTemplateCanvasPath = (
   projectId: string,
@@ -18,5 +19,6 @@ export const projectTemplateCanvasPath = (
 export const modelEditorRoutePath = (
   projectId: string,
   nodeId: string,
+  pageId?: string,
 ): string =>
-  `#/projects/${encodeURIComponent(projectId)}/3d-editor/${encodeURIComponent(nodeId)}`;
+  `#/projects/${encodeURIComponent(projectId)}/3d-editor/${encodeURIComponent(nodeId)}${pageId ? `?page=${encodeURIComponent(pageId)}` : ""}`;

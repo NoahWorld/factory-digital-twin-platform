@@ -1,3 +1,5 @@
+import { getProjectDefinition, persistProjectPatch } from "./project-definitions";
+import { validateProjectPatch } from "../../../shared/project-definition";
 import {
   AppError,
   applySessionCookie,
@@ -889,6 +891,21 @@ const handleApiRequest = async (
     return json({ assets, metrics, requestId });
   }
 
+  const definitionMatch = pathname.match(/^\/api\/v1\/projects\/([^/]+)\/definition$/);
+  if ((method === "GET" || method === "PATCH") && definitionMatch) {
+    const startedAt = Date.now();
+    const user = await getAuthenticatedUser(env, request);
+    const projectId = decodePathSegment(definitionMatch[1]);
+    const project = await requireProjectAccess(env, user, projectId);
+    const editable = canEditProject(user, project);
+    if (method === "GET") return json({ project: presentProject(project), definition: await getProjectDefinition(env, projectId), editable, requestId });
+    if (!editable) throw new AppError(403, "permission_denied", "You cannot edit this project definition.");
+    const patch = validateProjectPatch(await readJsonObject(request, 2 * 1024 * 1024));
+    const definition = await persistProjectPatch(env, projectId, user.id, patch);
+    console.log(JSON.stringify({ event: "project_definition_saved", requestId, projectId, userId: user.id, revision: definition.revision, pages: definition.pages.length, upsertedNodes: patch.upsertNodes.length, durationMs: Date.now() - startedAt }));
+    return json({ definition, requestId });
+  }
+
   const canvasMatch = pathname.match(/^\/api\/v1\/projects\/([^/]+)\/canvas$/);
 
   if ((method === "GET" || method === "PATCH") && canvasMatch) {
@@ -899,7 +916,7 @@ const handleApiRequest = async (
     const editable = canEditProject(user, project);
 
     if (method === "GET") {
-      return json({ project: presentProject(project), canvas: await getCanvas(env, projectId), editable, requestId });
+      return json({ project: presentProject(project), canvas: await getCanvas(env, projectId, url.searchParams.get("page") ?? undefined), editable, requestId });
     }
 
     if (!editable) {
@@ -908,7 +925,7 @@ const handleApiRequest = async (
 
     const body = await readJsonObject(request, 512 * 1024);
     const patch = validateCanvasPatch(body);
-    const canvas = await applyCanvasPatch(env, projectId, user.id, patch);
+    const canvas = await applyCanvasPatch(env, projectId, user.id, patch, url.searchParams.get("page") ?? undefined);
     console.log(JSON.stringify({
       event: "canvas_saved",
       requestId,

@@ -116,7 +116,7 @@ export function validateLocalComponentReferences(
 }
 
 export function validateComponentBindings(value: unknown): ComponentBinding[] {
-  if (!Array.isArray(value) || value.length > 100) throw new AppError(400, "invalid_component_bindings", "dataBindings 必须是最多 100 项的数组。");
+  if (!Array.isArray(value) || value.length > 1000) throw new AppError(400, "invalid_component_bindings", "dataBindings 必须是最多 1000 项的数组。");
   try {
     const bindings = value.map(validateComponentBinding);
     if (new Set(bindings.map((binding) => binding.id)).size !== bindings.length) throw new Error("dataBindings 中的 ID 不能重复。");

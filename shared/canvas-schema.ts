@@ -347,11 +347,13 @@ export type CanvasNode = {
   props: Record<string, unknown>;
   resourceRefs: string[];
   dataBindingRefs: string[];
+  groupId?: string;
 };
 
 export type CanvasDocument = {
   schemaVersion?: 1;
   projectId: string;
+  pageId?: string;
   width: number;
   height: number;
   theme: CanvasTheme;
@@ -1233,6 +1235,7 @@ export const validateNode = (value: unknown): CanvasNode => {
     props: acceptedProps,
     resourceRefs,
     dataBindingRefs: requireStringArray(node.dataBindingRefs, "node.dataBindingRefs", true),
+    ...(node.groupId === undefined ? {} : { groupId: requireIdentifier(node.groupId, "node.groupId") }),
   };
 
   if (!Number.isInteger(validated.zIndex)) {
@@ -1288,6 +1291,7 @@ export function parseCanvasDocument(value: unknown): CanvasDocument {
   return {
     schemaVersion: 1,
     projectId: requireIdentifier(input.projectId, "canvas.projectId"),
+    ...(input.pageId === undefined ? {} : { pageId: requireIdentifier(input.pageId, "canvas.pageId") }),
     width: requireNumber(input.width, "canvas.width", 320, 7680),
     height: requireNumber(input.height, "canvas.height", 240, 4320),
     theme: validateCanvasTheme(input.theme),

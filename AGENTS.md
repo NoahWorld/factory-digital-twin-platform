@@ -7,8 +7,9 @@
 - Owner 已要求在当前目录持续推进 `newpower`。本分支以公司自用、可重复搭建二维与三维项目的数字孪生引擎为目标；当前持续目标由 [产品目标](NewPower_Codex_Product_Goal.md) 定义：M0/M1 为已有成果，按 M2 → M3 → M4 → M6a → M5 → M6b → M7 → M8 推进至总体验收，单个里程碑不作为停止点。下文历史首期定位、默认 `main` 和延后通用编辑能力的安排不限制本轮范围。
 - 仅在已有本地 `newpower` 开发、验证并创建相关本地提交；不 push、不创建远端 PR、不部署外部生产环境、不修改远端数据库或其他分支。保护已有成果。
 - 保留下文有效的身份、权限、稳定资产 ID、服务端数据网关、模型资源与编辑配置分离、错误展示、兼容和性能约束。
-- 首次先 `pnpm install --frozen-lockfile`、构建 web，再执行全部本地迁移并启动 API、web、mock；使用根 `package.json` 锁定的 pnpm。检查入口为 `pnpm check`、`pnpm build`、`pnpm smoke:runtime`、`pnpm test:newpower`；测试环境变量见验收记录。
+- 首次先 `pnpm install --frozen-lockfile`、构建 web，再执行全部本地迁移并启动 API、web、mock；使用根 `package.json` 锁定的 pnpm。检查入口为 `pnpm check`、`pnpm build`、`pnpm smoke:runtime`、`pnpm test:newpower`；测试环境变量见验收记录。已有本地数据库的后续迁移使用 `NEWPOWER_TEST_STATE_DIR=绝对路径 NEWPOWER_TEST_CONFIG=绝对路径 pnpm migrate:newpower`；入口先执行 SQLite 在线备份并验证，任何备份错误都会阻止迁移，不得跳过失败继续操作。
 - M1 的组件绑定契约由 `shared/component-bindings.ts` 共用，定义保存在 `component_data_bindings`，节点仅引用 ID，与画布在同一版本事务内保存。资产指标映射仍由 `asset_data_bindings` 拥有；实际值、连接与选择仅在页面运行层，不写回编辑配置。
+- M2 的项目定义与操作由 `shared/project-definition.ts`、`shared/project-operations.ts` 共用；schema v2 管理多页，旧画布迁入稳定 `main` 页。绑定、资源与项目 CAS 属于全项目；`/canvas` 是指定页/入口页的兼容投影。二维和三维编辑共用项目历史与草稿；切换工作区保留未保存内容，三维保存仍写同一项目并返回所属页。
 - 当前进度和未完项见 [开发状态](docs/newpower/development-status.md)，任务及后续方向见 [研发指南](NewPower_Codex_Development_Start_Guide.md)。历史公司方案保留其背景，NewPower 状态以当前分支记录和实际验证为准。
 
 ## 产品定位

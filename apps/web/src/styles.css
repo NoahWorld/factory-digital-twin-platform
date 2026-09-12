@@ -790,6 +790,17 @@ input:focus {
 
 .canvas-page-edit .canvas-toolbar { grid-template-columns: minmax(180px, 1fr) auto; gap: 10px 16px; }
 .canvas-page-edit .canvas-toolbar-actions { grid-column: 1 / -1; justify-content: flex-start; flex-wrap: wrap; }
+.project-page-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 18px; background: #102332; border-bottom: 1px solid #284254; font-size: 12px; }
+.project-page-bar label { display: flex; align-items: center; gap: 6px; }
+.project-page-bar input, .project-page-bar select { min-width: 0; max-width: 190px; padding: 6px 8px; border: 1px solid #385367; border-radius: 5px; background: #0a1a26; color: #ddecf6; font: inherit; }
+.project-page-bar button, .project-draft-notice button { padding: 6px 9px; border: 1px solid #3a566b; border-radius: 5px; background: #173144; color: #d6eaf8; font: inherit; cursor: pointer; }
+.project-page-bar button:disabled { opacity: .4; cursor: default; }
+.page-settings { position: relative; margin-left: auto; }
+.page-settings summary { cursor: pointer; color: #a2c4d7; }
+.page-settings > div { position: absolute; top: 26px; right: 0; z-index: 15; display: grid; gap: 10px; width: 260px; padding: 16px; background: #102b3d; border: 1px solid #45617a; border-radius: 8px; box-shadow: 0 12px 32px #0009; }
+.page-settings label { justify-content: space-between; }
+.page-settings input { width: 130px; }
+.project-draft-notice { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 7px 18px; background: #193125; color: #bfdec5; font-size: 12px; }
 
 .canvas-theme-button {
   gap: 7px;

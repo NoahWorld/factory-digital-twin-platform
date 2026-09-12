@@ -1,3 +1,4 @@
+import { ProjectEditorProvider } from "./project-editor";
 import { FormEvent, lazy, Suspense, useEffect, useState } from "react";
 import { apiUrl, ApiRequestError, errorMessage, request } from "./api";
 import { projectTemplateCanvasPath } from "./canvas/routes";
@@ -556,25 +557,29 @@ type WorkspaceProps = {
 type WorkspaceRoute =
   | { kind: "projects" }
   | { kind: "templates" }
-  | { kind: "canvas"; projectId: string; mode: "edit" | "preview"; templateId?: CanvasTemplateId }
-  | { kind: "model-editor"; projectId: string; nodeId: string }
+  | { kind: "canvas"; projectId: string; mode: "edit" | "preview"; templateId?: CanvasTemplateId; pageId?: string }
+  | { kind: "model-editor"; projectId: string; nodeId: string; pageId?: string }
   | { kind: "invalid"; message: string };
 
 const currentWorkspaceRoute = (): WorkspaceRoute => {
+  const [hashPath, query = ""] = window.location.hash.split("?");
+  const params = new URLSearchParams(query);
+  const pageId = params.get("page") ?? undefined;
   if (window.location.hash === "#/templates") {
     return { kind: "templates" };
   }
-  const modelEditorMatch = window.location.hash.match(/^#\/projects\/([^/]+)\/3d-editor\/([^/]+)$/);
+  const modelEditorMatch = hashPath.match(/^#\/projects\/([^/]+)\/3d-editor\/([^/]+)$/);
   if (modelEditorMatch) {
     return {
       kind: "model-editor",
       projectId: decodeURIComponent(modelEditorMatch[1]),
       nodeId: decodeURIComponent(modelEditorMatch[2]),
+      pageId,
     };
   }
-  const canvasMatch = window.location.hash.match(/^#\/projects\/([^/]+)\/(canvas|preview)(?:\?template=([^&]+))?$/);
+  const canvasMatch = hashPath.match(/^#\/projects\/([^/]+)\/(canvas|preview)$/);
   if (!canvasMatch) return { kind: "projects" };
-  const templateValue = canvasMatch[3] ? decodeURIComponent(canvasMatch[3]) : undefined;
+  const templateValue = params.get("template") ?? undefined;
   let templateId: CanvasTemplateId | undefined;
   if (templateValue) {
     if (!isCanvasTemplateId(templateValue)) {
@@ -587,6 +592,7 @@ const currentWorkspaceRoute = (): WorkspaceRoute => {
     projectId: decodeURIComponent(canvasMatch[1]),
     mode: canvasMatch[2] === "preview" ? "preview" : "edit",
     templateId,
+    pageId,
   };
 };
 
@@ -684,23 +690,13 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
     );
   };
 
-  if (route.kind === "canvas") {
-    return (
-      <CanvasPage
-        initialTemplateId={route.templateId}
-        key={`${route.projectId}:${route.mode}:${route.templateId ?? "saved"}`}
-        mode={route.mode}
-        projectId={route.projectId}
-      />
-    );
-  }
-
-  if (route.kind === "model-editor") {
-    return (
-      <Suspense fallback={<main className="canvas-page-state"><p className="eyebrow">3D editor</p><h1>正在准备 3D 编辑器…</h1></main>}>
-        <Model3DEditorPage nodeId={route.nodeId} projectId={route.projectId} />
-      </Suspense>
-    );
+  if (route.kind === "canvas" || route.kind === "model-editor") {
+    return <ProjectEditorProvider key={route.projectId} projectId={route.projectId} userId={user.id}
+      editing={route.kind === "model-editor" || route.mode === "edit"} pageId={route.pageId}>
+      {route.kind === "canvas"
+        ? <CanvasPage key={route.mode} initialTemplateId={route.templateId} mode={route.mode} projectId={route.projectId} />
+        : <Suspense fallback={<main className="canvas-page-state"><h1>正在准备 3D 编辑器…</h1></main>}><Model3DEditorPage nodeId={route.nodeId} projectId={route.projectId} /></Suspense>}
+    </ProjectEditorProvider>;
   }
 
   if (route.kind === "invalid") {

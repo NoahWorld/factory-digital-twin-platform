@@ -40,7 +40,7 @@ test("authenticated viewer can read but cannot write; outsider and anonymous can
   const anonymous = await request.newContext({ baseURL: session().apiBase });
   const path = `/api/v1/projects/${demo.projectId}`;
   try {
-    for (const endpoint of [`${path}/canvas`, `${path}/runtime-catalog`, `${path}/assets/${demo.assets[0].id}/runtime-state`]) {
+    for (const endpoint of [`${path}/canvas`, `${path}/definition`, `${path}/runtime-catalog`, `${path}/assets/${demo.assets[0].id}/runtime-state`]) {
       expect((await viewer.api.get(endpoint)).status()).toBe(200);
       expect((await outsider.api.get(endpoint)).status()).toBe(404);
       expect((await anonymous.get(endpoint)).status()).toBe(401);
@@ -48,6 +48,10 @@ test("authenticated viewer can read but cannot write; outsider and anonymous can
     const update = { expectedRevision: demo.canvas.revision, upsertNodes: [demo.canvas.nodes[1]], deleteNodeIds: [], dataBindings: demo.definitions };
     expect((await viewer.api.patch(`${path}/canvas`, { data: update })).status()).toBe(403);
     expect((await anonymous.patch(`${path}/canvas`, { data: update })).status()).toBe(401);
+    const projectUpdate = { expectedRevision: demo.canvas.revision, upsertPages: [], deletePageIds: [], upsertNodes: [], deleteNodeIds: [] };
+    expect((await viewer.api.patch(`${path}/definition`, { data: projectUpdate })).status()).toBe(403);
+    expect((await outsider.api.patch(`${path}/definition`, { data: projectUpdate })).status()).toBe(404);
+    expect((await anonymous.patch(`${path}/definition`, { data: projectUpdate })).status()).toBe(401);
     expect((await (await api.get(`${path}/canvas`)).json()).canvas).toEqual(demo.canvas);
   } finally { await viewer.dispose(); await outsider.dispose(); await anonymous.dispose(); await api.delete(path); await api.dispose(); }
 });

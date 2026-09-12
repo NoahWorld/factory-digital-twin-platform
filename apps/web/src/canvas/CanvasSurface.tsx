@@ -22,6 +22,7 @@ type ActiveDrag = {
   latestClientY: number;
   targets: SnapTargets;
   snapped: SnappedPosition;
+  members: Array<{ node: CanvasNode; element: HTMLDivElement }>;
 };
 
 type ActiveResize = {
@@ -48,6 +49,7 @@ type CanvasNodeViewProps = {
   projectId: string;
   runtimeAppearanceOverrides: Record<string, ModelNodeAppearance>;
   selected: boolean;
+  resizeEnabled: boolean;
   selectedModelSceneNodePath: string | null;
   renderZIndex: number;
   onPointerDown: (event: ReactPointerEvent<HTMLDivElement>, node: CanvasNode) => void;
@@ -68,7 +70,7 @@ const hasGeometryChanged = (previous: CanvasNode, next: CanvasNode) => (
   || previous.height !== next.height
 );
 
-const CanvasNodeView = memo(function CanvasNodeView({ editable, modelInteractionEnabled, node, onModelSceneChange, onModelSceneNodeSelect, projectId, renderZIndex, runtimeAppearanceOverrides, selected, selectedModelSceneNodePath, onPointerDown, onResizePointerDown }: CanvasNodeViewProps) {
+const CanvasNodeView = memo(function CanvasNodeView({ editable, modelInteractionEnabled, node, onModelSceneChange, onModelSceneNodeSelect, projectId, renderZIndex, runtimeAppearanceOverrides, selected, resizeEnabled, selectedModelSceneNodePath, onPointerDown, onResizePointerDown }: CanvasNodeViewProps) {
   return (
     <div
       aria-label={`${node.type} 组件`}
@@ -105,7 +107,7 @@ const CanvasNodeView = memo(function CanvasNodeView({ editable, modelInteraction
               )
             : <ChartNode node={node} />}
       {editable ? <span className="canvas-node-drag-hint">拖动</span> : null}
-      {editable && selected ? resizeHandles.map(({ direction, label }) => (
+      {editable && selected && resizeEnabled ? resizeHandles.map(({ direction, label }) => (
         <button
           aria-label={label}
           className={`canvas-resize-handle is-${direction}`}
@@ -123,11 +125,13 @@ type CanvasSurfaceProps = {
   editable: boolean;
   modelInteractionEnabled?: boolean;
   selectedNodeId: string | null;
+  selectedNodeIds?: string[];
   onCreateNode: (type: CanvasNodeType, x: number, y: number) => void;
   onModelSceneChange?: (canvasNodeId: string, snapshot: ModelSceneSnapshot | null) => void;
   onModelSceneNodeSelect: (canvasNodeId: string, sceneNodePath: string | null) => void;
   onNodeChange: (node: CanvasNode) => void;
-  onSelectNode: (nodeId: string | null) => void;
+  onNodesChange?: (nodes: CanvasNode[]) => void;
+  onSelectNode: (nodeId: string | null, additive?: boolean, individual?: boolean) => void;
   runtimeAppearanceOverrides?: Record<string, ModelNodeAppearance>;
   selectedModelSceneNodePath: string | null;
 };
@@ -140,7 +144,8 @@ const isCanvasBackdropNode = (node: CanvasNode, document: CanvasDocument) => (
   && node.height >= document.height
 );
 
-export function CanvasSurface({ document, editable, modelInteractionEnabled = false, selectedNodeId, selectedModelSceneNodePath, onCreateNode, onModelSceneChange, onModelSceneNodeSelect, onNodeChange, onSelectNode, runtimeAppearanceOverrides = {} }: CanvasSurfaceProps) {
+export function CanvasSurface({ document, editable, modelInteractionEnabled = false, selectedNodeId, selectedNodeIds, selectedModelSceneNodePath, onCreateNode, onModelSceneChange, onModelSceneNodeSelect, onNodeChange, onNodesChange, onSelectNode, runtimeAppearanceOverrides = {} }: CanvasSurfaceProps) {
+  const selection = selectedNodeIds ?? (selectedNodeId ? [selectedNodeId] : []);
   const viewportRef = useRef<HTMLDivElement>(null);
   const surfaceRef = useRef<HTMLDivElement>(null);
   const verticalGuideRef = useRef<HTMLDivElement>(null);
@@ -205,8 +210,17 @@ export function CanvasSurface({ document, editable, modelInteractionEnabled = fa
     const rawX = active.node.x + deltaX;
     const rawY = active.node.y + deltaY;
     const snapped = snapNodePosition(rawX, rawY, active.node, active.targets, document.width, document.height);
+    const minX = Math.min(...active.members.map(({ node }) => node.x));
+    const minY = Math.min(...active.members.map(({ node }) => node.y));
+    const maxX = Math.max(...active.members.map(({ node }) => node.x + node.width));
+    const maxY = Math.max(...active.members.map(({ node }) => node.y + node.height));
+    const dx = Math.max(-minX, Math.min(snapped.x - active.node.x, document.width - maxX));
+    const dy = Math.max(-minY, Math.min(snapped.y - active.node.y, document.height - maxY));
+    if (dx !== snapped.x - active.node.x) snapped.verticalGuide = null;
+    if (dy !== snapped.y - active.node.y) snapped.horizontalGuide = null;
+    snapped.x = active.node.x + dx; snapped.y = active.node.y + dy;
     active.snapped = snapped;
-    active.element.style.transform = `translate3d(${snapped.x}px, ${snapped.y}px, 0)`;
+    for (const { node, element } of active.members) element.style.transform = `translate3d(${node.x + dx}px, ${node.y + dy}px, 0)`;
 
     if (verticalGuideRef.current) {
       verticalGuideRef.current.style.display = snapped.verticalGuide === null ? "none" : "block";
@@ -248,7 +262,11 @@ export function CanvasSurface({ document, editable, modelInteractionEnabled = fa
       active.element.classList.remove("is-dragging", "is-resizing");
       activeInteractionRef.current = null;
       hideGuides();
-      if (hasGeometryChanged(active.node, changedNode)) onNodeChange(changedNode);
+      if (hasGeometryChanged(active.node, changedNode)) {
+        if (active.kind === "drag" && active.members.length > 1 && onNodesChange) {
+          onNodesChange(active.members.map(({ node }) => ({ ...node, x: node.x + changedNode.x - active.node.x, y: node.y + changedNode.y - active.node.y })));
+        } else onNodeChange(changedNode);
+      }
     };
 
     window.addEventListener("pointermove", handlePointerMove);
@@ -260,13 +278,19 @@ export function CanvasSurface({ document, editable, modelInteractionEnabled = fa
       window.removeEventListener("pointercancel", finishPointer);
       if (animationFrameRef.current !== null) cancelAnimationFrame(animationFrameRef.current);
     };
-  }, [hideGuides, onNodeChange, renderActiveInteraction]);
+  }, [hideGuides, onNodeChange, onNodesChange, renderActiveInteraction]);
 
   const startPointerDrag = useCallback((event: ReactPointerEvent<HTMLDivElement>, node: CanvasNode) => {
     if (event.button !== 0) return;
     event.preventDefault();
-    onSelectNode(node.id);
+    onSelectNode(node.id, event.shiftKey, event.altKey);
+    if (event.shiftKey) return;
     const element = event.currentTarget;
+    const memberIds = event.altKey ? [node.id] : selection.includes(node.id) ? selection
+      : node.groupId ? document.nodes.filter((item) => item.groupId === node.groupId).map((item) => item.id) : [node.id];
+    const members = document.nodes.filter((item) => memberIds.includes(item.id)).map((node) => ({
+      node, element: surfaceRef.current!.querySelector<HTMLDivElement>(`[data-node-id="${CSS.escape(node.id)}"]`)!,
+    }));
     element.classList.add("is-dragging");
     activeInteractionRef.current = {
       kind: "drag",
@@ -277,10 +301,11 @@ export function CanvasSurface({ document, editable, modelInteractionEnabled = fa
       startClientY: event.clientY,
       latestClientX: event.clientX,
       latestClientY: event.clientY,
-      targets: buildSnapTargets(document.nodes, node.id, document.width, document.height),
+      targets: buildSnapTargets(document.nodes.filter((item) => item.id === node.id || !memberIds.includes(item.id)), node.id, document.width, document.height),
       snapped: { x: node.x, y: node.y, verticalGuide: null, horizontalGuide: null },
+      members,
     };
-  }, [document.height, document.nodes, document.width, onSelectNode]);
+  }, [document.height, document.nodes, document.width, onSelectNode, selection]);
 
   const startPointerResize = useCallback((event: ReactPointerEvent<HTMLButtonElement>, node: CanvasNode, direction: ResizeDirection) => {
     if (event.button !== 0) return;
@@ -351,7 +376,8 @@ export function CanvasSurface({ document, editable, modelInteractionEnabled = fa
               projectId={document.projectId}
               renderZIndex={isCanvasBackdropNode(node, document) ? 0 : node.zIndex + 2}
               runtimeAppearanceOverrides={runtimeAppearanceOverrides}
-              selected={node.id === selectedNodeId}
+              selected={selection.includes(node.id)}
+              resizeEnabled={selection.length === 1}
               selectedModelSceneNodePath={
                 node.id === selectedNodeId ? selectedModelSceneNodePath : null
               }

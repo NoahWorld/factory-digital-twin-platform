@@ -1,3 +1,4 @@
+import { useProjectEditorContext } from "../project-editor";
 import { useCallback, useEffect, useState } from "react";
 import { errorMessage, request } from "../api";
 import { Model3DInspector } from "../canvas/Model3DInspector";
@@ -20,70 +21,22 @@ export default function Model3DEditorPage({
   nodeId,
   projectId,
 }: Model3DEditorPageProps) {
-  const [node, setNode] = useState<CanvasNode | null>(null);
-  const [revision, setRevision] = useState(0);
-  const [projectName, setProjectName] = useState("");
-  const [canEdit, setCanEdit] = useState(false);
+  const { editor, projectName, canEdit, loading, loadError: projectLoadError, saveError, setSaveError, saving, dirty, execute, travel, selectPage, save: saveProject, draftNotice } = useProjectEditorContext();
+  const modelPage = editor?.project.pages.find((page) => page.nodes.some((node) => node.id === nodeId));
+  const node = modelPage?.nodes.find((node) => node.id === nodeId) ?? null;
+  const revision = editor?.project.revision ?? 0;
+  const loadError = projectLoadError ?? (!loading && (!node || !isModel3DNodeType(node.type)) ? "此项目中没有对应的 3D 组件。" : null);
   const [modelScene, setModelScene] = useState<ModelSceneSnapshot | null>(null);
   const [selectedSceneNodePath, setSelectedSceneNodePath] = useState<string | null>(null);
   const [configurationError, setConfigurationError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const [saveError, setSaveError] = useState<string | null>(null);
-  const [dirty, setDirty] = useState(false);
-  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    let active = true;
-    setLoading(true);
-    setLoadError(null);
-    setNode(null);
-    setModelScene(null);
-    setSelectedSceneNodePath(null);
-    setConfigurationError(null);
-    setDirty(false);
-
-    void request<CanvasResponse>(projectCanvasPath(projectId))
-      .then((result) => {
-        if (!active) return;
-        const modelNode = result.canvas.nodes.find((candidate) => candidate.id === nodeId);
-        if (!modelNode) {
-          throw new Error(`画布中找不到 3D 组件 ${nodeId}，它可能已被删除。`);
-        }
-        if (!isModel3DNodeType(modelNode.type)) {
-          throw new Error(`组件 ${nodeId} 不是 3D 模型组件，不能使用 3D 编辑器。`);
-        }
-        setNode(modelNode);
-        setRevision(result.canvas.revision);
-        setProjectName(result.project.name);
-        setCanEdit(result.editable);
-      })
-      .catch((reason) => {
-        if (active) setLoadError(errorMessage(reason));
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [nodeId, projectId]);
-
-  useEffect(() => {
-    if (!dirty) return;
-    const warnAboutUnsavedChanges = (event: BeforeUnloadEvent) => {
-      event.preventDefault();
-    };
-    window.addEventListener("beforeunload", warnAboutUnsavedChanges);
-    return () => window.removeEventListener("beforeunload", warnAboutUnsavedChanges);
-  }, [dirty]);
-
+    if (modelPage && editor?.pageId !== modelPage.id) selectPage(modelPage.id);
+  }, [modelPage?.id, editor?.pageId, selectPage]);
+  useEffect(() => { setModelScene(null); setSelectedSceneNodePath(null); setConfigurationError(null); }, [nodeId]);
   const updateNode = useCallback((nextNode: CanvasNode) => {
-    setNode(nextNode);
-    setDirty(true);
-    setSaveError(null);
-  }, []);
+    if (modelPage) execute({ type: "nodes.upsert", pageId: modelPage.id, nodes: [nextNode] });
+  }, [modelPage?.id, execute]);
 
   const updateModelScene = useCallback((
     canvasNodeId: string,
@@ -97,45 +50,16 @@ export default function Model3DEditorPage({
       setSaveError(`3D 配置无效：${configurationError}`);
       return false;
     }
-    if (!node || !dirty || saving || !canEdit) return !dirty;
-
-    setSaving(true);
-    setSaveError(null);
-    try {
-      const result = await request<CanvasPatchResponse>(projectCanvasPath(projectId), {
-        method: "PATCH",
-        body: JSON.stringify({
-          expectedRevision: revision,
-          upsertNodes: [node],
-          deleteNodeIds: [],
-        }),
-      });
-      const savedNode = result.canvas.nodes.find((candidate) => candidate.id === node.id);
-      if (!savedNode || !isModel3DNodeType(savedNode.type)) {
-        throw new Error("保存成功响应中缺少当前 3D 组件，无法确认数据是否已写回。");
-      }
-      setNode(savedNode);
-      setRevision(result.canvas.revision);
-      setDirty(false);
-      return true;
-    } catch (reason) {
-      setSaveError(errorMessage(reason));
-      return false;
-    } finally {
-      setSaving(false);
-    }
+    return saveProject();
   };
 
   const returnToCanvas = () => {
-    if (dirty && !window.confirm("当前 3D 配置尚未保存，确定放弃更改并返回画布吗？")) {
-      return;
-    }
-    window.location.hash = canvasRoutePath(projectId, "canvas").slice(1);
+    window.location.hash = canvasRoutePath(projectId, "canvas", modelPage?.id).slice(1);
   };
 
   const saveAndReturn = async () => {
     if (dirty && !(await save())) return;
-    window.location.hash = canvasRoutePath(projectId, "canvas").slice(1);
+    window.location.hash = canvasRoutePath(projectId, "canvas", modelPage?.id).slice(1);
   };
 
   if (loading) {
@@ -148,7 +72,7 @@ export default function Model3DEditorPage({
         <p className="eyebrow">3D editor error</p>
         <h1>3D 编辑器加载失败</h1>
         <p>{loadError ?? "接口没有返回 3D 组件。"}</p>
-        <a className="secondary-button" href={canvasRoutePath(projectId, "canvas")}>返回画布</a>
+        <a className="secondary-button" href={canvasRoutePath(projectId, "canvas", modelPage?.id)}>返回画布</a>
       </main>
     );
   }
@@ -162,11 +86,13 @@ export default function Model3DEditorPage({
           <div><span>独立工作区 / 3D 场景</span><strong>{projectName}</strong></div>
         </div>
         <div className="canvas-document-meta">
-          <span>组件 {node.id.slice(0, 8)}</span>
+          <span>{modelPage?.name}</span><span>组件 {node.id.slice(0, 8)}</span>
           <span>版本 {revision}</span>
           <span className={dirty ? "is-dirty" : "is-saved"}>{dirty ? "有未保存更改" : "已同步到画布"}</span>
         </div>
         <div className="canvas-toolbar-actions">
+          <button className="secondary-button compact-button" disabled={!canEdit || saving || !editor?.past.length} onClick={() => travel("undo")} type="button">撤销</button>
+          <button className="secondary-button compact-button" disabled={!canEdit || saving || !editor?.future.length} onClick={() => travel("redo")} type="button">重做</button>
           <button className="secondary-button compact-button" onClick={returnToCanvas} type="button">返回画布</button>
           <button
             className="secondary-button compact-button"
@@ -189,6 +115,7 @@ export default function Model3DEditorPage({
         </div>
       </header>
 
+      {draftNotice ? <div className="canvas-theme-notice" role="status">{draftNotice}</div> : null}
       {saveError ? <div className="canvas-save-error" role="alert">保存失败：{saveError}</div> : null}
       {!canEdit ? <div className="canvas-readonly-notice">当前项目权限为只读，可以查看场景，但不能修改或保存配置。</div> : null}
 
