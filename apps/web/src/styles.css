@@ -1652,6 +1652,16 @@ input:focus {
   color: #ffb5c0;
 }
 
+.model-3d-message button {
+  pointer-events: auto;
+  padding: 8px 14px;
+  border: 1px solid #487186;
+  border-radius: 6px;
+  color: #e7f4ff;
+  background: #123042;
+  cursor: pointer;
+}
+
 .model-loading-spinner {
   width: 24px;
   height: 24px;

@@ -1,0 +1,67 @@
+import type { BufferGeometry, Material, Object3D, Skeleton, Texture } from "three";
+import { GLTFLoader, type GLTF } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { clone } from "three/examples/jsm/utils/SkeletonUtils.js";
+import { ResourcePool } from "../../../../shared/resource-pool";
+
+type RenderObject = Object3D & { geometry?: BufferGeometry; material?: Material | Material[]; skeleton?: Skeleton };
+
+export function disposeObjectResources(roots: Object3D[]) {
+  const geometries = new Set<BufferGeometry>(); const materials = new Set<Material>();
+  const textures = new Set<Texture>(); const images = new Set<{ close: () => void }>();
+  const skeletons = new Set<Skeleton>();
+  for (const root of roots) root.traverse((object) => {
+    const item = object as RenderObject;
+    if (item.geometry) geometries.add(item.geometry);
+    if (item.skeleton) skeletons.add(item.skeleton);
+    for (const material of item.material ? Array.isArray(item.material) ? item.material : [item.material] : []) materials.add(material);
+  });
+  const inspected = new Set<object>();
+  const collectTextures = (value: unknown) => {
+    if (!value || typeof value !== "object" || inspected.has(value)) return;
+    inspected.add(value);
+    if ((value as Texture).isTexture) {
+      const texture = value as Texture; textures.add(texture);
+      const data = texture.source?.data;
+      for (const image of Array.isArray(data) ? data : [data]) if (image && typeof image.close === "function") images.add(image);
+    } else if (Array.isArray(value)) value.forEach(collectTextures);
+    else if (Object.getPrototypeOf(value) === Object.prototype) Object.values(value).forEach(collectTextures);
+  };
+  materials.forEach((material) => Object.values(material).forEach(collectTextures));
+  skeletons.forEach((skeleton) => skeleton.dispose());
+  geometries.forEach((geometry) => geometry.dispose()); materials.forEach((material) => material.dispose());
+  textures.forEach((texture) => texture.dispose()); images.forEach((image) => image.close());
+}
+
+const modelPool = new ResourcePool<GLTF>(async (url, signal) => {
+  const response = await fetch(url, { signal, credentials: "same-origin" });
+  if (!response.ok) throw new Error(`模型资源请求失败（HTTP ${response.status}）`);
+  const bytes = await response.arrayBuffer();
+  signal.throwIfAborted();
+  return new GLTFLoader().parseAsync(bytes, "");
+}, (gltf) => disposeObjectResources(gltf.scenes));
+
+export function acquireModelResource(url: string) {
+  const lease = modelPool.acquire(url);
+  let instance: Object3D | null = null;
+  let released = false;
+  return {
+    ready: lease.ready.then((gltf) => {
+      if (released) throw new DOMException("Model instance released", "AbortError");
+      instance = clone(gltf.scene);
+      return { scene: instance, animations: gltf.animations };
+    }),
+    release: () => {
+      if (released) return;
+      released = true;
+      // SkeletonUtils creates instance-owned skeletons; geometry/material/texture belong to the pool.
+      const skeletons = new Set<Skeleton>();
+      instance?.traverse((object) => { const skeleton = (object as RenderObject).skeleton; if (skeleton) skeletons.add(skeleton); });
+      skeletons.forEach((skeleton) => skeleton.dispose());
+      instance?.removeFromParent(); instance = null;
+      lease.release();
+    },
+  };
+}
+
+/** Read-only diagnostics used by the viewport and lifecycle acceptance. */
+export const modelResourceDiagnostics = () => modelPool.snapshot();

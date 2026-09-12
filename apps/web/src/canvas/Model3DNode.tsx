@@ -87,6 +87,7 @@ export const Model3DNode = memo(function Model3DNode({
   const [loadState, setLoadState] = useState<LoadState>(
     node.resourceRefs[0] ? { status: "loading" } : { status: "empty" },
   );
+  const [loadAttempt, setLoadAttempt] = useState(0);
   const parsed = parseModel3DProps(node.props);
   modelPropsRef.current = parsed.ok ? parsed.value : null;
   const assetId = node.resourceRefs[0] ?? null;
@@ -216,7 +217,12 @@ export const Model3DNode = memo(function Model3DNode({
     }
 
     let cancelled = false;
-    let dispose: (() => void) | null = null;
+    const cleanup: Array<() => void> = [];
+    let stopRendering = () => {};
+    let dispose: (() => void) | null = () => {
+      stopRendering();
+      for (const release of cleanup.splice(0).reverse()) release();
+    };
     let runtimeController: ModelRuntime | null = null;
     let restoreRuntimeAppearanceState: (() => void) | null = null;
     let clearRuntimeSelectionState: (() => void) | null = null;
@@ -226,9 +232,9 @@ export const Model3DNode = memo(function Model3DNode({
 
     void Promise.all([
       import("three"),
-      import("three/examples/jsm/loaders/GLTFLoader.js"),
+      import("./model-resource-cache"),
       import("three/examples/jsm/controls/OrbitControls.js"),
-    ]).then(([THREE, { GLTFLoader }, { OrbitControls }]) => {
+    ]).then(([THREE, { acquireModelResource, disposeObjectResources }, { OrbitControls }]) => {
       if (cancelled) return;
 
       const scene = new THREE.Scene();
@@ -244,6 +250,13 @@ export const Model3DNode = memo(function Model3DNode({
         antialias: true,
         alpha: true,
         powerPreference: "high-performance",
+      });
+      stopRendering = () => renderer.setAnimationLoop(null);
+      cleanup.push(() => {
+        disposeObjectResources([scene]);
+        renderer.dispose(); renderer.forceContextLoss();
+        if (runtimeRef.current === runtimeController) runtimeRef.current = null;
+        if (container.contains(renderer.domElement)) container.replaceChildren();
       });
       renderer.outputColorSpace = THREE.SRGBColorSpace;
       renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
@@ -263,6 +276,7 @@ export const Model3DNode = memo(function Model3DNode({
       scene.add(keyLight);
 
       const controls = new OrbitControls(camera, renderer.domElement);
+      cleanup.push(() => { controls.dispose(); if (controlsRef.current === controls) controlsRef.current = null; });
       controls.enabled = cameraControlsEnabled ?? !editable;
       controls.enableDamping = true;
       controls.dampingFactor = 0.08;
@@ -332,12 +346,14 @@ export const Model3DNode = memo(function Model3DNode({
         fitCameraToModel();
       };
       const resizeObserver = new ResizeObserver(resize);
+      cleanup.push(() => resizeObserver.disconnect());
       resizeObserver.observe(container);
       resize();
 
       const intersectionObserver = new IntersectionObserver(([entry]) => {
         visible = entry?.isIntersecting ?? false;
       });
+      cleanup.push(() => intersectionObserver.disconnect());
       intersectionObserver.observe(container);
 
       renderer.setAnimationLoop((now) => {
@@ -355,10 +371,13 @@ export const Model3DNode = memo(function Model3DNode({
         renderer.render(scene, camera);
       });
 
-      const loader = new GLTFLoader();
-      loader.load(
-        modelAssetContentUrl(projectId, assetId),
-        (gltf) => {
+      const modelLease = acquireModelResource(modelAssetContentUrl(projectId, assetId));
+      cleanup.push(() => modelLease.release());
+      cleanup.push(() => {
+        clearRuntimeSelectionState?.(); clearRuntimeSelectionState = null;
+        restoreRuntimeAppearanceState?.(); restoreRuntimeAppearanceState = null;
+      });
+      void modelLease.ready.then((gltf) => {
           if (cancelled) return;
 
           const sceneTree = onSceneChange ? buildModelSceneTree(gltf.scene) : null;
@@ -620,6 +639,8 @@ export const Model3DNode = memo(function Model3DNode({
               status: "error",
               message: `3D 场景初始化失败：${errorText(reason)}`,
             });
+            dispose?.();
+            dispose = null;
             return;
           }
 
@@ -633,44 +654,18 @@ export const Model3DNode = memo(function Model3DNode({
           runtimeRef.current = runtimeController;
           if (sceneTree) onSceneChange?.(node.id, { assetId, ...sceneTree });
           setLoadState({ status: "ready" });
-        },
-        undefined,
-        (reason) => {
+        }).catch((reason) => {
           if (!cancelled) {
             onSceneChange?.(node.id, null);
             setLoadState({ status: "error", message: `模型加载失败：${errorText(reason)}` });
-          }
-        },
-      );
-
-      dispose = () => {
-        renderer.setAnimationLoop(null);
-        resizeObserver.disconnect();
-        intersectionObserver.disconnect();
-        controls.dispose();
-        clearRuntimeSelectionState?.();
-        clearRuntimeSelectionState = null;
-        restoreRuntimeAppearanceState?.();
-        restoreRuntimeAppearanceState = null;
-        scene.traverse((object) => {
-          const candidate = object as Object3D & {
-            geometry?: { dispose: () => void };
-            material?: { dispose: () => void } | Array<{ dispose: () => void }>;
-          };
-          candidate.geometry?.dispose();
-          if (Array.isArray(candidate.material)) {
-            candidate.material.forEach((material) => material.dispose());
-          } else {
-            candidate.material?.dispose();
+            dispose?.();
+            dispose = null;
           }
         });
-        renderer.dispose();
-        renderer.forceContextLoss();
-        if (controlsRef.current === controls) controlsRef.current = null;
-        if (runtimeRef.current === runtimeController) runtimeRef.current = null;
-        if (container.contains(renderer.domElement)) container.replaceChildren();
-      };
+
     }).catch((reason) => {
+      dispose?.();
+      dispose = null;
       if (!cancelled) {
         onSceneChange?.(node.id, null);
         setLoadState({ status: "error", message: `3D 引擎加载失败：${errorText(reason)}` });
@@ -682,7 +677,7 @@ export const Model3DNode = memo(function Model3DNode({
       onSceneChange?.(node.id, null);
       dispose?.();
     };
-  }, [assetId, cameraControlsEnabled, node.id, onSceneChange, parsed.ok, projectId]);
+  }, [assetId, cameraControlsEnabled, node.id, onSceneChange, parsed.ok, projectId, loadAttempt]);
 
   const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
     if ((!editable && !interactive) || event.button !== 0) return;
@@ -739,7 +734,7 @@ export const Model3DNode = memo(function Model3DNode({
       />
       {loadState.status === "empty" ? <div className="model-3d-message"><strong>尚未绑定模型</strong><span>在右侧属性面板导入 GLB 或 GLTF</span></div> : null}
       {loadState.status === "loading" ? <div className="model-3d-message"><span className="model-loading-spinner" /><strong>正在加载 3D 模型</strong></div> : null}
-      {loadState.status === "error" ? <div className="model-3d-message is-error" role="alert"><strong>3D 模型不可用</strong><span>{loadState.message}</span></div> : null}
+      {loadState.status === "error" ? <div className="model-3d-message is-error" role="alert"><strong>3D 模型不可用</strong><span>{loadState.message}</span><button onPointerDown={(event) => event.stopPropagation()} onClick={() => setLoadAttempt((attempt) => attempt + 1)} type="button">重新加载模型</button></div> : null}
       {loadState.status === "ready" && (editable || interactive) ? <span className="model-3d-edit-hint">{resolvedInteractionHint}</span> : null}
     </div>
   );
