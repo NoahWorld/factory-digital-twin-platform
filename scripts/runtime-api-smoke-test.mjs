@@ -1,11 +1,12 @@
 import { createHash } from "node:crypto";
+import { writeFile } from "node:fs/promises";
 
 const args = process.argv.slice(2);
 if (args[0] === "--") args.shift();
 const keepProject = args.includes("--keep-project");
 const positionalArgs = args.filter((argument) => argument !== "--keep-project");
 const apiBase = (positionalArgs[0] ?? "http://127.0.0.1:8791").replace(/\/$/, "");
-const bootstrapToken = positionalArgs[1];
+const bootstrapToken = process.env.BOOTSTRAP_TOKEN ?? positionalArgs[1];
 const mockBase = (positionalArgs[2] ?? "http://127.0.0.1:8790").replace(/\/$/, "");
 
 if (!bootstrapToken || bootstrapToken.length < 20 || bootstrapToken.length > 200) {
@@ -189,11 +190,14 @@ try {
     throw new Error("Model upload response omitted modelAsset.id.");
   }
 
+  const initialCanvas = await call(`/api/v1/projects/${projectId}/canvas`);
   await call(`/api/v1/projects/${projectId}/canvas`, {
     body: JSON.stringify({
       deleteNodeIds: [],
       expectedRevision: 0,
       theme: {
+        ...initialCanvas.body.canvas.theme,
+        presetId: "custom",
         accentColor: "#35d07f",
         backgroundColor: "#04111e",
         borderColor: "#24506a",
@@ -341,6 +345,23 @@ try {
     throw new Error(`Outage response did not expose the expected error and requestId: ${JSON.stringify(outage.body)}`);
   }
 
+  await controlDevice("/control/recover");
+  await controlDevice("/control/state", { status: "running" });
+  const recovered = await call(`/api/v1/projects/${projectId}/assets/${assetRecordId}/runtime-state`);
+  if (
+    recovered.body?.runtimeState?.values?.status !== "running"
+    || recovered.body?.runtimeState?.metrics?.length !== 4
+    || !Number.isFinite(recovered.body?.runtimeState?.values?.temperature)
+  ) {
+    throw new Error("Runtime data did not recover after the HTTP 503 outage.");
+  }
+
+  if (keepProject && process.env.RUNTIME_SMOKE_SESSION_FILE) {
+    await writeFile(process.env.RUNTIME_SMOKE_SESSION_FILE, JSON.stringify({
+      apiBase, projectId, sessionCookie, email: testEmail, password: testPassword,
+    }), { mode: 0o600 });
+  }
+
   console.log(JSON.stringify({
     checks: [
       "authenticated runtime endpoint",
@@ -354,6 +375,7 @@ try {
       "HTTP 200 with stale source timestamp surfaced as data_source_stale",
       "fresh timestamp recovery",
       "HTTP 503 surfaced as data_source_http_error",
+      "fresh metric and device state recovery after HTTP 503",
     ],
     event: "runtime_api_smoke_test_passed",
     keptProject: keepProject,

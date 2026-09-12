@@ -9,7 +9,10 @@
     "dev:web": "pnpm --filter @factory-twin/web dev",
     "dev:api": "pnpm --filter @factory-twin/api dev",
     "smoke:runtime": "node scripts/runtime-api-smoke-test.mjs",
-    "build": "pnpm --recursive run build",
+    "build": "pnpm --filter @factory-twin/web build && pnpm --filter @factory-twin/api build",
     "check": "pnpm --recursive run check"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.62.0"
   }
 }

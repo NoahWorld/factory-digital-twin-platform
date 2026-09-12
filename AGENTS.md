@@ -2,6 +2,14 @@
 
 本文件只约束当前仓库。通用工程规则以全局 `AGENTS.md` 为准；两者冲突时，优先遵守更严格的规则。
 
+## NewPower 分支适用说明（2026-09-12）
+
+- Owner 已要求在当前目录持续推进 `newpower`。本分支以公司自用、可重复搭建二维与三维项目的数字孪生引擎为目标；本轮执行 M0 运行基线与 M1 通用数据绑定。下文历史首期定位、默认 `main` 和延后通用编辑能力的安排不限制本轮范围。
+- 仅在已有本地 `newpower` 开发、验证并创建相关本地提交；不 push、不创建远端 PR、不部署外部生产环境、不修改远端数据库或其他分支。保护已有成果。
+- 保留下文有效的身份、权限、稳定资产 ID、服务端数据网关、模型资源与编辑配置分离、错误展示、兼容和性能约束。
+- 首次先 `pnpm install --frozen-lockfile`、构建 web，再执行全部本地迁移并启动 API、web、mock；使用根 `package.json` 锁定的 pnpm。检查入口为 `pnpm check`、`pnpm build`、`pnpm smoke:runtime`，后者使用隔离本地数据目录。
+- 当前进度和未完项见 [开发状态](docs/newpower/development-status.md)，任务及后续方向见 [研发指南](NewPower_Codex_Development_Start_Guide.md)。历史公司方案保留其背景，NewPower 状态以当前分支记录和实际验证为准。
+
 ## 产品定位
 
 - 产品是面向交付人员的工厂数字孪生项目生成器，不是通用低代码/SaaS 大屏产品。

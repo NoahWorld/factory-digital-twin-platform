@@ -1,5 +1,7 @@
 # 工厂数字孪生交付平台
 
+当前 `newpower` 的本地接手、运行与通用数据绑定研发见 [开发状态](docs/newpower/development-status.md) 和 [研发指南](NewPower_Codex_Development_Start_Guide.md)。本分支持续本地开发、验证和提交，不推送、不操作远端数据库。
+
 面向交付人员的工厂数字孪生项目生成器，用行业模板、标准 glTF 2.x 模型、资产台账与统一数据契约，快速交付 **2D + 3D 组合大屏**。
 
 ## 当前结构
@@ -41,13 +43,14 @@ apps/
 安装依赖后，先准备本地 Worker 的初始化令牌。此令牌只用来创建**唯一的首个管理员**，绝不能提交到 Git：
 
 ```bash
-cp apps/api/.dev.vars.example apps/api/.dev.vars
+test -f apps/api/.dev.vars || cp apps/api/.dev.vars.example apps/api/.dev.vars
 ```
 
 修改 `apps/api/.dev.vars` 中的 `BOOTSTRAP_TOKEN` 为足够长的随机值，再在仓库根目录执行：
 
 ```bash
-pnpm install
+pnpm install --frozen-lockfile
+pnpm --filter @factory-twin/web build
 pnpm --filter @factory-twin/api db:migrate:local
 pnpm dev:api
 ```
@@ -85,7 +88,7 @@ pnpm check
 pnpm build
 ```
 
-数据库迁移包括 `0001_initial.sql`（项目、资产与数据配置）、`0002_access_control.sql`（用户、角色、会话与项目成员）、`0003_canvas_foundation.sql`（画布元数据与组件节点）、`0004_canvas_shape_nodes.sql`（基础图形）、`0005_canvas_decoration_nodes.sql`（大屏点缀组件）、`0006_model_assets_and_3d_node.sql`（模型资源与 3D 组件）、`0007_dashboard_components.sql`（指标卡、环形进度、进度排行与状态矩阵）、`0008_canvas_themes.sql`（画布主题元数据）和 `0009_basic_components_and_image_assets.sql`（基础内容/交互组件与图片资源）。云端 D1 已于 2026-07-30 应用到 `0008`；新增的 `0009` 必须在部署依赖该表和节点白名单的 API 前显式应用。模型和图片上传还要求账号先在 Cloudflare 控制台完成 R2 订阅开通，再创建 R2 桶：
+本地迁移以 `apps/api/migrations/` 为准，当前包含 `0001`–`0011`；`db:migrate:local` 会应用全部迁移。必须先构建 web 再启动依赖 `web/dist` 的 Worker。历史云端迁移状态不能替代当前读回；NewPower 本地研发不执行下方远端配置示例。模型和图片在本地使用 Wrangler 的 R2 模拟存储。
 
 ```bash
 npx wrangler r2 bucket create factory-digital-twin-project-files
