@@ -1,3 +1,9 @@
+import { flushSync } from "react-dom";
+import { InteractionEditor } from "../canvas/InteractionEditor";
+import { InteractionDebugger } from "../canvas/InteractionDebugger";
+import { InteractionContext, useInteractionSession } from "../interaction-session";
+import { interactionAssetIds } from "../../../../shared/interactions";
+import type { InteractionHost } from "../../../../shared/interaction-runtime";
 import { ProjectPageBar } from "../canvas/ProjectPageBar";
 import { useProjectEditorContext } from "../project-editor";
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from "react";
@@ -54,6 +60,9 @@ const formatRuntimeTime = (value: string | undefined): string => {
 export function CanvasPage({ initialTemplateId, mode, projectId }: CanvasPageProps) {
   const { editor, document, projectName, canEdit, loading, loadError, saveError, setSaveError, saving, dirty,
     execute, travel: travelProject, selectPage: choosePage, save: saveProject, pendingDraft, draftNotice, draftDifferences, restoreDraft, discardDraft } = useProjectEditorContext();
+  const [hiddenInteractionNodes, setHiddenInteractionNodes] = useState<Set<string>>(new Set());
+  const [showInteractions, setShowInteractions] = useState(false);
+  const [showInteractionDebug, setShowInteractionDebug] = useState(false);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>([]);
   const [selectedModelSceneNodePath, setSelectedModelSceneNodePath] = useState<string | null>(null);
@@ -73,6 +82,7 @@ export function CanvasPage({ initialTemplateId, mode, projectId }: CanvasPagePro
   const [modelScenes, setModelScenes] = useState<Record<string, ModelSceneSnapshot>>({});
   const [showRuntimeDetails, setShowRuntimeDetails] = useState(false);
   const [selectedRuntimeAssetId, setSelectedRuntimeAssetId] = useState<string | null>(null);
+  const runtimeAssetRef = useRef(selectedRuntimeAssetId); runtimeAssetRef.current = selectedRuntimeAssetId;
   const [runtimeSelectionMessage, setRuntimeSelectionMessage] = useState<string | null>(null);
   const initialTemplateAppliedRef = useRef(false);
 
@@ -91,7 +101,7 @@ export function CanvasPage({ initialTemplateId, mode, projectId }: CanvasPagePro
   }, [projectId, catalogRevision]);
 
   useEffect(() => {
-    setModelScenes({}); setSelectedRuntimeAssetId(null); setRuntimeSelectionMessage(null);
+    setModelScenes({}); runtimeAssetRef.current = null; setSelectedRuntimeAssetId(null); setRuntimeSelectionMessage(null);
   }, [projectId, mode]);
 
   const model3DNodeCount = document?.nodes.filter((node) => isModel3DNodeType(node.type)).length ?? 0;
@@ -113,12 +123,37 @@ export function CanvasPage({ initialTemplateId, mode, projectId }: CanvasPagePro
       else if (selectedRuntimeAssetId && binding.assetIds.includes(selectedRuntimeAssetId)) ids.add(selectedRuntimeAssetId);
     }
     if (mode === "preview") {
+      if (editor) interactionAssetIds({ ...editor.project.interactions, rules: editor.project.interactions.rules.filter((rule) => rule.enabled && (rule.pageId === null || rule.pageId === document?.pageId)) }).forEach((id) => ids.add(id));
+      if (editor?.project.interactions.rules.some((rule) => rule.enabled && (rule.pageId === null || rule.pageId === document?.pageId) && ["data.change", "connection.change"].includes(rule.trigger.type) && !rule.trigger.sourceId)) projectAssets.forEach((asset) => ids.add(asset.assetId));
       if (legacyModelCount > 0) mappedRuntimeAssets.forEach((asset) => ids.add(asset.assetId));
       visibleScenes.forEach((scene) => scene.assetBindings.forEach((binding) => ids.add(binding.assetId)));
     }
     return [...ids];
-  }, [activeBindings, catalogProjectId, document?.projectId, mappedRuntimeAssets, mode, legacyModelCount, visibleScenes, projectId, selectedRuntimeAssetId]);
+  }, [editor?.project.interactions, document?.pageId, activeBindings, catalogProjectId, document?.projectId, mappedRuntimeAssets, mode, legacyModelCount, visibleScenes, projectId, selectedRuntimeAssetId]);
   const runtimeConnections = useProjectRuntime(projectId, catalogProjectId === projectId ? projectAssets : [], neededAssetIds);
+  const interactionHost: InteractionHost["perform"] = (action, value, signal) => {
+    if (signal.aborted) throw new Error("交互已取消。");
+    if (action.type === "asset.select") {
+      if (value !== null && (typeof value !== "string" || !projectAssets.some((asset) => asset.assetId === value))) throw new Error("目标设备不存在或资产列表尚未就绪。");
+      const assetId = value as string | null;
+      const previous = runtimeAssetRef.current; runtimeAssetRef.current = assetId;
+      setSelectedRuntimeAssetId(assetId); setRuntimeSelectionMessage(null); setShowRuntimeDetails(action.details && assetId !== null);
+      setSelectedModelSceneNodePath(null); setSelectedSceneObject(null);
+      return previous === assetId ? [] : [{ type: "asset.select", sourceId: assetId ?? undefined, assetId: assetId ?? undefined, value: assetId, previous }];
+    }
+    if (action.type === "node.visible") {
+      if (!editor?.project.pages.find((page) => page.id === document?.pageId)?.nodes.some((node) => node.id === action.nodeId)) throw new Error("目标组件不在当前页面。");
+      setHiddenInteractionNodes((current) => { const next = new Set(current); if (action.visible) next.delete(action.nodeId); else next.add(action.nodeId); return next; }); return;
+    }
+    if (action.type === "page.navigate") {
+      if (!editor?.project.pages.some((page) => page.id === action.pageId)) throw new Error("目标页面不存在。");
+      flushSync(() => { choosePage(action.pageId); setHiddenInteractionNodes(new Set()); }); window.location.hash = canvasRoutePath(projectId, "preview", action.pageId).slice(1); return;
+    }
+    throw new Error("该交互动作尚未连接运行宿主。");
+  };
+  const interactions = useInteractionSession(editor?.project.interactions, mode === "preview" && !!editor && catalogProjectId === projectId, document?.pageId, runtimeConnections, interactionHost);
+  useEffect(() => { setHiddenInteractionNodes(new Set()); }, [document?.pageId, mode]);
+  const emitAssetSelection = (assetId: string | null) => { const previous = runtimeAssetRef.current; runtimeAssetRef.current = assetId; if (assetId !== previous) interactions.emit({ type: "asset.select", sourceId: assetId ?? undefined, assetId: assetId ?? undefined, value: assetId, previous }); };
   const runtimeSetupError = assetLoadError ? `资产与指标加载失败：${assetLoadError}` : null;
 
   const runtimeAppearanceOverrides = useMemo(() => {
@@ -154,9 +189,11 @@ export function CanvasPage({ initialTemplateId, mode, projectId }: CanvasPagePro
     if (mode !== "preview") return;
     const node = document?.nodes.find((node) => node.id === nodeId); const scene = visibleScenes.find((scene) => scene.id === node?.sceneId);
     const binding = (ancestors.length ? ancestors : target ? [target] : []).map((target) => scene?.assetBindings.find((binding) => binding.instanceId === target.instanceId && binding.objectId === target.objectId)).find(Boolean);
+    emitAssetSelection(binding?.assetId ?? null);
+    interactions.emit({ type: "node.click", sourceId: nodeId, assetId: binding?.assetId });
     setSelectedRuntimeAssetId(binding?.assetId ?? null); setShowRuntimeDetails(!!binding);
     setRuntimeSelectionMessage(target && !binding ? "所选模型对象尚未绑定资产。" : null);
-  }, [document?.nodes, mode, visibleScenes]);
+  }, [document?.nodes, mode, visibleScenes, interactions.emit, selectedRuntimeAssetId]);
 
   const selectedRuntimeAsset = selectedRuntimeAssetId
     ? projectAssets.find((asset) => asset.assetId === selectedRuntimeAssetId) ?? null
@@ -224,15 +261,19 @@ export function CanvasPage({ initialTemplateId, mode, projectId }: CanvasPagePro
         ? projectAssets.find((item) => item.modelNode === candidate.name)
         : undefined;
       if (asset) {
+        emitAssetSelection(asset.assetId);
+        interactions.emit({ type: "node.click", sourceId: canvasNodeId, assetId: asset.assetId });
         setSelectedRuntimeAssetId(asset.assetId);
         setShowRuntimeDetails(true);
         setRuntimeSelectionMessage(null);
         return;
       }
     }
+    emitAssetSelection(null);
+    interactions.emit({ type: "node.click", sourceId: canvasNodeId });
     setSelectedRuntimeAssetId(null);
     setRuntimeSelectionMessage("所点模型对象及其父节点尚未绑定资产，无法打开设备详情。");
-  }, [mode, modelScenes, projectAssets]);
+  }, [mode, modelScenes, projectAssets, interactions.emit, selectedRuntimeAssetId]);
 
   const handleModelSceneChange = useCallback((
     canvasNodeId: string,
@@ -253,10 +294,11 @@ export function CanvasPage({ initialTemplateId, mode, projectId }: CanvasPagePro
   }, [execute]);
 
   const selectRuntimeAsset = useCallback((assetId: string | null) => {
+    emitAssetSelection(assetId);
     setSelectedRuntimeAssetId(assetId); setRuntimeSelectionMessage(null); setShowRuntimeDetails(false);
     setSelectedModelSceneNodePath(null);
     setSelectedSceneObject(null);
-  }, []);
+  }, [interactions.emit, selectedRuntimeAssetId]);
 
   // A table selection can happen before GLTF finishes loading. Reconcile it
   // when the scene arrives as well as when the selected asset changes.
@@ -397,6 +439,7 @@ export function CanvasPage({ initialTemplateId, mode, projectId }: CanvasPagePro
   const editable = mode === "edit" && canEdit && !saving;
   const selectedNode = selectedNodeId ? document.nodes.find((node) => node.id === selectedNodeId) ?? null : null;
   return (
+    <InteractionContext.Provider value={{ emit: interactions.emit, hiddenNodes: hiddenInteractionNodes }}>
     <ProjectRuntimeContext.Provider value={{ assets: projectAssets, metrics: metricCatalog, enabled: true, loading: assetListLoading, error: assetLoadError, bindings: activeBindings, connections: runtimeConnections, selectedAssetId: selectedRuntimeAssetId, selectAsset: selectRuntimeAsset, changeBinding }}>
     <main className={`canvas-page canvas-page-${mode}`}>
       <header className="canvas-toolbar">
@@ -414,12 +457,13 @@ export function CanvasPage({ initialTemplateId, mode, projectId }: CanvasPagePro
               <span aria-hidden="true" style={{ backgroundColor: document.theme.accentColor }} />
               主题
             </button>
+            <button className="secondary-button compact-button" disabled={saving} onClick={() => setShowInteractions(true)} type="button">交互编排</button>
             <button className="secondary-button compact-button" onClick={() => setShowAssets(true)} type="button">资产与指标</button>
             <button className="secondary-button compact-button" onClick={() => setShowDataSources(true)} type="button">数据源</button>
             <button className="secondary-button compact-button" disabled={!selectedNodeId || !canEdit || saving} onClick={deleteSelectedNode} type="button">删除组件</button>
             <button className="secondary-button compact-button" disabled={saving || configurationError !== null} onClick={() => void openPreview()} title={configurationError ?? undefined} type="button">预览</button>
             <button className="primary-button compact-button" disabled={!dirty || saving || !canEdit || configurationError !== null} onClick={() => void save()} title={configurationError ?? undefined} type="button">{saving ? "保存中…" : "保存画布"}</button>
-          </> : <a className="secondary-button compact-button" href={canvasRoutePath(projectId, "canvas", document?.pageId)}>返回编辑</a>}
+          </> : <><button className="secondary-button compact-button" onClick={() => setShowInteractionDebug(true)} type="button">交互调试</button><a className="secondary-button compact-button" href={canvasRoutePath(projectId, "canvas", document?.pageId)}>返回编辑</a></>}
         </div>
       </header>
       <div className="canvas-message-stack">
@@ -593,6 +637,9 @@ export function CanvasPage({ initialTemplateId, mode, projectId }: CanvasPagePro
         ) : null}
         {mode === "edit" && selectedNodeIds.length > 1 ? <aside className="component-inspector"><h2>已选择 {selectedNodeIds.length} 个组件</h2><p>拖动任意已选组件一起移动；Shift 增减选择，Alt 可选组内单个组件。复制、删除、分组和跨页移动都会进入同一撤销链。</p></aside> : mode === "edit" ? <ComponentInspector editable={editable} node={selectedNode} onModelEditorOpen={(nodeId) => void openModelEditor(nodeId)} onNodeChange={updateNode} onValidationChange={setConfigurationError} projectId={projectId} /> : null}
       </div>
+      {showInteractions ? <InteractionEditor project={editor.project} pageId={editor.pageId} assets={projectAssets} metrics={metricCatalog} editable={canEdit && !saving} onApply={(interactions) => !!execute({ type: "interactions.set", interactions })} onClose={() => setShowInteractions(false)} /> : null}
+      {showInteractionDebug && mode === "preview" ? <InteractionDebugger runtime={interactions.runtime} snapshot={interactions.snapshot} config={editor.project.interactions} onClose={() => setShowInteractionDebug(false)} /> : null}
+      {mode === "preview" && !showInteractionDebug && interactions.snapshot.traces.some((trace) => trace.status === "failed" || trace.status === "limited") ? <button className="interaction-error-notice" type="button" onClick={() => setShowInteractionDebug(true)}>交互执行有失败或限制，查看调试记录</button> : null}
       {showAssets ? <AssetPanel projectId={projectId} editable={canEdit && !saving} onClose={() => { setShowAssets(false); setCatalogRevision((value) => value + 1); }} /> : null}
       {showDataSources ? (
         <DataSourcePanel
@@ -618,5 +665,6 @@ export function CanvasPage({ initialTemplateId, mode, projectId }: CanvasPagePro
       ) : null}
     </main>
     </ProjectRuntimeContext.Provider>
+    </InteractionContext.Provider>
   );
 }

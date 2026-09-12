@@ -1,0 +1,67 @@
+import { test, expect } from "@playwright/test";
+import { createDemo, localApi } from "./demo";
+import { login } from "./support";
+import { createCanvasNode } from "../apps/web/src/canvas/types";
+
+test("configure a conditional button sequence in the UI, save, reopen and drive real model selection with runtime-only state", async ({ page }, testInfo) => {
+  const api = await localApi(); const demo = await createDemo(api, true); const path = `/api/v1/projects/${demo.projectId}`;
+  try {
+    const button = createCanvasNode("button", 120, 870, 3); button.id = "interaction-button"; button.props = { ...button.props, text: "查看二号设备", href: "" }; button.width = 400;
+    const response = await api.patch(`${path}/canvas`, { data: { expectedRevision: demo.canvas.revision, upsertNodes: [button], deleteNodeIds: [] } }); expect(response.status(), await response.text()).toBe(200);
+    await login(page); await page.goto(`/#/projects/${demo.projectId}/canvas`);
+    await page.getByRole("button", { name: "交互编排", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: "交互编排", exact: true });
+    await dialog.getByRole("button", { name: "添加状态", exact: true }).click();
+    await dialog.getByLabel("状态名称", { exact: true }).fill("已查看设备");
+    await dialog.getByLabel("状态初始值", { exact: true }).fill("尚未选择");
+    await dialog.getByRole("button", { name: "添加规则", exact: true }).click();
+    await dialog.getByLabel("规则名称", { exact: true }).fill("查看设备并隐藏温度图");
+    await dialog.getByLabel("事件来源", { exact: true }).selectOption(button.id);
+    await dialog.getByRole("button", { name: "添加条件", exact: true }).click();
+    const condition = dialog.locator(".interaction-condition");
+    await condition.getByLabel("取值来源", { exact: true }).first().selectOption("state");
+    await condition.getByLabel("常量值", { exact: true }).fill("尚未选择");
+    await dialog.getByRole("button", { name: "添加动作", exact: true }).click();
+    await dialog.locator(".interaction-action").nth(0).getByLabel("选择目标设备", { exact: true }).selectOption("DEVICE-002");
+    await dialog.getByRole("button", { name: "添加动作", exact: true }).click();
+    await dialog.getByLabel("动作 2 类型", { exact: true }).selectOption("state.set");
+    await dialog.locator(".interaction-action").nth(1).getByLabel("常量值", { exact: true }).fill("二号设备");
+    await dialog.getByRole("button", { name: "添加动作", exact: true }).click();
+    await dialog.getByLabel("动作 3 类型", { exact: true }).selectOption("node.visible");
+    await dialog.getByLabel("目标组件", { exact: true }).selectOption("device-chart");
+    await page.screenshot({ path: testInfo.outputPath("interaction-rule-editor.png") });
+    await dialog.getByRole("button", { name: "应用交互配置", exact: true }).click();
+    await expect(dialog).toHaveCount(0);
+    await page.getByRole("button", { name: "保存画布", exact: true }).click();
+    await expect(page.locator(".canvas-document-meta")).toContainText("已保存");
+    const saved = (await (await api.get(`${path}/definition`)).json()).definition;
+    expect(saved.interactions.rules).toHaveLength(1); expect(saved.interactions.states[0].initial).toBe("尚未选择");
+    await page.getByRole("button", { name: "撤销", exact: true }).click();
+    await page.getByRole("button", { name: "保存画布", exact: true }).click();
+    await expect.poll(async () => (await (await api.get(`${path}/definition`)).json()).definition.interactions.rules.length).toBe(0);
+    await page.getByRole("button", { name: "重做", exact: true }).click();
+    await page.getByRole("button", { name: "保存画布", exact: true }).click();
+    await expect(page.locator(".canvas-document-meta")).toContainText("已保存");
+    const publishedConfig = (await (await api.get(`${path}/definition`)).json()).definition;
+    await page.reload(); await page.getByRole("button", { name: "预览", exact: true }).click();
+    await expect(page.locator(".runtime-status-banner")).toContainText("在线 2 台");
+    await page.getByRole("button", { name: "查看二号设备", exact: true }).click();
+    await expect(page.getByLabel("当前设备", { exact: true })).toHaveValue("DEVICE-002");
+    await expect(page.locator(".model-3d-renderer")).not.toHaveAttribute("data-selected-scene-node", "");
+    await expect(page.locator('[data-node-id="device-chart"]')).toBeHidden();
+    await page.getByRole("button", { name: "交互调试", exact: true }).click();
+    const debug = page.getByRole("complementary", { name: "交互调试", exact: true });
+    await expect(debug.locator("dd")).toHaveText('"二号设备"');
+    await expect(debug).toContainText("规则执行完成");
+    await page.screenshot({ path: testInfo.outputPath("interaction-runtime-selection.png") });
+    await debug.getByRole("button", { name: "关闭调试", exact: true }).click();
+    await page.getByRole("button", { name: "查看二号设备", exact: true }).click();
+    await page.getByRole("button", { name: "交互调试", exact: true }).click();
+    await expect(debug).toContainText("条件未满足");
+    expect((await (await api.get(`${path}/definition`)).json()).definition).toEqual(publishedConfig);
+    await debug.getByRole("button", { name: "关闭调试", exact: true }).click();
+    await page.getByRole("link", { name: "返回编辑", exact: true }).click();
+    await expect(page.locator('[data-node-id="device-chart"]')).toBeVisible();
+
+  } finally { await api.delete(path); await api.dispose(); }
+});

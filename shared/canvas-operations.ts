@@ -57,7 +57,7 @@ export function validateEditorOperation(value: unknown): EditorOperation {
 }
 
 /** This is also the operation boundary for AI: serializable input, no I/O. */
-export function applyEditorOperation(input: CanvasDocument, value: unknown): CanvasDocument {
+export function applyEditorOperation(input: CanvasDocument, value: unknown, onClone?: (nodes: Map<string, string>) => void): CanvasDocument {
   const operation = validateEditorOperation(value);
   const document = parseCanvasDocument(input);
   let nodes = structuredClone(document.nodes);
@@ -81,6 +81,7 @@ export function applyEditorOperation(input: CanvasDocument, value: unknown): Can
       let z = Math.max(0, ...nodes.map((node) => node.zIndex));
       const selected = nodes.filter((node) => operation.nodeIds.includes(node.id)).sort((a, b) => a.zIndex - b.zIndex);
       const cloned = cloneCanvasEntities(selected, bindings);
+      onClone?.(cloned.nodeIds);
       bindings.push(...cloned.bindings);
       const copies = cloned.nodes.map((node) => ({ ...node, zIndex: ++z,
         x: Math.max(0, Math.min(node.x + offset, document.width - node.width)),
@@ -106,10 +107,11 @@ export function applyEditorOperation(input: CanvasDocument, value: unknown): Can
 /** Copy identity and references independently of layout or stacking policy. */
 export function cloneCanvasEntities(nodes: CanvasNode[], bindings: ComponentBinding[]) {
   const ids = new Map<string, string>();
+  const nodeIds = new Map(nodes.map((node) => [node.id, crypto.randomUUID()]));
   const groups = new Map<string, string>();
   const copiedBindings: ComponentBinding[] = [];
   const copiedNodes = nodes.map((node) => ({
-    ...structuredClone(node), id: crypto.randomUUID(),
+    ...structuredClone(node), id: nodeIds.get(node.id)!,
     ...(node.groupId ? { groupId: groups.get(node.groupId) ?? (() => { const id = crypto.randomUUID(); groups.set(node.groupId!, id); return id; })() } : {}),
     dataBindingRefs: node.dataBindingRefs.map((ref) => {
       if (ids.has(ref)) return ids.get(ref)!;
@@ -119,5 +121,5 @@ export function cloneCanvasEntities(nodes: CanvasNode[], bindings: ComponentBind
       copiedBindings.push(copy); ids.set(ref, copy.id); return copy.id;
     }),
   }));
-  return { nodes: copiedNodes, bindings: copiedBindings };
+  return { nodes: copiedNodes, bindings: copiedBindings, nodeIds, bindingIds: ids, groupIds: groups };
 }

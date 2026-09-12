@@ -10539,3 +10539,33 @@ input:focus {
 .model-object-mapping { display: grid; gap: 8px; margin-top: 12px; }
 .model-object-mapping p { margin: 0; font-size: 12px; color: #a2bbc8; }
 .model-object-mapping input, .model-object-mapping select { width: 100%; min-width: 0; box-sizing: border-box; }
+
+.interaction-editor-body { display: grid; grid-template-columns: 280px minmax(0,1fr); flex: 1; min-height: 0; }
+.interaction-editor-body > aside, .interaction-editor-body > section { padding: 20px; overflow: auto; min-width: 0; }
+.interaction-editor-body > aside { border-right: 1px solid #34596c; }
+.interaction-editor-body > aside > button { display: block; width: 100%; margin-bottom: 8px; text-align: left; }
+.interaction-editor-body .is-active { background: #234e64; border-color: #77c3e9; }
+.interaction-editor-body fieldset { min-width: 0; border: 1px solid #34596c; border-radius: 6px; margin: 12px 0; padding: 12px; }
+.interaction-editor-body .interaction-rule-form { border: 0; margin: 0; padding: 0; }
+.interaction-editor-body input:not([type=checkbox]), .interaction-editor-body select { min-width: 0; max-width: 100%; }
+.interaction-editor-body > aside fieldset input, .interaction-editor-body > aside fieldset select { width: 100%; margin-bottom: 6px; }
+.interaction-editor-body > section > p { color: #a4c4d7; line-height: 1.6; }
+.interaction-editor-body label { display: flex; gap: 8px; align-items: center; }
+.interaction-editor-body h3 { margin: 22px 0 12px; }
+.interaction-fields { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 8px 0; }
+.interaction-fields input:not([type=checkbox]) { flex: 1; min-width: 100px; }
+.interaction-rule-form > button { margin-right: 8px; margin-top: 12px; }
+.interaction-debugger { position: fixed; bottom: 18px; left: 24px; width: min(900px,calc(100vw - 48px)); max-height: 45vh; z-index: 45; overflow: auto; background: #0c2230f5; border: 1px solid #3a6379; border-radius: 10px; color: #dff2fc; padding: 16px; box-shadow: 0 12px 50px #0008; }
+.interaction-debugger header { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.interaction-debugger header strong { flex: 1; }
+.interaction-debugger button, .interaction-debugger input { border: 1px solid #3a6379; background: #153448; color: #dff2fc; padding: 6px 10px; border-radius: 4px; }
+.interaction-debugger dl { display: flex; gap: 20px; flex-wrap: wrap; }
+.interaction-debugger dd { margin: 4px 0; color: #7bddf3; }
+.interaction-debugger ol { list-style: none; padding: 0; margin: 8px 0; }
+.interaction-debugger li { display: flex; gap: 16px; padding: 7px 0; border-top: 1px solid #294558; font-size: 12px; }
+.interaction-debugger li span { flex: 0 0 42%; color: #a3bfce; }
+.interaction-debugger .is-failed strong, .interaction-debugger .is-limited strong { color: #ff9da6; }
+.interaction-error-notice { position: fixed; left: 24px; bottom: 18px; z-index: 45; border: 1px solid #c5686f; color: #ffb9be; background: #341f2a; padding: 12px; border-radius: 6px; }
+@media (max-width: 850px) { .interaction-editor-body { grid-template-columns: 220px minmax(0,1fr); } }
+
+.interaction-editor-body input[type=checkbox] { width: auto; flex: 0 0 auto; margin: 0; padding: 0; }

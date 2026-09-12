@@ -1,3 +1,4 @@
+import { useInteractionContext } from "../interaction-session";
 import type { ObjectTarget } from "./model-instance";
 import { memo, useCallback, useEffect, useRef, useState, type CSSProperties, type DragEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { BasicNode } from "./BasicNode";
@@ -75,14 +76,27 @@ const hasGeometryChanged = (previous: CanvasNode, next: CanvasNode) => (
 );
 
 const CanvasNodeView = memo(function CanvasNodeView({ editable, modelInteractionEnabled, node, onModelSceneChange, onModelSceneNodeSelect, onModelObjectSelect, sceneTargets, sceneAppearances, projectId, renderZIndex, runtimeAppearanceOverrides, selected, resizeEnabled, selectedModelSceneNodePath, onPointerDown, onResizePointerDown }: CanvasNodeViewProps) {
+  const interaction = useInteractionContext();
+  const hidden = !editable && interaction?.hiddenNodes.has(node.id);
   return (
     <div
       aria-label={`${node.type} 组件`}
       className={`canvas-node${isShapeNodeType(node.type) ? " is-shape" : ""}${isDecorationNodeType(node.type) ? " is-decoration" : ""}${isPanelFrameNodeType(node.type) ? " is-panel-frame" : ""}${isDashboardNodeType(node.type) ? " is-dashboard" : ""}${isBasicNodeType(node.type) ? " is-basic" : ""}${isModel3DNodeType(node.type) ? " is-model-3d" : ""}${selected ? " is-selected" : ""}${editable ? " is-editable" : ""}`}
       data-node-id={node.id}
+      hidden={hidden}
+      onClick={!editable && !isModel3DNodeType(node.type) && !["switch", "radio-group", "checkbox-group", "select"].includes(node.type) ? (event) => {
+        if ((event.target as HTMLElement).closest("button:disabled,[aria-disabled=true],.is-disabled")) return;
+        interaction?.emit({ type: "node.click", sourceId: node.id });
+      } : undefined}
+      onChange={!editable ? (event) => {
+        const input = event.target;
+        if (!(input instanceof HTMLInputElement) && !(input instanceof HTMLSelectElement)) return;
+        const value = node.type === "switch" && input instanceof HTMLInputElement ? input.checked : input.value;
+        interaction?.emit({ type: "node.change", sourceId: node.id, value, ...(input instanceof HTMLInputElement && input.type === "checkbox" ? { status: input.checked ? "checked" : "unchecked" } : {}) });
+      } : undefined}
       onPointerDown={editable ? (event) => onPointerDown(event, node) : undefined}
       role="group"
-      style={{ height: node.height, transform: `translate3d(${node.x}px, ${node.y}px, 0)`, width: node.width, zIndex: renderZIndex }}
+      style={{ display: hidden ? "none" : undefined, height: node.height, transform: `translate3d(${node.x}px, ${node.y}px, 0)`, width: node.width, zIndex: renderZIndex }}
     >
       {node.dataBindingRefs.length > 0
         ? <BoundNode node={node} interactive={modelInteractionEnabled} />

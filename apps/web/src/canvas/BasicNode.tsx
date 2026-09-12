@@ -195,7 +195,7 @@ function ButtonNode({ editable, node, props }: { editable: boolean; node: Canvas
       {props.text}
     </span>
   );
-  if (!props.href || props.disabled) return content;
+  if (!props.href || props.disabled) return <button className="basic-button-link" type="button" disabled={editable || props.disabled} style={{ padding: 0, border: 0, background: "transparent", width: "100%", height: "100%" }}>{content}</button>;
   return (
     <a
       className="basic-button-link"

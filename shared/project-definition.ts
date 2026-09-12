@@ -1,14 +1,15 @@
+import { emptyInteractions, validateInteractions, validateInteractionReferences, type InteractionDefinition } from "./interactions";
 import { validateScenes, type SceneDefinition } from "./scene-definition";
 import { AppError } from "./errors";
 import { DEFAULT_THEME, parseCanvasDocument, validateNode, validateCanvasTheme, requireIdentifier, type CanvasDocument, type CanvasNode, type CanvasTheme } from "./canvas-schema";
 import { validateComponentBindings, validateLocalComponentReferences, type ComponentBinding } from "./component-bindings";
 
-export const PROJECT_SCHEMA_VERSION = 3;
+export const PROJECT_SCHEMA_VERSION = 4;
 export type ProjectPage = { id: string; name: string; width: number; height: number; theme: CanvasTheme; nodes: CanvasNode[] };
 export type PageMetadata = Omit<ProjectPage, "nodes">;
 export type ProjectDefinition = {
   kind: "newpower.project";
-  schemaVersion: 3;
+  schemaVersion: 4;
   projectId: string;
   revision: number;
   updatedAt: string | null;
@@ -16,10 +17,12 @@ export type ProjectDefinition = {
   pages: ProjectPage[];
   dataBindings: ComponentBinding[];
   scenes: SceneDefinition[];
+  interactions: InteractionDefinition;
 };
-export type ProjectContent = Pick<ProjectDefinition, "entryPageId" | "pages" | "dataBindings" | "scenes">;
+export type ProjectContent = Pick<ProjectDefinition, "entryPageId" | "pages" | "dataBindings" | "scenes" | "interactions">;
 export type ProjectPatch = {
   expectedRevision: number;
+  interactions?: InteractionDefinition;
   upsertPages: PageMetadata[];
   deletePageIds: string[];
   upsertNodes: Array<CanvasNode & { pageId: string }>;
@@ -38,7 +41,7 @@ export const pageName = (value: unknown): string => {
 };
 
 export function emptyProjectDefinition(projectId: string): ProjectDefinition {
-  return { kind: "newpower.project", schemaVersion: 3, projectId, revision: 0, updatedAt: null, entryPageId: "main", pages: [{ id: "main", name: "首页", width: 1920, height: 1080, theme: { ...DEFAULT_THEME }, nodes: [] }], dataBindings: [], scenes: [] };
+  return { kind: "newpower.project", schemaVersion: 4, interactions: emptyInteractions(), projectId, revision: 0, updatedAt: null, entryPageId: "main", pages: [{ id: "main", name: "首页", width: 1920, height: 1080, theme: { ...DEFAULT_THEME }, nodes: [] }], dataBindings: [], scenes: [] };
 }
 
 export function parseProjectDefinition(value: unknown): ProjectDefinition {
@@ -49,6 +52,7 @@ export function parseProjectDefinition(value: unknown): ProjectDefinition {
     return parseProjectDefinition({ kind: "newpower.project", schemaVersion: 3, projectId: legacy.projectId, revision: legacy.revision, updatedAt: legacy.updatedAt, entryPageId: "main", pages: [{ id: "main", name: "首页", width: legacy.width, height: legacy.height, theme: legacy.theme, nodes: legacy.nodes }], dataBindings: legacy.dataBindings ?? [], scenes: [] });
   }
   if (input.kind === "newpower.project" && input.schemaVersion === 2) return parseProjectDefinition({ ...input, schemaVersion: 3, scenes: [] });
+  if (input.kind === "newpower.project" && input.schemaVersion === 3) return parseProjectDefinition({ ...input, schemaVersion: 4, interactions: emptyInteractions() });
   if (input.kind !== "newpower.project" || input.schemaVersion !== PROJECT_SCHEMA_VERSION) throw new AppError(400, "unsupported_project_schema", "不支持的项目定义类型或版本。");
   const projectId = requireIdentifier(input.projectId, "project.projectId");
   if (!Number.isSafeInteger(input.revision) || Number(input.revision) < 0) invalid("项目 revision 必须是非负整数。");
@@ -77,7 +81,9 @@ export function parseProjectDefinition(value: unknown): ProjectDefinition {
     groupPages.set(node.groupId, page.id);
   }
   validateLocalComponentReferences(nodes, dataBindings);
-  return { kind: "newpower.project", schemaVersion: 3, projectId, revision: Number(input.revision), updatedAt: input.updatedAt as string | null, entryPageId, pages, dataBindings, scenes };
+  const interactions = validateInteractions(input.interactions);
+  validateInteractionReferences(interactions, pages);
+  return { kind: "newpower.project", schemaVersion: 4, interactions, projectId, revision: Number(input.revision), updatedAt: input.updatedAt as string | null, entryPageId, pages, dataBindings, scenes };
 }
 
 export function projectPageView(project: ProjectDefinition, id = project.entryPageId): CanvasDocument {
@@ -88,10 +94,10 @@ export function projectPageView(project: ProjectDefinition, id = project.entryPa
 }
 
 export function projectContent(project: ProjectDefinition): ProjectContent {
-  return structuredClone({ entryPageId: project.entryPageId, pages: project.pages, dataBindings: project.dataBindings, scenes: project.scenes });
+  return structuredClone({ entryPageId: project.entryPageId, pages: project.pages, dataBindings: project.dataBindings, scenes: project.scenes, interactions: project.interactions });
 }
 export function projectContentKey(project: ProjectContent): string {
-  return JSON.stringify({ entryPageId: project.entryPageId,
+  return JSON.stringify({ entryPageId: project.entryPageId, interactions: project.interactions,
     pages: project.pages.map((page) => ({ ...page, nodes: [...page.nodes].sort((a, b) => a.id.localeCompare(b.id)) })),
     dataBindings: [...project.dataBindings].sort((a, b) => a.id.localeCompare(b.id)),
     scenes: [...project.scenes].sort((a, b) => a.id.localeCompare(b.id)).map((scene) => ({ ...scene, assetBindings: [...scene.assetBindings].sort((a, b) => a.id.localeCompare(b.id)) })),
@@ -106,6 +112,7 @@ export function projectDefinitionPatch(current: ProjectDefinition, saved: Projec
   const metadata = ({ nodes: _nodes, ...page }: ProjectPage): PageMetadata => page;
   return {
     expectedRevision: current.revision,
+    ...(JSON.stringify(current.interactions) === JSON.stringify(saved.interactions) ? {} : { interactions: current.interactions }),
     upsertScenes: current.scenes.filter((scene) => JSON.stringify(oldScenes.get(scene.id)) !== JSON.stringify(scene)),
     deleteSceneIds: saved.scenes.filter((scene) => !current.scenes.some((item) => item.id === scene.id)).map((scene) => scene.id),
     upsertPages: current.pages.filter((page) => !oldPages.has(page.id) || JSON.stringify(metadata(page)) !== JSON.stringify(metadata(oldPages.get(page.id)!))).map(metadata),
@@ -119,7 +126,7 @@ export function projectDefinitionPatch(current: ProjectDefinition, saved: Projec
 export function validateProjectPatch(value: unknown): ProjectPatch {
   if (!value || typeof value !== "object" || Array.isArray(value)) invalid("项目修改必须是对象。");
   const input = value as Record<string, unknown>;
-  const fields = ["expectedRevision", "upsertPages", "deletePageIds", "upsertNodes", "deleteNodeIds", "pageOrder", "entryPageId", "dataBindings", "upsertScenes", "deleteSceneIds"];
+  const fields = ["interactions", "expectedRevision", "upsertPages", "deletePageIds", "upsertNodes", "deleteNodeIds", "pageOrder", "entryPageId", "dataBindings", "upsertScenes", "deleteSceneIds"];
   if (Object.keys(input).some((field) => !fields.includes(field))) invalid("项目修改包含未知字段。");
   if (!Number.isSafeInteger(input.expectedRevision) || Number(input.expectedRevision) < 0) invalid("expectedRevision 必须是非负整数。");
   for (const field of ["upsertPages", "deletePageIds", "upsertNodes", "deleteNodeIds"]) if (!Array.isArray(input[field])) invalid(`${field} 必须是数组。`);
@@ -151,7 +158,7 @@ export function validateProjectPatch(value: unknown): ProjectPatch {
   const upsertScenes = input.upsertScenes === undefined ? undefined : validateScenes(input.upsertScenes);
   const deleteSceneIds = input.deleteSceneIds === undefined ? undefined : ids(input.deleteSceneIds, "deleteSceneIds");
   if (deleteSceneIds?.some((id) => upsertScenes?.some((scene) => scene.id === id))) invalid("同一场景不能同时更新和删除。");
-  return { upsertScenes, deleteSceneIds, expectedRevision: Number(input.expectedRevision), upsertPages, deletePageIds, upsertNodes, deleteNodeIds,
+  return { interactions: input.interactions === undefined ? undefined : validateInteractions(input.interactions), upsertScenes, deleteSceneIds, expectedRevision: Number(input.expectedRevision), upsertPages, deletePageIds, upsertNodes, deleteNodeIds,
     pageOrder: input.pageOrder === undefined ? undefined : ids(input.pageOrder, "pageOrder"),
     entryPageId: input.entryPageId === undefined ? undefined : requireIdentifier(input.entryPageId, "entryPageId"),
     dataBindings: input.dataBindings === undefined ? undefined : validateComponentBindings(input.dataBindings),
@@ -175,5 +182,5 @@ export function applyProjectPatch(current: ProjectDefinition, patch: ProjectPatc
   const bindings = validateLocalComponentReferences(pageList.flatMap((page) => page.nodes), patch.dataBindings ?? current.dataBindings);
   const scenes = new Map(current.scenes.filter((scene) => !patch.deleteSceneIds?.includes(scene.id)).map((scene) => [scene.id, scene]));
   for (const scene of patch.upsertScenes ?? []) scenes.set(scene.id, scene);
-  return parseProjectDefinition({ ...current, scenes: [...scenes.values()], pages: pageList, entryPageId: patch.entryPageId ?? current.entryPageId, dataBindings: bindings });
+  return parseProjectDefinition({ ...current, interactions: patch.interactions ?? current.interactions, scenes: [...scenes.values()], pages: pageList, entryPageId: patch.entryPageId ?? current.entryPageId, dataBindings: bindings });
 }

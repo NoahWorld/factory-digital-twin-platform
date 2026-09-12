@@ -1,3 +1,5 @@
+import { validateInteractions, type InteractionDefinition } from "./interactions";
+import { cloneInteractionScope } from "./interaction-operations";
 import { AppError } from "./errors";
 import { applySceneOperation, type SceneOperation } from "./scene-operations";
 import { requireIdentifier } from "./canvas-schema";
@@ -6,6 +8,7 @@ import { parseProjectDefinition, projectPageView, pageName, type ProjectDefiniti
 import { validateLocalComponentReferences } from "./component-bindings";
 
 export type ProjectOperation = SceneOperation | (EditorOperation & { pageId?: string })
+  | { type: "interactions.set"; interactions: InteractionDefinition }
   | { type: "page.add"; id?: string; name: string }
   | { type: "page.rename"; pageId: string; name: string }
   | { type: "page.configure"; pageId: string; width: number; height: number }
@@ -32,13 +35,14 @@ export function applyProjectOperation(input: ProjectDefinition, value: unknown, 
     applySceneOperation(project, operation, activePageId);
   } else if (pageOperations.has(operation.type as string)) {
     const { pageId: _page, ...base } = operation;
-    const next = applyEditorOperation(projectPageView(project, pageId), validateEditorOperation(base));
+    const next = applyEditorOperation(projectPageView(project, pageId), validateEditorOperation(base), (ids) => cloneInteractionScope(project.interactions, ids, pageId));
     page.nodes = next.nodes; page.theme = next.theme;
     const definitions = new Map(project.dataBindings.map((binding) => [binding.id, binding]));
     (next.dataBindings ?? []).forEach((binding) => definitions.set(binding.id, binding));
     project.dataBindings = [...definitions.values()];
   } else {
     const fields: Record<string, string[]> = {
+      "interactions.set": ["type", "interactions"],
       "page.add": ["type", "id", "name"], "page.rename": ["type", "pageId", "name"],
       "page.configure": ["type", "pageId", "width", "height"], "page.duplicate": ["type", "pageId", "name"],
       "page.delete": ["type", "pageId"], "page.entry": ["type", "pageId"], "page.order": ["type", "pageIds"],
@@ -55,6 +59,7 @@ export function applyProjectOperation(input: ProjectDefinition, value: unknown, 
       return ids;
     };
     switch (operation.type) {
+      case "interactions.set": project.interactions = validateInteractions(operation.interactions); break;
       case "page.add": {
         const id = operation.id === undefined ? crypto.randomUUID() : requireIdentifier(operation.id, "page.id");
         if (project.pages.some((page) => page.id === id)) invalid("页面 ID 已存在。");
@@ -67,11 +72,15 @@ export function applyProjectOperation(input: ProjectDefinition, value: unknown, 
       }
       case "page.duplicate": {
         const copy = cloneCanvasEntities(page.nodes, project.dataBindings);
-        project.pages.push({ ...structuredClone(page), id: crypto.randomUUID(), name: pageName(operation.name ?? `${page.name} 副本`), nodes: copy.nodes });
+        const newPageId = crypto.randomUUID();
+        project.pages.push({ ...structuredClone(page), id: newPageId, name: pageName(operation.name ?? `${page.name} 副本`), nodes: copy.nodes });
+        cloneInteractionScope(project.interactions, copy.nodeIds, page.id, newPageId);
         project.dataBindings.push(...copy.bindings); break;
       }
       case "page.delete": {
         if (project.pages.length === 1) invalid("不能删除最后一个页面。");
+        project.interactions.rules = project.interactions.rules.filter((rule) => rule.pageId !== pageId);
+        project.interactions.states = project.interactions.states.filter((state) => state.pageId !== pageId);
         project.pages = project.pages.filter((page) => page.id !== pageId);
         if (project.entryPageId === pageId) project.entryPageId = project.pages[0].id; break;
       }
@@ -98,9 +107,9 @@ export function applyProjectOperation(input: ProjectDefinition, value: unknown, 
       }
       case "project.restore": {
         const content = operation.content as ProjectContent;
-        if (!content || typeof content !== "object" || Array.isArray(content) || Object.keys(content).some((key) => !["pages", "entryPageId", "dataBindings", "scenes"].includes(key))) invalid("草稿内容不支持。");
-        const restored = parseProjectDefinition({ ...project, pages: content.pages, entryPageId: content.entryPageId, dataBindings: content.dataBindings, scenes: content.scenes });
-        project.pages = restored.pages; project.entryPageId = restored.entryPageId; project.dataBindings = restored.dataBindings; project.scenes = restored.scenes; break;
+        if (!content || typeof content !== "object" || Array.isArray(content) || Object.keys(content).some((key) => !["pages", "entryPageId", "dataBindings", "scenes", "interactions"].includes(key))) invalid("草稿内容不支持。");
+        const restored = parseProjectDefinition({ ...project, pages: content.pages, entryPageId: content.entryPageId, dataBindings: content.dataBindings, scenes: content.scenes, interactions: content.interactions ?? { states: [], rules: [] } });
+        project.pages = restored.pages; project.entryPageId = restored.entryPageId; project.dataBindings = restored.dataBindings; project.scenes = restored.scenes; project.interactions = restored.interactions; break;
       }
       default: invalid("不支持的项目操作。");
     }

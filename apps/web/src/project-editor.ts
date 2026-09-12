@@ -6,7 +6,7 @@ import { parseProjectDefinition, projectContent, projectDefinitionPatch, type Pr
 
 export const projectDefinitionPath = (id: string) => `/api/v1/projects/${encodeURIComponent(id)}/definition`;
 type DefinitionResponse = { definition: ProjectDefinition; project: { name: string }; editable: boolean };
-type Draft = { id: string; schemaVersion: 3; userId: string; projectId: string; baseRevision: number; pageId: string; content: ProjectContent; savedAt: string };
+type Draft = { id: string; schemaVersion: 4; userId: string; projectId: string; baseRevision: number; pageId: string; content: ProjectContent; savedAt: string };
 
 export function useProjectEditor(projectId: string, userId: string, editing: boolean, requestedPageId?: string) {
   const [editor, setEditor] = useState<EditorState | null>(null);
@@ -38,6 +38,7 @@ export function useProjectEditor(projectId: string, userId: string, editing: boo
     patch.deletePageIds.forEach((id) => lines.push(`删除页面「${editor.project.pages.find((page) => page.id === id)?.name ?? id}」`));
     if (patch.upsertNodes.length || patch.deleteNodeIds.length) lines.push(`新增或修改 ${patch.upsertNodes.length} 个组件，删除 ${patch.deleteNodeIds.length} 个组件`);
     if (JSON.stringify(editor.project.dataBindings) !== JSON.stringify(pendingDraft.content.dataBindings)) lines.push(`绑定定义将变为 ${pendingDraft.content.dataBindings.length} 条`);
+    if (JSON.stringify(editor.project.interactions) !== JSON.stringify(pendingDraft.content.interactions)) lines.push(`交互配置将变为 ${pendingDraft.content.interactions.rules.length} 条规则、${pendingDraft.content.interactions.states.length} 个状态`);
     if (editor.project.entryPageId !== pendingDraft.content.entryPageId) lines.push("入口页面改变");
     if (JSON.stringify(editor.project.pages.map((page) => page.id)) !== JSON.stringify(pendingDraft.content.pages.map((page) => page.id))) lines.push("页面顺序改变");
     return lines.length ? lines : ["内容与当前编辑器相同"];
@@ -48,7 +49,7 @@ export function useProjectEditor(projectId: string, userId: string, editing: boo
     if (!editing || !canEdit || !draftWritable.current) return false;
     try {
       if (isEditorDirty(next)) {
-        const draft: Draft = { id: crypto.randomUUID(), schemaVersion: 3, userId, projectId, baseRevision: next.project.revision, pageId: next.pageId, content: projectContent(next.project), savedAt: new Date().toISOString() };
+        const draft: Draft = { id: crypto.randomUUID(), schemaVersion: 4, userId, projectId, baseRevision: next.project.revision, pageId: next.pageId, content: projectContent(next.project), savedAt: new Date().toISOString() };
         localStorage.setItem(draftKey, JSON.stringify(draft));
         setDraftNotice("已在本机暂存，仍需保存画布。");
       } else { localStorage.removeItem(draftKey); setDraftNotice(null); }
@@ -69,9 +70,9 @@ export function useProjectEditor(projectId: string, userId: string, editing: boo
         try {
           const validateDraft = (value: unknown): Draft => {
             const draft = value as Draft;
-            if (!draft || ![2, 3].includes(draft.schemaVersion) || draft.userId !== userId || draft.projectId !== projectId || !Number.isSafeInteger(draft.baseRevision) || draft.baseRevision < 0) throw new Error("草稿身份或版本不匹配");
-            const candidate = parseProjectDefinition({ ...result.definition, entryPageId: draft.content?.entryPageId, pages: draft.content?.pages, dataBindings: draft.content?.dataBindings, scenes: draft.content?.scenes ?? [] });
-            return { ...draft, id: typeof draft.id === "string" ? draft.id : crypto.randomUUID(), schemaVersion: 3, content: projectContent(candidate) };
+            if (!draft || ![2, 3, 4].includes(draft.schemaVersion) || draft.userId !== userId || draft.projectId !== projectId || !Number.isSafeInteger(draft.baseRevision) || draft.baseRevision < 0) throw new Error("草稿身份或版本不匹配");
+            const candidate = parseProjectDefinition({ ...result.definition, entryPageId: draft.content?.entryPageId, pages: draft.content?.pages, dataBindings: draft.content?.dataBindings, scenes: draft.content?.scenes ?? [], interactions: draft.content?.interactions ?? { states: [], rules: [] } });
+            return { ...draft, id: typeof draft.id === "string" ? draft.id : crypto.randomUUID(), schemaVersion: 4, content: projectContent(candidate) };
           };
           const storedConflicts: unknown = JSON.parse(localStorage.getItem(conflictKey) ?? "[]");
           if (!Array.isArray(storedConflicts)) throw new Error("冲突草稿记录无效");

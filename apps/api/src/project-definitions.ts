@@ -1,3 +1,4 @@
+import { interactionAssetIds, ruleValues } from "../../../shared/interactions";
 import { AppError, type AppEnv, type DatabaseResult } from "./auth";
 import { DEFAULT_THEME, validateNode } from "../../../shared/canvas-schema";
 import { applyProjectPatch, emptyProjectDefinition, parseProjectDefinition, type ProjectDefinition, type ProjectPatch } from "../../../shared/project-definition";
@@ -5,12 +6,12 @@ import { listComponentBindings, validateComponentReferences } from "./component-
 import { validateCanvasResources } from "./canvas-resources";
 import { inspectStoredModelAsset } from "./model-assets";
 
-type RootRow = { project_id: string; revision: number; updated_at: string; entry_page_id: string; schema_version: number };
+type RootRow = { interactions_json: string; project_id: string; revision: number; updated_at: string; entry_page_id: string; schema_version: number };
 type PageRow = { id: string; name: string; position: number; width: number; height: number; theme_json: string };
 type NodeRow = { id: string; page_id: string; group_id: string | null; scene_id: string | null; node_type: string; x: number; y: number; width: number; height: number; z_index: number; props_json: string; resource_refs_json: string; data_binding_refs_json: string };
 
 export async function getProjectDefinition(env: AppEnv, projectId: string): Promise<ProjectDefinition> {
-  const root = await env.DB.prepare("SELECT project_id, revision, updated_at, entry_page_id, schema_version FROM project_canvases WHERE project_id = ?").bind(projectId).first<RootRow>();
+  const root = await env.DB.prepare("SELECT project_id, revision, updated_at, entry_page_id, schema_version, interactions_json FROM project_canvases WHERE project_id = ?").bind(projectId).first<RootRow>();
   if (!root) return emptyProjectDefinition(projectId);
   const [pages, nodes, dataBindings, scenes, modelBindings] = await Promise.all([
     env.DB.prepare("SELECT id,name,position,width,height,theme_json FROM project_pages WHERE project_id = ? ORDER BY position,id").bind(projectId).all<PageRow>(),
@@ -21,7 +22,7 @@ export async function getProjectDefinition(env: AppEnv, projectId: string): Prom
   ]);
   try {
     if (nodes.results.some((node) => !pages.results.some((page) => page.id === node.page_id))) throw new Error("存在不属于任何页面的节点。");
-    return parseProjectDefinition({ kind: "newpower.project", schemaVersion: root.schema_version, projectId,
+    return parseProjectDefinition({ kind: "newpower.project", schemaVersion: root.schema_version, projectId, interactions: JSON.parse(root.interactions_json),
       scenes: scenes.results.map((scene) => ({ ...JSON.parse(scene.config_json), assetBindings: modelBindings.results.filter((binding) => binding.scene_id === scene.id).map((binding) => ({ id: binding.id, assetId: binding.asset_key, instanceId: binding.instance_id, objectId: binding.object_id })) })),
       revision: root.revision, updatedAt: root.updated_at, entryPageId: root.entry_page_id, dataBindings,
       pages: pages.results.map((page) => ({ id: page.id, name: page.name, width: page.width, height: page.height,
@@ -54,12 +55,22 @@ export async function persistProjectPatch(env: AppEnv, projectId: string, userId
   next.dataBindings = await validateComponentReferences(env, projectId, next.pages.flatMap((page) => page.nodes), next.dataBindings);
   await validateCanvasResources(env, projectId, patch.upsertNodes.filter((node) => !node.sceneId));
   const sceneAssetRecords = await validateSceneResources(env, projectId, next);
+  for (const id of interactionAssetIds(next.interactions)) if (!sceneAssetRecords.has(id)) throw new AppError(400, "invalid_interaction_asset", `交互引用的资产 ${id} 不属于当前项目。`);
+  const metricRows = next.interactions.rules.length ? await env.DB.prepare("SELECT a.asset_key,b.metric_key FROM asset_data_bindings b JOIN assets a ON a.id=b.asset_id WHERE a.project_id=?").bind(projectId).all<{ asset_key: string; metric_key: string }>() : { results: [] };
+  const knownMetrics = new Set(metricRows.results.map((row) => JSON.stringify([row.asset_key,row.metric_key])));
+  for (const rule of next.interactions.rules) {
+    const metrics = ruleValues(rule).flatMap((value) => value.kind === "metric" ? [value] : []);
+    if (rule.trigger.type === "data.change" && rule.trigger.sourceId && rule.trigger.metricKey) metrics.push({ kind: "metric", assetId: rule.trigger.sourceId, metricKey: rule.trigger.metricKey });
+    for (const metric of metrics) {
+      if (!knownMetrics.has(JSON.stringify([metric.assetId,metric.metricKey]))) throw new AppError(400, "invalid_interaction_metric", `交互引用的指标 ${metric.assetId}/${metric.metricKey} 未配置。`);
+    }
+  }
   const now = new Date().toISOString();
   const statements = [env.DB.prepare(`INSERT OR IGNORE INTO project_canvases
     (project_id,width,height,background_color,theme_mode,theme_preset_id,theme_background_pattern,theme_font_family,
      theme_glow_intensity,theme_panel_radius,theme_surface_color,theme_text_color,theme_accent_color,theme_border_color,
      revision,updated_by_user_id,updated_at,schema_version,entry_page_id)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,?,?,3,?)`).bind(projectId,1920,1080,DEFAULT_THEME.backgroundColor,DEFAULT_THEME.mode,
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,?,?,4,?)`).bind(projectId,1920,1080,DEFAULT_THEME.backgroundColor,DEFAULT_THEME.mode,
       DEFAULT_THEME.presetId,DEFAULT_THEME.backgroundPattern,DEFAULT_THEME.fontFamily,DEFAULT_THEME.glowIntensity,
       DEFAULT_THEME.panelRadius,DEFAULT_THEME.surfaceColor,DEFAULT_THEME.textColor,DEFAULT_THEME.accentColor,
       DEFAULT_THEME.borderColor,userId,now,next.entryPageId)];
@@ -108,8 +119,8 @@ export async function persistProjectPatch(env: AppEnv, projectId: string, userId
     SELECT ?,?,? WHERE EXISTS (SELECT 1 FROM project_canvases WHERE project_id = ? AND revision = ?)`).bind(projectId,binding.id,JSON.stringify(binding),projectId,patch.expectedRevision));
   statements.push(env.DB.prepare(`UPDATE projects SET updated_at = ? WHERE id = ?
     AND EXISTS (SELECT 1 FROM project_canvases WHERE project_id = ? AND revision = ?)`).bind(now,projectId,projectId,patch.expectedRevision));
-  statements.push(env.DB.prepare(`UPDATE project_canvases SET revision=revision+1,schema_version=3,entry_page_id=?,updated_at=?,updated_by_user_id=?
-    WHERE project_id=? AND revision=?`).bind(next.entryPageId,now,userId,projectId,patch.expectedRevision));
+  statements.push(env.DB.prepare(`UPDATE project_canvases SET revision=revision+1,schema_version=4,interactions_json=?,entry_page_id=?,updated_at=?,updated_by_user_id=?
+    WHERE project_id=? AND revision=?`).bind(JSON.stringify(next.interactions),next.entryPageId,now,userId,projectId,patch.expectedRevision));
   const results = await env.DB.batch(statements);
   if (affected(results.at(-1)) !== 1) throw new AppError(409, "canvas_revision_conflict", "项目版本已变更，本次保存没有写入。");
   return getProjectDefinition(env, projectId);
