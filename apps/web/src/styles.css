@@ -788,6 +788,9 @@ input:focus {
   gap: 8px;
 }
 
+.canvas-page-edit .canvas-toolbar { grid-template-columns: minmax(180px, 1fr) auto; gap: 10px 16px; }
+.canvas-page-edit .canvas-toolbar-actions { grid-column: 1 / -1; justify-content: flex-start; flex-wrap: wrap; }
+
 .canvas-theme-button {
   gap: 7px;
 }

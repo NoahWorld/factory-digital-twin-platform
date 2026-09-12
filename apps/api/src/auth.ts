@@ -1,3 +1,5 @@
+import { AppError } from "../../../shared/errors";
+export { AppError } from "../../../shared/errors";
 export type DatabaseResult = {
   meta?: { changes?: number };
 };
@@ -77,15 +79,6 @@ export type Session = {
   maxAgeSeconds: number;
 };
 
-export class AppError extends Error {
-  constructor(
-    readonly status: number,
-    readonly code: string,
-    message: string,
-  ) {
-    super(message);
-  }
-}
 
 const encoder = new TextEncoder();
 // Cloudflare Workers Web Crypto rejects PBKDF2 iteration counts above 100,000.

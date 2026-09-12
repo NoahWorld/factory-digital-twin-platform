@@ -1,3 +1,4 @@
+import { createEditorState, executeEditorOperation, travelEditorHistory, markEditorSaved, editorPatch, editableContent, contentKey, type EditorOperation, type EditorState } from "../../../../shared/editor-operations";
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import { errorMessage, request } from "../api";
 import { ComponentInspector } from "../canvas/ComponentInspector";
@@ -49,7 +50,9 @@ const formatRuntimeTime = (value: string | undefined): string => {
 };
 
 export function CanvasPage({ initialTemplateId, mode, projectId }: CanvasPageProps) {
-  const [document, setDocument] = useState<CanvasDocument | null>(null);
+  const [editor, setEditor] = useState<EditorState | null>(null);
+  const document = editor?.document ?? null;
+  const dirty = useMemo(() => editor ? contentKey(editableContent(editor.document)) !== contentKey(editor.saved) : false, [editor]);
   const [projectName, setProjectName] = useState("");
   const [canEdit, setCanEdit] = useState(false);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
@@ -66,7 +69,6 @@ export function CanvasPage({ initialTemplateId, mode, projectId }: CanvasPagePro
   const [showTemplates, setShowTemplates] = useState(false);
   const [showThemes, setShowThemes] = useState(false);
   const [themeNotice, setThemeNotice] = useState<string | null>(null);
-  const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [projectAssets, setProjectAssets] = useState<ProjectAsset[]>([]);
   const [assetLoadError, setAssetLoadError] = useState<string | null>(null);
@@ -75,8 +77,6 @@ export function CanvasPage({ initialTemplateId, mode, projectId }: CanvasPagePro
   const [showRuntimeDetails, setShowRuntimeDetails] = useState(false);
   const [selectedRuntimeAssetId, setSelectedRuntimeAssetId] = useState<string | null>(null);
   const [runtimeSelectionMessage, setRuntimeSelectionMessage] = useState<string | null>(null);
-  const dirtyNodeIdsRef = useRef(new Set<string>());
-  const deletedNodeIdsRef = useRef(new Set<string>());
   const initialTemplateAppliedRef = useRef(false);
 
   useEffect(() => {
@@ -86,13 +86,11 @@ export function CanvasPage({ initialTemplateId, mode, projectId }: CanvasPagePro
     setSelectedNodeId(null);
     setSelectedModelSceneNodePath(null);
     setConfigurationError(null);
-    dirtyNodeIdsRef.current.clear();
-    deletedNodeIdsRef.current.clear();
-    setDirty(false);
+    setEditor(null);
     void request<CanvasResponse>(projectCanvasPath(projectId))
       .then((result) => {
         if (!active) return;
-        setDocument(result.canvas);
+        setEditor(createEditorState(result.canvas));
         setProjectName(result.project.name);
         setCanEdit(result.editable);
       })
@@ -170,12 +168,13 @@ export function CanvasPage({ initialTemplateId, mode, projectId }: CanvasPagePro
       ? `数据陈旧 ${staleDeviceCount} 台`
       : `数据失联 ${disconnectedDeviceCount} 台`;
 
-  const markNodeDirty = useCallback((nodeId: string) => {
-    dirtyNodeIdsRef.current.add(nodeId);
-    deletedNodeIdsRef.current.delete(nodeId);
-    setDirty(true);
-    setSaveError(null);
-  }, []);
+  const execute = useCallback((operation: EditorOperation) => {
+    if (!editor || !canEdit || mode !== "edit" || saving) return null;
+    try {
+      const next = executeEditorOperation(editor, operation);
+      setEditor(next); setSaveError(null); return next.document;
+    } catch (reason) { setSaveError(errorMessage(reason)); return null; }
+  }, [editor, canEdit, mode, saving]);
 
   const selectCanvasNode = useCallback((nodeId: string | null) => {
     setSelectedNodeId(nodeId);
@@ -230,22 +229,10 @@ export function CanvasPage({ initialTemplateId, mode, projectId }: CanvasPagePro
     });
   }, []);
 
-  const updateNode = useCallback((node: CanvasNode) => {
-    setDocument((current) => current ? { ...current, nodes: current.nodes.map((item) => item.id === node.id ? node : item) } : current);
-    markNodeDirty(node.id);
-  }, [markNodeDirty]);
-
+  const updateNode = useCallback((node: CanvasNode) => { execute({ type: "nodes.upsert", nodes: [node] }); }, [execute]);
   const changeBinding = useCallback((node: CanvasNode, binding: ComponentBinding | null) => {
-    setDocument((current) => {
-      if (!current) return current;
-      const nodes = current.nodes.map((item) => item.id === node.id ? { ...item, dataBindingRefs: binding ? [binding.id] : [] } : item);
-      const definitions = new Map((current.dataBindings ?? []).map((item) => [item.id, item]));
-      if (binding) definitions.set(binding.id, binding);
-      const refs = new Set(nodes.flatMap((item) => item.dataBindingRefs));
-      return { ...current, nodes, dataBindings: [...definitions.values()].filter((item) => refs.has(item.id)) };
-    });
-    markNodeDirty(node.id);
-  }, [markNodeDirty]);
+    execute({ type: "binding.set", nodeId: node.id, binding });
+  }, [execute]);
 
   const selectRuntimeAsset = useCallback((assetId: string | null) => {
     setSelectedRuntimeAssetId(assetId); setRuntimeSelectionMessage(null); setShowRuntimeDetails(false);
@@ -277,19 +264,25 @@ export function CanvasPage({ initialTemplateId, mode, projectId }: CanvasPagePro
       createCanvasNode(type, x, y, isBackgroundNodeType(type) ? 0 : maxZIndex + 1),
       document.theme,
     );
-    setDocument({ ...document, nodes: [...document.nodes, node] });
-    selectCanvasNode(node.id);
-    markNodeDirty(node.id);
-  }, [document, markNodeDirty, selectCanvasNode]);
+    if (execute({ type: "nodes.upsert", nodes: [node] })) selectCanvasNode(node.id);
+  }, [document, execute, selectCanvasNode]);
 
   const deleteSelectedNode = () => {
-    if (!document || !selectedNodeId || !document.nodes.some((node) => node.id === selectedNodeId)) return;
-    setDocument({ ...document, nodes: document.nodes.filter((node) => node.id !== selectedNodeId) });
-    dirtyNodeIdsRef.current.delete(selectedNodeId);
-    deletedNodeIdsRef.current.add(selectedNodeId);
-    selectCanvasNode(null);
-    setDirty(true);
-    setSaveError(null);
+    if (selectedNodeId && execute({ type: "nodes.delete", nodeIds: [selectedNodeId] })) selectCanvasNode(null);
+  };
+  const duplicateSelectedNode = () => {
+    if (!selectedNodeId || !document) return;
+    const previous = new Set(document.nodes.map((node) => node.id));
+    const next = execute({ type: "nodes.duplicate", nodeIds: [selectedNodeId] });
+    if (next) selectCanvasNode(next.nodes.find((node) => !previous.has(node.id))?.id ?? null);
+  };
+  const travel = (direction: "undo" | "redo") => {
+    if (!editor || !canEdit || mode !== "edit" || saving) return;
+    const next = travelEditorHistory(editor, direction);
+    const restored = next.document.nodes.find((node) => !editor.document.nodes.some((item) => item.id === node.id));
+    setEditor(next); setSaveError(null); setConfigurationError(null);
+    if (restored) selectCanvasNode(restored.id);
+    else if (!next.document.nodes.some((node) => node.id === selectedNodeId)) selectCanvasNode(null);
   };
 
   const save = async (): Promise<boolean> => {
@@ -297,25 +290,15 @@ export function CanvasPage({ initialTemplateId, mode, projectId }: CanvasPagePro
       setSaveError(`组件配置无效：${configurationError}`);
       return false;
     }
-    if (!document || !dirty || saving || !canEdit) return !dirty;
+    if (!editor || !document || !dirty || saving || !canEdit) return !dirty;
     setSaving(true);
     setSaveError(null);
-    const dirtyNodeIds = new Set(dirtyNodeIdsRef.current);
     try {
       const result = await request<CanvasPatchResponse>(projectCanvasPath(projectId), {
         method: "PATCH",
-        body: JSON.stringify({
-          expectedRevision: document.revision,
-          theme: document.theme,
-          dataBindings: document.dataBindings ?? [],
-          upsertNodes: document.nodes.filter((node) => dirtyNodeIds.has(node.id)),
-          deleteNodeIds: [...deletedNodeIdsRef.current],
-        }),
+        body: JSON.stringify(editorPatch(editor)),
       });
-      setDocument(result.canvas);
-      dirtyNodeIdsRef.current.clear();
-      deletedNodeIdsRef.current.clear();
-      setDirty(false);
+      setEditor((current) => current ? markEditorSaved(current, result.canvas) : createEditorState(result.canvas));
       return true;
     } catch (reason) {
       setSaveError(errorMessage(reason));
@@ -351,32 +334,25 @@ export function CanvasPage({ initialTemplateId, mode, projectId }: CanvasPagePro
       return;
     }
 
-    dirtyNodeIdsRef.current.clear();
-    deletedNodeIdsRef.current.clear();
-    nextNodes.forEach((node) => dirtyNodeIdsRef.current.add(node.id));
-    document.nodes.forEach((node) => deletedNodeIdsRef.current.add(node.id));
-    setDocument({ ...document, nodes: nextNodes, theme: template.canvasTheme });
+    if (!execute({ type: "canvas.replace", nodes: nextNodes, theme: template.canvasTheme })) return;
     selectCanvasNode(null);
     setConfigurationError(null);
     setSaveError(null);
     setThemeNotice(`已应用“${template.name}”配色；模板中的 3D 组件沿用原有 3D 配置。`);
-    setDirty(true);
     setShowTemplates(false);
-  }, [canEdit, document, saving, selectCanvasNode]);
+  }, [canEdit, document, execute, saving, selectCanvasNode]);
 
   const applyTheme = useCallback((theme: CanvasTheme) => {
     if (!document || !canEdit || saving) return;
     const nextNodes = applyCanvasThemeToNodes(document.nodes, theme);
     const themedNodes = nextNodes.filter((node) => !isModel3DNodeType(node.type));
-    themedNodes.forEach((node) => dirtyNodeIdsRef.current.add(node.id));
-    setDocument({ ...document, nodes: nextNodes, theme });
+    if (!execute({ type: "canvas.replace", nodes: nextNodes, theme })) return;
     setSaveError(null);
     setThemeNotice(
       `已切换为${canvasThemePresetLabels[theme.presetId]}主题，联动更新 ${themedNodes.length} 个非 3D 组件；3D 组件保持不变。`,
     );
-    setDirty(true);
     setShowThemes(false);
-  }, [canEdit, document, saving]);
+  }, [canEdit, document, execute, saving]);
 
   useEffect(() => {
     if (!initialTemplateId || loading || !document || initialTemplateAppliedRef.current) return;
@@ -393,6 +369,20 @@ export function CanvasPage({ initialTemplateId, mode, projectId }: CanvasPagePro
     window.history.replaceState(null, "", canvasRoutePath(projectId, "canvas"));
   }, [applyTemplate, canEdit, document, initialTemplateId, loading, mode, projectId]);
 
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      const target = event.target instanceof HTMLElement ? event.target : null;
+      if (!canEdit || mode !== "edit" || saving || target?.closest("input, textarea, select, [contenteditable=true]")) return;
+      if (!(event.metaKey || event.ctrlKey)) return;
+      const key = event.key.toLowerCase();
+      if (key === "z") { event.preventDefault(); travel(event.shiftKey ? "redo" : "undo"); }
+      else if (key === "y") { event.preventDefault(); travel("redo"); }
+      else if (key === "d") { event.preventDefault(); duplicateSelectedNode(); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [editor, canEdit, mode, saving, selectedNodeId]);
+
   if (loading) return <main className="canvas-page-state"><p className="eyebrow">Canvas</p><h1>正在加载画布…</h1></main>;
   if (loadError || !document) {
     return <main className="canvas-page-state error-state"><p className="eyebrow">Canvas error</p><h1>画布加载失败</h1><p>{loadError ?? "接口没有返回画布文档。"}</p><a className="secondary-button" href="#/projects">返回项目列表</a></main>;
@@ -408,6 +398,9 @@ export function CanvasPage({ initialTemplateId, mode, projectId }: CanvasPagePro
         <div className="canvas-document-meta"><span>{document.width} × {document.height}</span><span>{canvasThemePresetLabels[document.theme.presetId]}</span><span>版本 {document.revision}</span>{mode === "edit" ? <span className={dirty ? "is-dirty" : "is-saved"}>{dirty ? "有未保存更改" : "已保存"}</span> : null}</div>
         <div className="canvas-toolbar-actions">
           {mode === "edit" ? <>
+            <button className="secondary-button compact-button" disabled={!canEdit || saving || !editor?.past.length} onClick={() => travel("undo")} title="撤销（⌘/Ctrl+Z）" type="button">撤销</button>
+            <button className="secondary-button compact-button" disabled={!canEdit || saving || !editor?.future.length} onClick={() => travel("redo")} title="重做（⌘/Ctrl+Shift+Z）" type="button">重做</button>
+            <button className="secondary-button compact-button" disabled={!selectedNodeId || !canEdit || saving} onClick={duplicateSelectedNode} title="复制组件（⌘/Ctrl+D）" type="button">复制组件</button>
             <button className="secondary-button compact-button" disabled={!canEdit || saving} onClick={() => setShowTemplates(true)} type="button">模板</button>
             <button className="secondary-button compact-button canvas-theme-button" disabled={!canEdit || saving} onClick={() => setShowThemes(true)} type="button">
               <span aria-hidden="true" style={{ backgroundColor: document.theme.accentColor }} />

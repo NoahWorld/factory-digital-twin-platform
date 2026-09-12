@@ -1,3 +1,4 @@
+import { AppError } from "./errors";
 /** Serializable configuration only. Runtime snapshots never enter this contract. */
 export type MetricType = "number" | "string" | "boolean" | "timestamp";
 export type ComponentBinding = {
@@ -94,4 +95,33 @@ export function validateBindingCatalog(binding: ComponentBinding, catalog: Metri
     if (units.size > 1) return "柱状图的同一指标必须使用相同单位。";
   }
   return null;
+}
+
+/** Lookup-free graph checks shared by loading, editing and persistence. */
+export function validateLocalComponentReferences(
+  nodes: Array<{ id: string; type: string; dataBindingRefs: string[] }>, definitions: ComponentBinding[],
+): ComponentBinding[] {
+  const bindings = new Map(definitions.map((binding) => [binding.id, binding]));
+  const referenced = new Set<string>();
+  for (const node of nodes) {
+    if (node.dataBindingRefs.length > 1) throw new AppError(400, "invalid_component_binding_reference", `组件 ${node.id} 只支持一个数据绑定。`);
+    for (const ref of node.dataBindingRefs) {
+      const binding = bindings.get(ref);
+      if (!binding) throw new AppError(400, "invalid_component_binding_reference", `组件 ${node.id} 的绑定 ${ref} 不属于本项目或已删除。`);
+      if (binding.target !== bindingTargetForNode(node.type)) throw new AppError(400, "invalid_component_binding_target", `组件 ${node.id} (${node.type}) 不支持绑定目标 ${binding.target}。`);
+      referenced.add(ref);
+    }
+  }
+  return definitions.filter((binding) => referenced.has(binding.id));
+}
+
+export function validateComponentBindings(value: unknown): ComponentBinding[] {
+  if (!Array.isArray(value) || value.length > 100) throw new AppError(400, "invalid_component_bindings", "dataBindings 必须是最多 100 项的数组。");
+  try {
+    const bindings = value.map(validateComponentBinding);
+    if (new Set(bindings.map((binding) => binding.id)).size !== bindings.length) throw new Error("dataBindings 中的 ID 不能重复。");
+    return bindings;
+  } catch (error) {
+    throw new AppError(400, "invalid_component_binding", error instanceof Error ? error.message : String(error));
+  }
 }

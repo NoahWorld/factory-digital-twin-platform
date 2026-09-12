@@ -1,5 +1,7 @@
 # NewPower 数字孪生引擎：Codex 研发接手与持续开发指导
 
+> 当前持续研发目标见 `NewPower_Codex_Product_Goal.md`；该文件已替代本文“首轮止于 M0 + M1”的终点。本文其余有效工程约束与历史基线继续保留。
+
 版本：2026-09-12 · 本地研发与提交版。本文替代此前同名手册，是本次交给 Codex 的完整入口；无需同时提供之前的聊天记录。
 
 仓库：[NoahWorld/factory-digital-twin-platform](https://github.com/NoahWorld/factory-digital-twin-platform)。开发分支：`newpower`，全部小写、没有空格。本文核对的远端提交：`bdf3905997f1a9301b97445a2917622b3430dc6b`。实际开工以用户电脑上的源码、分支和未提交工作为准，记录当时起点，不强行退回这个历史提交。
