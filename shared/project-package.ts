@@ -1,3 +1,4 @@
+import { sourceEnvironmentRef } from "./source-environment-ref";
 import { parseRuntimeProjectSnapshot,type RuntimeProjectSnapshot,type PublicationVersion } from "./runtime-project";
 
 export const MAX_PACKAGE_BYTES = 512*1024*1024;
@@ -19,14 +20,14 @@ export const packageResourcePath = (kind:"model" | "image",id:string) => `resour
 /** The portable copy changes only environment references; source SHA records the
  * originating immutable version, not a claim that the sanitized copy is identical. */
 export function createPackageManifest(original:RuntimeProjectSnapshot,version:PublicationVersion):ProjectPackageManifest {
-  const snapshot = structuredClone(original),used = new Set(snapshot.dataSources.flatMap((source) => source.config.endpointRef ? [source.config.endpointRef] : []));
-  for (const source of snapshot.dataSources) if (!source.config.endpointRef) {
+  const snapshot = structuredClone(original),used = new Set(snapshot.dataSources.flatMap((source) => sourceEnvironmentRef(source) ? [sourceEnvironmentRef(source)!] : []));
+  for (const source of snapshot.dataSources) if (!sourceEnvironmentRef(source)) {
     let endpointRef = `source-${source.id}`,suffix = 1;
     while (used.has(endpointRef)) endpointRef = `source-${source.id}-${suffix++}`;
     used.add(endpointRef); source.config = { ...source.config,url:"",endpointRef,credentialRef:null };
   }
   const endpoints = new Map<string,string[]>();
-  for (const source of snapshot.dataSources) (endpoints.get(source.config.endpointRef!) ?? (endpoints.set(source.config.endpointRef!,[]),endpoints.get(source.config.endpointRef!)!)).push(source.id);
+  for (const source of snapshot.dataSources) (endpoints.get(sourceEnvironmentRef(source)!) ?? (endpoints.set(sourceEnvironmentRef(source)!,[]),endpoints.get(sourceEnvironmentRef(source)!)!)).push(source.id);
   return parseProjectPackageManifest({ kind:"newpower.project-package",packageVersion:1,
     source:{ projectId:original.project.id,versionId:version.id,versionNumber:version.versionNumber,versionLabel:version.label,snapshotSha256:version.sha256 },snapshot,
     requiredEndpoints:[...endpoints].map(([endpointRef,sourceIds]) => ({ endpointRef,sourceIds })),
@@ -39,7 +40,7 @@ export function parseProjectPackageManifest(input:unknown):ProjectPackageManifes
   const source = input.source;
   if (!known(source,["projectId","versionId","versionNumber","versionLabel","snapshotSha256"]) || !identifier(source.projectId) || !identifier(source.versionId) || !Number.isSafeInteger(source.versionNumber) || (source.versionNumber as number) < 1 || typeof source.versionLabel !== "string" || source.versionLabel.length > 200 || typeof source.snapshotSha256 !== "string" || !/^[a-f0-9]{64}$/.test(source.snapshotSha256)) return fail("来源版本信息不正确。");
   const snapshot = parseRuntimeProjectSnapshot(input.snapshot);
-  if (snapshot.project.id !== source.projectId || snapshot.dataSources.some((source) => source.config.url !== "" || !source.config.endpointRef)) return fail("项目身份不符或包含未外部化的连接地址。");
+  if (snapshot.project.id !== source.projectId || snapshot.dataSources.some((source) => source.config.url !== "" || !sourceEnvironmentRef(source))) return fail("项目身份不符或包含未外部化的连接地址。");
   if (!Array.isArray(input.files) || input.files.length+1 > MAX_PACKAGE_ENTRIES) return fail("文件条目过多。");
   const resources = new Map<string,{ byteSize:number;sha256:string }>([...snapshot.resources.models.map((resource) => [packageResourcePath("model",resource.id),resource] as const),...snapshot.resources.images.map((resource) => [packageResourcePath("image",resource.id),resource] as const)]);
   const files = input.files.map((file):PackageResource => {
@@ -53,11 +54,11 @@ export function parseProjectPackageManifest(input:unknown):ProjectPackageManifes
   if (!Array.isArray(input.requiredEndpoints)) return fail("缺少环境端点清单。");
   const requiredEndpoints = input.requiredEndpoints.map((entry):{ endpointRef:string;sourceIds:string[] } => {
     if (!object(entry) || !known(entry,["endpointRef","sourceIds"]) || typeof entry.endpointRef !== "string" || !Array.isArray(entry.sourceIds) || !entry.sourceIds.every(identifier)) return fail("端点清单格式不正确。");
-    const expected = snapshot.dataSources.filter((source) => source.config.endpointRef === entry.endpointRef).map((source) => source.id).sort();
+    const expected = snapshot.dataSources.filter((source) => sourceEnvironmentRef(source) === entry.endpointRef).map((source) => source.id).sort();
     if (!expected.length || JSON.stringify([...entry.sourceIds].sort()) !== JSON.stringify(expected)) return fail("端点清单与数据源引用不一致。");
     return { endpointRef:entry.endpointRef,sourceIds:[...entry.sourceIds] };
   });
-  const expectedRefs = new Set(snapshot.dataSources.map((source) => source.config.endpointRef));
+  const expectedRefs = new Set(snapshot.dataSources.map(sourceEnvironmentRef));
   if (new Set(requiredEndpoints.map((entry) => entry.endpointRef)).size !== requiredEndpoints.length || requiredEndpoints.length !== expectedRefs.size) return fail("端点引用缺失或重复。");
   return { kind:"newpower.project-package",packageVersion:1,source:source as ProjectPackageManifest["source"],snapshot,files,requiredEndpoints };
 }

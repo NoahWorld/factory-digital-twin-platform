@@ -11,7 +11,7 @@ export type AssetDataBinding = {
   assetRecordId: string;
   dataSourceId: string;
   dataSourceName: string;
-  dataSourceType: "rest_polling" | "websocket" | "mqtt";
+  dataSourceType: "rest_polling" | "websocket" | "mqtt" | "sqlite_query";
   metricKey: string;
   sourcePath: string;
   valueType: MetricValueType;
@@ -37,7 +37,7 @@ type AssetDataBindingRow = {
   asset_id: string;
   data_source_id: string;
   data_source_name: string;
-  data_source_type: "rest_polling" | "websocket" | "mqtt";
+  data_source_type: "rest_polling" | "websocket" | "mqtt" | "sqlite_query";
   metric_key: string;
   source_path: string;
   value_type: string;

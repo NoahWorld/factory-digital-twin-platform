@@ -44,7 +44,7 @@ export function PublicationPanel({ projectId,editable,onClose }:{ projectId:stri
           {draft ? <><p>{draft.pages} 页 · {draft.scenes} 个场景 · {draft.assets} 台设备 · {draft.models} 个模型 · {draft.images} 张图片</p><small>配置修订 {draft.runtimeRevision} · 画布版本 {draft.canvasRevision}</small><label>版本说明<input aria-label="版本说明" value={label} maxLength={200} disabled={busy} onChange={(event) => setLabel(event.target.value)} /></label><button className="primary-button" disabled={busy} onClick={create}>冻结为新版本</button></> : null}
         </section> : null}
         {active ? <a className="secondary-button" href={`#/projects/${encodeURIComponent(projectId)}/run`}>打开当前发布版本</a> : null}
-        <p>项目包会将直接连接地址转为环境端点引用。数据源实际地址与认证值不写入包，导入后需配置这些端点。</p>
+        <p>项目包保留网络端点或只读查询的环境引用。实际地址、SQL、文件路径与认证值不写入包，导入后需在运行服务器配置。</p>
         {editable ? <button className="secondary-button" disabled={busy} onClick={() => setImporting(true)}>从项目包安装版本</button> : null}
         <section><h3>已冻结版本</h3>{loading ? <p>正在加载…</p> : !versions.length ? <p>还没有发布版本。</p> : null}
           {versions.map((version) => <article className="publication-version" key={version.id} data-version-id={version.id}>

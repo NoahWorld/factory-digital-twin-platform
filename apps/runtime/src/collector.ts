@@ -303,6 +303,7 @@ export class RuntimeCollector implements CentralRuntime {
 }
 
 function publicRuntimeError(code: string): string {
+  if (code.startsWith("sqlite_query_")) return "只读查询失败，请核对私有查询、数据类型和运行限制。";
   if (code.startsWith("metric_transform_")) return "指标转换失败，请检查源字段类型与转换步骤。";
   const messages: Record<string,string> = { data_source_stale:"数据已陈旧，旧值不代表当前状态。",metric_type_mismatch:"指标类型与配置不符。",source_path_not_found:"指标映射的字段缺失。",data_source_http_error:"上游返回错误状态。",data_source_timeout:"上游响应超时。",asset_data_binding_required:"设备尚未配置数据绑定。",runtime_polling_disabled:"服务器尚未启用数据采集。" };
   return messages[code] ?? "数据采集失败，请查看连接配置及服务器诊断。";

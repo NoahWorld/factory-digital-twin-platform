@@ -1,6 +1,6 @@
-import type { MqttConfig } from "../../api/src/data-sources";
+import type { MqttConfig,SqliteQueryConfig } from "../../api/src/data-sources";
 import type { TimestampFormat } from "../../../shared/metric-transforms";
-export type DataSourceType = "rest_polling" | "websocket" | "mqtt";
+export type DataSourceType = "rest_polling" | "websocket" | "mqtt" | "sqlite_query";
 
 export type RestPollingConfig = {
   timestampFormat?:TimestampFormat;
@@ -43,7 +43,8 @@ export type ProjectDataSource =
       sourceType: "websocket";
       config: WebSocketConfig;
     }
-  | ProjectDataSourceBase & { sourceType:"mqtt";config:MqttConfig };
+  | ProjectDataSourceBase & { sourceType:"mqtt";config:MqttConfig }
+  | ProjectDataSourceBase & { sourceType:"sqlite_query";config:SqliteQueryConfig };
 
 export type DataSourceListResponse = {
   dataSources: ProjectDataSource[];

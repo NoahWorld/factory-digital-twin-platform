@@ -1,3 +1,4 @@
+import { createSqliteQuerySource } from "./sqlite-query-source";
 import { createMqttResolver } from "./mqtt-environment";
 import { openMqttSource } from "./mqtt-source";
 import { TelemetryStore } from "./telemetry-store";
@@ -24,6 +25,7 @@ import { migrateRuntimeDatabase } from "./migrations";
 export type RuntimeOptions = {
   dataDirectory: string;
   sourceEnvironment?: unknown;
+  sourceEnvironmentDirectory?:string;
   publicDirectory?: string;
   migrationsDirectory?: string;
   host?: string;
@@ -137,7 +139,8 @@ export async function startRuntime(options: RuntimeOptions) {
   const telemetry = new TelemetryStore(telemetryPath);
   let database:SqliteDatabase;
   try { database = new SqliteDatabase(databasePath); } catch (reason) { telemetry.close(); throw reason; }
-  const env: AppEnv = { ...options.environment,TELEMETRY:telemetry,RUNTIME_CAPABILITIES:new Set(["alarm-rules-v1","telemetry-bindings-v1","metric-transforms-v1","source-time-format-v1","mqtt-source-v1"]),RUNTIME_DISTRIBUTION:(signal) => runtimeDistribution(bundle,signal),RESOLVE_SOURCE:resolver,RESOLVE_MQTT_SOURCE:mqttResolver,DB: database,PROJECT_FILES: new FileBucket(join(dataDirectory,"objects")) };
+  const env: AppEnv = { ...options.environment,TELEMETRY:telemetry,RUNTIME_CAPABILITIES:new Set(["alarm-rules-v1","telemetry-bindings-v1","metric-transforms-v1","source-time-format-v1","mqtt-source-v1","sqlite-query-source-v1"]),RUNTIME_DISTRIBUTION:(signal) => runtimeDistribution(bundle,signal),RESOLVE_SOURCE:resolver,RESOLVE_MQTT_SOURCE:mqttResolver,DB: database,PROJECT_FILES: new FileBucket(join(dataDirectory,"objects")) };
+  env.FETCH_SQLITE_QUERY_SOURCE = createSqliteQuerySource(env,sourceEnvironment,{ directory:actualData,environmentDirectory:options.sourceEnvironmentDirectory ?? process.cwd(),workerPath:join(bundle,"sqlite-query-worker.mjs") });
   env.OPEN_MQTT_SOURCE = (source,requestId,onSample,signal) => openMqttSource(env,source,requestId,onSample,signal);
   env.OPEN_WEBSOCKET_SOURCE = (source,requestId,onSample,signal) => openWebSocketSource(env,source,requestId,onSample,signal);
   const collector = new RuntimeCollector(env); env.CENTRAL_RUNTIME = collector;
@@ -213,16 +216,17 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
   }
   const configuration = configPath ? parseEnv(await readFile(resolve(configPath),"utf8")) : {};
   const sourceFile = values.sources ?? configuration.SOURCE_ENVIRONMENT_FILE;
-  let sourceEnvironment: unknown;
+  let sourceEnvironment: unknown,sourceEnvironmentDirectory:string|undefined;
   if (sourceFile) {
     const file = await realpath(resolve(configPath ? dirname(resolve(configPath)) : process.cwd(),sourceFile));
+    sourceEnvironmentDirectory = dirname(file);
     const publicRoot = await realpath(fileURLToPath(new URL("./public",import.meta.url)));
     if (file.startsWith(publicRoot+sep) || !(await stat(file)).isFile() || (await stat(file)).size > 1024*1024) throw new Error("Source environment must be a private JSON file outside public assets, at most 1 MiB.");
     try { sourceEnvironment = JSON.parse(await readFile(file,"utf8")); } catch { throw new Error("Source environment JSON could not be read or parsed."); }
   }
   const dataDirectory = values["data-dir"] ?? process.env.NEWPOWER_RUNTIME_DIR;
   if (!dataDirectory) throw new Error("Use --data-dir or NEWPOWER_RUNTIME_DIR to select an isolated runtime directory.");
-  const runtime = await startRuntime({ dataDirectory,sourceEnvironment,host: values.host ?? process.env.NEWPOWER_RUNTIME_HOST,port: Number(values.port ?? process.env.NEWPOWER_RUNTIME_PORT ?? 8792),publicOrigin: values["public-origin"] ?? configuration.PUBLIC_ORIGIN,
+  const runtime = await startRuntime({ dataDirectory,sourceEnvironment,sourceEnvironmentDirectory,host: values.host ?? process.env.NEWPOWER_RUNTIME_HOST,port: Number(values.port ?? process.env.NEWPOWER_RUNTIME_PORT ?? 8792),publicOrigin: values["public-origin"] ?? configuration.PUBLIC_ORIGIN,
     environment: { BOOTSTRAP_TOKEN: configuration.BOOTSTRAP_TOKEN,RUNTIME_POLLING_ENABLED: configuration.RUNTIME_POLLING_ENABLED,RUNTIME_ALLOWED_HOSTS: configuration.RUNTIME_ALLOWED_HOSTS,SESSION_TTL_HOURS: configuration.SESSION_TTL_HOURS } });
   console.log(JSON.stringify({ event: "runtime_listening",url: runtime.url,migrations: runtime.migration.applied,verifiedBackup: runtime.migration.backupPath }));
   const stop = () => { void runtime.close().then(() => { process.exitCode = 0; },(reason) => { console.error(String(reason)); process.exitCode = 1; }); };

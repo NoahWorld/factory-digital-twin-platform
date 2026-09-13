@@ -1,3 +1,4 @@
+import { sourceEnvironmentRef } from "../../../shared/source-environment-ref";
 import { mkdir,readFile,writeFile,readdir,rm,stat,rename } from "node:fs/promises";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
@@ -101,7 +102,7 @@ export class LocalPackageService implements PackageService {
         if (input.targetProjectId && input.targetProjectId !== consumed.project_id) throw new AppError(409,"package_inspection_consumed","This inspection was already installed for a different target.");
         await requireCurrentProjectEditor(this.env,userId,consumed.project_id);
         const { version,snapshot } = await readPublicationVersion(this.env,consumed.project_id,consumed.version_id);
-        return { projectId:consumed.project_id,versionId:version.id,versionNumber:version.versionNumber,alreadyInstalled:true,activated:false,requiredEndpoints:[...new Set(snapshot.dataSources.map((source) => source.config.endpointRef!))] };
+        return { projectId:consumed.project_id,versionId:version.id,versionNumber:version.versionNumber,alreadyInstalled:true,activated:false,requiredEndpoints:[...new Set(snapshot.dataSources.map((source) => sourceEnvironmentRef(source)!))] };
       }
       await this.owner(input.inspectionId,userId); return this.installOwned(input,userId,signal);
     });

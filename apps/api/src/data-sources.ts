@@ -3,7 +3,7 @@ import { AppError, type AppEnv } from "./auth";
 
 type JsonObject = Record<string, unknown>;
 
-export type DataSourceType = "rest_polling" | "websocket" | "mqtt";
+export type DataSourceType = "rest_polling" | "websocket" | "mqtt" | "sqlite_query";
 
 export type RestPollingConfig = {
   timestampFormat?:TimestampFormat;
@@ -34,7 +34,8 @@ export type MqttConfig = {
   collectionMode?:"demand"|"continuous"; timestampPath:string; timestampFormat?:TimestampFormat;
   heartbeatSeconds:number; reconnectMaxSeconds:number; sampleIntervalMs:number;
 };
-export type DataSourceConfig = RestPollingConfig | WebSocketConfig | MqttConfig;
+export type SqliteQueryConfig = { url:"";endpointRef?:never;credentialRef:null;queryRef:string;collectionMode?:"demand"|"continuous";intervalSeconds:number;timeoutMs:number;timestampPath:string|null;timestampFormat?:TimestampFormat };
+export type DataSourceConfig = RestPollingConfig | WebSocketConfig | MqttConfig | SqliteQueryConfig;
 export function validateMqttTopic(value:unknown):string {
   if (typeof value !== "string" || !value || value.length>128 || /[+#\u0000-\u001f\u007f]/.test(value) || value.startsWith("$share/") || /[\ud800-\udfff]/u.test(value)) throw new AppError(400,"invalid_mqtt_topic","MQTT requires one exact printable topic of at most 128 characters without wildcards or shared subscriptions.");
   return value;
@@ -118,11 +119,11 @@ const assertKnownFields = (
 };
 
 const validateSourceType = (value: unknown): DataSourceType => {
-  if (value !== "rest_polling" && value !== "websocket" && value !== "mqtt") {
+  if (value !== "rest_polling" && value !== "websocket" && value !== "mqtt" && value !== "sqlite_query") {
     throw new AppError(
       400,
       "invalid_data_source_type",
-      "Data source type must be rest_polling, websocket or mqtt.",
+      "Data source type must be rest_polling, websocket, mqtt or sqlite_query.",
     );
   }
   return value;
@@ -265,6 +266,12 @@ const validateConfig = (
   if (config.collectionMode !== undefined && config.collectionMode !== "demand" && config.collectionMode !== "continuous") throw new AppError(400,"invalid_collection_mode","Collection mode must be demand or continuous.");
   if (config.timestampFormat !== undefined && !config.timestampPath) throw new AppError(400,"invalid_timestamp_format","A source time format requires a timestamp path.");
   const endpoint = { ...(config.timestampFormat !== undefined ? { timestampFormat:validateTimestampFormat(config.timestampFormat) }:{}), ...(endpointRef ? { endpointRef } : {}),...(config.collectionMode ? { collectionMode:config.collectionMode as "demand" | "continuous" } : {}) };
+  if (sourceType === "sqlite_query") {
+    assertKnownFields(config,new Set(["url","queryRef","credentialRef","collectionMode","intervalSeconds","timeoutMs","timestampPath","timestampFormat"]),"unknown_data_source_config_field","SQLite query config");
+    const queryRef = validateCredentialRef(config.queryRef);
+    if (!queryRef || config.url !== "" || config.credentialRef != null) throw new AppError(400,"invalid_sqlite_query_config","SQLite requires a private query reference and no direct address or credential reference.");
+    return { ...endpoint,url:"",credentialRef:null,queryRef,intervalSeconds:validateInteger(config.intervalSeconds,"config.intervalSeconds",1,3600),timeoutMs:validateInteger(config.timeoutMs,"config.timeoutMs",500,5000),timestampPath:validateTimestampPath(config.timestampPath) };
+  }
   if (sourceType === "mqtt") {
     assertKnownFields(config,new Set(["url","endpointRef","credentialRef","topic","collectionMode","timestampPath","timestampFormat","heartbeatSeconds","reconnectMaxSeconds","sampleIntervalMs"]),"unknown_data_source_config_field","MQTT config");
     const timestampPath = validateTimestampPath(config.timestampPath);

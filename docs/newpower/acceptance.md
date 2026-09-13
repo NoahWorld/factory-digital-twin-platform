@@ -457,3 +457,13 @@ m6b-mqtt-final-runtime.log：9项通过（42.5秒）。真实Chrome配置MQTT逻
 首次集成测试假定了不存在的数据源DELETE路由，已依据实际API移除多余清理调用；导入测试曾误拿冻结前的按需配置作比较，现逐项对照包内冻结的持续配置。最终完整回归正在执行，M6b和总目标尚未完成。m6b-mqtt-delivery.log中独立程序ZIP下载/解包/启动/导入运行测试通过，后续最新完整回归继续覆盖。
 
 MQTT最终检查：m6b-mqtt-regression.log完整170项通过、1示例跳过，唯一失败为旧package-ui测试在异步刷新前以first()锁定旧版本禁用按钮；最终失败页面已显示新版本按钮可用。改为安装版本ID定位后，m6b-mqtt-verified.log全部12项通过，包含新增重复CONNACK拒绝、MQTT协议与导入运行、原升级回滚及独立程序ZIP启动。m6b-mqtt-verified-check/build.log和Worker smoke12通过。源码不通过提高等待时长或强制点击绕过失败。继续SQLite queryRef与剩余M6b、M7/M8。
+
+## M6b SQLite只读查询与本机阶段验收（2026-09-13）
+
+基于0021已预留类型完成sqlite_query，无新增或改写已应用迁移。项目只保存queryRef和调度/时间路径，私有SQL/位置参数/文件/项目/表列权限由Node环境拥有。子进程只读、禁扩展、authorizer、64MiB SQLite原生堆及Node堆、256KiB/128列/配置行数预算、总超时与取消释放通过。rowKey按设备编号组织records，行消失不移位；NULL、大整数、BLOB、重复列/键、锁与超输出有明确行为。视图须具有底层表列权限，虚表和shadow tables拒绝。
+
+m6b-sql-delivery.log的8项真实专项通过；包含WAL数据库、UI配置、双Chrome共享、零查看者历史/告警、陈旧/空值、重启、项目ZIP环境授权及下载程序。原宿主停止后，干净解包的server与sqlite-query-worker实际查询独立数据库并显示两台不同设备值。截图已检查，原始SQLite/私有配置只在测试证据目录，不进入仓库或包。源时间控件原来的帮助文案被读入可访问名称，补明确标签及描述后实际UI通过。
+
+m6b-sql-regression.log完整180项通过、1示例跳过（7分钟）。保存源配置后会立即取消旧诊断请求并刷新，避免持续配置与旧按需状态短暂矛盾；最终m6b-sql-verified.log全部11项通过，包含SQL实际交付、REST持续/WebSocket/MQTT界面及新边界。check/build及Worker smoke12通过（m6b-sql-smoke.log）。原生SQL错误码不总能区别authorizer拒绝，已以实际拒绝标记归类；不靠放宽权限解决错误提示。
+
+M6b本机技术能力检查：历史独立持久化及查询、服务器告警与恢复/未知、历史/告警组件绑定、转换、运行诊断、REST/WebSocket/MQTT/只读SQLite配置及扩展执行接口、取消重启/故障/权限、草稿与冻结版本隔离、导出导入和独立运行均有前述实际证据。公司真实工业接口与部署环境仍待对接，不据模拟源和生成模型称生产验收。接着M7代表规模/专业能力和M8实际AI操作，总目标保持进行中。

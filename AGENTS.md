@@ -21,6 +21,7 @@
 - M6b组件绑定v2的历史/告警查询仍走原项目操作与CAS。声明telemetry-bindings-v1，运行数据不写props；时间桶/图形在质量、单位或配置变化处断开。相同查询共享，订阅按独立token释放，最后退出取消，拒绝权限后停止自动尝试。摘要列表省略采样值正文但标明valuesOmitted；decoder须验证scope/资产及活动事件与规则状态双向一致，空数据不可掩盖矛盾状态。
 - M6b转换是指标映射的可选版本字段，省略PATCH保留/null清除，标准化顺序为字段解析→转换→类型校验。旧无转换API/快照/告警签名不得补默认字段；新快照声明metric-transforms-v1/source-time-format-v1。UI数值空草稿不能转零，比较序列化前校验；源时间格式仅决定新鲜度，指标时间转换不替代该判断。
 - MQTT源使用私有项目与精确topic授权、MQTT3.1.1/QoS0或1、必填源时间，沿同一collector和快照能力mqtt-source-v1执行。parser前限制包/速率并拒绝QoS2/3及重复CONNACK，防止协议库等待存储累积；opening仅在订阅确认后完成，库重连关闭。0021重建父子表须保留0020转换列与全部修订触发器，复制期间不得推进runtimeRevision。
+- SQLite queryRef必须通过私有项目/表列权限及独立只读查询进程，不能在主采集循环同步执行SQL。禁扩展/ATTACH/写入/虚表，保留结果/原生堆/进程并发/总超时预算和取消后等待退出；NULL与安全整数显式处理。rowKey保持设备身份，SQL/路径不进入项目包；sourceEnvironmentRef统一网络与查询引用，旧包身份保持原样。M6b本机验收后继续M7代表规模、专业能力与30分钟稳定性，不以轻量实例帧率代替。
 - 当前进度和未完项见 [开发状态](docs/newpower/development-status.md)，任务及后续方向见 [研发指南](NewPower_Codex_Development_Start_Guide.md)。历史公司方案保留其背景，NewPower 状态以当前分支记录和实际验证为准。
 
 ## 产品定位

@@ -1,8 +1,9 @@
+import { parseSqliteQueryEnvironment,type SqliteQueryEnvironment } from "./sqlite-query-contract";
 import { parseMqttEnvironment,type MqttEnvironment } from "./mqtt-environment";
 import { AppError } from "../../api/src/auth";
 import { validateConnectionUrl,type DataSource } from "../../api/src/data-sources";
 
-export type SourceEnvironment = MqttEnvironment & {
+export type SourceEnvironment = MqttEnvironment & SqliteQueryEnvironment & {
   version:1;
   endpoints:Record<string,{ projectIds:string[];url:string;credentialRef?:string }>;
   credentials:Record<string,{ headers:Record<string,string> }>;
@@ -14,7 +15,7 @@ const known = (value:Record<string,unknown>,fields:string[]) => Object.keys(valu
 
 /** Values stay in the server environment. Error text never interpolates secret input. */
 export function parseSourceEnvironment(value:unknown):SourceEnvironment {
-  if (!record(value) || !known(value,["version","endpoints","credentials","mqttEndpoints","mqttCredentials"]) || value.version !== 1 || !record(value.endpoints) || !record(value.credentials) || Object.keys(value.endpoints).length > 256 || Object.keys(value.credentials).length > 256) throw invalid();
+  if (!record(value) || !known(value,["version","endpoints","credentials","mqttEndpoints","mqttCredentials","sqliteQueries"]) || value.version !== 1 || !record(value.endpoints) || !record(value.credentials) || Object.keys(value.endpoints).length > 256 || Object.keys(value.credentials).length > 256) throw invalid();
   const endpoints:SourceEnvironment["endpoints"] = Object.create(null),credentials:SourceEnvironment["credentials"] = Object.create(null);
   for (const [ref,item] of Object.entries(value.credentials)) {
     if (!identifier.test(ref) || !record(item) || !known(item,["headers"]) || !record(item.headers) || Object.keys(item.headers).length > 16) throw invalid();
@@ -33,7 +34,7 @@ export function parseSourceEnvironment(value:unknown):SourceEnvironment {
     if (item.credentialRef !== undefined && (typeof item.credentialRef !== "string" || !Object.hasOwn(credentials,item.credentialRef))) throw invalid();
     endpoints[ref] = { projectIds:[...new Set(item.projectIds)] as string[],url:url.toString(),...(item.credentialRef ? { credentialRef:item.credentialRef as string } : {}) };
   }
-  return { version:1,endpoints,credentials,...parseMqttEnvironment(value) };
+  return { version:1,endpoints,credentials,...parseMqttEnvironment(value),...parseSqliteQueryEnvironment(value) };
 }
 
 export function createSourceResolver(environment:SourceEnvironment) {

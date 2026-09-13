@@ -33,5 +33,24 @@
       "username": "replace-with-device-username",
       "password": "replace-with-server-secret"
     }
+  },
+  "sqliteQueries": {
+    "example-equipment": {
+      "projectIds": [
+        "replace-with-installed-project-id"
+      ],
+      "databasePath": "./sources/equipment.sqlite",
+      "sql": "SELECT assetId,temperature,observedAt FROM equipment ORDER BY assetId",
+      "parameters": [],
+      "tables": {
+        "equipment": [
+          "assetId",
+          "temperature",
+          "observedAt"
+        ]
+      },
+      "rowKey": "assetId",
+      "maxRows": 1000
+    }
   }
 }

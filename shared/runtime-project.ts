@@ -90,7 +90,7 @@ export function parseRuntimeProjectSnapshot(input:unknown):RuntimeProjectSnapsho
   if (input.snapshotVersion === 1 && (input.alarmRules !== undefined || input.requiredCapabilities !== undefined)) bad("旧快照不能携带新告警能力。");
   const alarmRules = input.snapshotVersion === 2 ? validateAlarmRules(input.alarmRules):[];
   const requiredCapabilities = input.snapshotVersion === 2 ? input.requiredCapabilities:[];
-  if (!Array.isArray(requiredCapabilities) || requiredCapabilities.some((capability) => !["alarm-rules-v1","telemetry-bindings-v1","metric-transforms-v1","source-time-format-v1","mqtt-source-v1"].includes(String(capability))) || new Set(requiredCapabilities).size !== requiredCapabilities.length) bad("运行器不支持包中声明的必要能力。");
+  if (!Array.isArray(requiredCapabilities) || requiredCapabilities.some((capability) => !["alarm-rules-v1","telemetry-bindings-v1","metric-transforms-v1","source-time-format-v1","mqtt-source-v1","sqlite-query-source-v1"].includes(String(capability))) || new Set(requiredCapabilities).size !== requiredCapabilities.length) bad("运行器不支持包中声明的必要能力。");
   if (alarmRules.length > 0 && !(requiredCapabilities as string[]).includes("alarm-rules-v1")) bad("告警配置缺少必要能力声明。");
   const project = { id:input.project.id,name:input.project.name,runtimeRevision:input.project.runtimeRevision },definition = parseProjectDefinition(input.definition);
   if (definition.projectId !== project.id) bad("项目定义所属项目不一致。");
@@ -179,5 +179,5 @@ export function validateSnapshotReferences(snapshot:RuntimeProjectSnapshot) {
 
 
 export function requiredRuntimeCapabilities(snapshot:Pick<RuntimeProjectSnapshot,"definition"|"alarmRules"> & Partial<Pick<RuntimeProjectSnapshot,"assetDataBindings"|"dataSources">>):string[] {
-  return [...((snapshot.alarmRules?.length ?? 0) > 0 ? ["alarm-rules-v1"]:[]),...(snapshot.definition.dataBindings.some((binding) => binding.version === 2) ? ["telemetry-bindings-v1"]:[]),...(snapshot.assetDataBindings?.some((binding) => binding.transform) ? ["metric-transforms-v1"]:[]),...(snapshot.dataSources?.some((source) => source.config.timestampFormat) ? ["source-time-format-v1"]:[]),...(snapshot.dataSources?.some((source) => source.sourceType === "mqtt") ? ["mqtt-source-v1"]:[])];
+  return [...((snapshot.alarmRules?.length ?? 0) > 0 ? ["alarm-rules-v1"]:[]),...(snapshot.definition.dataBindings.some((binding) => binding.version === 2) ? ["telemetry-bindings-v1"]:[]),...(snapshot.assetDataBindings?.some((binding) => binding.transform) ? ["metric-transforms-v1"]:[]),...(snapshot.dataSources?.some((source) => source.config.timestampFormat) ? ["source-time-format-v1"]:[]),...(snapshot.dataSources?.some((source) => source.sourceType === "mqtt") ? ["mqtt-source-v1"]:[]),...(snapshot.dataSources?.some((source) => source.sourceType === "sqlite_query") ? ["sqlite-query-source-v1"]:[])];
 }

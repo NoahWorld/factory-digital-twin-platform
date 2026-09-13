@@ -94,3 +94,13 @@ Node24.18提供setAuthorizer与limits。只读连接禁扩展，只允许main库
 冻结快照新增sqlite-query-source-v1；旧包无此能力时保留原字段与来源身份。实际本地数据库、写拒绝/尾随语句/函数与文件边界、NULL/数值/空结果、取消与慢查询、UI、无人查看历史/告警、冻结及导入后的环境重配都需要真实验证后再验收。
 
 SQLite实现前的Node24.18内存实验补充：prepare只编译首条，sourceSQL可核对原始已编译前缀并拒绝非空白尾随内容（包括尾随注释），输入先拒绝NUL。columns()保留重名而get/all会覆盖，必须迭代前检查唯一性。所有INTEGER用BigInt读取后仅安全范围转number；iterate异常/超限时显式return关闭。authorizer的FUNCTION名称在第三参数；COUNT(*)可能返回已登记表的空列READ且dbName=null，需在禁止附加/临时库前提下允许该元数据读取。SQLite内部列预算须留合理余量，结果列数单独限；不开放printf等可能在长度限制时静默返回NULL的非必要函数。vdbeOp不是运行步数，不能取消子进程超时。
+
+## SQLite实现与交付验证（完整回归中）
+
+SQLite查询已接入同一源采集/标准化/历史告警链。项目配置sqlite_query只含queryRef、轮询/总超时和时间路径；私有sqliteQueries记录固定SQL、位置参数、main库表列及项目权限。相对数据库路径以私有JSON文件目录为基准。拒绝自身运行目录文件，以及配置/遥测库的符号链接或同inode硬链接。子进程以readOnly/禁扩展/受控authorizer读取普通表或受底层权限约束的视图；虚表/shadow tables明确拒绝。
+
+每次查询由独立sqlite-query-worker.mjs执行，全宿主最多6个，timeout500–5000ms覆盖启动、文件检查和执行；取消/超时杀进程并等close释放槽。SQLite原生hard_heap_limit和Node堆各64MiB，SQLite单值/SQL/编译规模另限，结果最多256KiB/128列/配置的1–1000行，超限不返回部分结果。原生授权拒绝有显式标记，不能依赖SQLite不同操作下不一致的errcode；锁、文件、内存、值长度与类型失败返回安全代码，不回显路径/SQL。
+
+默认rows数组；可配置rowKey返回records设备映射，严格要求唯一设备编号格式键。多设备建议用稳定编号路径，行消失不会把另一台设备的数据移到原索引。NULL保留、安全INTEGER转number，超范围整数/BLOB/重复列/重复键明确拒绝。项目包沿用requiredEndpoints字段作为环境引用清单，查询引用进入同一来源验证；仅新SQL快照声明sqlite-query-source-v1，旧无查询包不添加字段或改写身份。
+
+实际WAL SQLite文件、两个Chrome、持续历史与告警、源时间陈旧、NULL、重启与导入后的环境授权已验证；真实下载程序在原宿主停止后，从干净目录执行随包查询进程并显示两台不同设备的SQL值。构建和8项专项通过，完整回归进行中。数据源保存会立即刷新诊断并取消旧请求，避免新采集方式与旧状态短暂矛盾。

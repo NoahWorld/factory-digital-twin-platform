@@ -43,6 +43,7 @@ export type AppEnv = {
   RUNTIME_DISTRIBUTION?: (signal:AbortSignal) => Response;
   PACKAGE_SERVICE?: import("../../../shared/package-service").PackageService;
   OPEN_WEBSOCKET_SOURCE?: (source:import("./data-sources").DataSource,requestId:string,onSample:(sample:import("./runtime-state").SourceSample) => void,signal:AbortSignal) => Promise<{ closed:Promise<void>;close():void }>;
+  FETCH_SQLITE_QUERY_SOURCE?: (source:import("./data-sources").DataSource,requestId:string,signal?:AbortSignal) => Promise<import("./runtime-state").SourceSample>;
   OPEN_MQTT_SOURCE?: AppEnv["OPEN_WEBSOCKET_SOURCE"];
   RESOLVE_MQTT_SOURCE?: (source:import("./data-sources").DataSource) => { url:string;username?:string;password?:string };
   RESOLVE_SOURCE?: (source: import("./data-sources").DataSource) => { url:string;headers:Record<string,string> };

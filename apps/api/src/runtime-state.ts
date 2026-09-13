@@ -496,6 +496,10 @@ export const loadRuntimeAssetPlan = async (env: AppEnv, projectId: string, asset
 };
 
 export const fetchRuntimeSource = (env: AppEnv, source: DataSource, requestId: string, signal?: AbortSignal): Promise<SourceSample> => {
+  if (source.sourceType === "sqlite_query") {
+    if (!env.FETCH_SQLITE_QUERY_SOURCE) return Promise.reject(new AppError(503,"sqlite_query_runtime_unavailable","This host does not provide read-only SQLite collection."));
+    return env.FETCH_SQLITE_QUERY_SOURCE(source,requestId,signal);
+  }
   if (source.sourceType === "websocket" || source.sourceType === "mqtt") return firstSubscriptionSample(env,source,requestId,signal);
   const { url,headers } = resolveAllowedRuntimeSource(env,source),config = { ...requireRestConfig(source),url };
   return fetchJson(source,config,requestId,signal,headers);

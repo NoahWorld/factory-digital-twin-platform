@@ -26,6 +26,7 @@ type DataSourceDraft = {
   name: string;
   url: string;
   endpointRef: string;
+  queryRef:string;
   collectionMode: "demand" | "continuous";
   intervalSeconds: string;
   timeoutMs: string;
@@ -46,6 +47,7 @@ const emptyDraft = (): DataSourceDraft => ({
   name: "",
   url: "",
   endpointRef: "",
+  queryRef:"",
   collectionMode: "demand",
   intervalSeconds: "10",
   timeoutMs: "5000",
@@ -66,23 +68,24 @@ const draftFromSource = (source: ProjectDataSource): DataSourceDraft => ({
   name: source.name,
   url: source.config.url,
   endpointRef: source.config.endpointRef ?? "",
+  queryRef:source.sourceType === "sqlite_query" ? source.config.queryRef:"",
   collectionMode: source.config.collectionMode ?? "demand",
-  intervalSeconds: source.sourceType === "rest_polling"
+  intervalSeconds: "intervalSeconds" in source.config
     ? String(source.config.intervalSeconds)
     : "10",
-  timeoutMs: source.sourceType === "rest_polling"
+  timeoutMs: "timeoutMs" in source.config
     ? String(source.config.timeoutMs)
     : "5000",
   timestampPath: source.config.timestampPath ?? "",
   timestampFormat:source.config.timestampFormat ?? "iso",
   timestampFormatExplicit:source.config.timestampFormat !== undefined,
-  sampleIntervalMs: source.sourceType !== "rest_polling" ? String(source.config.sampleIntervalMs ?? 100) : "100",
+  sampleIntervalMs: "sampleIntervalMs" in source.config ? String(source.config.sampleIntervalMs ?? 100) : "100",
   topic:source.sourceType === "mqtt" ? source.config.topic:"",
   topics: source.sourceType === "websocket" ? (source.config.topics ?? []).join("\n") : "",
-  heartbeatSeconds: source.sourceType !== "rest_polling"
+  heartbeatSeconds: "heartbeatSeconds" in source.config
     ? String(source.config.heartbeatSeconds)
     : "30",
-  reconnectMaxSeconds: source.sourceType !== "rest_polling"
+  reconnectMaxSeconds: "reconnectMaxSeconds" in source.config
     ? String(source.config.reconnectMaxSeconds)
     : "60",
   credentialRef: source.config.credentialRef ?? "",
@@ -92,6 +95,7 @@ const sourceTypeLabel: Record<DataSourceType, string> = {
   rest_polling: "REST 轮询",
   websocket: "WebSocket",
   mqtt:"MQTT 设备消息",
+  sqlite_query:"SQLite 只读查询",
 };
 
 const requiredInteger = (value: string, label: string): number => {
@@ -132,7 +136,9 @@ export function DataSourcePanel({
   const [draft, setDraft] = useState<DataSourceDraft>(emptyDraft);
   const [runtimeStatus,setRuntimeStatus] = useState<{ collection:string;protocols?:string[];sources:SourceDiagnostic[] } | null>(null);
   const [runtimeError,setRuntimeError] = useState<string | null>(null);
+  const [runtimeRefresh,setRuntimeRefresh] = useState(0);
   useEffect(() => {
+    setRuntimeStatus(null);setRuntimeError(null);
     let active = true,timer:ReturnType<typeof setTimeout>; const controller = new AbortController();
     const poll = async () => {
       try { const result = await request<{ collection:string;protocols?:string[];sources:SourceDiagnostic[] }>(`/api/v1/projects/${encodeURIComponent(projectId)}/runtime/sources`,{ signal:controller.signal }); if (active) { setRuntimeStatus(result); setRuntimeError(null); } }
@@ -140,7 +146,7 @@ export function DataSourcePanel({
       finally { if (active) timer = setTimeout(() => { void poll(); },3000); }
     };
     void poll(); return () => { active = false; controller.abort(); clearTimeout(timer); };
-  },[projectId]);
+  },[projectId,runtimeRefresh]);
   const sourceStatus = runtimeStatus?.sources.find((source) => source.id === draft.id);
 
 
@@ -206,7 +212,9 @@ export function DataSourcePanel({
     setSaveError(null);
     setNotice(null);
     try {
-      const config = draft.sourceType === "rest_polling"
+      const config = draft.sourceType === "sqlite_query" ? {
+        url:"",queryRef:draft.queryRef.trim(),credentialRef:null,collectionMode:draft.collectionMode,intervalSeconds:requiredInteger(draft.intervalSeconds,"轮询周期"),timeoutMs:requiredInteger(draft.timeoutMs,"查询超时"),timestampPath:draft.timestampPath || null,...(draft.timestampPath && (draft.timestampFormat !== "iso" || draft.timestampFormatExplicit) ? { timestampFormat:draft.timestampFormat }:{})
+      }:draft.sourceType === "rest_polling"
         ? {
             url: draft.endpointRef.trim() ? "" : draft.url.trim(),
             ...(draft.endpointRef.trim() ? { endpointRef:draft.endpointRef.trim() } : {}),
@@ -250,6 +258,7 @@ export function DataSourcePanel({
         ...current.filter((source) => source.id !== result.dataSource.id),
       ]);
       setDraft(draftFromSource(result.dataSource));
+      setRuntimeRefresh((value) => value+1);
       setNotice(draft.id ? "数据源配置已更新。" : "数据源已创建。");
     } catch (reason) {
       setSaveError(errorMessage(reason));
@@ -346,7 +355,7 @@ export function DataSourcePanel({
                   {probing ? "测试中…" : "测试连接并发现字段"}
                 </button>
                 {draft.id && hasUnsavedChanges ? <small>请先保存修改</small> : null}
-                {draft.sourceType !== "rest_polling" && !runtimeStatus?.protocols?.includes(draft.sourceType) ? <small>当前宿主不支持此类消息采集，请使用独立运行服务。</small> : null}
+                {runtimeStatus && draft.sourceType !== "rest_polling" && !runtimeStatus.protocols?.includes(draft.sourceType) ? <small>当前宿主不支持此类数据采集，请使用独立运行服务。</small> : null}
               </div>
             </div>
 
@@ -381,6 +390,7 @@ export function DataSourcePanel({
                   <option value="rest_polling">REST 轮询</option>
                   <option value="websocket">WebSocket</option>
                   <option value="mqtt">MQTT 设备消息</option>
+                  <option value="sqlite_query">SQLite 只读查询</option>
                 </select>
               </label>
               <label className="is-wide">
@@ -391,12 +401,12 @@ export function DataSourcePanel({
                 </select>
                 {runtimeStatus?.collection === "per-request" ? <small>此宿主仅支持即时采集；持续模式需要独立运行服务。</small> : null}
               </label>
-              <label className="is-wide">
+              {draft.sourceType === "sqlite_query" ? <label className="is-wide"><span>私有查询引用</span><input aria-label="私有查询引用" required maxLength={120} disabled={formDisabled} value={draft.queryRef} placeholder="例如：equipment-status" onChange={(event) => setDraft((current) => ({ ...current,queryRef:event.target.value }))}/><small>运行服务器登记数据库文件、固定只读查询和项目权限。项目不保存SQL或实际路径。</small></label>:<label className="is-wide">
                 <span>{draft.sourceType === "mqtt" ? "环境端点引用（必填）":"环境端点引用（可选）"}</span>
                 <input aria-label={draft.sourceType === "mqtt" ? "环境端点引用（必填）":"环境端点引用（可选）"} required={draft.sourceType === "mqtt"} aria-describedby="data-source-endpoint-help" disabled={formDisabled} maxLength={120} value={draft.endpointRef} placeholder="例如：equipment-gateway" onChange={(event) => setDraft((current) => ({ ...current,endpointRef:event.target.value,url:event.target.value ? "" : current.url }))} />
                 <small id="data-source-endpoint-help">使用引用后，地址与认证由运行服务器配置；项目只保存引用名称。</small>
-              </label>
-              {draft.sourceType !== "mqtt" ? <label className="is-wide">
+              </label>}
+              {draft.sourceType !== "mqtt" && draft.sourceType !== "sqlite_query" ? <label className="is-wide">
                 <span>{draft.sourceType === "rest_polling" ? "HTTP(S) 地址" : "WS(S) 地址"}</span>
                 <input
                   disabled={formDisabled || !!draft.endpointRef}
@@ -415,7 +425,7 @@ export function DataSourcePanel({
                   value={draft.url}
                 />
               </label>:null}
-              {draft.sourceType === "rest_polling" ? (
+              {draft.sourceType === "rest_polling" || draft.sourceType === "sqlite_query" ? (
                 <>
                   <label>
                     <span>轮询周期（秒）</span>
@@ -433,10 +443,10 @@ export function DataSourcePanel({
                     />
                   </label>
                   <label>
-                    <span>请求超时（毫秒）</span>
+                    <span>{draft.sourceType === "sqlite_query" ? "查询总超时（毫秒）":"请求超时（毫秒）"}</span>
                     <input
                       disabled={formDisabled}
-                      max={30000}
+                      max={draft.sourceType === "sqlite_query" ? 5000:30000}
                       min={500}
                       onChange={(event) => setDraft((current) => ({
                         ...current,
@@ -449,8 +459,10 @@ export function DataSourcePanel({
                     />
                   </label>
                   <label className="is-wide">
-                    <span>数据时间戳路径（建议配置）</span>
+                    <span>{draft.sourceType === "sqlite_query" ? "数据时间戳路径（可选）":"数据时间戳路径（建议配置）"}</span>
                     <input
+                      aria-label={draft.sourceType === "sqlite_query" ? "数据时间戳路径（可选）":"数据时间戳路径（建议配置）"}
+                      aria-describedby="data-source-timestamp-help"
                       disabled={formDisabled}
                       maxLength={256}
                       onChange={(event) => setDraft((current) => ({
@@ -460,7 +472,7 @@ export function DataSourcePanel({
                       placeholder="例如：$.timestamp"
                       value={draft.timestampPath}
                     />
-                    <small>用于识别接口仍返回 200、但现场数据已停止更新的情况。</small>
+                    <small id="data-source-timestamp-help">{draft.sourceType === "sqlite_query" ? "查询结果可为rows数组或records设备映射，请根据字段发现配置源时间路径，用于识别陈旧数据。":"用于识别接口仍返回 200、但现场数据已停止更新的情况。"}</small>
                   </label>
                 </>
               ) : (
@@ -497,13 +509,13 @@ export function DataSourcePanel({
                   </label>
                 </>
               )}
-              {draft.sourceType !== "rest_polling" ? <>
+              {draft.sourceType === "websocket" || draft.sourceType === "mqtt" ? <>
                 <label className="is-wide"><span>数据时间戳路径</span><input required={draft.sourceType === "mqtt"} disabled={formDisabled} value={draft.timestampPath} maxLength={256} placeholder="例如：$.timestamp" onChange={(event) => setDraft((current) => ({ ...current,timestampPath:event.target.value }))} /></label>
                 <label><span>采样间隔（毫秒）</span><input disabled={formDisabled} type="number" min={16} max={60000} required value={draft.sampleIntervalMs} onChange={(event) => setDraft((current) => ({ ...current,sampleIntervalMs:event.target.value }))} /></label>
                 {draft.sourceType === "websocket" ? <label className="is-wide"><span>订阅主题（每行一个，可选）</span><textarea aria-label="订阅主题（每行一个，可选）" disabled={formDisabled} maxLength={4128} rows={3} value={draft.topics} onChange={(event) => setDraft((current) => ({ ...current,topics:event.target.value }))} /><small>每次连接后发送type=subscribe及topics列表。上游每条数据消息应包含完整源快照。</small></label>:<label className="is-wide"><span>MQTT订阅主题</span><input aria-label="MQTT订阅主题" required maxLength={128} disabled={formDisabled} value={draft.topic} onChange={(event) => setDraft((current) => ({ ...current,topic:event.target.value }))}/><small>一个精确主题，不支持通配符；运行器私有端点须授权此主题。每条消息是含源时间的完整JSON快照。</small></label>}
               </> : null}
               <label className="is-wide"><span>源时间格式</span><select aria-label="源时间格式" disabled={formDisabled || !draft.timestampPath} value={draft.timestampFormat} onChange={(event) => setDraft((current) => ({ ...current,timestampFormat:event.target.value as TimestampFormat,timestampFormatExplicit:true }))}><option value="iso">ISO日期文本</option><option value="unix_seconds">Unix秒</option><option value="unix_ms">Unix毫秒</option></select><small>用于整份源数据的新鲜度判断，与单个指标的时间转换分开。</small></label>
-              <label className="is-wide">
+              {draft.sourceType !== "sqlite_query" ? <label className="is-wide">
                 <span>服务端凭据引用（可选）</span>
                 <input
                   autoComplete="off"
@@ -517,11 +529,11 @@ export function DataSourcePanel({
                   placeholder="例如：factory-a-api"
                   value={draft.credentialRef}
                 />
-              </label>
+              </label>:null}
             </div>
 
             <div className="data-source-runtime-summary" role="status">
-              {runtimeError ? `无法读取采集状态：${runtimeError}` : sourceStatus ? <>
+              {runtimeError ? `无法读取采集状态：${runtimeError}` : !runtimeStatus ? "正在刷新采集状态…" : sourceStatus ? <>
                 <strong>{sourceStatus.mode === "continuous" ? "持续采集" : "按需采集"} · {sourceStatus.state === "sampled" ? "已采样" : sourceStatus.state === "failed" ? "采集失败" : "正在采集"}</strong>
                 <span>查看订阅：{sourceStatus.subscribers} · 最近采样：{sourceStatus.collectedAt ? new Date(sourceStatus.collectedAt).toLocaleTimeString("zh-CN") : "尚无"}</span>
                 {sourceStatus.errorCode ? <small>错误：{sourceStatus.errorCode}</small> : <small>设备实时状态仍按字段映射和数据有效期校验。</small>}
