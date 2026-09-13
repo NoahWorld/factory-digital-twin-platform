@@ -23,13 +23,16 @@ export type SceneViewportOptions = {
   onSnapshot: (instanceId: string, snapshot: ModelSceneSnapshot | null) => void;
 };
 type RecordEntry = { assetId: string; lease: ReturnType<typeof acquireModelResource>; manifestLease?: ReturnType<ResourcePool<ModelInspection>["acquire"]>; manifestKey?: string; controller?: ModelInstanceController; releaseResources?: () => void; error?: string; signature?: string; pending: boolean; cancelled: boolean };
-const diagnostics = new Map<string, () => unknown>();
+export type ScenePerformanceSnapshot = { id:string;projectId:string;versionId:string|null;sceneId:string;instances:number;pending:number;frame:number;calls:number;triangles:number;geometries:number;textures:number;ownedResources:{ geometries:number;materials:number;textures:number };manifests:{ resources:number;leases:number;pending:number;loads:number;disposals:number };active:boolean;ready:boolean;errors:number;firstFrameAt:number|null;firstFrameMs:number|null;width:number;height:number;minTriangles:number|null;maxTriangles:number|null;samples:number;meanFps:number|null;p95FrameMs:number|null;p95SubmitMs:number|null };
+const diagnostics = new Map<string, { full:() => unknown;performance:() => ScenePerformanceSnapshot }>();
 const objectInspections = new Map<string, (target: ObjectTarget) => unknown>();
-export const sceneViewportDiagnostics = () => [...diagnostics.values()].map((read) => read());
+export const sceneViewportDiagnostics = () => [...diagnostics.values()].map((read) => read.full());
+export const scenePerformanceDiagnostics = () => [...diagnostics.values()].map((read) => read.performance());
 export const inspectSceneViewportObject = (viewportId: string, target: ObjectTarget) => objectInspections.get(viewportId)?.(target) ?? null;
 
 export function createSceneViewport(container: HTMLElement, initial: SceneViewportOptions) {
   let options = initial, disposed = false, fitted = false;
+  let lastRenderedAt = 0,configurationStartedAt = performance.now(),firstFrameAt:number|null = null;const frameIntervals:number[] = [],submitTimes:number[] = [],triangleSamples:number[] = [];
   const id = crypto.randomUUID();
   const scene = new THREE.Scene();
   const content = new THREE.Group(); scene.add(content);
@@ -135,7 +138,7 @@ export function createSceneViewport(container: HTMLElement, initial: SceneViewpo
   const update = (next: SceneViewportOptions) => {
     if (disposed) return;
     const nextKey = JSON.stringify(next.scene);
-    if (nextKey !== configurationKey) { motionPlayer.cancel(); configurationGeneration++; configurationKey = nextKey; }
+    if (nextKey !== configurationKey) { motionPlayer.cancel(); configurationGeneration++; configurationKey = nextKey;lastRenderedAt = 0;configurationStartedAt = performance.now();firstFrameAt = null;frameIntervals.length = 0;submitTimes.length = 0;triangleSamples.length = 0; }
     const oldSceneId = options.scene.id, oldView = options.scene.settings.cameraView, oldLegacy = options.legacyNames;
     options = next;
     if (oldSceneId !== next.scene.id) fitted = false;
@@ -188,15 +191,22 @@ export function createSceneViewport(container: HTMLElement, initial: SceneViewpo
       if (motion.active || motion.heldChannels) { refreshBounds(); updateSelection(); }
     }
     catch (reason) { options.onState({ status: "error", loaded: entries.size, total: options.scene.instances.length, message: `动画执行失败：${String(reason)}` }); }
-    if (!visible || document.hidden) return;
+    if (!visible || document.hidden) { lastRenderedAt = 0;return; }
+    const ready = [...entries.values()].every((entry) => !!entry.controller && !entry.pending && !entry.error),started = performance.now();
+    if (ready && lastRenderedAt) { frameIntervals.push(started-lastRenderedAt);if (frameIntervals.length>240) frameIntervals.shift(); }
+    lastRenderedAt = ready ? started:0;
     selections.forEach((helper) => helper.update()); renderer.render(scene,camera);
+    if (ready && firstFrameAt === null && renderer.info.render.triangles>0) firstFrameAt = performance.now();
+    if (ready) { triangleSamples.push(renderer.info.render.triangles);if (triangleSamples.length>240) triangleSamples.shift();submitTimes.push(performance.now()-started);if (submitTimes.length>240) submitTimes.shift(); }
   });
-  diagnostics.set(id, () => ({ id, sceneId: options.scene.id, instances: [...entries.values()].filter((entry) => entry.controller).length,
+  const percentile = (values:number[]) => values.length ? [...values].sort((a,b) => a-b)[Math.ceil(values.length*.95)-1]:null;
+  const performanceSnapshot = ():ScenePerformanceSnapshot => ({ id,projectId:options.projectId,versionId:options.versionId ?? null,sceneId:options.scene.id,instances:[...entries.values()].filter((entry) => entry.controller).length,pending:[...entries.values()].filter((entry) => entry.pending).length,frame:renderer.info.render.frame,calls:renderer.info.render.calls,triangles:renderer.info.render.triangles,geometries:renderer.info.memory.geometries,textures:renderer.info.memory.textures,ownedResources:resources.snapshot(),manifests:manifests.snapshot(),active:visible && !document.hidden,ready:[...entries.values()].every((entry) => !!entry.controller && !entry.pending && !entry.error),errors:[...entries.values()].filter((entry) => entry.error).length,firstFrameAt,firstFrameMs:firstFrameAt === null ? null:firstFrameAt-configurationStartedAt,width:renderer.domElement.width,height:renderer.domElement.height,minTriangles:triangleSamples.length ? Math.min(...triangleSamples):null,maxTriangles:triangleSamples.length ? Math.max(...triangleSamples):null,samples:frameIntervals.length,meanFps:frameIntervals.length ? 1000/(frameIntervals.reduce((sum,value) => sum+value,0)/frameIntervals.length):null,p95FrameMs:percentile(frameIntervals),p95SubmitMs:percentile(submitTimes) });
+  diagnostics.set(id, { performance:performanceSnapshot,full:() => ({ id, sceneId: options.scene.id, instances: [...entries.values()].filter((entry) => entry.controller).length,
     ownedResources: resources.snapshot(), manifests: manifests.snapshot(), motion: motionPlayer.snapshot(), frame: renderer.info.render.frame,
     instanceStates: [...entries].map(([instanceId, entry]) => ({ instanceId, position: entry.controller?.root.position.toArray(), nativeClip: entry.controller?.nativeAnimationState() ?? null, visible: entry.controller?.root.visible, materialColors: entry.controller?.materialColors(), error: entry.error ?? null })),
     selectedObjectName: selectionObject?.name ?? null, selectedCount: selections.size,
     pending: [...entries.values()].filter((entry) => entry.pending).length, geometries: renderer.info.memory.geometries, textures: renderer.info.memory.textures,
-    calls: renderer.info.render.calls, triangles: renderer.info.render.triangles, camera: camera.position.toArray(), target: controls.target.toArray() }));
+    calls: renderer.info.render.calls, triangles: renderer.info.render.triangles, camera: camera.position.toArray(), target: controls.target.toArray() }) });
   objectInspections.set(id, (target) => entries.get(target.instanceId)?.controller?.inspectObject(target.objectId));
   const raycaster = new THREE.Raycaster(); const pointer = new THREE.Vector2();
   return {

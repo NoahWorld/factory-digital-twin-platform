@@ -10667,3 +10667,14 @@ input:focus,
 .metric-transform-enum-row { border-bottom: 1px solid #304d5e; padding-bottom: 10px; }
 .metric-transform-enum-row .interaction-fields { display: flex; flex-wrap: wrap; gap: 6px; }
 .metric-transform-editor button:disabled { opacity: .45; }
+
+.scene-performance-panel { width: min(780px,100vw); }
+.scene-performance-content { padding: 24px; overflow: auto; }
+.scene-performance-content > p { color: var(--text-secondary,#a9beca); line-height: 1.7; }
+.scene-performance-card { margin-top: 20px; padding: 20px; border: 1px solid #294a5a; border-radius: 10px; background: #0d2330; }
+.scene-performance-card header { display: flex; justify-content: space-between; gap: 16px; }
+.scene-performance-card dl { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 20px; margin: 24px 0; }
+.scene-performance-card dt { color: #a9beca; font-size: 12px; }
+.scene-performance-card dd { margin: 6px 0 0; font-variant-numeric: tabular-nums; font-size: 22px; color: #e3f5ff; }
+.scene-performance-card > p { font-size: 12px; line-height: 1.7; color: #a9beca; }
+@media (max-width:650px) { .scene-performance-card dl { grid-template-columns: repeat(2,minmax(0,1fr)); } }
