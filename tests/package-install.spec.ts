@@ -1,0 +1,70 @@
+import { createEditorState,executeEditorOperation } from "../shared/editor-operations";
+import { projectDefinitionPatch } from "../shared/project-definition";
+import { DEFAULT_SCENE_SETTINGS,IDENTITY_TRANSFORM } from "../shared/scene-definition";
+import { createAnimatedMockGltf } from "../scripts/mock-model.mjs";
+import { createCanvasNode } from "../apps/web/src/canvas/types";
+import { test,expect,request as apiRequest } from "@playwright/test";
+import { randomBytes } from "node:crypto";
+import { nodeRuntimeFixture } from "./node-runtime-fixture";
+import { createDemo } from "./demo";
+import { zipSync,unzipSync,strToU8 } from "fflate";
+
+test("a verified project ZIP installs as an inactive version in a clean runtime and upgrades without replacing target draft",async ({ browser },testInfo) => {
+  test.setTimeout(90000);
+  const source = await nodeRuntimeFixture(testInfo);
+  // Independent fixture output ownership is explicit; do not reuse the source DB.
+  const targetInfo = { ...testInfo,outputPath:(...parts:string[]) => testInfo.outputPath("target",...parts) } as typeof testInfo;
+  const target = await nodeRuntimeFixture(targetInfo),original = await apiRequest.newContext({ baseURL:source.url }),api = await apiRequest.newContext({ baseURL:target.url });
+  let context:Awaited<ReturnType<typeof browser.newContext>> | undefined;
+  try {
+    for (const [runtime,client,email] of [[source,original,"source@example.invalid"],[target,api,"target@example.invalid"]] as const) expect((await client.post("/api/v1/auth/bootstrap",{ headers:{ "x-bootstrap-token":runtime.bootstrap },data:{ email,password:randomBytes(24).toString("hex"),displayName:"Package fixture" } })).status()).toBe(201);
+    const demo = await createDemo(original,true),base = `/api/v1/projects/${demo.projectId}`;
+    const firstModel = (await (await original.get(`${base}/model-assets`)).json()).modelAssets[0];
+    const uploaded = await original.post(`${base}/model-assets/${firstModel.id}/versions?filename=animated.gltf`,{ data:createAnimatedMockGltf(),headers:{ "content-type":"model/gltf+json" } }); expect(uploaded.status(),await uploaded.text()).toBe(201); const latestModel = (await uploaded.json()).modelAsset;
+    const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/Z1sAAAAASUVORK5CYII=","base64");
+    const imageResponse = await original.post(`${base}/image-assets?filename=pixel.png`,{ data:png,headers:{ "content-type":"image/png" } }); expect(imageResponse.status(),await imageResponse.text()).toBe(201); const image = (await imageResponse.json()).imageAsset;
+    let state = createEditorState((await (await original.get(`${base}/definition`)).json()).definition);
+    state = executeEditorOperation(state,{ type:"scene.extract",nodeId:"demo-model",scene:{ id:"packaged-scene",name:"Packaged native clip",settings:DEFAULT_SCENE_SETTINGS,instances:[{ id:"device",name:"Device",modelAssetId:latestModel.id,transform:IDENTITY_TRANSFORM,visible:true,appearance:null,objectTransforms:{},objectAppearances:{} }],assetBindings:[],motions:[{ id:"motion",name:"Motion",version:1,durationMs:500,repeat:1,fill:"hold",tracks:[{ id:"clip",type:"clip",property:"clip",target:{ instanceId:"device",objectId:null },clipId:latestModel.inspection.clips[0].clipId,easing:"linear",keyframes:[{ timeMs:0,value:0 },{ timeMs:500,value:1 }] }] }] } });
+    const imageNode = { ...createCanvasNode("image",50,900,4),id:"packaged-image",resourceRefs:[image.id] }; state = executeEditorOperation(state,{ type:"nodes.upsert",nodes:[imageNode] });
+    const button = { ...createCanvasNode("button",600,920,5),id:"play-import",width:350 }; button.props = { ...button.props,text:"播放导入的原生动画",href:"" };
+    state = executeEditorOperation(state,{ type:"nodes.upsert",nodes:[button] });
+    state = executeEditorOperation(state,{ type:"interactions.set",interactions:{ states:[{ id:"result",name:"导入动画结果",pageId:null,valueType:"string",initial:"未执行" }],rules:[{ id:"play-rule",name:"导入后播放",pageId:"main",enabled:true,reentry:"restart",trigger:{ type:"node.click",sourceId:"play-import" },condition:null,actions:[{ type:"motion.play",nodeId:"demo-model",motionId:"motion" },{ type:"state.set",stateId:"result",value:{ kind:"literal",value:"导入片段已完成" } }] }] } });
+    expect((await original.patch(`${base}/definition`,{ data:projectDefinitionPatch(state.project,state.savedProject) })).status()).toBe(200);
+    const freeze = async (label:string) => { const draft = (await (await original.get(`${base}/publication-draft`)).json()).draft; const response = await original.post(`${base}/versions`,{ data:{ expectedRuntimeRevision:draft.runtimeRevision,label } }); expect(response.status(),await response.text()).toBe(201); return (await response.json()).version; };
+    const v1 = await freeze("Version one"),exported = await original.get(`${base}/versions/${v1.id}/package`); expect(exported.status()).toBe(200); const bytes = await exported.body();
+    const inspect = async (buffer:Buffer) => { const response = await api.post("/api/v1/project-packages",{ data:buffer,headers:{ "content-type":"application/zip" } }); expect(response.status(),await response.text()).toBe(201); return (await response.json()).inspection; };
+    const inspection = await inspect(bytes); expect(inspection.models).toBe(2); expect(inspection.images).toBe(1); expect(inspection.requiredEndpoints).toHaveLength(2);
+    const installed = await api.post("/api/v1/project-packages/install",{ data:{ inspectionId:inspection.id,projectName:"Imported portable project" } }); expect(installed.status(),await installed.text()).toBe(201); const result = (await installed.json()).installation,path = `/api/v1/projects/${result.projectId}`;
+    expect(result.activated).toBe(false); expect(result.projectId).not.toBe(demo.projectId); expect((await (await api.get(`${path}/versions`)).json()).active).toBeNull();
+    const fixed = (await (await api.get(`${path}/versions/${result.versionId}/definition`)).json()).definition,originalDefinition = (await (await original.get(`${base}/versions/${v1.id}/definition`)).json()).definition;
+    expect(fixed.pages[0].nodes.map((node:{ id:string }) => node.id)).toEqual(originalDefinition.pages[0].nodes.map((node:{ id:string }) => node.id));
+    const importedModel = fixed.scenes[0].instances[0].modelAssetId;
+    expect(importedModel).not.toBe(originalDefinition.scenes[0].instances[0].modelAssetId);
+    expect((await api.get(`${path}/model-assets/${importedModel}/content`)).status()).toBe(200);
+    const importedReport = (await (await api.get(`${path}/versions/${result.versionId}/model-assets/${importedModel}`)).json()).modelAsset;
+    expect(importedReport.inspection).toEqual(latestModel.inspection); expect(fixed.scenes[0].motions[0].tracks[0].clipId).toBe(latestModel.inspection.clips[0].clipId);
+    const importedImageId = fixed.pages[0].nodes.find((node:{ id:string }) => node.id === "packaged-image").resourceRefs[0]; expect(await (await api.get(`${path}/image-assets/${importedImageId}/content`)).body()).toEqual(png);
+    context = await browser.newContext({ storageState:await api.storageState() }); const page = await context.newPage();
+    await page.goto(`${target.url}/#/projects/${result.projectId}/versions/${result.versionId}/run?page=main`);
+    await expect(page.locator(".model-3d-edit-hint")).toBeVisible();
+    await expect.poll(() => page.getByRole("img",{ name:"看板图片",exact:true }).evaluate((element:HTMLImageElement) => element.naturalWidth)).toBe(1);
+    await page.getByRole("button",{ name:"播放导入的原生动画",exact:true }).click();
+    await page.getByRole("button",{ name:"交互调试",exact:true }).click(); const debug = page.getByRole("complementary",{ name:"交互调试",exact:true });
+    await expect(debug).toContainText("导入片段已完成"); await expect(debug).toContainText("执行中 0");
+    await page.screenshot({ path:testInfo.outputPath("imported-native-clip-and-image.png") }); await context.close(); context = undefined;
+
+    const repeated = await api.post("/api/v1/project-packages/install",{ data:{ inspectionId:inspection.id,projectName:"Imported portable project" } }); expect(repeated.status()).toBe(200); expect((await repeated.json()).installation.projectId).toBe(result.projectId);
+    expect((await api.post(`${path}/versions/${result.versionId}/activate`,{ data:{ expectedPublicationRevision:0 } })).status()).toBe(409);
+    const before = (await (await api.get(`${path}/definition`)).json()).definition;
+    const asset = demo.assets[0]; expect((await original.patch(`${base}/assets/${asset.id}`,{ data:{ name:"Second version device" } })).status()).toBe(200);
+    const v2 = await freeze("Version two"),secondInspection = await inspect(await (await original.get(`${base}/versions/${v2.id}/package`)).body());
+    const targetDraft = (await (await api.get(`${path}/publication-draft`)).json()).draft;
+    const second = await api.post("/api/v1/project-packages/install",{ data:{ inspectionId:secondInspection.id,targetProjectId:result.projectId,expectedRuntimeRevision:targetDraft.runtimeRevision } }); expect(second.status(),await second.text()).toBe(201);
+    expect((await (await api.get(`${path}/definition`)).json()).definition).toEqual(before);
+    expect((await (await api.get(`${path}/model-assets`)).json()).modelAssets).toHaveLength(2); expect((await (await api.get(`${path}/versions`)).json()).versions).toHaveLength(2);
+    const altered = unzipSync(bytes),manifest = JSON.parse(new TextDecoder().decode(altered["manifest.json"])); manifest.source.versionLabel = "Conflicting source"; altered["manifest.json"] = strToU8(JSON.stringify(manifest)); const conflictingInspection = await inspect(Buffer.from(zipSync(altered)));
+    const changedDraft = (await (await api.get(`${path}/publication-draft`)).json()).draft;
+    const conflict = await api.post("/api/v1/project-packages/install",{ data:{ inspectionId:conflictingInspection.id,targetProjectId:result.projectId,expectedRuntimeRevision:changedDraft.runtimeRevision } }); expect(conflict.status()).toBe(409); expect((await conflict.json()).error).toBe("package_origin_conflict");
+    for (const id of [inspection.id,secondInspection.id,conflictingInspection.id]) expect((await api.delete(`/api/v1/project-packages/${id}`)).status()).toBe(200);
+  } finally { await context?.close(); await original.dispose(); await api.dispose(); await source.dispose(); await target.dispose(); }
+});

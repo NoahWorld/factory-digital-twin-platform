@@ -351,3 +351,23 @@ Worker回归发现D1 meta.changes含触发器更新，原单行保存返回2而�
 - `m5-identity-check.log`、`m5-identity-build.log`、`m5-final-lock-install.log`：check/build和frozen-lock安装通过；`m5-publication-smoke.log`：原Worker REST smoke12通过。
 
 首次发布UI测试误把持续波动的mock温度断言成固定43.8，改为检查其已知温度范围，并与改映射后的压力范围区分；保留真实动态采集。发布快照元数据上限8MiB，文件继续模型25MiB/图片8MiB限制。导入导出、交付包及M5总体验收仍未完成，下一项直接继续项目包和干净环境运行。
+
+## M5 项目包与完整本机验收（2026-09-13）
+
+起点 `0e47203`。项目ZIP导出冻结配置及实际资源，外部化直接URL；Node检查中央目录、文件类型、重复条目、真实解压长度/CRC/SHA和模型报告，校验后安装新项目或已有项目新版本。模型资源族/祖先链随包保留，正式身份重映射保留业务assetId和不透明对象/clip引用。同来源升级复用目标身份，内容冲突拒绝；安装不替换草稿或发布指针，恢复草稿单独预览/CAS/确认。
+
+0018在原Worker停止后先备份再迁移并以原配置恢复。备份 `test/backups/before-migration-2026-09-13T05-34-18-947Z-8f928f8f-0ae9-4a71-aa13-3a765cb6cfda.sqlite`；`m5-package-migration-readback.json`核对三保留示例15段完全一致、FK0。迁移同时在新Node库检查通过。
+
+实际Chrome完成上传检查→安装新项目→配置私有端点→停掉原宿主→独立二维三维与实时数据→恢复可编辑草稿→安装新版→激活/回滚。另一个测试直接下载程序ZIP，解压新目录，以start.sh生成私有环境和本地工具初始化管理员，然后导入项目并独立运行。程序包含所打包依赖的真实许可，不包含用户/会话/数据库/实际环境。HTTPS反向代理实测Secure Cookie、同源模型和SSE、退出后采集释放；无任何生产部署。
+
+资源专项导入两代模型（最新包含原生动画）和PNG，验证目标ID重映射、版本祖先、完整报告/clip身份及实际字节；随后真实浏览器加载图片naturalWidth=1并播放原生片段，调试记录显示motion.play完成及状态动作执行。该专项故意未配置数据环境，界面明确失联；它证明资源与动画，实时数据证据来自另一个完整环境测试。
+
+失败修复：Node Buffer.slice().buffer包含背后整个slab，导致有效模型误拒绝；改精确Uint8Array复制，带前后额外字节的偏移反例通过。安装对象写入前持久journal，真实SIGKILL后重启回收无DB引用对象再重试成功；提交成功对象不被清理。清理与安装在读取owner前取得同检查单独占锁，实际竞态反例通过。最终事务及已消费重试重新检查当前权限，中途撤权拒绝。SQLite原生锁限制一个data目录单宿主并在死亡后自动释放。
+
+- `m5-package-regression.log`：完整132项通过，示例创建1项按设计跳过。
+- `m5-delivery-regression.log`：之后的运行包、HTTPS、ZIP检查/安装/UI、权限、清理竞争、SIGKILL恢复10项通过。
+- `m5-import-animation.log`：最终导入模型版本链/原生动画/PNG浏览器专项通过。
+- `m5-delivery-check.log`、`m5-delivery-build.log`、`m5-delivery-lock.log`：check/build及frozen-lock安装通过。保留原锁文件29处平台libc元数据。
+- `m5-delivery-smoke.log`：旧Worker REST smoke12通过。
+
+已查看导入检查、下载程序独立运行、HTTPS运行及原生动画调试截图。本机Mac M5/16GiB、Node24.18、Chrome152；Windows启动脚本未在Windows执行，本机无Docker，实际公司模型/工业接口/证书与目标硬件仍待现场验证。M5本机技术验收通过；继续M6b历史/告警/诊断/适配，M7/M8及总体验收尚未完成。

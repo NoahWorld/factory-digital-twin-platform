@@ -25,7 +25,7 @@ test("runtime migrations use the same SQL, verify a backup before upgrades and r
   const root = testInfo.outputPath("migration-test"),directory = join(root,"migrations"),databasePath = join(root,"data","config.sqlite");
   await mkdir(root,{ recursive: true }); await cp(resolve("apps/api/migrations"),directory,{ recursive: true });
   const migrationCount = (await readdir(directory)).filter((name) => name.endsWith(".sql")).length;
-  const first = await migrateRuntimeDatabase(databasePath,directory); expect(first.applied).toHaveLength(migrationCount); expect(first.applied).toContain("0017_project_publications.sql"); expect(first.backupPath).toBeNull();
+  const first = await migrateRuntimeDatabase(databasePath,directory); expect(first.applied).toHaveLength(migrationCount); expect(first.applied).toContain("0017_project_publications.sql"); expect(first.applied).toContain("0018_project_package_imports.sql"); expect(first.backupPath).toBeNull();
   expect((await migrateRuntimeDatabase(databasePath,directory)).applied).toEqual([]);
   await writeFile(join(directory,"9001_runtime_probe.sql"),"CREATE TABLE runtime_probe(id INTEGER PRIMARY KEY,value TEXT); INSERT INTO runtime_probe VALUES(1,'retained');");
   const upgrade = await migrateRuntimeDatabase(databasePath,directory); expect(upgrade.applied).toEqual(["9001_runtime_probe.sql"]); expect(upgrade.backupPath).toBeTruthy();

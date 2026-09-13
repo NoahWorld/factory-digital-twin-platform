@@ -1,3 +1,4 @@
+import { PackageImportPanel } from "./PackageImportPanel";
 import { ProjectEditorProvider } from "./project-editor";
 import { FormEvent, lazy, Suspense, useEffect, useState } from "react";
 import { apiUrl, ApiRequestError, errorMessage, request } from "./api";
@@ -614,6 +615,8 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loadingProjects, setLoadingProjects] = useState(true);
   const [projectError, setProjectError] = useState<string | null>(null);
+  const [showPackageImport,setShowPackageImport] = useState(false);
+  const [projectsRevision,setProjectsRevision] = useState(0);
   const [showCreateProject, setShowCreateProject] = useState(false);
   const [createProjectTemplateId, setCreateProjectTemplateId] = useState<CanvasTemplateId | null>(null);
   const [renamingProject, setRenamingProject] = useState<Project | null>(null);
@@ -653,7 +656,7 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
     return () => {
       active = false;
     };
-  }, [route.kind]);
+  }, [route.kind,projectsRevision]);
 
   const logout = async () => {
     setLoggingOut(true);
@@ -767,7 +770,7 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
             <p>创建并管理客户的 2D + 3D 数字孪生交付项目。</p>
           </div>
           {user.capabilities.canCreateProject ? (
-            <button
+            <div className="publication-actions"><button className="secondary-button" onClick={() => setShowPackageImport(true)}>导入项目包</button><button
               aria-label="新建项目"
               className="primary-button icon-button"
               onClick={openBlankProjectDialog}
@@ -775,7 +778,7 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
               type="button"
             >
               <ActionIcon name="add" />
-            </button>
+            </button></div>
           ) : null}
         </div>
 
@@ -896,6 +899,7 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
       </section>
       )}
 
+      {showPackageImport ? <PackageImportPanel onClose={() => { setShowPackageImport(false); setProjectsRevision((value) => value+1); }} /> : null}
       {showCreateProject ? (
         <CreateProjectDialog
           onClose={() => setShowCreateProject(false)}

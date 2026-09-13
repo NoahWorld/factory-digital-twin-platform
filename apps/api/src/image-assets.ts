@@ -62,7 +62,7 @@ const validateFilename = (value: string | null): string => {
   return filename;
 };
 
-const detectFormat = (bytes: Uint8Array): ImageFormat => {
+export const detectFormat = (bytes: Uint8Array): ImageFormat => {
   const png = bytes.byteLength >= 8
     && bytes[0] === 0x89
     && bytes[1] === 0x50

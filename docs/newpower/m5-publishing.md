@@ -37,4 +37,16 @@ RuntimeProjectSnapshot必须同时包含项目定义（页面、场景、组件�
 
 `#/projects/:projectId/run`解析当前指针后进入固定`/versions/:versionId/run`；固定页面不会因随后激活变化偷偷切换。页面定义、catalog、模型报告和采集计划来自完整冻结快照，源任务身份包含versionId。当前发布的持续源在无人查看及重启后恢复；旧固定页面尚有订阅时保留其版本任务，最后退出按需求释放。草稿与发布配置分别采集，不以sourceId相同推定可共享。
 
-旧模型的名称覆盖与资产绑定，使用同版Three GLTFLoader的真实运行名称→文件locator清单；服务端省略纹理像素载入以保持无DOM，无外部资源请求。与实际浏览器的sanitize名称和多primitive定位对照验证，按页面/视窗检查旧资产多重匹配。运行快照metadata预算8MiB，文件仍按模型25MiB/图片8MiB受控。导出阶段要将直接URL显式外部化为逻辑端点；该包流程尚待首项检查点之后实施。
+旧模型的名称覆盖与资产绑定，使用同版Three GLTFLoader的真实运行名称→文件locator清单；服务端省略纹理像素载入以保持无DOM，无外部资源请求。与实际浏览器的sanitize名称和多primitive定位对照验证，按页面/视窗检查旧资产多重匹配。运行快照metadata预算8MiB，文件仍按模型25MiB/图片8MiB受控。导出阶段要将直接URL显式外部化为逻辑端点；该包流程现已按下列契约实现并验证。
+
+## 项目包与程序交付（本机验收通过）
+
+项目ZIP导出不可变版本，包含manifest.json及该版本引用的模型/图片；模型祖先版本随包保留。直接URL转成逻辑endpointRef并列出待配置端点，私有环境文件不进包。shared/project-package.ts统一格式校验与正式身份重映射，业务assetId、对象/clip和项目内稳定ID保持不变。上限512MiB、2001条目，模型25MiB、图片8MiB；未知结构、重复路径、目录/链接/加密条目、CRC/实际解压量/SHA与报告不符均拒绝。
+
+Node先检查并暂存，界面展示内容和环境依赖，再安装。新项目得到冻结版本和空草稿；同目标升级复用已确认的来源身份，增加版本而不覆盖草稿/当前指针。安装ID幂等，已安装暂存可清理后继续读回回执；来源版本或资源ID被复用为不同内容会冲突。恢复为可编辑草稿另有数量预览、完整runtimeRevision CAS、事务审计和单独确认，canvas revision单调推进，资源与历史版本保留。
+
+安装在写资源前原子保存journal。SIGKILL实测后，重启只回收无数据库引用的本次对象，保留已提交对象；不确定时保留恢复记录。安装、丢弃、清理在第一个异步点前取得同inspection独占锁，避免检查单被并发移除。独立SQLite锁保证一个data目录仅一宿主。安装/恢复/发布最终SQL检查当前用户权限，预检查通过不代替提交时权限。
+
+导入面板可下载独立程序ZIP，含server.mjs、public、migrations、实际打包依赖许可、初始化工具和macOS/Linux/Windows启动脚本。默认只监听本机，启动创建随机私有环境文件；管理员密码通过本地私有文件读取，无默认口令。Node24.18+的干净目录启动、真实项目导入、停止源宿主后运行及HTTPS同源代理已经验证。Windows脚本未在Windows执行，本机无Docker；真实客户环境仍需现场验收。具体使用见[独立交付说明](project-delivery.md)。
+
+ZIP实现依据：[fflate 0.8.3](https://github.com/101arrowz/fflate/tree/v0.8.3)、[yauzl](https://github.com/thejoshwolfe/yauzl)；实际锁定fflate0.8.3/yauzl3.4.0，使用安装源码确认API。浏览器与无DOM检查共用Three0.185.1；Buffer视图必须精确复制，不能以slice().buffer假定边界正确。

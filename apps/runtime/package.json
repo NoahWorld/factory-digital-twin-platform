@@ -14,10 +14,12 @@
   "devDependencies": {
     "@types/node": "24.10.1",
     "@types/ws": "8.18.1",
+    "@types/yauzl": "3.4.0",
     "esbuild": "0.28.1",
     "typescript": "5.9.3"
   },
   "dependencies": {
-    "ws": "8.21.3"
+    "ws": "8.21.3",
+    "yauzl": "3.4.0"
   }
 }

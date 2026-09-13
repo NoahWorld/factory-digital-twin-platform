@@ -15,8 +15,18 @@ export async function nodeRuntimeFixture(testInfo: TestInfo,allowedHosts?:string
   await writeFile(config,`BOOTSTRAP_TOKEN=${bootstrap}\nRUNTIME_POLLING_ENABLED=true\nRUNTIME_ALLOWED_HOSTS=${allowedHosts?.join(",") ?? mock.host}\n`,{ mode: 0o600 });
   const log = createWriteStream(join(root,"runtime.log"),{ flags: "a",mode: 0o600 });
   let child: ChildProcessWithoutNullStreams | null = null;
-  const start = async () => {
-    child = spawn(process.execPath,[join(bundle,"server.mjs"),"--data-dir",data,"--config",config,"--port","0"],{ cwd: root,stdio: "pipe" });
+  const start = async (crashOnWrite=false) => {
+    let args = [join(bundle,"server.mjs"),"--data-dir",data,"--config",config,"--port","0"];
+    if (crashOnWrite) {
+      const launcher = join(root,"crash-runner.mjs");
+      await writeFile(launcher,`import {readFile} from 'node:fs/promises'; import {parseEnv} from 'node:util'; import {pathToFileURL} from 'node:url';
+const config=parseEnv(await readFile(process.argv[2],'utf8')); const {startRuntime}=await import(pathToFileURL(process.argv[3]).href);
+const runtime=await startRuntime({dataDirectory:process.argv[4],port:0,environment:{BOOTSTRAP_TOKEN:config.BOOTSTRAP_TOKEN,RUNTIME_POLLING_ENABLED:config.RUNTIME_POLLING_ENABLED,RUNTIME_ALLOWED_HOSTS:config.RUNTIME_ALLOWED_HOSTS}});
+const put=runtime.environment.PROJECT_FILES.put.bind(runtime.environment.PROJECT_FILES); runtime.environment.PROJECT_FILES.put=async (...args)=>{await put(...args);process.kill(process.pid,'SIGKILL');};
+console.log(JSON.stringify({event:'runtime_listening',url:runtime.url})); process.once('SIGTERM',()=>runtime.close());`,{ mode:0o600 });
+      args = [launcher,config,join(bundle,"server.mjs"),data];
+    }
+    child = spawn(process.execPath,args,{ cwd: root,stdio: "pipe" });
     const process_ = child;
     process_.stderr.on("data",(chunk) => log.write(chunk));
     return new Promise<string>((resolve,reject) => {
@@ -35,13 +45,13 @@ export async function nodeRuntimeFixture(testInfo: TestInfo,allowedHosts?:string
     });
   };
   const stop = async () => {
-    const current = child; child = null; if (!current || current.exitCode !== null) return;
+    const current = child; child = null; if (!current || current.exitCode !== null || current.signalCode !== null) return;
     await new Promise<void>((resolve,reject) => {
       const timeout = setTimeout(() => { current.kill("SIGKILL"); reject(new Error("Node runtime did not shut down within five seconds.")); },5000);
       current.once("close",(code,signal) => { clearTimeout(timeout); if (code === 0 || signal === "SIGTERM") resolve(); else reject(new Error(`Runtime exit ${code}/${signal}`)); });
       current.kill("SIGTERM");
     });
   };
-  try { const url = await start(); return { url,bootstrap,dataDirectory: data,bundleDirectory: bundle,databasePath: join(data,"config.sqlite"),setSources: async (value:unknown) => { await writeFile(join(root,"sources.json"),JSON.stringify(value),{ mode:0o600 }); await writeFile(config,`BOOTSTRAP_TOKEN=${bootstrap}\nRUNTIME_POLLING_ENABLED=true\nRUNTIME_ALLOWED_HOSTS=${allowedHosts?.join(",") ?? mock.host}\nSOURCE_ENVIRONMENT_FILE=sources.json\n`,{ mode:0o600 }); },restart: async () => { await stop(); return start(); },dispose: async () => { try { await stop(); } finally { log.end(); } } }; }
+  try { const url = await start(); return { url,bootstrap,dataDirectory: data,bundleDirectory: bundle,databasePath: join(data,"config.sqlite"),setSources: async (value:unknown) => { await writeFile(join(root,"sources.json"),JSON.stringify(value),{ mode:0o600 }); await writeFile(config,`BOOTSTRAP_TOKEN=${bootstrap}\nRUNTIME_POLLING_ENABLED=true\nRUNTIME_ALLOWED_HOSTS=${allowedHosts?.join(",") ?? mock.host}\nSOURCE_ENVIRONMENT_FILE=sources.json\n`,{ mode:0o600 }); },restart: async (crashOnWrite=false) => { await stop(); return start(crashOnWrite); },dispose: async () => { try { await stop(); } finally { log.end(); } } }; }
   catch (reason) { try { await stop(); } finally { log.end(); } throw reason; }
 }

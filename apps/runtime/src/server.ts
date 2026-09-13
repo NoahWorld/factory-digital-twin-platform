@@ -1,3 +1,6 @@
+import { runtimeDistribution } from "./runtime-distribution";
+import { acquireRuntimeLock } from "./runtime-lock";
+import { LocalPackageService } from "./package-service";
 import { createServer,type IncomingMessage,type ServerResponse } from "node:http";
 import { once } from "node:events";
 import { mkdir,readFile,stat,realpath } from "node:fs/promises";
@@ -122,13 +125,16 @@ export async function startRuntime(options: RuntimeOptions) {
   await mkdir(dataDirectory,{ recursive: true,mode: 0o700 });
   const actualData = await realpath(dataDirectory);
   if (actualData === publicDirectory || actualData.startsWith(publicDirectory+sep)) throw new Error("Runtime data must not resolve inside public assets.");
+  const unlock = await acquireRuntimeLock(actualData);
+  try {
   const databasePath = join(dataDirectory,"config.sqlite");
   const migration = await migrateRuntimeDatabase(databasePath,migrationsDirectory);
   const database = new SqliteDatabase(databasePath);
-  const env: AppEnv = { ...options.environment,RESOLVE_SOURCE:resolver,DB: database,PROJECT_FILES: new FileBucket(join(dataDirectory,"objects")) };
+  const env: AppEnv = { ...options.environment,RUNTIME_DISTRIBUTION:(signal) => runtimeDistribution(bundle,signal),RESOLVE_SOURCE:resolver,DB: database,PROJECT_FILES: new FileBucket(join(dataDirectory,"objects")) };
   env.OPEN_WEBSOCKET_SOURCE = (source,requestId,onSample,signal) => openWebSocketSource(env,source,requestId,onSample,signal);
   const collector = new RuntimeCollector(env); env.CENTRAL_RUNTIME = collector;
-  try { await collector.start(); } catch (reason) { await collector.close(); database.close(); throw reason; }
+  const packages = new LocalPackageService(env,join(dataDirectory,"project-imports")); env.PACKAGE_SERVICE = packages;
+  try { await packages.initialize(); await collector.start(); } catch (reason) { await collector.close(); database.close(); throw reason; }
   const requests = new Set<AbortController>();
   const handlers = new Set<Promise<void>>();
   let stopping = false;
@@ -151,6 +157,8 @@ export async function startRuntime(options: RuntimeOptions) {
       if (response.ok && !["GET","HEAD","OPTIONS"].includes(method) && dataMutation && !url.pathname.endsWith("/test")) await collector.refresh(decodeURIComponent(dataMutation[1]));
       const activation = url.pathname.match(/^\/api\/v1\/projects\/([^/]+)\/versions\/[^/]+\/activate$/);
       if (response.ok && method === "POST" && activation) await collector.refreshPublication(decodeURIComponent(activation[1]));
+      const restored = url.pathname.match(/^\/api\/v1\/projects\/([^/]+)\/versions\/[^/]+\/restore-draft$/);
+      if (response.ok && method === "POST" && restored) await collector.refresh(decodeURIComponent(restored[1]));
       if (request.body && !request.body.locked) { if (!request.bodyUsed) outgoing.setHeader("connection","close"); await request.body.cancel(); }
       if (url.pathname === "/health" && response.ok) response = new Response(JSON.stringify({ ...await response.json() as object,runtime: { host: "node",database: "sqlite",collection: "central" } }),{ status: response.status,headers: response.headers });
       await writeRuntimeResponse(response,outgoing,controller.signal);
@@ -176,13 +184,14 @@ export async function startRuntime(options: RuntimeOptions) {
     let timeout: ReturnType<typeof setTimeout> | undefined;
     try {
       await Promise.race([settled,new Promise<never>((_,reject) => { timeout = setTimeout(() => reject(new Error("Runtime requests did not stop within ten seconds; database closure is deferred until they finish.")),10000); })]);
-      database.close();
-    } catch (reason) { void settled.then(() => database.close()); throw reason; }
+      database.close(); await unlock();
+    } catch (reason) { void settled.then(async () => { database.close(); await unlock(); }); throw reason; }
     finally { clearTimeout(timeout); }
   };
   return { url: localUrl,environment: env,migration,databasePath,
     close: () => closing ??= close(),
   };
+  } catch (reason) { await unlock(); throw reason; }
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {

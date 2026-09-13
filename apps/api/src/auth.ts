@@ -38,6 +38,8 @@ export type ObjectBucket = {
 };
 
 export type AppEnv = {
+  RUNTIME_DISTRIBUTION?: (signal:AbortSignal) => Response;
+  PACKAGE_SERVICE?: import("../../../shared/package-service").PackageService;
   OPEN_WEBSOCKET_SOURCE?: (source:import("./data-sources").DataSource,requestId:string,onSample:(sample:import("./runtime-state").SourceSample) => void,signal:AbortSignal) => Promise<{ closed:Promise<void>;close():void }>;
   RESOLVE_SOURCE?: (source: import("./data-sources").DataSource) => { url:string;headers:Record<string,string> };
   CENTRAL_RUNTIME?: import("../../../shared/runtime-stream").CentralRuntime;
@@ -489,3 +491,13 @@ export const capabilitiesFor = (user: AuthenticatedUser) => ({
   canCreateProject: hasGlobalRole(user, "platform_admin", "delivery_manager"),
   canManageUsers: hasGlobalRole(user, "platform_admin"),
 });
+
+/** Bind userId, projectId. Recheck mutable authority in the write transaction. */
+export const currentProjectEditPredicate = `EXISTS(SELECT 1 FROM users permission_user WHERE permission_user.id=? AND permission_user.is_active=1 AND (
+  EXISTS(SELECT 1 FROM user_roles permission_role WHERE permission_role.user_id=permission_user.id AND permission_role.role='platform_admin') OR
+  EXISTS(SELECT 1 FROM project_members permission_member WHERE permission_member.user_id=permission_user.id AND permission_member.project_id=? AND permission_member.role IN ('owner','editor'))))`;
+/** Bind userId. */
+export const currentProjectCreatePredicate = `EXISTS(SELECT 1 FROM users permission_user JOIN user_roles permission_role ON permission_role.user_id=permission_user.id WHERE permission_user.id=? AND permission_user.is_active=1 AND permission_role.role IN ('platform_admin','delivery_manager'))`;
+export async function requireCurrentProjectEditor(env:AppEnv,userId:string,projectId:string) {
+  if (!await env.DB.prepare(`SELECT 1 WHERE ${currentProjectEditPredicate}`).bind(userId,projectId).first()) throw new AppError(403,"permission_denied","Current permission does not allow editing this project.");
+}

@@ -345,3 +345,6 @@ export async function listModelVersions(env: AppEnv, projectId: string, assetId:
   const rows = await env.DB.prepare(`SELECT ${selectColumns} FROM model_assets WHERE project_id=? AND family_id=? ORDER BY version_number DESC`).bind(projectId,source.family_id).all<ModelAssetRow>();
   return rows.results.map(presentModelAsset);
 }
+
+/** Shared validation for package installation; ordinary uploads still own new IDs. */
+export const inspectModelBytes = async (bytes:Uint8Array,format:ModelFormat,assetId:string):Promise<ModelInspection> => ({ ...(format === "glb" ? inspectGlb(bytes) : inspectGltf(bytes)),...await inspectModelDetails(bytes,format,assetId) });

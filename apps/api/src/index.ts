@@ -1,3 +1,5 @@
+import { draftRestorationPreview,restoreVersionAsDraft } from "./draft-restoration";
+import { exportProjectPackage } from "./package-export";
 import { directChangesDatabase } from "./direct-changes-database";
 import { inspectPublicationDraft,createPublicationVersion,listPublicationVersions,activatePublicationVersion,readPublicationVersion,publicationPointer } from "./publications";
 import { snapshotMetricCatalog } from "../../../shared/runtime-project";
@@ -645,6 +647,60 @@ const handleApiRequest = async (
       durationMs: Date.now() - startedAt,
     }));
     return json({ asset, requestId });
+  }
+
+  if (method === "GET" && pathname === "/api/v1/runtime/distribution") {
+    const user = await getAuthenticatedUser(env,request);
+    if (!capabilitiesFor(user).canCreateProject) throw new AppError(403,"permission_denied","Only delivery operators can download the runtime bundle.");
+    if (!env.RUNTIME_DISTRIBUTION) throw new AppError(503,"runtime_distribution_unavailable","Download a runtime distribution from the independent Node host.");
+    return env.RUNTIME_DISTRIBUTION(request.signal);
+  }
+
+  if (method === "GET" && pathname === "/api/v1/project-packages/capabilities") {
+    const user = await getAuthenticatedUser(env,request); return json({ supported:!!env.PACKAGE_SERVICE,distribution:!!env.RUNTIME_DISTRIBUTION && capabilitiesFor(user).canCreateProject,requestId });
+  }
+  const packageTargetMatch = pathname.match(/^\/api\/v1\/projects\/([^/]+)\/package-target$/);
+  if (method === "GET" && packageTargetMatch) {
+    const projectId = decodePathSegment(packageTargetMatch[1]),user = await getAuthenticatedUser(env,request),project = await requireProjectAccess(env,user,projectId);
+    if (!canEditProject(user,project)) throw new AppError(403,"permission_denied","You cannot install versions into this project.");
+    const row = await env.DB.prepare("SELECT name,runtime_revision AS runtimeRevision FROM projects WHERE id=?").bind(projectId).first(); return json({ ...row as object,requestId });
+  }
+
+  const packageInspectionMatch = pathname.match(/^\/api\/v1\/project-packages(?:\/([^/]+))?$/);
+  if (packageInspectionMatch && (method === "POST" || method === "DELETE")) {
+    const user = await getAuthenticatedUser(env,request);
+    if (!capabilitiesFor(user).canCreateProject && !await env.DB.prepare("SELECT 1 FROM project_members WHERE user_id=? AND role IN ('owner','editor') LIMIT 1").bind(user.id).first()) throw new AppError(403,"permission_denied","Only project editors can inspect or install packages.");
+    if (!env.PACKAGE_SERVICE) throw new AppError(503,"package_import_unavailable","Package installation requires the independent Node runtime.");
+    if (method === "DELETE" && packageInspectionMatch[1]) { await env.PACKAGE_SERVICE.discard(decodePathSegment(packageInspectionMatch[1]),user.id); return json({ discarded:true,requestId }); }
+    if (method === "POST" && !packageInspectionMatch[1]) return json({ inspection:await env.PACKAGE_SERVICE.inspect(request,user.id),requestId },201);
+    if (method === "POST" && packageInspectionMatch[1] === "install") {
+      const body = await readJsonObject(request);
+      if (Object.keys(body).some((key) => !["inspectionId","targetProjectId","projectName","expectedRuntimeRevision"].includes(key)) || typeof body.inspectionId !== "string" || (body.targetProjectId !== undefined && typeof body.targetProjectId !== "string") || (body.projectName !== undefined && typeof body.projectName !== "string")) throw new AppError(400,"invalid_package_install_request","Invalid package installation request.");
+      if (body.targetProjectId) { const project = await requireProjectAccess(env,user,body.targetProjectId as string); if (!canEditProject(user,project)) throw new AppError(403,"permission_denied","You cannot install versions into this project."); }
+      else if (!capabilitiesFor(user).canCreateProject) throw new AppError(403,"permission_denied","You cannot create projects.");
+      const result = await env.PACKAGE_SERVICE.install(body as import("../../../shared/package-service").PackageInstallRequest,user.id,request.signal);
+      console.log(JSON.stringify({ event:"project_package_installed",requestId,userId:user.id,projectId:result.projectId,versionId:result.versionId,alreadyInstalled:result.alreadyInstalled }));
+      return json({ installation:result,requestId },result.alreadyInstalled ? 200 : 201);
+    }
+    throw new AppError(405,"method_not_allowed","Unsupported package operation.");
+  }
+
+  const restoreDraftMatch = pathname.match(/^\/api\/v1\/projects\/([^/]+)\/versions\/([^/]+)\/restore-draft$/);
+  if (restoreDraftMatch && (method === "GET" || method === "POST")) {
+    const projectId = decodePathSegment(restoreDraftMatch[1]),versionId = decodePathSegment(restoreDraftMatch[2]),user = await getAuthenticatedUser(env,request),project = await requireProjectAccess(env,user,projectId);
+    if (!canEditProject(user,project)) throw new AppError(403,"permission_denied","You cannot replace this project's draft.");
+    if (method === "GET") return json({ preview:await draftRestorationPreview(env,projectId,versionId),requestId });
+    const body = await readJsonObject(request); if (Object.keys(body).some((key) => key !== "expectedRuntimeRevision")) throw new AppError(400,"invalid_restore_request","Unknown restoration field.");
+    const result = await restoreVersionAsDraft(env,projectId,versionId,user.id,body.expectedRuntimeRevision as number,request.signal);
+    console.log(JSON.stringify({ event:"project_draft_restored",requestId,projectId,versionId,userId:user.id,restorationId:result.restorationId }));
+    return json({ ...result,requestId });
+  }
+
+  const packageExportMatch = pathname.match(/^\/api\/v1\/projects\/([^/]+)\/versions\/([^/]+)\/package$/);
+  if (method === "GET" && packageExportMatch) {
+    const projectId = decodePathSegment(packageExportMatch[1]),user = await getAuthenticatedUser(env,request),project = await requireProjectAccess(env,user,projectId);
+    if (!canEditProject(user,project)) throw new AppError(403,"permission_denied","Only project editors can export project packages.");
+    return exportProjectPackage(env,projectId,decodePathSegment(packageExportMatch[2]),request.signal);
   }
 
   const currentPublicationMatch = pathname.match(/^\/api\/v1\/projects\/([^/]+)\/publication-current$/);

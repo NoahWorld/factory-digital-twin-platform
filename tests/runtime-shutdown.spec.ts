@@ -78,3 +78,12 @@ test("shutdown aborts an upstream response that has not finished its body", asyn
     await expect.poll(() => upstreamClosed).toBe(true); await response;
   } finally { await api.dispose(); await runtime.close(); source.closeAllConnections(); await new Promise<void>((resolve) => source.close(() => resolve())); }
 });
+
+test("a second host cannot recover or mutate a data directory while its original host is live",async ({},testInfo) => {
+  const { startRuntime } = await loadRuntime();
+  const options = { dataDirectory:testInfo.outputPath("owned-data"),publicDirectory:resolve("apps/web/dist"),migrationsDirectory:resolve("apps/api/migrations"),port:0 };
+  const first = await startRuntime(options);
+  try { await expect(startRuntime(options)).rejects.toThrow("already owns"); expect((await fetch(`${first.url}/health`)).status).toBe(200); }
+  finally { await first.close(); }
+  const second = await startRuntime(options); await second.close();
+});

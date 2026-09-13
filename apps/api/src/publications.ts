@@ -1,6 +1,6 @@
 import { fetchRuntimeSource,normalizeRuntimeAsset,type SourceSample } from "./runtime-state";
 import { inspectLegacyModelNames } from "./legacy-model-names";
-import { AppError,type AppEnv,type DatabaseStatement } from "./auth";
+import { AppError,currentProjectEditPredicate,requireCurrentProjectEditor,type AppEnv,type DatabaseStatement } from "./auth";
 import { getProjectDefinition } from "./project-definitions";
 import { listAssets } from "./assets";
 import { listAssetDataBindings } from "./asset-data-bindings";
@@ -114,12 +114,12 @@ export async function createPublicationVersion(env:AppEnv,projectId:string,userI
   const snapshot = await captureRuntimeSnapshot(env,projectId,expectedRevision,signal),config = JSON.stringify(snapshot),sha256 = await digest(new TextEncoder().encode(config)),id = crypto.randomUUID(),now = new Date().toISOString();
   const statements:DatabaseStatement[] = [env.DB.prepare(`INSERT INTO project_versions(id,project_id,version_number,config_json,created_at,snapshot_sha256,source_revision,created_by,label)
     SELECT ?,?,COALESCE((SELECT MAX(version_number) FROM project_versions WHERE project_id=?),0)+1,?,?,?,?,?,?
-    WHERE EXISTS(SELECT 1 FROM projects WHERE id=? AND runtime_revision=?)`).bind(id,projectId,projectId,config,now,sha256,expectedRevision,userId,label.trim(),projectId,expectedRevision)];
+    WHERE EXISTS(SELECT 1 FROM projects WHERE id=? AND runtime_revision=?) AND ${currentProjectEditPredicate}`).bind(id,projectId,projectId,config,now,sha256,expectedRevision,userId,label.trim(),projectId,expectedRevision,userId,projectId)];
   for (const model of snapshot.resources.models) statements.push(env.DB.prepare("INSERT INTO project_version_model_assets(version_id,model_asset_id) SELECT ?,? WHERE EXISTS(SELECT 1 FROM project_versions WHERE id=?)").bind(id,model.id,id));
   for (const image of snapshot.resources.images) statements.push(env.DB.prepare("INSERT INTO project_version_image_assets(version_id,image_asset_id) SELECT ?,? WHERE EXISTS(SELECT 1 FROM project_versions WHERE id=?)").bind(id,image.id,id));
   requireActiveRequest(signal);
   const result = await env.DB.batch(statements);
-  if (result[0]?.meta?.changes !== 1) throw conflict();
+  if (result[0]?.meta?.changes !== 1) { await requireCurrentProjectEditor(env,userId,projectId); throw conflict(); }
   return (await readPublicationVersion(env,projectId,id)).version;
 }
 
@@ -153,10 +153,10 @@ export async function activatePublicationVersion(env:AppEnv,projectId:string,use
   requireActiveRequest(signal);
   const now = new Date().toISOString();
   const result = await env.DB.prepare(`INSERT INTO project_publications(project_id,version_id,revision,updated_by,updated_at)
-    SELECT ?,?,1,?,? WHERE EXISTS(SELECT 1 FROM project_versions WHERE project_id=? AND id=?)
+    SELECT ?,?,1,?,? WHERE EXISTS(SELECT 1 FROM project_versions WHERE project_id=? AND id=?) AND ${currentProjectEditPredicate}
     AND ((?=0 AND NOT EXISTS(SELECT 1 FROM project_publications WHERE project_id=?)) OR EXISTS(SELECT 1 FROM project_publications WHERE project_id=? AND revision=?))
     ON CONFLICT(project_id) DO UPDATE SET version_id=excluded.version_id,revision=project_publications.revision+1,updated_by=excluded.updated_by,updated_at=excluded.updated_at
-    WHERE project_publications.revision=?`).bind(projectId,versionId,userId,now,projectId,versionId,expectedRevision,projectId,projectId,expectedRevision,expectedRevision).run();
-  if (result.meta?.changes !== 1) throw new AppError(409,"publication_activation_conflict","当前发布版本已变化，请刷新后再激活或回滚。");
+    WHERE project_publications.revision=?`).bind(projectId,versionId,userId,now,projectId,versionId,userId,projectId,expectedRevision,projectId,projectId,expectedRevision,expectedRevision).run();
+  if (result.meta?.changes !== 1) { await requireCurrentProjectEditor(env,userId,projectId); throw new AppError(409,"publication_activation_conflict","当前发布版本已变化，请刷新后再激活或回滚。"); }
   return { versionId,revision:expectedRevision+1,updatedAt:now };
 }

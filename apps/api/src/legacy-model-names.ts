@@ -25,7 +25,7 @@ export async function inspectLegacyModelNames(bytes:Uint8Array):Promise<LegacyMo
     };
     return { name:"NEWPOWER_HEADLESS_NAMES" };
   });
-  const gltf = await loader.parseAsync(bytes.slice().buffer as ArrayBuffer,"");
+  const gltf = await loader.parseAsync(Uint8Array.from(bytes).buffer,"");
   try {
     const loadedMeshes = new Set<number>();
     for (const association of gltf.parser.associations.values()) if (association.meshes !== undefined) loadedMeshes.add(association.meshes);
