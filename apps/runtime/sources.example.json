@@ -2,14 +2,36 @@
   "version": 1,
   "endpoints": {
     "equipment-gateway": {
-      "projectIds": ["replace-with-project-id"],
+      "projectIds": [
+        "replace-with-project-id"
+      ],
       "url": "http://127.0.0.1:8790/device/DEVICE-001",
       "credentialRef": "equipment-api"
     }
   },
   "credentials": {
     "equipment-api": {
-      "headers": { "authorization": "Bearer replace-with-server-secret" }
+      "headers": {
+        "authorization": "Bearer replace-with-server-secret"
+      }
+    }
+  },
+  "mqttEndpoints": {
+    "example-broker": {
+      "projectIds": [
+        "replace-with-installed-project-id"
+      ],
+      "url": "mqtts://broker.example.invalid:8883",
+      "topics": [
+        "factory/device/snapshot"
+      ],
+      "credentialRef": "example-device"
+    }
+  },
+  "mqttCredentials": {
+    "example-device": {
+      "username": "replace-with-device-username",
+      "password": "replace-with-server-secret"
     }
   }
 }

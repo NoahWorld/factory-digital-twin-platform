@@ -3,7 +3,7 @@ import { AppError, type AppEnv } from "./auth";
 
 type JsonObject = Record<string, unknown>;
 
-export type DataSourceType = "rest_polling" | "websocket";
+export type DataSourceType = "rest_polling" | "websocket" | "mqtt";
 
 export type RestPollingConfig = {
   timestampFormat?:TimestampFormat;
@@ -29,7 +29,16 @@ export type WebSocketConfig = {
   credentialRef: string | null;
 };
 
-export type DataSourceConfig = RestPollingConfig | WebSocketConfig;
+export type MqttConfig = {
+  url:""; endpointRef:string; credentialRef:string|null; topic:string;
+  collectionMode?:"demand"|"continuous"; timestampPath:string; timestampFormat?:TimestampFormat;
+  heartbeatSeconds:number; reconnectMaxSeconds:number; sampleIntervalMs:number;
+};
+export type DataSourceConfig = RestPollingConfig | WebSocketConfig | MqttConfig;
+export function validateMqttTopic(value:unknown):string {
+  if (typeof value !== "string" || !value || value.length>128 || /[+#\u0000-\u001f\u007f]/.test(value) || value.startsWith("$share/") || /[\ud800-\udfff]/u.test(value)) throw new AppError(400,"invalid_mqtt_topic","MQTT requires one exact printable topic of at most 128 characters without wildcards or shared subscriptions.");
+  return value;
+}
 
 export type DataSource = {
   id: string;
@@ -109,11 +118,11 @@ const assertKnownFields = (
 };
 
 const validateSourceType = (value: unknown): DataSourceType => {
-  if (value !== "rest_polling" && value !== "websocket") {
+  if (value !== "rest_polling" && value !== "websocket" && value !== "mqtt") {
     throw new AppError(
       400,
       "invalid_data_source_type",
-      "Data source type must be rest_polling or websocket.",
+      "Data source type must be rest_polling, websocket or mqtt.",
     );
   }
   return value;
@@ -256,6 +265,12 @@ const validateConfig = (
   if (config.collectionMode !== undefined && config.collectionMode !== "demand" && config.collectionMode !== "continuous") throw new AppError(400,"invalid_collection_mode","Collection mode must be demand or continuous.");
   if (config.timestampFormat !== undefined && !config.timestampPath) throw new AppError(400,"invalid_timestamp_format","A source time format requires a timestamp path.");
   const endpoint = { ...(config.timestampFormat !== undefined ? { timestampFormat:validateTimestampFormat(config.timestampFormat) }:{}), ...(endpointRef ? { endpointRef } : {}),...(config.collectionMode ? { collectionMode:config.collectionMode as "demand" | "continuous" } : {}) };
+  if (sourceType === "mqtt") {
+    assertKnownFields(config,new Set(["url","endpointRef","credentialRef","topic","collectionMode","timestampPath","timestampFormat","heartbeatSeconds","reconnectMaxSeconds","sampleIntervalMs"]),"unknown_data_source_config_field","MQTT config");
+    const timestampPath = validateTimestampPath(config.timestampPath);
+    if (!endpointRef || !timestampPath) throw new AppError(400,"invalid_mqtt_config","MQTT requires a private endpoint reference and a source timestamp path, including for retained messages.");
+    return { ...endpoint,url:"",endpointRef,credentialRef:validateCredentialRef(config.credentialRef),topic:validateMqttTopic(config.topic),timestampPath,heartbeatSeconds:validateInteger(config.heartbeatSeconds,"config.heartbeatSeconds",5,300),reconnectMaxSeconds:validateInteger(config.reconnectMaxSeconds,"config.reconnectMaxSeconds",5,300),sampleIntervalMs:validateInteger(config.sampleIntervalMs,"config.sampleIntervalMs",16,60000) };
+  }
   if (sourceType === "rest_polling") {
     assertKnownFields(
       config,

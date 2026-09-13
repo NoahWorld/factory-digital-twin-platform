@@ -7,7 +7,7 @@ export type AssetDataBinding = {
   assetRecordId: string;
   dataSourceId: string;
   dataSourceName: string;
-  dataSourceType: "rest_polling" | "websocket";
+  dataSourceType: "rest_polling" | "websocket" | "mqtt";
   metricKey: string;
   sourcePath: string;
   valueType: MetricValueType;

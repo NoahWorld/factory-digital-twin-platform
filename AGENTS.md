@@ -20,6 +20,7 @@
 - M6b告警规则独立完整CAS，snapshot v2以requiredCapabilities声明执行需求；旧v1不补字段或重算原始来源身份。整源帧原子接收/拒绝、同时更新后求值，缓存仅在遥测COMMIT后发布；旧排队帧不能跨scope不确定代次水位重新确认状态。代次/abort必须先于可失败的告警持久化。规则语义变化为retired，缺值/陈旧/失联不假恢复，最后按需订阅退出后状态待新样本。来源扩展必须沿同一边界并维护逻辑端点、只读/主题授权和快照能力声明。
 - M6b组件绑定v2的历史/告警查询仍走原项目操作与CAS。声明telemetry-bindings-v1，运行数据不写props；时间桶/图形在质量、单位或配置变化处断开。相同查询共享，订阅按独立token释放，最后退出取消，拒绝权限后停止自动尝试。摘要列表省略采样值正文但标明valuesOmitted；decoder须验证scope/资产及活动事件与规则状态双向一致，空数据不可掩盖矛盾状态。
 - M6b转换是指标映射的可选版本字段，省略PATCH保留/null清除，标准化顺序为字段解析→转换→类型校验。旧无转换API/快照/告警签名不得补默认字段；新快照声明metric-transforms-v1/source-time-format-v1。UI数值空草稿不能转零，比较序列化前校验；源时间格式仅决定新鲜度，指标时间转换不替代该判断。
+- MQTT源使用私有项目与精确topic授权、MQTT3.1.1/QoS0或1、必填源时间，沿同一collector和快照能力mqtt-source-v1执行。parser前限制包/速率并拒绝QoS2/3及重复CONNACK，防止协议库等待存储累积；opening仅在订阅确认后完成，库重连关闭。0021重建父子表须保留0020转换列与全部修订触发器，复制期间不得推进runtimeRevision。
 - 当前进度和未完项见 [开发状态](docs/newpower/development-status.md)，任务及后续方向见 [研发指南](NewPower_Codex_Development_Start_Guide.md)。历史公司方案保留其背景，NewPower 状态以当前分支记录和实际验证为准。
 
 ## 产品定位

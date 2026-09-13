@@ -72,3 +72,25 @@ MQTT计划使用[mqtt 5.15.2](https://github.com/mqttjs/MQTT.js/blob/v5.15.2/pac
 0020只新增可空transform_json。PATCH省略转换字段保留现值，显式null清除；UI保存未改转换时省略字段，并在序列化比较前验证数值草稿。旧NULL行不向API输出新字段，旧快照/项目包及告警依赖签名保持原表示。有转换或显式源时间格式的新快照分别声明metric-transforms-v1与source-time-format-v1，恢复旧版本会清掉草稿新增转换而不改变冻结字节。
 
 资产与指标面板提供步骤增删、排序、数值/枚举/时间编辑。枚举数字允许小数，清空保持空草稿并阻止保存；运行组件显示“转换错误”，不把转换失败当作零或实时值。API与服务器历史使用同一标准化路径，告警依赖签名含实际转换步骤。项目包导入重映射实体ID，保留转换及逻辑时间格式。
+
+## MQTT 设备消息（集成验证中）
+
+新增mqtt源沿用同一collector、标准化、历史、告警及冻结版本链，Node提供mqtt-source-v1能力；Worker可以保存配置，但没有MQTT执行能力。配置要求私有endpointRef、一个精确topic、timestampPath、采样间隔、心跳与重连上限。私有mqttEndpoints分别限定项目与主题，mqttCredentials保存设备用户名/密码，实际地址仍受host:port白名单约束。端点及凭据样例随独立运行器交付；导入后的新项目须重新获得私有环境授权。
+
+协议固定MQTT3.1.1/QoS0或1，每条消息是完整UTF-8 JSON。MQTT.js 5.15.2只负责协议，库自身重连关闭，统一collector恢复订阅；连接及SUBACK成功后才释放opening并交付样本。Aedes 1.1.2仅为真实本地测试broker，不打入产品运行器。TLS验证可信证书并发送DNS SNI，不提供忽略证书错误开关。
+
+socket流在进入MQTT parser前检查remaining-length、256KiB加协议头预算、每秒1000包/4MiB。PUBLISH QoS2/3在首字节拒绝：订阅QoS1不能只信broker遵守，否则无PUBREL的QoS2能积累在库内部存储。应用JSON仍限制256KiB，严格UTF-8及私有值回显检查。保留消息的源时间不改写为接收时间，陈旧和未来时间沿原规则处理；取消、断线和错误清掉计时、待发送样本与socket。
+
+0021在同一迁移事务暂存子表，先移除六个修订触发器，重建父子表后恢复外键、索引、唯一约束和触发器；不重新序列化原配置。表约束提前预留sqlite_query，API/UI目前只接MQTT，SQLite适配仍未实现。隔离副本和实际Worker迁移均已验证原数据及版本保留。实际Worker备份见m6b-adapter-migration-readback.json。
+
+MQTT补充边界：每连接只允许一次CONNACK，且必须作为首个服务器报文；其后只接收订阅端需要的PUBLISH/SUBACK/PINGRESP。MQTT.js对重复CONNACK会再次发起订阅，首个SUBACK后无原opening超时保护，可能长期积累未完成outgoing项；真实反例已修为parser前拒绝并关闭。对应mqtt-source.spec.ts重复确认测试验证只发生一次订阅，连接释放。
+
+## 只读 SQLite 查询的下一步契约（尚未实现）
+
+先支持明确的sqlite_query协议，不宣称支持PostgreSQL或生产工业库。项目保存queryRef、轮询/超时和字段映射；私有环境登记项目白名单、数据库文件、固定单条SQL、参数、可读取的表列和输出行数。环境引用在项目包中保留，SQL/真实文件路径不进入项目配置或标准响应。输出为rows数组，沿现有JSON路径选择字段，NULL保留；大整数超出安全范围、BLOB、重名列和超行数应显式失败，不自动转零、截断或隐式Base64。
+
+Node24.18提供setAuthorizer与limits。只读连接禁扩展，只允许main库白名单表列、受控函数和SELECT，拒绝ATTACH、PRAGMA、写入及DDL。单独子进程执行固定查询，通过stdin传配置，stdout仅返回有界结果或安全错误码；timeout/取消杀掉子进程并等待退出，SQLite busy timeout仅处理锁等待。限制SQLite单值/SQL/列数等预算，返回最多配置行数和256KiB。读取自身配置库、遥测库及运行目录文件应拒绝；查询不在主采集事件循环阻塞。
+
+冻结快照新增sqlite-query-source-v1；旧包无此能力时保留原字段与来源身份。实际本地数据库、写拒绝/尾随语句/函数与文件边界、NULL/数值/空结果、取消与慢查询、UI、无人查看历史/告警、冻结及导入后的环境重配都需要真实验证后再验收。
+
+SQLite实现前的Node24.18内存实验补充：prepare只编译首条，sourceSQL可核对原始已编译前缀并拒绝非空白尾随内容（包括尾随注释），输入先拒绝NUL。columns()保留重名而get/all会覆盖，必须迭代前检查唯一性。所有INTEGER用BigInt读取后仅安全范围转number；iterate异常/超限时显式return关闭。authorizer的FUNCTION名称在第三参数；COUNT(*)可能返回已登记表的空列READ且dbName=null，需在禁止附加/临时库前提下允许该元数据读取。SQLite内部列预算须留合理余量，结果列数单独限；不开放printf等可能在长度限制时静默返回NULL的非必要函数。vdbeOp不是运行步数，不能取消子进程超时。

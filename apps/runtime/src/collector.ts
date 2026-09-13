@@ -198,7 +198,7 @@ export class RuntimeCollector implements CentralRuntime {
   private async poll(job: SourceJob) {
     await this.prepareTelemetry(job);
     if (!this.current(job)) return;
-    if (job.source.sourceType === "websocket") return this.connectWebSocket(job);
+    if (job.source.sourceType === "websocket" || job.source.sourceType === "mqtt") return this.connectSubscription(job);
     let delay = 2;
     const requestId = crypto.randomUUID(),startedAt = Date.now();
     try {
@@ -216,24 +216,25 @@ export class RuntimeCollector implements CentralRuntime {
     for (const client of this.clients) if (client.projectId === job.projectId) this.update(client);
     job.timer = setTimeout(() => this.enqueue(job),Math.max(1,delay)*1000);
   }
-  private async connectWebSocket(job:SourceJob) {
-    const requestId = crypto.randomUUID();
+  private async connectSubscription(job:SourceJob) {
+    const requestId = crypto.randomUUID(),mqtt = job.source.sourceType === "mqtt";
     const failed = (reason:unknown) => {
       if (!this.current(job)) return;
       job.error = failure(reason); job.failures++; this.record(job);
-      console.log(JSON.stringify({ event:"runtime_websocket_failed",requestId,projectId:job.projectId,dataSourceId:job.source.id,errorCode:job.error.code }));
+      console.log(JSON.stringify({ event:mqtt ? "runtime_mqtt_failed":"runtime_websocket_failed",requestId,projectId:job.projectId,dataSourceId:job.source.id,errorCode:job.error.code }));
       for (const client of this.clients) if (client.projectId === job.projectId) this.update(client);
       const maximum = "reconnectMaxSeconds" in job.source.config ? job.source.config.reconnectMaxSeconds : 30;
       job.timer = setTimeout(() => this.enqueue(job),Math.min(2 ** Math.min(job.failures-1,10),maximum)*1000);
     };
     try {
-      if (!this.env.OPEN_WEBSOCKET_SOURCE) throw new AppError(503,"websocket_runtime_unavailable","WebSocket collection is unavailable.");
-      const connection = await this.env.OPEN_WEBSOCKET_SOURCE(job.source,requestId,(sample) => {
+      const open = mqtt ? this.env.OPEN_MQTT_SOURCE:this.env.OPEN_WEBSOCKET_SOURCE;
+      if (!open) throw new AppError(503,mqtt ? "mqtt_runtime_unavailable":"websocket_runtime_unavailable","Subscription collection is unavailable.");
+      const connection = await open(job.source,requestId,(sample) => {
         if (!this.current(job)) return; job.sample = sample; job.error = undefined; job.failures = 0; this.record(job);
         for (const client of this.clients) if (client.projectId === job.projectId) this.update(client);
       },job.controller.signal);
       if (!this.current(job)) { connection.close(); await connection.closed.catch(() => {}); return; }
-      console.log(JSON.stringify({ event:"runtime_websocket_connected",requestId,projectId:job.projectId,dataSourceId:job.source.id }));
+      console.log(JSON.stringify({ event:mqtt ? "runtime_mqtt_connected":"runtime_websocket_connected",requestId,projectId:job.projectId,dataSourceId:job.source.id }));
       const lifetime = connection.closed.catch(failed).finally(() => this.tasks.delete(lifetime)); this.tasks.add(lifetime);
     } catch (reason) { failed(reason); }
   }

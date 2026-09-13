@@ -445,3 +445,15 @@ Worker回归发现D1 meta.changes含触发器更新，原单行保存返回2而�
 独立HTTP/Node实际接口验证：数字文本140先减32再乘5/9得到60，枚举与Unix时间转换进入标准状态及无查看者历史，省略PATCH保留/显式null清除、NULL/错误不回显/陈旧/未来时间通过。真实Chrome编辑排序、保存重开、小数枚举、空数值不变零、时间步骤和运行错误恢复通过。原UI检查定位当前设备时使用了与实际可访问名称不匹配的label选择器，改为读取实际combobox后通过；没有放宽产品断言。
 
 快照/ZIP导入/草稿恢复验证转换及时间格式保留、ID重映射、旧v1字节和包身份不变、旧告警依赖签名不变、新转换改变语义签名、缺失能力声明拒绝。m6b-transform-ui-fixed.log共5项通过；m6b-transform-regression.log完整162项通过、1示例跳过（6.5分钟）。m6b-transform-final-runtime.log追加固定版本真实运行通过；该次新增告警测试遗漏原契约要求的recoveryCondition:null，修正测试输入后m6b-transform-alarm-fixed.log的2项转换告警/包复验通过。转换值60进入服务器告警记录，清除转换产生retired而非假恢复。最终check/build及Worker smoke12通过（m6b-transform-smoke.log）；M6b整体仍待MQTT/只读SQL与后续诊断验收。
+
+## M6b MQTT（2026-09-13，本机检查点）
+
+mqtt5.15.2/Aedes1.1.2锁定依赖已安装；Node独立构建实际携带MQTT依赖及许可证，Aedes仅用于测试。0021通过新Node迁移3项验证及非空隔离副本数据/修订保留检查后，停止旧Worker执行带备份迁移24条命令，再按原参数启动。备份test/backups/before-migration-2026-09-13T10-15-00-158Z-1018ad92-90af-4e72-9490-a16d353b0c28.sqlite；m6b-adapter-migration-readback.json确认20段保留API、完整两表、全部项目runtimeRevision及不可变版本不变，FK0。
+
+m6b-mqtt-final-runtime.log：9项通过（42.5秒）。真实Chrome配置MQTT逻辑端点/主题/Unix源时间、测试发现字段、双浏览器共享、取消释放、断线重订阅、陈旧、零浏览器持续历史/告警、重启及固定版本独立映射通过。实际项目ZIP导入与草稿恢复保留源配置、重映射ID；未授权新项目被拒绝，增加私有环境授权并重启后导入版本真实运行通过。
+
+真实协议检查覆盖项目/主题白名单和broker订阅拒绝、采样合并、retained源时间保留、私有回显、socket分段超大包、非法UTF-8、CONNACK前取消、SUBACK超时、缺失PINGRESP及不可信TLS证书拒绝；QoS2/3在parser前拒绝以避免未确认存储累积。先前无SUBACK测试同时不响应PING，被更早心跳故障结束；补上PINGRESP后验证独立订阅超时，没有放宽运行超时。
+
+首次集成测试假定了不存在的数据源DELETE路由，已依据实际API移除多余清理调用；导入测试曾误拿冻结前的按需配置作比较，现逐项对照包内冻结的持续配置。最终完整回归正在执行，M6b和总目标尚未完成。m6b-mqtt-delivery.log中独立程序ZIP下载/解包/启动/导入运行测试通过，后续最新完整回归继续覆盖。
+
+MQTT最终检查：m6b-mqtt-regression.log完整170项通过、1示例跳过，唯一失败为旧package-ui测试在异步刷新前以first()锁定旧版本禁用按钮；最终失败页面已显示新版本按钮可用。改为安装版本ID定位后，m6b-mqtt-verified.log全部12项通过，包含新增重复CONNACK拒绝、MQTT协议与导入运行、原升级回滚及独立程序ZIP启动。m6b-mqtt-verified-check/build.log和Worker smoke12通过。源码不通过提高等待时长或强制点击绕过失败。继续SQLite queryRef与剩余M6b、M7/M8。

@@ -35,8 +35,10 @@ test("import ZIP through UI, bind a private environment, run with the original h
     await dialog.getByLabel("项目包 ZIP",{ exact:true }).setInputFiles({ name:"upgrade.zip",mimeType:"application/zip",buffer:secondZip }); await dialog.getByRole("button",{ name:"上传并检查项目包",exact:true }).click(); await dialog.getByRole("button",{ name:"安装为新版本",exact:true }).click(); await expect(dialog.getByRole("heading",{ name:"安装完成，尚未激活",exact:true })).toBeVisible();
     expect((await (await api.get(`${path}/definition`)).json()).definition).toEqual(restored); expect((await (await api.get(`${path}/versions`)).json()).active.versionId).toBe(v1);
     await dialog.getByRole("button",{ name:"关闭项目包导入",exact:true }).click(); panel = page.getByRole("dialog",{ name:"项目发布与版本",exact:true });
-    await panel.locator(".publication-version").first().getByRole("button",{ name:"激活此版本",exact:true }).click();
-    const v2 = (await (await api.get(`${path}/versions`)).json()).versions.find((version:{ id:string }) => version.id !== v1); await expect(panel.getByRole("status")).toContainText(`版本 ${v2.versionNumber} 已成为当前发布版本`);
+    const v2 = (await (await api.get(`${path}/versions`)).json()).versions.find((version:{ id:string }) => version.id !== v1);
+    // Closing import refreshes the list asynchronously; target the newly installed identity, not the still-visible old first row.
+    await panel.locator(`[data-version-id="${v2.id}"]`).getByRole("button",{ name:"激活此版本",exact:true }).click();
+    await expect(panel.getByRole("status")).toContainText(`版本 ${v2.versionNumber} 已成为当前发布版本`);
     await panel.locator(`[data-version-id="${v1}"]`).getByRole("button",{ name:"回滚到此版本",exact:true }).click(); await expect(panel.getByRole("status")).toContainText("版本 1 已成为当前发布版本");
   } finally { await context?.close(); await original.dispose(); await api.dispose(); if (!sourceClosed) await source.dispose(); await target.dispose(); }
 });

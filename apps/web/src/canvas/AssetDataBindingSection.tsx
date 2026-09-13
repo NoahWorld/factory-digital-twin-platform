@@ -61,7 +61,7 @@ const draftFromBinding = (
 const sourceTypeLabel = (
   source: ProjectDataSource,
 ): string =>
-  source.sourceType === "rest_polling" ? "REST" : "WebSocket";
+  source.sourceType === "rest_polling" ? "REST" : source.sourceType === "mqtt" ? "MQTT":"WebSocket";
 
 const valueTypeLabels: Record<MetricValueType, string> = {
   number: "数值",

@@ -35,6 +35,7 @@ type DataSourceDraft = {
   heartbeatSeconds: string;
   sampleIntervalMs: string;
   topics: string;
+  topic:string;
   reconnectMaxSeconds: string;
   credentialRef: string;
 };
@@ -54,6 +55,7 @@ const emptyDraft = (): DataSourceDraft => ({
   heartbeatSeconds: "30",
   sampleIntervalMs: "100",
   topics: "",
+  topic:"",
   reconnectMaxSeconds: "60",
   credentialRef: "",
 });
@@ -74,12 +76,13 @@ const draftFromSource = (source: ProjectDataSource): DataSourceDraft => ({
   timestampPath: source.config.timestampPath ?? "",
   timestampFormat:source.config.timestampFormat ?? "iso",
   timestampFormatExplicit:source.config.timestampFormat !== undefined,
-  sampleIntervalMs: source.sourceType === "websocket" ? String(source.config.sampleIntervalMs ?? 100) : "100",
+  sampleIntervalMs: source.sourceType !== "rest_polling" ? String(source.config.sampleIntervalMs ?? 100) : "100",
+  topic:source.sourceType === "mqtt" ? source.config.topic:"",
   topics: source.sourceType === "websocket" ? (source.config.topics ?? []).join("\n") : "",
-  heartbeatSeconds: source.sourceType === "websocket"
+  heartbeatSeconds: source.sourceType !== "rest_polling"
     ? String(source.config.heartbeatSeconds)
     : "30",
-  reconnectMaxSeconds: source.sourceType === "websocket"
+  reconnectMaxSeconds: source.sourceType !== "rest_polling"
     ? String(source.config.reconnectMaxSeconds)
     : "60",
   credentialRef: source.config.credentialRef ?? "",
@@ -88,6 +91,7 @@ const draftFromSource = (source: ProjectDataSource): DataSourceDraft => ({
 const sourceTypeLabel: Record<DataSourceType, string> = {
   rest_polling: "REST 轮询",
   websocket: "WebSocket",
+  mqtt:"MQTT 设备消息",
 };
 
 const requiredInteger = (value: string, label: string): number => {
@@ -177,7 +181,7 @@ export function DataSourcePanel({
   };
 
   const probeSource = async () => {
-    if (!draft.id || (draft.sourceType === "websocket" && !runtimeStatus?.protocols?.includes("websocket")) || probing) return;
+    if (!draft.id || (draft.sourceType !== "rest_polling" && !runtimeStatus?.protocols?.includes(draft.sourceType)) || probing) return;
     setProbing(true);
     setProbeError(null);
     setProbeResult(null);
@@ -220,7 +224,7 @@ export function DataSourcePanel({
             timestampPath: draft.timestampPath || null,
             ...(draft.timestampPath && (draft.timestampFormat !== "iso" || draft.timestampFormatExplicit) ? { timestampFormat:draft.timestampFormat }:{}),
             sampleIntervalMs: requiredInteger(draft.sampleIntervalMs,"采样间隔"),
-            topics: draft.topics.split("\n").map((topic) => topic.trim()).filter(Boolean),
+            ...(draft.sourceType === "mqtt" ? { topic:draft.topic }:{ topics:draft.topics.split("\n").map((topic) => topic.trim()).filter(Boolean) }),
             heartbeatSeconds: requiredInteger(draft.heartbeatSeconds, "心跳周期"),
             reconnectMaxSeconds: requiredInteger(
               draft.reconnectMaxSeconds,
@@ -263,7 +267,7 @@ export function DataSourcePanel({
     : false;
   const probeDisabled = formDisabled
     || probing
-    || (draft.sourceType === "websocket" && !runtimeStatus?.protocols?.includes("websocket"))
+    || (draft.sourceType !== "rest_polling" && !runtimeStatus?.protocols?.includes(draft.sourceType))
     || !draft.id
     || hasUnsavedChanges;
 
@@ -342,7 +346,7 @@ export function DataSourcePanel({
                   {probing ? "测试中…" : "测试连接并发现字段"}
                 </button>
                 {draft.id && hasUnsavedChanges ? <small>请先保存修改</small> : null}
-                {draft.sourceType === "websocket" && !runtimeStatus?.protocols?.includes("websocket") ? <small>当前宿主不支持WebSocket采集，请使用独立运行服务。</small> : null}
+                {draft.sourceType !== "rest_polling" && !runtimeStatus?.protocols?.includes(draft.sourceType) ? <small>当前宿主不支持此类消息采集，请使用独立运行服务。</small> : null}
               </div>
             </div>
 
@@ -376,6 +380,7 @@ export function DataSourcePanel({
                 >
                   <option value="rest_polling">REST 轮询</option>
                   <option value="websocket">WebSocket</option>
+                  <option value="mqtt">MQTT 设备消息</option>
                 </select>
               </label>
               <label className="is-wide">
@@ -387,11 +392,11 @@ export function DataSourcePanel({
                 {runtimeStatus?.collection === "per-request" ? <small>此宿主仅支持即时采集；持续模式需要独立运行服务。</small> : null}
               </label>
               <label className="is-wide">
-                <span>环境端点引用（可选）</span>
-                <input aria-label="环境端点引用（可选）" aria-describedby="data-source-endpoint-help" disabled={formDisabled} maxLength={120} value={draft.endpointRef} placeholder="例如：equipment-gateway" onChange={(event) => setDraft((current) => ({ ...current,endpointRef:event.target.value,url:event.target.value ? "" : current.url }))} />
+                <span>{draft.sourceType === "mqtt" ? "环境端点引用（必填）":"环境端点引用（可选）"}</span>
+                <input aria-label={draft.sourceType === "mqtt" ? "环境端点引用（必填）":"环境端点引用（可选）"} required={draft.sourceType === "mqtt"} aria-describedby="data-source-endpoint-help" disabled={formDisabled} maxLength={120} value={draft.endpointRef} placeholder="例如：equipment-gateway" onChange={(event) => setDraft((current) => ({ ...current,endpointRef:event.target.value,url:event.target.value ? "" : current.url }))} />
                 <small id="data-source-endpoint-help">使用引用后，地址与认证由运行服务器配置；项目只保存引用名称。</small>
               </label>
-              <label className="is-wide">
+              {draft.sourceType !== "mqtt" ? <label className="is-wide">
                 <span>{draft.sourceType === "rest_polling" ? "HTTP(S) 地址" : "WS(S) 地址"}</span>
                 <input
                   disabled={formDisabled || !!draft.endpointRef}
@@ -409,7 +414,7 @@ export function DataSourcePanel({
                   type="url"
                   value={draft.url}
                 />
-              </label>
+              </label>:null}
               {draft.sourceType === "rest_polling" ? (
                 <>
                   <label>
@@ -492,10 +497,10 @@ export function DataSourcePanel({
                   </label>
                 </>
               )}
-              {draft.sourceType === "websocket" ? <>
-                <label className="is-wide"><span>数据时间戳路径</span><input disabled={formDisabled} value={draft.timestampPath} maxLength={256} placeholder="例如：$.timestamp" onChange={(event) => setDraft((current) => ({ ...current,timestampPath:event.target.value }))} /></label>
+              {draft.sourceType !== "rest_polling" ? <>
+                <label className="is-wide"><span>数据时间戳路径</span><input required={draft.sourceType === "mqtt"} disabled={formDisabled} value={draft.timestampPath} maxLength={256} placeholder="例如：$.timestamp" onChange={(event) => setDraft((current) => ({ ...current,timestampPath:event.target.value }))} /></label>
                 <label><span>采样间隔（毫秒）</span><input disabled={formDisabled} type="number" min={16} max={60000} required value={draft.sampleIntervalMs} onChange={(event) => setDraft((current) => ({ ...current,sampleIntervalMs:event.target.value }))} /></label>
-                <label className="is-wide"><span>订阅主题（每行一个，可选）</span><textarea aria-label="订阅主题（每行一个，可选）" disabled={formDisabled} maxLength={4128} rows={3} value={draft.topics} onChange={(event) => setDraft((current) => ({ ...current,topics:event.target.value }))} /><small>每次连接后发送type=subscribe及topics列表。上游每条数据消息应包含完整源快照。</small></label>
+                {draft.sourceType === "websocket" ? <label className="is-wide"><span>订阅主题（每行一个，可选）</span><textarea aria-label="订阅主题（每行一个，可选）" disabled={formDisabled} maxLength={4128} rows={3} value={draft.topics} onChange={(event) => setDraft((current) => ({ ...current,topics:event.target.value }))} /><small>每次连接后发送type=subscribe及topics列表。上游每条数据消息应包含完整源快照。</small></label>:<label className="is-wide"><span>MQTT订阅主题</span><input aria-label="MQTT订阅主题" required maxLength={128} disabled={formDisabled} value={draft.topic} onChange={(event) => setDraft((current) => ({ ...current,topic:event.target.value }))}/><small>一个精确主题，不支持通配符；运行器私有端点须授权此主题。每条消息是含源时间的完整JSON快照。</small></label>}
               </> : null}
               <label className="is-wide"><span>源时间格式</span><select aria-label="源时间格式" disabled={formDisabled || !draft.timestampPath} value={draft.timestampFormat} onChange={(event) => setDraft((current) => ({ ...current,timestampFormat:event.target.value as TimestampFormat,timestampFormatExplicit:true }))}><option value="iso">ISO日期文本</option><option value="unix_seconds">Unix秒</option><option value="unix_ms">Unix毫秒</option></select><small>用于整份源数据的新鲜度判断，与单个指标的时间转换分开。</small></label>
               <label className="is-wide">

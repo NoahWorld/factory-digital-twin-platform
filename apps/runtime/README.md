@@ -19,3 +19,5 @@ SQLite 批次使用原子事务、准确 changes 和外键。当前 Node 24.18 �
 运行/测试响应拒绝上游回显已配置的凭据或逻辑端点实际地址，错误只报告代码；原始上游内容不记日志。普通查看者的数据源列表隐藏直接URL、凭据引用及时间戳路径；旧编辑配置仍支持直接URL，实际内网交付应切换逻辑端点。
 
 发布面板可以检查已保存配置、冻结版本并激活或回滚。`#/projects/:projectId/run`打开当前发布指针；进入后固定版本，草稿和后续激活不改变已打开页面。发布持续源独立于草稿，在重启时恢复；激活前需要资源完整和数据连通/映射有效。完整项目包导入导出仍在M5下一项。
+
+MQTT设备消息由服务端连接，项目配置必填endpointRef、精确topic和timestampPath。私有sources.json的mqttEndpoints同时授权项目ID和topic，mqttCredentials保存用户名/密码，不使用HTTP headers。参见sources.example.json；host:port仍须列入RUNTIME_ALLOWED_HOSTS。支持MQTT3.1.1的QoS0/1和mqtt/mqtts，拒绝未经请求的QoS2以避免未确认消息存储无界增长；TLS证书必须可信，不提供跳过验证开关。每条消息为完整UTF-8 JSON快照，retained消息保留源时间并按真实新鲜度判断。消息上限256KiB，协议累积前有包与速率预算。

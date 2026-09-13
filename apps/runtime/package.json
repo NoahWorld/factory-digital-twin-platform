@@ -19,6 +19,7 @@
     "typescript": "5.9.3"
   },
   "dependencies": {
+    "mqtt": "5.15.2",
     "ws": "8.21.3",
     "yauzl": "3.4.0"
   }

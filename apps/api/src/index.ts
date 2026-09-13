@@ -802,7 +802,7 @@ const handleApiRequest = async (
     const projectId = decodePathSegment(centralRuntimeMatch[1]);
     const authorize = async () => requireProjectAccess(env,await getAuthenticatedUser(env,request),projectId);
     await authorize();
-    const capabilities = { history:!!env.TELEMETRY,collection:env.CENTRAL_RUNTIME ? "central" : "per-request",protocols:env.OPEN_WEBSOCKET_SOURCE ? ["rest_polling","websocket"] : ["rest_polling"] };
+    const capabilities = { history:!!env.TELEMETRY,collection:env.CENTRAL_RUNTIME ? "central" : "per-request",protocols:["rest_polling",...(env.OPEN_WEBSOCKET_SOURCE ? ["websocket"]:[]),...(env.OPEN_MQTT_SOURCE ? ["mqtt"]:[])] };
     if (centralRuntimeMatch[2] === "capabilities") return json({ ...capabilities,requestId });
     if (centralRuntimeMatch[2] === "sources") return json({ ...capabilities,...(env.CENTRAL_RUNTIME?.diagnostics?.(projectId) ?? { sources:[] }),requestId });
     return runtimeStream(env,request,projectId,authorize);

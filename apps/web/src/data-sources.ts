@@ -1,5 +1,6 @@
+import type { MqttConfig } from "../../api/src/data-sources";
 import type { TimestampFormat } from "../../../shared/metric-transforms";
-export type DataSourceType = "rest_polling" | "websocket";
+export type DataSourceType = "rest_polling" | "websocket" | "mqtt";
 
 export type RestPollingConfig = {
   timestampFormat?:TimestampFormat;
@@ -41,7 +42,8 @@ export type ProjectDataSource =
   | ProjectDataSourceBase & {
       sourceType: "websocket";
       config: WebSocketConfig;
-    };
+    }
+  | ProjectDataSourceBase & { sourceType:"mqtt";config:MqttConfig };
 
 export type DataSourceListResponse = {
   dataSources: ProjectDataSource[];

@@ -1,3 +1,5 @@
+import { createMqttResolver } from "./mqtt-environment";
+import { openMqttSource } from "./mqtt-source";
 import { TelemetryStore } from "./telemetry-store";
 import { runtimeDistribution } from "./runtime-distribution";
 import { acquireRuntimeLock } from "./runtime-lock";
@@ -109,7 +111,7 @@ export async function startRuntime(options: RuntimeOptions) {
   const [major,minor] = process.versions.node.split(".").map(Number);
   if (major !== 24 || minor < 18) throw new Error("This runtime requires Node.js 24.18 or later in the Node 24 series.");
   if (!options.dataDirectory) throw new Error("A runtime data directory is required.");
-  const resolver = createSourceResolver(parseSourceEnvironment(options.sourceEnvironment ?? { version:1,endpoints:{},credentials:{} }));
+  const sourceEnvironment = parseSourceEnvironment(options.sourceEnvironment ?? { version:1,endpoints:{},credentials:{} }),resolver = createSourceResolver(sourceEnvironment),mqttResolver = createMqttResolver(sourceEnvironment);
   const port = options.port ?? 8792;
   if (!Number.isInteger(port) || port < 0 || port > 65535) throw new Error("Runtime port must be an integer between 0 and 65535.");
   let origin = "";
@@ -135,7 +137,8 @@ export async function startRuntime(options: RuntimeOptions) {
   const telemetry = new TelemetryStore(telemetryPath);
   let database:SqliteDatabase;
   try { database = new SqliteDatabase(databasePath); } catch (reason) { telemetry.close(); throw reason; }
-  const env: AppEnv = { ...options.environment,TELEMETRY:telemetry,RUNTIME_CAPABILITIES:new Set(["alarm-rules-v1","telemetry-bindings-v1","metric-transforms-v1","source-time-format-v1"]),RUNTIME_DISTRIBUTION:(signal) => runtimeDistribution(bundle,signal),RESOLVE_SOURCE:resolver,DB: database,PROJECT_FILES: new FileBucket(join(dataDirectory,"objects")) };
+  const env: AppEnv = { ...options.environment,TELEMETRY:telemetry,RUNTIME_CAPABILITIES:new Set(["alarm-rules-v1","telemetry-bindings-v1","metric-transforms-v1","source-time-format-v1","mqtt-source-v1"]),RUNTIME_DISTRIBUTION:(signal) => runtimeDistribution(bundle,signal),RESOLVE_SOURCE:resolver,RESOLVE_MQTT_SOURCE:mqttResolver,DB: database,PROJECT_FILES: new FileBucket(join(dataDirectory,"objects")) };
+  env.OPEN_MQTT_SOURCE = (source,requestId,onSample,signal) => openMqttSource(env,source,requestId,onSample,signal);
   env.OPEN_WEBSOCKET_SOURCE = (source,requestId,onSample,signal) => openWebSocketSource(env,source,requestId,onSample,signal);
   const collector = new RuntimeCollector(env); env.CENTRAL_RUNTIME = collector;
   const packages = new LocalPackageService(env,join(dataDirectory,"project-imports")); env.PACKAGE_SERVICE = packages;

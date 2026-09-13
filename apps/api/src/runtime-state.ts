@@ -289,7 +289,7 @@ const validateMetricValue = (
   return value;
 };
 
-const runtimeHosts = (env: AppEnv): Set<string> => new Set(
+export const runtimeHosts = (env: AppEnv): Set<string> => new Set(
   (env.RUNTIME_ALLOWED_HOSTS ?? "")
     .split(",")
     .map((host) => host.trim().toLowerCase())
@@ -496,7 +496,7 @@ export const loadRuntimeAssetPlan = async (env: AppEnv, projectId: string, asset
 };
 
 export const fetchRuntimeSource = (env: AppEnv, source: DataSource, requestId: string, signal?: AbortSignal): Promise<SourceSample> => {
-  if (source.sourceType === "websocket") return firstWebSocketSample(env,source,requestId,signal);
+  if (source.sourceType === "websocket" || source.sourceType === "mqtt") return firstSubscriptionSample(env,source,requestId,signal);
   const { url,headers } = resolveAllowedRuntimeSource(env,source),config = { ...requireRestConfig(source),url };
   return fetchJson(source,config,requestId,signal,headers);
 };
@@ -579,9 +579,9 @@ export const collectAssetRuntimeState = async (env: AppEnv, projectId: string, a
 };
 
 
-function firstWebSocketSample(env:AppEnv,source:DataSource,requestId:string,signal?:AbortSignal):Promise<SourceSample> {
-  const open = env.OPEN_WEBSOCKET_SOURCE;
-  if (!open) return Promise.reject(new AppError(503,"websocket_runtime_unavailable","This host does not provide WebSocket collection."));
+function firstSubscriptionSample(env:AppEnv,source:DataSource,requestId:string,signal?:AbortSignal):Promise<SourceSample> {
+  const kind = source.sourceType === "mqtt" ? "MQTT":"WebSocket",open = source.sourceType === "mqtt" ? env.OPEN_MQTT_SOURCE:env.OPEN_WEBSOCKET_SOURCE;
+  if (!open) return Promise.reject(new AppError(503,source.sourceType === "mqtt" ? "mqtt_runtime_unavailable":"websocket_runtime_unavailable",`This host does not provide ${kind} collection.`));
   return new Promise((resolve,reject) => {
     const controller = new AbortController(); let settled = false;
     const finish = (error?:unknown,sample?:SourceSample) => {
@@ -589,11 +589,11 @@ function firstWebSocketSample(env:AppEnv,source:DataSource,requestId:string,sign
       if (error) reject(error); else resolve(sample!);
     };
     const cancel = () => finish(new AppError(499,"data_source_cancelled","Source collection cancelled."));
-    const timeout = setTimeout(() => finish(new AppError(504,"data_source_timeout","WebSocket did not provide a sample within ten seconds.")),10000);
+    const timeout = setTimeout(() => finish(new AppError(504,"data_source_timeout",`${kind} did not provide a sample within ten seconds.`)),10000);
     signal?.addEventListener("abort",cancel,{ once:true }); if (signal?.aborted) { cancel(); return; }
     void Promise.resolve().then(() => open(source,requestId,(sample) => finish(undefined,sample),controller.signal)).then((connection) => {
       if (settled) connection.close();
-      else void connection.closed.then(() => finish(new AppError(502,"data_source_disconnected","WebSocket closed before providing a sample.")),(reason) => finish(reason));
+      else void connection.closed.then(() => finish(new AppError(502,"data_source_disconnected",`${kind} closed before providing a sample.`)),(reason) => finish(reason));
     },(reason) => finish(reason));
   });
 }
