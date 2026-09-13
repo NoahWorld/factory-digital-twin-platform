@@ -19,10 +19,11 @@ export class ProjectRuntimeTransport {
   private sequence = -1;
   private generation = 0;
   private retryFailures = 0;
-  constructor(private projectId:string) {
+  constructor(private projectId:string,private versionId?:string) {
     this.legacy = new ProjectRuntimeStore(async (id,signal) => (await request<AssetRuntimeStateResponse>(assetRuntimeStatePath(projectId,id),{ signal })).runtimeState);
     this.legacy.subscribe(() => { if (this.mode === "per-request") { this.connections = this.legacy.getSnapshot(); this.emit(); } });
   }
+  private path(kind:"capabilities" | "stream") { return `/api/v1/projects/${encodeURIComponent(this.projectId)}${this.versionId ? `/versions/${encodeURIComponent(this.versionId)}/runtime-${kind}` : `/runtime/${kind}`}`; }
   getSnapshot = () => this.connections;
   subscribe = (listener:() => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
   private emit() { this.listeners.forEach((listener) => listener()); }
@@ -37,14 +38,14 @@ export class ProjectRuntimeTransport {
     if (generation !== this.generation) return;
     this.controller = new AbortController();
     try {
-      const capability = await request<{ collection:"central" | "per-request" }>(`/api/v1/projects/${encodeURIComponent(this.projectId)}/runtime/capabilities`,{ signal:this.controller.signal });
+      const capability = await request<{ collection:"central" | "per-request" }>(this.path("capabilities"),{ signal:this.controller.signal });
       if (generation !== this.generation) return;
       if (capability.collection !== "central" && capability.collection !== "per-request") throw new Error("服务器返回了未知采集能力。");
       this.mode = capability.collection;
       if (this.mode === "per-request") { this.legacy.setDemand(this.demand); return; }
       this.epoch = ""; this.sequence = -1;
       const params = new URLSearchParams({ assets:this.demand.map(({ id }) => id).join(",") });
-      const events = this.events = new EventSource(apiUrl(`/api/v1/projects/${encodeURIComponent(this.projectId)}/runtime/stream?${params}`),{ withCredentials:true });
+      const events = this.events = new EventSource(apiUrl(`${this.path("stream")}?${params}`),{ withCredentials:true });
       events.addEventListener("runtime",(event) => {
         if (generation !== this.generation || this.events !== events) return;
         try {

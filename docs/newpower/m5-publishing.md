@@ -28,3 +28,13 @@ RuntimeProjectSnapshot必须同时包含项目定义（页面、场景、组件�
 6. 安装V2再回滚，核对私有环境不在包中、旧项目兼容和身份/引用完整性。
 
 主要入口：apps/api/src/index.ts、project-definitions.ts、model-assets.ts、image-assets.ts、data-sources.ts；共享project-definition.ts和editor-operations.ts；apps/runtime/src/collector.ts及Node宿主。M5完成后继续M6b，不关闭完整目标。
+
+## 首项实现契约
+
+0017增加完整运行配置修订、不可变project_versions内容、当前发布指针和版本资源外键引用。34个数据库触发器使资产/映射/源/页面/场景/报告变化在原事务内推进完整修订；失败事务同时回滚计数。D1的meta.changes包含触发器更新，API适配层改为同一batch内读取SQLite changes()作为直接修改行数，保留原CAS判定；Node原生适配已具备直接changes。
+
+`GET /publication-draft`实际读取资源并校验完整快照，返回用于冻结的runtimeRevision。`POST /versions`以expectedRuntimeRevision创建冻结内容；`POST /versions/:versionId/activate`以expectedPublicationRevision切换当前指针，0表示首次。激活重验资源文件和实际数据连接/类型/陈旧状态，失败不改变当前指针。操作继承请求取消，停机/断开后不继续激活。冻结版本可以在数据上游失联时留存，但必须通过激活检查才成为当前发布版本。
+
+`#/projects/:projectId/run`解析当前指针后进入固定`/versions/:versionId/run`；固定页面不会因随后激活变化偷偷切换。页面定义、catalog、模型报告和采集计划来自完整冻结快照，源任务身份包含versionId。当前发布的持续源在无人查看及重启后恢复；旧固定页面尚有订阅时保留其版本任务，最后退出按需求释放。草稿与发布配置分别采集，不以sourceId相同推定可共享。
+
+旧模型的名称覆盖与资产绑定，使用同版Three GLTFLoader的真实运行名称→文件locator清单；服务端省略纹理像素载入以保持无DOM，无外部资源请求。与实际浏览器的sanitize名称和多primitive定位对照验证，按页面/视窗检查旧资产多重匹配。运行快照metadata预算8MiB，文件仍按模型25MiB/图片8MiB受控。导出阶段要将直接URL显式外部化为逻辑端点；该包流程尚待首项检查点之后实施。

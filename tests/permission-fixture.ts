@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
-import { spawnSync } from "node:child_process";
-import { writeFileSync, unlinkSync } from "node:fs";
+import { readdirSync } from "node:fs";
+import { DatabaseSync } from "node:sqlite";
 import { join } from "node:path";
 import { request } from "@playwright/test";
 import { createPasswordRecord } from "../apps/api/src/auth";
@@ -20,13 +20,25 @@ export async function permissionFixture(projectId: string, member: boolean) {
   const password = randomBytes(32).toString("base64url");
   const record = await createPasswordRecord(password);
   const now = new Date().toISOString();
-  const runSql = (sql: string) => {
-    const file = join(stateDir, `permission-fixture-${userId}.sql`);
-    writeFileSync(file, sql, { mode: 0o600 });
-    try {
-      const result = spawnSync("pnpm", ["--filter", "@factory-twin/api", "exec", "wrangler", "d1", "execute", "factory-digital-twin-config", "--local", "--persist-to", stateDir, "--config", config, "--file", file], { encoding: "utf8", timeout: 30_000 });
-      if (result.status !== 0) throw new Error(`Isolated permission fixture SQL failed (exit ${result.status}).`);
-    } finally { unlinkSync(file); }
+  // A second Wrangler/workerd process can lock the live fixture database even
+  // for cleanup. Write only the already-owned local test DB with SQLite WAL.
+  const candidates:string[] = [];
+  const find = (directory:string) => {
+    for (const entry of readdirSync(directory,{ withFileTypes:true })) {
+      const filename = join(directory,entry.name);
+      if (entry.isDirectory()) find(filename);
+      else if (entry.name.endsWith(".sqlite") && entry.name !== "metadata.sqlite") {
+        const db = new DatabaseSync(filename,{ readOnly:true,timeout:5000 });
+        try { if (db.prepare("SELECT name FROM sqlite_master WHERE name='project_canvases'").get()) candidates.push(filename); } finally { db.close(); }
+      }
+    }
+  };
+  find(join(stateDir,"v3","d1")); if (candidates.length !== 1) throw new Error("Cannot identify one isolated permission database.");
+  const runSql = (sql:string) => {
+    const db = new DatabaseSync(candidates[0],{ timeout:5000,enableForeignKeyConstraints:true });
+    try { db.exec("BEGIN IMMEDIATE"); db.exec(sql); db.exec("COMMIT"); }
+    catch (reason) { db.exec("ROLLBACK"); throw reason; }
+    finally { db.close(); }
   };
   runSql(`INSERT INTO users (id,email,display_name,password_hash,password_salt,password_iterations,is_active,created_at,updated_at)
     VALUES (${[userId, email, "M1 permission fixture", record.hash, record.salt].map(sqlString).join(",")},${record.iterations},1,${sqlString(now)},${sqlString(now)});

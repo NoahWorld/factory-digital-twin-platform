@@ -16,7 +16,7 @@ import type { SceneMotionTrack } from "../../../../shared/scene-motion";
 
 export type ViewportState = { status: "loading" | "ready" | "error"; loaded: number; total: number; message?: string };
 export type SceneViewportOptions = {
-  projectId: string; scene: SceneDefinition; legacyNames?: boolean; cameraControlsEnabled: boolean;
+  projectId: string;versionId?:string; scene: SceneDefinition; legacyNames?: boolean; cameraControlsEnabled: boolean;
   selectedTarget?: ObjectTarget | null; selectedTargets?: ObjectTarget[]; selectedLegacyPath?: string | null;
   runtimeAppearances?: Record<string, Record<string, ModelNodeAppearance>>;
   onState: (state: ViewportState) => void;
@@ -40,7 +40,7 @@ export function createSceneViewport(container: HTMLElement, initial: SceneViewpo
   const resources = new ViewportResources();
   const manifests = new ResourcePool<ModelInspection>(async (key, signal) => {
     const assetId = (JSON.parse(key) as [string,boolean])[0];
-    const result = await request<{ modelAsset: ModelAsset }>(`${modelAssetsPath(initial.projectId)}/${encodeURIComponent(assetId)}`, { signal });
+    const result = await request<{ modelAsset: ModelAsset }>(`${initial.versionId ? `/api/v1/projects/${encodeURIComponent(initial.projectId)}/versions/${encodeURIComponent(initial.versionId)}/model-assets` : modelAssetsPath(initial.projectId)}/${encodeURIComponent(assetId)}`, { signal });
     if (!result.modelAsset.inspection.objects) throw new Error("模型缺少稳定对象清单，请补充资源检查。");
     return result.modelAsset.inspection;
   }, () => {});

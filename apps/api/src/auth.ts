@@ -12,6 +12,7 @@ export type DatabaseStatement = {
 };
 
 export type Database = {
+  readonly directChanges?: boolean;
   prepare: (query: string) => DatabaseStatement;
   batch: (statements: DatabaseStatement[]) => Promise<DatabaseResult[]>;
 };

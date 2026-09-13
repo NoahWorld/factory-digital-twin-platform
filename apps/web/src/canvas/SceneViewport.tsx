@@ -1,3 +1,5 @@
+import { useContext } from "react";
+import { PublishedVersionContext } from "./scene-context";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { SceneViewportOptions, SceneViewportRuntime, ViewportState } from "./scene-viewport-runtime";
 import type { ObjectTarget } from "./model-instance";
@@ -8,7 +10,9 @@ type Props = Omit<SceneViewportOptions, "onState"> & {
   onReady?: (runtime: SceneViewportRuntime | null) => void;
 };
 
-export function SceneViewport(props: Props) {
+export function SceneViewport(input: Props) {
+  const versionId = useContext(PublishedVersionContext);
+  const props = { ...input,versionId };
   const container = useRef<HTMLDivElement>(null);
   const runtime = useRef<SceneViewportRuntime | null>(null);
   const latest = useRef(props); latest.current = props;

@@ -149,6 +149,8 @@ export async function startRuntime(options: RuntimeOptions) {
       let response = url.pathname.startsWith("/api/") || url.pathname === "/api" || url.pathname === "/health" ? await api.fetch(request,env) : await staticResponse(url.pathname,method,publicDirectory);
       const dataMutation = url.pathname.match(/^\/api\/v1\/projects\/([^/]+)(?:\/(?:data-sources|assets)(?:\/|$)|$)/);
       if (response.ok && !["GET","HEAD","OPTIONS"].includes(method) && dataMutation && !url.pathname.endsWith("/test")) await collector.refresh(decodeURIComponent(dataMutation[1]));
+      const activation = url.pathname.match(/^\/api\/v1\/projects\/([^/]+)\/versions\/[^/]+\/activate$/);
+      if (response.ok && method === "POST" && activation) await collector.refreshPublication(decodeURIComponent(activation[1]));
       if (request.body && !request.body.locked) { if (!request.bodyUsed) outgoing.setHeader("connection","close"); await request.body.cancel(); }
       if (url.pathname === "/health" && response.ok) response = new Response(JSON.stringify({ ...await response.json() as object,runtime: { host: "node",database: "sqlite",collection: "central" } }),{ status: response.status,headers: response.headers });
       await writeRuntimeResponse(response,outgoing,controller.signal);

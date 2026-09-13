@@ -26,7 +26,13 @@ importers:
       '@gltf-transform/extensions':
         specifier: 4.5.0
         version: 4.5.0
+      three:
+        specifier: 0.185.1
+        version: 0.185.1
     devDependencies:
+      '@types/three':
+        specifier: 0.185.1
+        version: 0.185.1
       typescript:
         specifier: ^5.8.3
         version: 5.9.3
@@ -62,7 +68,7 @@ importers:
         specifier: ^19.1.0
         version: 19.2.7(react@19.2.7)
       three:
-        specifier: ^0.185.1
+        specifier: 0.185.1
         version: 0.185.1
     devDependencies:
       '@types/react':
@@ -72,7 +78,7 @@ importers:
         specifier: ^19.1.6
         version: 19.2.3(@types/react@19.2.17)
       '@types/three':
-        specifier: ^0.185.1
+        specifier: 0.185.1
         version: 0.185.1
       '@vitejs/plugin-react':
         specifier: ^4.7.0

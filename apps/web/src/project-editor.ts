@@ -1,16 +1,17 @@
-import { SceneCatalogContext } from "./canvas/scene-context";
+import { SceneCatalogContext,PublishedVersionContext } from "./canvas/scene-context";
 import { createContext, createElement, useContext, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { errorMessage, request } from "./api";
 import { createEditorState, executeEditorOperation, isEditorDirty, markEditorSaved, restoreEditorDraft, switchEditorPage, travelEditorHistory, type EditorState, type ProjectOperation } from "../../../shared/editor-operations";
 import { parseProjectDefinition, projectContent, projectDefinitionPatch, type ProjectContent, type ProjectDefinition } from "../../../shared/project-definition";
 
 export const projectDefinitionPath = (id: string) => `/api/v1/projects/${encodeURIComponent(id)}/definition`;
-type DefinitionResponse = { definition: ProjectDefinition; project: { name: string }; editable: boolean };
+type DefinitionResponse = { version?:{ versionNumber:number;label:string };definition: ProjectDefinition; project: { name: string }; editable: boolean };
 type Draft = { id: string; schemaVersion: 4; userId: string; projectId: string; baseRevision: number; pageId: string; content: ProjectContent; savedAt: string };
 
-export function useProjectEditor(projectId: string, userId: string, editing: boolean, requestedPageId?: string) {
+export function useProjectEditor(projectId: string, userId: string, editing: boolean, requestedPageId?: string,versionId?:string) {
   const [editor, setEditor] = useState<EditorState | null>(null);
   const editorRef = useRef<EditorState | null>(null);
+  const [publishedVersion,setPublishedVersion] = useState<DefinitionResponse["version"]>();
   const [projectName, setProjectName] = useState("");
   const [canEdit, setCanEdit] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -62,10 +63,10 @@ export function useProjectEditor(projectId: string, userId: string, editing: boo
     draftPrepared.current = editing; draftWritable.current = true;
     setLoading(true); setLoadError(null); setSaveError(null); setPendingDraft(null); setDraftNotice(null);
     editorRef.current = null; setEditor(null);
-    void request<DefinitionResponse>(projectDefinitionPath(projectId), { signal: controller.signal }).then((result) => {
+    void request<DefinitionResponse>(versionId ? `/api/v1/projects/${encodeURIComponent(projectId)}/versions/${encodeURIComponent(versionId)}/definition` : projectDefinitionPath(projectId), { signal: controller.signal }).then((result) => {
       if (controller.signal.aborted) return;
       let state = createEditorState(result.definition, requestedPageRef.current);
-      setProjectName(result.project.name); setCanEdit(result.editable);
+      setPublishedVersion(result.version); setProjectName(result.project.name); setCanEdit(result.editable);
       if (editing && result.editable) {
         try {
           const validateDraft = (value: unknown): Draft => {
@@ -101,7 +102,7 @@ export function useProjectEditor(projectId: string, userId: string, editing: boo
     }).catch((reason) => { if (!controller.signal.aborted) setLoadError(errorMessage(reason)); })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
-  }, [projectId, userId, draftKey, conflictKey, store, reloadIndex]);
+  }, [projectId,versionId, userId, draftKey, conflictKey, store, reloadIndex]);
 
   useEffect(() => {
     if (editing && !loading && editorRef.current && !draftPrepared.current) {
@@ -170,14 +171,14 @@ export function useProjectEditor(projectId: string, userId: string, editing: boo
       setDraftNotice(null);
     } catch (reason) { setDraftNotice(`本机草稿清理失败：${errorMessage(reason)}`); }
   }, [draftKey, pendingDraft, resolvePendingDraft, store]);
-  return { editor, document: editor?.document ?? null, projectName, canEdit, loading, loadError, saveError, setSaveError,
+  return { versionId,publishedVersion,editor, document: editor?.document ?? null, projectName, canEdit, loading, loadError, saveError, setSaveError,
     saving, dirty, execute, travel, selectPage, save, pendingDraft, draftNotice, draftDifferences, restoreDraft, discardDraft };
 }
 
 const ProjectEditorContext = createContext<ReturnType<typeof useProjectEditor> | null>(null);
-export function ProjectEditorProvider({ projectId, userId, editing, pageId, children }: { projectId: string; userId: string; editing: boolean; pageId?: string; children: ReactNode }) {
-  const value = useProjectEditor(projectId, userId, editing, pageId);
-  return createElement(ProjectEditorContext.Provider, { value }, createElement(SceneCatalogContext.Provider, { value: value.editor?.project.scenes ?? [] }, children));
+export function ProjectEditorProvider({ projectId, userId, editing, pageId,versionId, children }: { projectId: string; userId: string; editing: boolean; pageId?: string;versionId?:string; children: ReactNode }) {
+  const value = useProjectEditor(projectId, userId, editing, pageId,versionId);
+  return createElement(ProjectEditorContext.Provider, { value }, createElement(PublishedVersionContext.Provider,{ value:versionId },createElement(SceneCatalogContext.Provider, { value: value.editor?.project.scenes ?? [] }, children)));
 }
 export function useProjectEditorContext() {
   const value = useContext(ProjectEditorContext);

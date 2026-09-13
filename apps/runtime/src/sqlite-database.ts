@@ -25,6 +25,7 @@ class Prepared implements DatabaseStatement {
 
 /** The same asynchronous interface as D1, with one synchronous atomic batch. */
 export class SqliteDatabase implements Database {
+  readonly directChanges = true;
   readonly connection: DatabaseSync;
   private statements = new Map<string,StatementSync>();
   private closed = false;

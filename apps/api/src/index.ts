@@ -1,3 +1,6 @@
+import { directChangesDatabase } from "./direct-changes-database";
+import { inspectPublicationDraft,createPublicationVersion,listPublicationVersions,activatePublicationVersion,readPublicationVersion,publicationPointer } from "./publications";
+import { snapshotMetricCatalog } from "../../../shared/runtime-project";
 import { runtimeStream } from "./runtime-stream";
 import { getProjectDefinition, persistProjectPatch } from "./project-definitions";
 import { readUploadBytes } from "./upload-body";
@@ -162,7 +165,7 @@ const requireProjectAccess = async (
 ): Promise<ProjectRow> => {
   const isPlatformAdmin = hasGlobalRole(user, "platform_admin") ? 1 : 0;
   const project = await env.DB.prepare(
-    `SELECT p.id, p.name, p.status, p.created_at, p.updated_at,
+    `SELECT p.id, p.name, CASE WHEN EXISTS(SELECT 1 FROM project_publications publication WHERE publication.project_id=p.id) THEN 'published' ELSE p.status END AS status, p.created_at, p.updated_at,
        pm.role AS project_role, pc.revision AS cover_revision
      FROM projects p
      LEFT JOIN project_members pm ON pm.project_id = p.id AND pm.user_id = ?
@@ -188,7 +191,7 @@ const canDeleteProject = (user: AuthenticatedUser, project: ProjectRow): boolean
 const listProjects = async (env: AppEnv, user: AuthenticatedUser): Promise<ProjectRow[]> => {
   const isPlatformAdmin = hasGlobalRole(user, "platform_admin") ? 1 : 0;
   const result = await env.DB.prepare(
-    `SELECT p.id, p.name, p.status, p.created_at, p.updated_at,
+    `SELECT p.id, p.name, CASE WHEN EXISTS(SELECT 1 FROM project_publications publication WHERE publication.project_id=p.id) THEN 'published' ELSE p.status END AS status, p.created_at, p.updated_at,
        pm.role AS project_role, pc.revision AS cover_revision
      FROM projects p
      LEFT JOIN project_members pm ON pm.project_id = p.id AND pm.user_id = ?
@@ -292,6 +295,7 @@ const deleteProject = async (
     env.DB.prepare("DELETE FROM project_scenes WHERE project_id = ?").bind(projectId),
     env.DB.prepare("DELETE FROM assets WHERE project_id = ?").bind(projectId),
     env.DB.prepare("DELETE FROM data_sources WHERE project_id = ?").bind(projectId),
+    env.DB.prepare("DELETE FROM project_publications WHERE project_id = ?").bind(projectId),
     env.DB.prepare("DELETE FROM project_versions WHERE project_id = ?").bind(projectId),
     env.DB.prepare("DELETE FROM image_assets WHERE project_id = ?").bind(projectId),
     env.DB.prepare("DELETE FROM model_assets WHERE project_id = ?").bind(projectId),
@@ -641,6 +645,61 @@ const handleApiRequest = async (
       durationMs: Date.now() - startedAt,
     }));
     return json({ asset, requestId });
+  }
+
+  const currentPublicationMatch = pathname.match(/^\/api\/v1\/projects\/([^/]+)\/publication-current$/);
+  if (method === "GET" && currentPublicationMatch) {
+    const projectId = decodePathSegment(currentPublicationMatch[1]); await requireProjectAccess(env,await getAuthenticatedUser(env,request),projectId);
+    const active = await publicationPointer(env,projectId); if (!active) throw new AppError(404,"publication_not_active","此项目尚未激活发布版本。");
+    return json({ active,requestId });
+  }
+
+  const publishedModelMatch = pathname.match(/^\/api\/v1\/projects\/([^/]+)\/versions\/([^/]+)\/model-assets\/([^/]+)$/);
+  if (method === "GET" && publishedModelMatch) {
+    const projectId = decodePathSegment(publishedModelMatch[1]); await requireProjectAccess(env,await getAuthenticatedUser(env,request),projectId);
+    const { snapshot } = await readPublicationVersion(env,projectId,decodePathSegment(publishedModelMatch[2]));
+    const modelAsset = snapshot.resources.models.find((model) => model.id === decodePathSegment(publishedModelMatch[3]));
+    if (!modelAsset) throw new AppError(404,"publication_resource_not_found","Model is not included in this version.");
+    return json({ modelAsset,requestId });
+  }
+
+  const publicationDraftMatch = pathname.match(/^\/api\/v1\/projects\/([^/]+)\/publication-draft$/);
+  const publicationVersionsMatch = pathname.match(/^\/api\/v1\/projects\/([^/]+)\/versions$/);
+  const publicationVersionMatch = pathname.match(/^\/api\/v1\/projects\/([^/]+)\/versions\/([^/]+)\/(activate|definition|runtime-catalog|runtime-stream|runtime-capabilities)$/);
+  if ((method === "GET" && publicationDraftMatch) || (["GET","POST"].includes(method) && publicationVersionsMatch) || publicationVersionMatch) {
+    const match = publicationDraftMatch ?? publicationVersionsMatch ?? publicationVersionMatch!;
+    const projectId = decodePathSegment(match[1]),user = await getAuthenticatedUser(env,request),project = await requireProjectAccess(env,user,projectId);
+    if ((method !== "GET" || publicationDraftMatch) && !canEditProject(user,project)) throw new AppError(403,"permission_denied","You cannot create or activate published versions in this project.");
+    if (publicationDraftMatch) return json({ draft:await inspectPublicationDraft(env,projectId,request.signal),requestId });
+    if (publicationVersionsMatch && method === "GET") return json({ ...await listPublicationVersions(env,projectId),requestId });
+    if (publicationVersionsMatch && method === "POST") {
+      const body = await readJsonObject(request);
+      if (Object.keys(body).some((key) => !["expectedRuntimeRevision","label"].includes(key))) throw new AppError(400,"invalid_publication_request","Unknown version creation field.");
+      const version = await createPublicationVersion(env,projectId,user.id,body.expectedRuntimeRevision as number,(body.label ?? "") as string,request.signal);
+      console.log(JSON.stringify({ event:"project_version_created",requestId,projectId,userId:user.id,versionId:version.id,sourceRevision:version.sourceRevision,sha256:version.sha256 }));
+      return json({ version,requestId },201);
+    }
+    if (publicationVersionMatch) {
+      const versionId = decodePathSegment(publicationVersionMatch[2]),action = publicationVersionMatch[3];
+      if (action === "activate" && method === "POST") {
+        const body = await readJsonObject(request);
+        if (Object.keys(body).some((key) => key !== "expectedPublicationRevision")) throw new AppError(400,"invalid_publication_request","Unknown activation field.");
+        const active = await activatePublicationVersion(env,projectId,user.id,versionId,body.expectedPublicationRevision as number,request.signal);
+        console.log(JSON.stringify({ event:"project_version_activated",requestId,projectId,userId:user.id,versionId,publicationRevision:active.revision }));
+        return json({ active,requestId });
+      }
+      if (method === "GET" && action === "runtime-stream") return runtimeStream(env,request,projectId,async () => requireProjectAccess(env,await getAuthenticatedUser(env,request),projectId),versionId);
+      if (method === "GET" && action === "runtime-capabilities") {
+        await readPublicationVersion(env,projectId,versionId);
+        if (!env.CENTRAL_RUNTIME) throw new AppError(503,"publication_runtime_unavailable","Published runtime requires the independent collection host.");
+        return json({ collection:"central",requestId });
+      }
+      if (method === "GET" && action !== "activate") {
+        const { version,snapshot } = await readPublicationVersion(env,projectId,versionId);
+        return action === "definition" ? json({ definition:snapshot.definition,project:snapshot.project,editable:false,version,requestId }) : json({ assets:snapshot.assets,metrics:snapshotMetricCatalog(snapshot),version,requestId });
+      }
+    }
+    throw new AppError(405,"method_not_allowed","Unsupported publication operation.");
   }
 
   const centralRuntimeMatch = pathname.match(/^\/api\/v1\/projects\/([^/]+)\/runtime\/(capabilities|stream|sources)$/);
@@ -1066,7 +1125,7 @@ export default {
     }
 
     try {
-      return await handleApiRequest(request, env, requestId);
+      return await handleApiRequest(request, { ...env,DB:directChangesDatabase(env.DB) }, requestId);
     } catch (error) {
       if (error instanceof AppError) {
         return errorResponse(error, requestId);

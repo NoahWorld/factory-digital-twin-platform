@@ -16,7 +16,7 @@ function fixture() {
         const wait = firstSource; firstSource = null; await wait?.(); return row;
       }
       return asset;
-    },async all() { return { results:sql.includes("json_extract") ? [] : enabled ? [binding] : [] }; } };
+    },async all() { return { results:sql.includes("json_extract") || sql.includes("project_publications") ? [] : enabled ? [binding] : [] }; } };
   } } as unknown as Database;
   const env:AppEnv = { DB,RUNTIME_POLLING_ENABLED:"true",RUNTIME_ALLOWED_HOSTS:"old,new" };
   return { env,setUrl(value:string) { url = value; },disable() { enabled = false; },gate(operation:() => Promise<void>) { firstSource = operation; } };
@@ -92,7 +92,7 @@ test("slow subscribers retain only the latest full frame and authorization loss 
 test("continuous source capacity is explicit and releases admission for a previously blocked source",async () => {
   const original = globalThis.fetch,now = new Date().toISOString();
   let rows = Array.from({ length:257 },(_,index) => ({ id:`source-${index}`,project_id:"project",source_type:"rest_polling",name:`Source ${index}`,config_json:JSON.stringify({ url:`http://old/source-${index}`,intervalSeconds:60,timeoutMs:1000,timestampPath:null,credentialRef:null,collectionMode:"continuous" }),created_at:now,updated_at:now }));
-  const DB = { prepare() { return { bind() { return this; },async all() { return { results:rows }; } }; } } as unknown as Database;
+  const DB = { prepare(sql:string) { return { bind() { return this; },async all() { return { results:sql.includes("project_publications") ? [] : rows }; } }; } } as unknown as Database;
   globalThis.fetch = async () => Response.json({ value:42 });
   const collector = new RuntimeCollector({ DB,RUNTIME_POLLING_ENABLED:"true",RUNTIME_ALLOWED_HOSTS:"old" });
   try {
@@ -109,7 +109,7 @@ test("continuous source capacity is explicit and releases admission for a previo
 test("seven open WebSockets do not occupy REST handshake slots and shutdown cancels every lifetime",async () => {
   const original = globalThis.fetch,now = new Date().toISOString(); let sockets = 0,closed = 0,rest = 0;
   const rows = Array.from({ length:8 },(_,index) => ({ id:`source-${index}`,project_id:"project",source_type:index < 7 ? "websocket" : "rest_polling",name:`Source ${index}`,config_json:JSON.stringify(index < 7 ? { url:`ws://old/source-${index}`,heartbeatSeconds:5,reconnectMaxSeconds:5,credentialRef:null,collectionMode:"continuous" } : { url:"http://old/rest",intervalSeconds:60,timeoutMs:1000,timestampPath:null,credentialRef:null,collectionMode:"continuous" }),created_at:now,updated_at:now }));
-  const DB = { prepare() { return { bind() { return this; },async all() { return { results:rows }; } }; } } as unknown as Database;
+  const DB = { prepare(sql:string) { return { bind() { return this; },async all() { return { results:sql.includes("project_publications") ? [] : rows }; } }; } } as unknown as Database;
   globalThis.fetch = async () => { rest++; return Response.json({ value:42 }); };
   const collector = new RuntimeCollector({ DB,RUNTIME_POLLING_ENABLED:"true",RUNTIME_ALLOWED_HOSTS:"old",OPEN_WEBSOCKET_SOURCE:async (_,__,sample,signal) => {
     sockets++; sample({ payload:{ value:1 },responseBytes:11,collectedAt:now,durationMs:0 });

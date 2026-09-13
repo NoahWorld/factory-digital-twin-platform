@@ -22,8 +22,8 @@ export type ProjectRuntimeContextValue = RuntimeCatalog & {
 export const ProjectRuntimeContext = createContext<ProjectRuntimeContextValue | null>(null);
 export function useProjectRuntimeContext() { return useContext(ProjectRuntimeContext); }
 
-export function useProjectRuntime(projectId: string, assets: ProjectAsset[], neededAssetIds: string[]) {
-  const store = useMemo(() => new ProjectRuntimeTransport(projectId), [projectId]);
+export function useProjectRuntime(projectId: string, assets: ProjectAsset[], neededAssetIds: string[],versionId?:string) {
+  const store = useMemo(() => new ProjectRuntimeTransport(projectId,versionId), [projectId,versionId]);
   const demandKey = JSON.stringify(assets.filter((asset) => neededAssetIds.includes(asset.assetId))
     .map(({ id, assetId }) => ({ id, assetId })).sort((a, b) => a.assetId.localeCompare(b.assetId)));
   useEffect(() => { store.setDemand(JSON.parse(demandKey)); }, [demandKey, store]);

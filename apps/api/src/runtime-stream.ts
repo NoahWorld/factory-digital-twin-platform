@@ -1,7 +1,7 @@
 import { AppError,type AppEnv } from "./auth";
 import type { RuntimeFrame,RuntimeSubscription } from "../../../shared/runtime-stream";
 
-export async function runtimeStream(env: AppEnv,request: Request,projectId: string,authorize: () => Promise<unknown>): Promise<Response> {
+export async function runtimeStream(env: AppEnv,request: Request,projectId: string,authorize: () => Promise<unknown>,versionId?:string): Promise<Response> {
   if (!env.CENTRAL_RUNTIME) throw new AppError(503,"central_runtime_unavailable","Central collection is unavailable on this host.");
   const raw = new URL(request.url).searchParams.get("assets") ?? "";
   if (raw.length > 10000) throw new AppError(400,"runtime_demand_invalid","Asset demand is too large.");
@@ -19,7 +19,7 @@ export async function runtimeStream(env: AppEnv,request: Request,projectId: stri
     if (bytes.byteLength > 1024*1024) { oversized = true; stop(); return; }
     pending = bytes; flush(); // At most one queued frame and the newest pending full snapshot.
   };
-  subscription = await env.CENTRAL_RUNTIME.subscribe(projectId,ids,publish);
+  subscription = await env.CENTRAL_RUNTIME.subscribe(projectId,ids,publish,versionId);
   if (request.signal.aborted || closed) { subscription.release(); throw new AppError(oversized ? 413 : 499,oversized ? "runtime_snapshot_too_large" : "runtime_subscription_cancelled",oversized ? "Reduce the subscription asset demand." : "Subscription cancelled."); }
   const body = new ReadableStream<Uint8Array>({
     start(value) { controller = value; publish(subscription!.snapshot()); },

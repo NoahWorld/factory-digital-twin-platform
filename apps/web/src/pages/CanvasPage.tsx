@@ -1,3 +1,4 @@
+import { PublicationPanel } from "../PublicationPanel";
 import type { SceneViewportRuntime } from "../canvas/scene-viewport-runtime";
 import { flushSync } from "react-dom";
 import { InteractionEditor } from "../canvas/InteractionEditor";
@@ -27,6 +28,7 @@ import { DataSourcePanel } from "../DataSourcePanel";
 import { deviceVisualStatus, deviceVisualStatusLabel, type DeviceVisualStatus, type RuntimeMetricValue } from "../runtime-state";
 
 type CanvasPageProps = {
+  versionId?:string;
   initialTemplateId?: CanvasTemplateId;
   mode: "edit" | "preview";
   projectId: string;
@@ -58,14 +60,15 @@ const formatRuntimeTime = (value: string | undefined): string => {
     : value;
 };
 
-export function CanvasPage({ initialTemplateId, mode, projectId }: CanvasPageProps) {
-  const { editor, document, projectName, canEdit, loading, loadError, saveError, setSaveError, saving, dirty,
+export function CanvasPage({ initialTemplateId, mode, projectId,versionId }: CanvasPageProps) {
+  const { publishedVersion,editor, document, projectName, canEdit, loading, loadError, saveError, setSaveError, saving, dirty,
     execute, travel: travelProject, selectPage: choosePage, save: saveProject, pendingDraft, draftNotice, draftDifferences, restoreDraft, discardDraft } = useProjectEditorContext();
   const viewports = useRef(new Map<string,SceneViewportRuntime>());
   const motionCommands = useRef(new Map<string,{ nodeId: string; controller: AbortController }>());
   const viewportWaiters = useRef(new Set<() => void>());
   const registerViewport = useCallback((id: string,engine: SceneViewportRuntime | null) => { if (engine) viewports.current.set(id,engine); else { viewports.current.delete(id); motionCommands.current.forEach((command) => { if (command.nodeId === id) command.controller.abort(); }); } viewportWaiters.current.forEach((notify) => notify()); },[]);
   const [hiddenInteractionNodes, setHiddenInteractionNodes] = useState<Set<string>>(new Set());
+  const previewRoute = (pageId?:string) => versionId ? `#/projects/${encodeURIComponent(projectId)}/versions/${encodeURIComponent(versionId)}/run${pageId ? `?page=${encodeURIComponent(pageId)}` : ""}` : canvasRoutePath(projectId,"preview",pageId);
   const [showInteractions, setShowInteractions] = useState(false);
   const [showInteractionDebug, setShowInteractionDebug] = useState(false);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
@@ -73,6 +76,7 @@ export function CanvasPage({ initialTemplateId, mode, projectId }: CanvasPagePro
   const [selectedModelSceneNodePath, setSelectedModelSceneNodePath] = useState<string | null>(null);
   const [selectedSceneObject, setSelectedSceneObject] = useState<{ nodeId: string; target: ObjectTarget } | null>(null);
   const [configurationError, setConfigurationError] = useState<string | null>(null);
+  const [showPublications,setShowPublications] = useState(false);
   const [showDataSources, setShowDataSources] = useState(false);
   const [showAssets, setShowAssets] = useState(false);
   const [catalogRevision, setCatalogRevision] = useState(0);
@@ -95,7 +99,7 @@ export function CanvasPage({ initialTemplateId, mode, projectId }: CanvasPagePro
     const controller = new AbortController();
     setProjectAssets([]); setMetricCatalog([]); setCatalogProjectId(null);
     setAssetLoadError(null); setAssetListLoading(true);
-    void request<RuntimeCatalog>(runtimeCatalogPath(projectId), { signal: controller.signal })
+    void request<RuntimeCatalog>(versionId ? `/api/v1/projects/${encodeURIComponent(projectId)}/versions/${encodeURIComponent(versionId)}/runtime-catalog` : runtimeCatalogPath(projectId), { signal: controller.signal })
       .then((result) => {
         if (controller.signal.aborted) return;
         setProjectAssets(result.assets); setMetricCatalog(result.metrics); setCatalogProjectId(projectId);
@@ -103,7 +107,7 @@ export function CanvasPage({ initialTemplateId, mode, projectId }: CanvasPagePro
       .catch((reason) => { if (!controller.signal.aborted) setAssetLoadError(errorMessage(reason)); })
       .finally(() => { if (!controller.signal.aborted) setAssetListLoading(false); });
     return () => controller.abort();
-  }, [projectId, catalogRevision]);
+  }, [projectId,versionId, catalogRevision]);
 
   useEffect(() => {
     setModelScenes({}); runtimeAssetRef.current = null; setSelectedRuntimeAssetId(null); setRuntimeSelectionMessage(null);
@@ -135,7 +139,7 @@ export function CanvasPage({ initialTemplateId, mode, projectId }: CanvasPagePro
     }
     return [...ids];
   }, [editor?.project.interactions, document?.pageId, activeBindings, catalogProjectId, document?.projectId, mappedRuntimeAssets, mode, legacyModelCount, visibleScenes, projectId, selectedRuntimeAssetId]);
-  const runtimeConnections = useProjectRuntime(projectId, catalogProjectId === projectId ? projectAssets : [], neededAssetIds);
+  const runtimeConnections = useProjectRuntime(projectId, catalogProjectId === projectId ? projectAssets : [], neededAssetIds,versionId);
   const interactionHost: InteractionHost["perform"] = (action, value, signal) => {
     if (signal.aborted) throw new Error("交互已取消。");
     if (action.type === "motion.play" || action.type === "motion.stop") {
@@ -169,7 +173,7 @@ export function CanvasPage({ initialTemplateId, mode, projectId }: CanvasPagePro
     }
     if (action.type === "page.navigate") {
       if (!editor?.project.pages.some((page) => page.id === action.pageId)) throw new Error("目标页面不存在。");
-      flushSync(() => { choosePage(action.pageId); setHiddenInteractionNodes(new Set()); }); window.location.hash = canvasRoutePath(projectId, "preview", action.pageId).slice(1); return;
+      flushSync(() => { choosePage(action.pageId); setHiddenInteractionNodes(new Set()); }); window.location.hash = previewRoute(action.pageId).slice(1); return;
     }
     throw new Error("该交互动作尚未连接运行宿主。");
   };
@@ -486,15 +490,16 @@ export function CanvasPage({ initialTemplateId, mode, projectId }: CanvasPagePro
             <button className="secondary-button compact-button" disabled={saving} onClick={() => setShowInteractions(true)} type="button">交互编排</button>
             <button className="secondary-button compact-button" onClick={() => setShowAssets(true)} type="button">资产与指标</button>
             <button className="secondary-button compact-button" onClick={() => setShowDataSources(true)} type="button">数据源</button>
+            <button className="secondary-button compact-button" disabled={saving || dirty} title={dirty ? "请先保存画布" : undefined} onClick={() => setShowPublications(true)} type="button">发布与版本</button>
             <button className="secondary-button compact-button" disabled={!selectedNodeId || !canEdit || saving} onClick={deleteSelectedNode} type="button">删除组件</button>
             <button className="secondary-button compact-button" disabled={saving || configurationError !== null} onClick={() => void openPreview()} title={configurationError ?? undefined} type="button">预览</button>
             <button className="primary-button compact-button" disabled={!dirty || saving || !canEdit || configurationError !== null} onClick={() => void save()} title={configurationError ?? undefined} type="button">{saving ? "保存中…" : "保存画布"}</button>
-          </> : <><button className="secondary-button compact-button" onClick={() => setShowInteractionDebug(true)} type="button">交互调试</button><a className="secondary-button compact-button" href={canvasRoutePath(projectId, "canvas", document?.pageId)}>返回编辑</a></>}
+          </> : <>{versionId ? <span className="published-version-label">固定发布版本 V{publishedVersion?.versionNumber ?? "…"}</span> : null}<button className="secondary-button compact-button" onClick={() => setShowInteractionDebug(true)} type="button">交互调试</button><a className="secondary-button compact-button" href={canvasRoutePath(projectId, "canvas", document?.pageId)}>返回编辑</a></>}
         </div>
       </header>
       <div className="canvas-message-stack">
           <ProjectPageBar project={editor.project} pageId={editor.pageId} editable={mode === "edit" && canEdit && !saving} selectedIds={selectedNodeIds}
-            onSelect={(id) => { choosePage(id); window.location.hash = canvasRoutePath(projectId, mode === "edit" ? "canvas" : "preview", id).slice(1); }}
+            onSelect={(id) => { choosePage(id); window.location.hash = (mode === "edit" ? canvasRoutePath(projectId,"canvas",id) : previewRoute(id)).slice(1); }}
             onOperation={(operation) => { const next = execute(operation); if (next?.pageId) window.location.hash = canvasRoutePath(projectId, "canvas", next.pageId).slice(1); }} />
           {mode === "edit" && draftNotice ? <div className="project-draft-notice" role="status"><span>{draftNotice}</span>
             {pendingDraft ? <><span>草稿含 {pendingDraft.content.pages.length} 页、{pendingDraft.content.pages.reduce((count, page) => count + page.nodes.length, 0)} 个组件。</span><details><summary>恢复后的差异</summary><ul>{draftDifferences.map((line, index) => <li key={index}>{line}</li>)}</ul></details><button onClick={restoreDraft} type="button">恢复草稿到编辑器</button></> : null}
@@ -666,6 +671,7 @@ export function CanvasPage({ initialTemplateId, mode, projectId }: CanvasPagePro
       {showInteractionDebug && mode === "preview" ? <InteractionDebugger runtime={interactions.runtime} snapshot={interactions.snapshot} config={editor.project.interactions} onClose={() => setShowInteractionDebug(false)} /> : null}
       {mode === "preview" && !showInteractionDebug && interactions.snapshot.traces.some((trace) => trace.status === "failed" || trace.status === "limited") ? <button className="interaction-error-notice" type="button" onClick={() => setShowInteractionDebug(true)}>交互执行有失败或限制，查看调试记录</button> : null}
       {showAssets ? <AssetPanel projectId={projectId} editable={canEdit && !saving} onClose={() => { setShowAssets(false); setCatalogRevision((value) => value + 1); }} /> : null}
+      {showPublications ? <PublicationPanel projectId={projectId} editable={canEdit} onClose={() => setShowPublications(false)} /> : null}
       {showDataSources ? (
         <DataSourcePanel
           editable={canEdit && !saving}

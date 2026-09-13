@@ -557,7 +557,8 @@ type WorkspaceProps = {
 type WorkspaceRoute =
   | { kind: "projects" }
   | { kind: "templates" }
-  | { kind: "canvas"; projectId: string; mode: "edit" | "preview"; templateId?: CanvasTemplateId; pageId?: string }
+  | { kind:"published-entry";projectId:string }
+  | { kind: "canvas"; projectId: string; mode: "edit" | "preview";versionId?:string; templateId?: CanvasTemplateId; pageId?: string }
   | { kind: "model-editor"; projectId: string; nodeId: string; pageId?: string }
   | { kind: "invalid"; message: string };
 
@@ -577,6 +578,10 @@ const currentWorkspaceRoute = (): WorkspaceRoute => {
       pageId,
     };
   }
+  const publishedEntry = hashPath.match(/^#\/projects\/([^/]+)\/run$/);
+  if (publishedEntry) return { kind:"published-entry",projectId:decodeURIComponent(publishedEntry[1]) };
+  const releaseMatch = hashPath.match(/^#\/projects\/([^/]+)\/versions\/([^/]+)\/run$/);
+  if (releaseMatch) return { kind:"canvas",projectId:decodeURIComponent(releaseMatch[1]),versionId:decodeURIComponent(releaseMatch[2]),mode:"preview",pageId };
   const canvasMatch = hashPath.match(/^#\/projects\/([^/]+)\/(canvas|preview)$/);
   if (!canvasMatch) return { kind: "projects" };
   const templateValue = params.get("template") ?? undefined;
@@ -595,6 +600,14 @@ const currentWorkspaceRoute = (): WorkspaceRoute => {
     pageId,
   };
 };
+
+function PublishedEntry({ projectId }:{ projectId:string }) {
+  const [error,setError] = useState<string|null>(null);
+  useEffect(() => { const controller = new AbortController(); void request<{ active:{ versionId:string } }>(`/api/v1/projects/${encodeURIComponent(projectId)}/publication-current`,{ signal:controller.signal }).then(({ active }) => {
+    if (!controller.signal.aborted) window.location.replace(`#/projects/${encodeURIComponent(projectId)}/versions/${encodeURIComponent(active.versionId)}/run`);
+  }).catch((reason) => { if (!controller.signal.aborted) setError(errorMessage(reason)); }); return () => controller.abort(); },[projectId]);
+  return <main className="canvas-page-state"><h1>{error ? "无法打开发布版本" : "正在打开当前发布版本…"}</h1>{error ? <p role="alert">{error}</p> : null}<a className="secondary-button" href="#/projects">返回项目列表</a></main>;
+}
 
 function Workspace({ user, onLogout }: WorkspaceProps) {
   const [route, setRoute] = useState<WorkspaceRoute>(currentWorkspaceRoute);
@@ -690,11 +703,13 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
     );
   };
 
+  if (route.kind === "published-entry") return <PublishedEntry key={route.projectId} projectId={route.projectId} />;
+
   if (route.kind === "canvas" || route.kind === "model-editor") {
-    return <ProjectEditorProvider key={route.projectId} projectId={route.projectId} userId={user.id}
-      editing={route.kind === "model-editor" || route.mode === "edit"} pageId={route.pageId}>
+    return <ProjectEditorProvider key={`${route.projectId}:${route.kind === "canvas" ? route.versionId ?? "draft" : "draft"}`} projectId={route.projectId} userId={user.id}
+      editing={route.kind === "model-editor" || route.mode === "edit"} pageId={route.pageId} versionId={route.kind === "canvas" ? route.versionId : undefined}>
       {route.kind === "canvas"
-        ? <CanvasPage key={route.mode} initialTemplateId={route.templateId} mode={route.mode} projectId={route.projectId} />
+        ? <CanvasPage key={route.mode} versionId={route.versionId} initialTemplateId={route.templateId} mode={route.mode} projectId={route.projectId} />
         : <Suspense fallback={<main className="canvas-page-state"><h1>正在准备 3D 编辑器…</h1></main>}><Model3DEditorPage nodeId={route.nodeId} projectId={route.projectId} /></Suspense>}
     </ProjectEditorProvider>;
   }

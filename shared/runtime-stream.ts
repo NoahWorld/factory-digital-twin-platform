@@ -14,7 +14,7 @@ export type RuntimeSubscription = { snapshot(): RuntimeFrame; release(): void };
 export type SourceDiagnostic = { id:string;name:string;mode:"demand" | "continuous";state:"collecting" | "sampled" | "failed";subscribers:number;collectedAt:string|null;errorCode:string|null };
 export type CentralRuntime = {
   diagnostics?(projectId:string):{ epoch:string;sources:SourceDiagnostic[] };
-  subscribe(projectId: string, assetRecordIds: string[], changed: (frame: RuntimeFrame) => void): Promise<RuntimeSubscription>;
+  subscribe(projectId: string, assetRecordIds: string[], changed: (frame: RuntimeFrame) => void, versionId?:string): Promise<RuntimeSubscription>;
 };
 
 const object = (value:unknown): value is Record<string,unknown> => !!value && typeof value === "object" && !Array.isArray(value);

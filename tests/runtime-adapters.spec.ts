@@ -1,5 +1,5 @@
 import { test,expect } from "@playwright/test";
-import { mkdir,writeFile,cp,stat } from "node:fs/promises";
+import { mkdir,writeFile,cp,stat,readdir } from "node:fs/promises";
 import { join,resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { SqliteDatabase } from "../apps/runtime/src/sqlite-database";
@@ -24,19 +24,20 @@ test("SQLite bindings are independent and batch changes, foreign keys and rollba
 test("runtime migrations use the same SQL, verify a backup before upgrades and roll back failed migrations", async ({},testInfo) => {
   const root = testInfo.outputPath("migration-test"),directory = join(root,"migrations"),databasePath = join(root,"data","config.sqlite");
   await mkdir(root,{ recursive: true }); await cp(resolve("apps/api/migrations"),directory,{ recursive: true });
-  const first = await migrateRuntimeDatabase(databasePath,directory); expect(first.applied).toHaveLength(16); expect(first.backupPath).toBeNull();
+  const migrationCount = (await readdir(directory)).filter((name) => name.endsWith(".sql")).length;
+  const first = await migrateRuntimeDatabase(databasePath,directory); expect(first.applied).toHaveLength(migrationCount); expect(first.applied).toContain("0017_project_publications.sql"); expect(first.backupPath).toBeNull();
   expect((await migrateRuntimeDatabase(databasePath,directory)).applied).toEqual([]);
-  await writeFile(join(directory,"0017_runtime_probe.sql"),"CREATE TABLE runtime_probe(id INTEGER PRIMARY KEY,value TEXT); INSERT INTO runtime_probe VALUES(1,'retained');");
-  const upgrade = await migrateRuntimeDatabase(databasePath,directory); expect(upgrade.applied).toEqual(["0017_runtime_probe.sql"]); expect(upgrade.backupPath).toBeTruthy();
+  await writeFile(join(directory,"9001_runtime_probe.sql"),"CREATE TABLE runtime_probe(id INTEGER PRIMARY KEY,value TEXT); INSERT INTO runtime_probe VALUES(1,'retained');");
+  const upgrade = await migrateRuntimeDatabase(databasePath,directory); expect(upgrade.applied).toEqual(["9001_runtime_probe.sql"]); expect(upgrade.backupPath).toBeTruthy();
   const backup = new DatabaseSync(upgrade.backupPath!,{ readOnly: true });
-  try { expect(backup.prepare("SELECT COUNT(*) AS n FROM runtime_migrations").get()?.n).toBe(16); expect(backup.prepare("SELECT name FROM sqlite_master WHERE name='runtime_probe'").get()).toBeUndefined(); } finally { backup.close(); }
+  try { expect(backup.prepare("SELECT COUNT(*) AS n FROM runtime_migrations").get()?.n).toBe(migrationCount); expect(backup.prepare("SELECT name FROM sqlite_master WHERE name='runtime_probe'").get()).toBeUndefined(); } finally { backup.close(); }
   expect((await stat(upgrade.backupPath!)).mode & 0o777).toBe(0o600);
-  await writeFile(join(directory,"0018_runtime_failure.sql"),"INSERT INTO runtime_probe VALUES(2,'must-roll-back'); SELECT missing FROM missing_table;");
+  await writeFile(join(directory,"9002_runtime_failure.sql"),"INSERT INTO runtime_probe VALUES(2,'must-roll-back'); SELECT missing FROM missing_table;");
   const blocked = join(root,"not-a-directory"); await writeFile(blocked,"block");
   await expect(migrateRuntimeDatabase(databasePath,directory,blocked)).rejects.toThrow();
   await expect(migrateRuntimeDatabase(databasePath,directory)).rejects.toThrow();
   const read = new DatabaseSync(databasePath,{ readOnly: true });
-  try { expect(read.prepare("SELECT COUNT(*) AS n FROM runtime_migrations").get()?.n).toBe(17); expect(read.prepare("SELECT COUNT(*) AS n FROM runtime_probe").get()?.n).toBe(1); expect(read.prepare("PRAGMA foreign_key_check").all()).toEqual([]); } finally { read.close(); }
+  try { expect(read.prepare("SELECT COUNT(*) AS n FROM runtime_migrations").get()?.n).toBe(migrationCount+1); expect(read.prepare("SELECT COUNT(*) AS n FROM runtime_probe").get()?.n).toBe(1); expect(read.prepare("PRAGMA foreign_key_check").all()).toEqual([]); } finally { read.close(); }
   await writeFile(join(directory,"0001_initial.sql"),"SELECT 1;"); // A newly inserted earlier migration cannot rewrite history.
   await expect(migrateRuntimeDatabase(databasePath,directory)).rejects.toThrow("history");
 });

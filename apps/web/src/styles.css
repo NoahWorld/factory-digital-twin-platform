@@ -10606,3 +10606,15 @@ input:focus,
 
 .data-source-runtime-summary { display: grid; gap: 7px; margin-top: 16px; padding: 12px 14px; border: 1px solid #294a55; border-radius: 8px; color: #a5c8cf; background: #0b1c27; font-size: 12px; }
 .data-source-runtime-summary strong { color: #c4f2e4; }
+
+.publication-content { min-height: 0; overflow: auto; padding: 24px; display: grid; align-content: start; gap: 24px; }
+.publication-content > p { margin: 0; color: #9bbabf; line-height: 1.7; }
+.publication-content h3 { margin: 0 0 14px; }
+.publication-draft { display: grid; justify-items: start; gap: 12px; padding: 18px; border: 1px solid #2a4652; border-radius: 10px; }
+.publication-draft label { display: grid; gap: 8px; width: 100%; }
+.publication-draft p { margin: 0; }
+.publication-version { display: grid; gap: 16px; margin: 12px 0; padding: 18px; border: 1px solid #294b57; border-radius: 10px; background: #0b1c28; }
+.publication-version p { margin: 8px 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.publication-version small, .publication-draft small { color: #7fa0aa; }
+.publication-actions { display: flex; gap: 12px; flex-wrap: wrap; }
+.published-version-label { padding: 6px 10px; border: 1px solid #41715e; border-radius: 5px; color: #abe5c8; }

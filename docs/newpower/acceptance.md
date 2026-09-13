@@ -328,3 +328,26 @@ M4本地技术验收通过。M6a继续建立独立宿主、集中采集和环境
 - `m6a-ws-final-check.log`、`m6a-ws-build.log`：check/build通过；`m6a-complete-smoke.log`：旧Worker REST smoke12项通过。
 
 配置和双客户端截图已查看。协议/预算详见websocket-sources.md；实际客户私有协议、证书环境、生产网络和吞吐量仍待现场验证，M7另有规模与长时验收。M6a本地技术验收通过，继续M5冻结发布版本及独立交付，完整目标保持active。
+
+## M5 冻结发布与运行隔离检查点（2026-09-13）
+
+起点 `a4bcf98`。新增RuntimeProjectSnapshot冻结定义、资产、指标映射、数据源和资源版本/报告；完整运行配置修订与画布revision分开。0017增加版本快照哈希、不可变记录、当前发布指针和版本资源外键引用。发布检查实际读取文件并验证SHA256，激活前复查数据连接、映射类型和陈旧状态；失败不改变当前指针。
+
+迁移过程：新SQLite迁移/备份反例3项先通过。原Worker仍占用库时第一次迁移被SQLITE_BUSY阻止，读回0017未应用，已验证备份保留。停掉精确所属的Worker后再次备份成功，0017的47条语句执行通过；以原端口/状态/config重启Worker。实际成功备份为 `test/backups/before-migration-2026-09-13T02-18-35-660Z-1566518a-39b9-4cf8-a1de-ccb58cc148c5.sqlite`，首次失败前备份也保留。`m5-migration-readback.json`证明三保留项目15段完全不变、FK0、34个修订触发器。
+
+Worker回归发现D1 meta.changes含触发器更新，原单行保存返回2而误报409；direct-changes适配在同batch事务内读取SQLite changes()，保留CAS的单行语义。Node原生changes不需转换。权限测试第二个Wrangler进程清理时同样遇SQLITE_BUSY，改为在已确认的本地测试库用SQLite WAL写入/清理；不启第二个workerd，失败测试遗留的精确项目/用户已清理。
+
+实际界面完成：检查→冻结V1→激活→打开固定版本；草稿改变源地址、字段映射、设备名称和页面后，旧发布页面及重开仍使用原配置。再冻结/激活V2，新“当前发布”入口进入V2，已打开V1保持V1；回滚后新入口恢复V1。运行definition/catalog/stream/模型报告均来自冻结版本，采集key包含versionId。发布持续源在无查看者及重启后仍使用冻结源，激活与回滚正确替换后台任务；旧固定页的订阅按其版本保留。
+
+可复用场景、原生片段和交互也通过固定版本运行：先删掉草稿交互，发布页仍播放原生动画并按冻结动作翻到该版本内页面。模型报告请求使用版本接口。已查看发布面板、原数据保持以及原生动画/调试截图。
+
+旧名称复核补上触发器metricKey、资产modelNode和同页多视窗歧义校验。正常sanitize名称和多primitive名称由同版Three GLTFLoader实际解析，服务端不加载纹理像素，浏览器/服务端版本固定0.185.1。两个不同网格同名时，异步材质完成顺序会改变旧名称归属，现单列unstableNames；只有实际引用不稳定名称的配置才阻断并提示在既有3D编辑器转为稳定场景映射，未伪造确定的对象。明确命名节点和普通子网格兼容保留。
+
+- `m5-publication-regression.log`：完整120项通过、示例1项按设计跳过，覆盖此前M0–M6a和新发布逻辑。
+- `m5-core.log`：API/CAS/损坏拒绝与真实UI冻结/运行/回滚2项通过；`m5-published-continuous.log`：持续发布源、改草稿、重启/回滚/删除释放通过。
+- `m5-scene-publication.log`：固定现代场景/原生片段/交互翻页通过；`m5-publication-cancel.log`：停机取消慢激活检查、发布指针不变通过。
+- `m5-permission-fixed.log`：Worker权限、绑定、旧模型发布4项通过。
+- `m5-identity-final.log`：最终名称歧义清单、Worker旧模型、API引用/数据失败阻断和UI5项通过。
+- `m5-identity-check.log`、`m5-identity-build.log`、`m5-final-lock-install.log`：check/build和frozen-lock安装通过；`m5-publication-smoke.log`：原Worker REST smoke12通过。
+
+首次发布UI测试误把持续波动的mock温度断言成固定43.8，改为检查其已知温度范围，并与改映射后的压力范围区分；保留真实动态采集。发布快照元数据上限8MiB，文件继续模型25MiB/图片8MiB限制。导入导出、交付包及M5总体验收仍未完成，下一项直接继续项目包和干净环境运行。
