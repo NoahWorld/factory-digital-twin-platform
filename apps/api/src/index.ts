@@ -1,4 +1,5 @@
 import { getProjectDefinition, persistProjectPatch } from "./project-definitions";
+import { readUploadBytes } from "./upload-body";
 import { validateProjectPatch } from "../../../shared/project-definition";
 import {
   AppError,
@@ -92,11 +93,7 @@ const errorResponse = (error: AppError, requestId: string): Response =>
 
 const readJsonObject = async (request: Request, maximumBytes = 64 * 1024): Promise<JsonObject> => {
   let body: unknown;
-  const text = await request.text();
-
-  if (new TextEncoder().encode(text).byteLength > maximumBytes) {
-    throw new AppError(413, "request_body_too_large", `Request body cannot exceed ${maximumBytes} bytes.`);
-  }
+  const text = new TextDecoder().decode(await readUploadBytes(request,maximumBytes,"request_body_too_large"));
 
   try {
     body = JSON.parse(text);
@@ -661,6 +658,7 @@ const handleApiRequest = async (
         projectId,
         assetRecordId,
         requestId,
+        request.signal,
       );
       console.log(JSON.stringify({
         event: "asset_runtime_collected",
@@ -674,8 +672,9 @@ const handleApiRequest = async (
       }));
       return json({ runtimeState, requestId });
     } catch (error) {
-      console.error(JSON.stringify({
-        event: "asset_runtime_collection_failed",
+      const cancelled = error instanceof AppError && error.code === "data_source_cancelled";
+      (cancelled ? console.log : console.error)(JSON.stringify({
+        event: cancelled ? "asset_runtime_collection_cancelled" : "asset_runtime_collection_failed",
         requestId,
         projectId,
         assetRecordId,
@@ -860,6 +859,7 @@ const handleApiRequest = async (
         projectId,
         dataSourceId,
         requestId,
+        request.signal,
       );
       console.log(JSON.stringify({
         event: "data_source_test_succeeded",

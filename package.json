@@ -8,10 +8,11 @@
     "dev:mock": "node scripts/mock-device-server.mjs",
     "dev:web": "pnpm --filter @factory-twin/web dev",
     "dev:api": "pnpm --filter @factory-twin/api dev",
+    "start:runtime": "pnpm --filter @factory-twin/runtime start",
     "smoke:runtime": "node scripts/runtime-api-smoke-test.mjs",
     "test:newpower": "playwright test --reporter=line",
     "migrate:newpower": "node scripts/migrate-newpower.mjs",
-    "build": "pnpm --filter @factory-twin/web build && pnpm --filter @factory-twin/api build",
+    "build": "pnpm --filter @factory-twin/web build && pnpm --filter @factory-twin/api build && pnpm --filter @factory-twin/runtime build",
     "check": "pnpm --recursive run check"
   },
   "devDependencies": {

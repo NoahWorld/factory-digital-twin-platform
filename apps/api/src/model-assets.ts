@@ -314,6 +314,7 @@ export const modelAssetContentResponse = async (
   });
   object.writeHttpMetadata(headers);
   if (request.headers.get("if-none-match") === object.httpEtag) {
+    await object.body.cancel();
     return new Response(null, { status: 304, headers });
   }
   return new Response(object.body, { headers });

@@ -323,6 +323,7 @@ const readLimitedText = async (
   const reader = response.body.getReader();
   const chunks: Uint8Array[] = [];
   let totalBytes = 0;
+  try {
   while (true) {
     const result = await reader.read();
     if (result.done) break;
@@ -337,6 +338,7 @@ const readLimitedText = async (
     }
     chunks.push(result.value);
   }
+  } finally { reader.releaseLock(); }
   const body = new Uint8Array(totalBytes);
   let offset = 0;
   for (const chunk of chunks) {
@@ -350,6 +352,7 @@ const fetchJson = async (
   source: DataSource,
   config: RestPollingConfig,
   requestId: string,
+  signal?: AbortSignal,
 ): Promise<{
   payload: unknown;
   collectedAt: string;
@@ -364,11 +367,14 @@ const fetchJson = async (
     );
   }
 
+  if (signal?.aborted) throw new AppError(499,"data_source_cancelled",`Data source ${source.id} collection was cancelled.`);
   const controller = new AbortController();
+  const cancel = () => controller.abort(); signal?.addEventListener("abort",cancel,{ once: true });
+  let response: Response | undefined, consumed = false;
   const timeout = setTimeout(() => controller.abort(), config.timeoutMs);
   const startedAt = Date.now();
   try {
-    const response = await fetch(config.url, {
+    response = await fetch(config.url, {
       headers: {
         accept: "application/json",
         "x-factory-twin-request-id": requestId,
@@ -384,7 +390,7 @@ const fetchJson = async (
     if (Number.isFinite(declaredLength) && declaredLength > MAX_RESPONSE_BYTES) {
       throw new AppError(502, "data_source_response_too_large", `Data source ${source.id} declared more than ${MAX_RESPONSE_BYTES} response bytes.`);
     }
-    const { text, byteSize } = await readLimitedText(response, source.id);
+    const { text, byteSize } = await readLimitedText(response, source.id); consumed = true;
     let payload: unknown;
     try {
       payload = JSON.parse(text);
@@ -398,6 +404,7 @@ const fetchJson = async (
       responseBytes: byteSize,
     };
   } catch (error) {
+    if (signal?.aborted) throw new AppError(499,"data_source_cancelled",`Data source ${source.id} collection was cancelled.`);
     if (error instanceof AppError) throw error;
     if (controller.signal.aborted) {
       throw new AppError(504, "data_source_timeout", `Data source ${source.id} exceeded its ${config.timeoutMs} ms timeout.`);
@@ -408,7 +415,8 @@ const fetchJson = async (
       `Data source ${source.id} request failed: ${error instanceof Error ? error.message : String(error)}`,
     );
   } finally {
-    clearTimeout(timeout);
+    if (response && !consumed) { controller.abort(); await response.body?.cancel().catch(() => {}); }
+    clearTimeout(timeout); signal?.removeEventListener("abort",cancel);
   }
 };
 
@@ -440,10 +448,11 @@ export const probeRestDataSource = async (
   projectId: string,
   dataSourceId: string,
   requestId: string,
+  signal?: AbortSignal,
 ): Promise<RestDataSourceProbe> => {
   const source = await getDataSource(env, projectId, dataSourceId);
   const config = requireAllowedRestSource(env, source);
-  const fetched = await fetchJson(source, config, requestId);
+  const fetched = await fetchJson(source, config, requestId,signal);
   const timestamp = inspectSourceTimestamp(fetched.payload, source, config);
   const discovery = discoverScalarFields(fetched.payload);
   return {
@@ -466,6 +475,7 @@ export const collectAssetRuntimeState = async (
   projectId: string,
   assetRecordId: string,
   requestId: string,
+  signal?: AbortSignal,
 ): Promise<AssetRuntimeState> => {
   const [asset, bindings] = await Promise.all([
     getAsset(env, projectId, assetRecordId),
@@ -482,11 +492,12 @@ export const collectAssetRuntimeState = async (
     bindingGroups.set(binding.dataSourceId, group);
   }
 
-  const sourceResults = await Promise.all(
-    [...bindingGroups.entries()].map(async ([dataSourceId, sourceBindings]) => {
+  const group = new AbortController(); const cancel = () => group.abort();
+  signal?.addEventListener("abort",cancel,{ once: true }); if (signal?.aborted) group.abort();
+  const tasks = [...bindingGroups.entries()].map(async ([dataSourceId, sourceBindings]) => {
       const source = await getDataSource(env, projectId, dataSourceId);
       const config = requireAllowedRestSource(env, source);
-      const fetched = await fetchJson(source, config, requestId);
+      const fetched = await fetchJson(source, config, requestId,group.signal);
       const staleAfterSeconds = Math.min(
         ...sourceBindings.map((binding) => binding.staleAfterSeconds),
       );
@@ -502,8 +513,11 @@ export const collectAssetRuntimeState = async (
         ),
         ...fetched,
       };
-    }),
-  );
+    });
+  let sourceResults: Awaited<(typeof tasks)[number]>[];
+  try { sourceResults = await Promise.all(tasks); }
+  catch (reason) { group.abort(); await Promise.allSettled(tasks); throw reason; }
+  finally { signal?.removeEventListener("abort",cancel); }
 
   const values: Record<string, RuntimeMetricValue> = {};
   const metrics: AssetRuntimeState["metrics"] = [];

@@ -1,5 +1,6 @@
-import { DatabaseSync, backup } from "node:sqlite";
-import { existsSync, readdirSync, mkdirSync, chmodSync } from "node:fs";
+import { backupSqlite } from "./sqlite-backup.mjs";
+import { DatabaseSync } from "node:sqlite";
+import { existsSync, readdirSync, mkdirSync } from "node:fs";
 import { dirname, isAbsolute, join } from "node:path";
 import { spawnSync } from "node:child_process";
 
@@ -24,14 +25,7 @@ export async function migrateWithBackup({ stateDirectory, configPath, backupDire
   const destination = backupDirectory ?? join(dirname(stateDirectory), "backups");
   mkdirSync(destination, { recursive: true, mode: 0o700 });
   const backupPath = join(destination, `before-migration-${new Date().toISOString().replaceAll(/[:.]/g, "-")}-${crypto.randomUUID()}.sqlite`);
-  const source = new DatabaseSync(candidates[0], { readOnly: true });
-  try { await backup(source, backupPath); } finally { source.close(); }
-  chmodSync(backupPath, 0o600);
-  const verified = new DatabaseSync(backupPath, { readOnly: true });
-  try {
-    if (verified.prepare("PRAGMA integrity_check").get().integrity_check !== "ok") throw new Error("Backup integrity failed. Migration has not run.");
-    if (!verified.prepare("SELECT name FROM sqlite_master WHERE name='project_canvases'").get()) throw new Error("Backup is not a NewPower database. Migration has not run.");
-  } finally { verified.close(); }
+  await backupSqlite(candidates[0],backupPath,{ requiredTable: "project_canvases" });
   // No catch-and-continue between the verified backup and the schema change.
   if (applyMigration) await applyMigration({ backupPath, databasePath: candidates[0] });
   else {

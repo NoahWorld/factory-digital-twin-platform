@@ -247,3 +247,18 @@ M3 本地技术验收通过。完整引擎目标仍 active，下一项为 M4，�
 本机轻量1/10/100实例仍约60FPS、p95帧间隔16.7ms，每组2次资源请求；这是既定生成资源基线，不代表工业模型容量。真实公司模型、现场接口、目标硬件及M7长时规模验证继续单列。
 
 M4本地技术验收通过。M6a继续建立独立宿主、集中采集和环境凭据；完整引擎目标保持active，后续阶段未完成。
+
+## M6a 独立宿主基础检查点（2026-09-13）
+
+起点 `454dbaf`。新增 Node 24.18 宿主复用原 API 与静态前端，SQLite 批事务/CAS/外键和文件 ObjectBucket 适配；构建目录复制到干净位置后只依赖 Node，沿用同一16项迁移。已有库升级先做验证过的在线备份，迁移校验和或历史漂移、备份失败、SQL失败均阻止升级。Worker 验收库未转换或重置。
+
+真实 Chrome 在复制后的独立目录完成登录、二维三维运行与双资产数据；全部API请求同源，资源ETag/304、权限、CAS冲突、重启后项目和文件字节保持均验证。已查看 `m6a-foundation-regression/runtime-host-a-copied-Node-aa423--roles-and-survives-restart/node-standalone-runtime.png`。测试宿主使用临时端口并在结束后关闭，未声明常驻8792入口。
+
+关闭复核修复：中止响应时取消尚在等待的数据流；先等已接受的异步写入完成再关闭数据库；慢上游响应随宿主退出中止。请求体大小错误通过正常413返回，公共静态目录拒绝隐藏文件、越界路径及运行数据目录重叠。304取消未使用的文件流，保留Worker兼容。
+
+- `m6a-foundation-regression.log`：15项通过，覆盖独立运行/重启、适配器、备份失败阻断、关闭/取消和既有绑定UI、资源HTTP回归。
+- `m6a-host-regression.log`：此前13项相关回归通过，含旧模型版本、页面绑定和资源行为。
+- `m6a-foundation-check.log`、`m6a-foundation-build.log`：三包类型检查和完整构建通过，API仅dry-run。
+- `m6a-host-smoke.log`：旧Worker真实REST smoke12项通过。
+
+当前仍为按请求采集，健康接口明确标识 `per-request`。这是M6a基础检查点，下一项集中REST调度/订阅、环境凭据、WS及后续总目标继续进行。
