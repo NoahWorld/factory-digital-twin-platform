@@ -126,6 +126,7 @@ export async function startRuntime(options: RuntimeOptions) {
   const database = new SqliteDatabase(databasePath);
   const env: AppEnv = { ...options.environment,RESOLVE_SOURCE:resolver,DB: database,PROJECT_FILES: new FileBucket(join(dataDirectory,"objects")) };
   const collector = new RuntimeCollector(env); env.CENTRAL_RUNTIME = collector;
+  try { await collector.start(); } catch (reason) { await collector.close(); database.close(); throw reason; }
   const requests = new Set<AbortController>();
   const handlers = new Set<Promise<void>>();
   let stopping = false;

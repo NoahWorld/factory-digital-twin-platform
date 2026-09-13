@@ -295,3 +295,20 @@ M4本地技术验收通过。M6a继续建立独立宿主、集中采集和环境
 - `m6a-environment-final-check.log`、`m6a-environment-final-build.log`、`m6a-environment-source-build.log`：类型检查与构建通过；`m6a-environment-smoke.log`：Worker原REST smoke12通过。
 
 前两次环境UI测试未找到输入的精确名称：说明文字位于label中，已给输入明确名称并关联帮助文本；修复后实际操作通过。旧编辑配置仍兼容直接URL；内网交付采用逻辑端点。持续采集、WS及后续M5–M8继续进行，未关闭总目标。
+
+## M6a 持续采集与运行状态检查点（2026-09-13）
+
+起点 `9da1c5c`。data-source config增加可选collectionMode，旧配置默认按需，沿原config_json保存；Node启动时加载持续源。持续源与查看订阅共用同一源任务，最后查看者退出不停止持续源，改回按需后按实际需求释放。按项目授权的诊断接口只提供模式、采样时间、订阅数和错误码，不含环境值或原始样本。
+
+实际UI把源改为持续并保存，在零设备订阅的页面显示“持续采集 · 已采样 / 查看订阅0”；关闭整个浏览器会话后，独立HTTP计数继续增长。重启时上游故意503，新epoch且collectedAt为空；恢复后重新采样。配置改回按需且无查看者后停止请求。已查看 `m6a-continuous-layout/continuous-runtime-continu-65402-ts-with-fresh-failure-state/continuous-source-status.png`。
+
+源任务上限256、并发6；持续源优先，超额源明确报runtime_source_limit，释放名额后恢复调度。257源合成边界验证显示一个失败而非伪装全部运行；这只证明预算控制，不是工业吞吐量。源样本仍只在内存，历史与告警在M6b继续。
+
+首次UI测试失败揭示了真实布局问题：表单变长后，外层grid按内容扩张，保存按钮超出视窗且不能滚到。已限制外层网格行高度及内部滚动，保留普通可见点击验收；没有强制点击绕过。持续测试使用无组件绑定的项目页面，避免编辑器已有的设备值订阅影响零订阅观察。
+
+- `m6a-continuous-layout.log`：持续UI/零订阅/重启/恢复/停止与环境原UI共4项通过。
+- `m6a-continuous-capacity.log`：代次、晚到取消、慢流/权限/超限、257源预算共5项通过。
+- `m6a-continuous-regression.log`：18项相关回归通过，包括双独立客户端、宿主、终态重连、旧绑定UI及环境鉴权。
+- `m6a-continuous-final-check.log`、`m6a-continuous-final-build.log`：check/build通过；`m6a-continuous-smoke.log`：旧Worker REST smoke12通过。
+
+只读复核未发现新的具体缺陷。M6a剩余真实WS上游接入及总阶段验收继续；M5–M8未完成。

@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
+import type { SourceDiagnostic } from "../../../shared/runtime-stream";
 import { errorMessage, request } from "./api";
 import {
   dataSourceProbePath,
@@ -24,6 +25,7 @@ type DataSourceDraft = {
   name: string;
   url: string;
   endpointRef: string;
+  collectionMode: "demand" | "continuous";
   intervalSeconds: string;
   timeoutMs: string;
   timestampPath: string;
@@ -38,6 +40,7 @@ const emptyDraft = (): DataSourceDraft => ({
   name: "",
   url: "",
   endpointRef: "",
+  collectionMode: "demand",
   intervalSeconds: "10",
   timeoutMs: "5000",
   timestampPath: "",
@@ -52,6 +55,7 @@ const draftFromSource = (source: ProjectDataSource): DataSourceDraft => ({
   name: source.name,
   url: source.config.url,
   endpointRef: source.config.endpointRef ?? "",
+  collectionMode: source.config.collectionMode ?? "demand",
   intervalSeconds: source.sourceType === "rest_polling"
     ? String(source.config.intervalSeconds)
     : "10",
@@ -111,6 +115,19 @@ export function DataSourcePanel({
   const [probeError, setProbeError] = useState<string | null>(null);
   const [probeResult, setProbeResult] = useState<RestDataSourceProbe | null>(null);
   const [draft, setDraft] = useState<DataSourceDraft>(emptyDraft);
+  const [runtimeStatus,setRuntimeStatus] = useState<{ collection:string;sources:SourceDiagnostic[] } | null>(null);
+  const [runtimeError,setRuntimeError] = useState<string | null>(null);
+  useEffect(() => {
+    let active = true,timer:ReturnType<typeof setTimeout>; const controller = new AbortController();
+    const poll = async () => {
+      try { const result = await request<{ collection:string;sources:SourceDiagnostic[] }>(`/api/v1/projects/${encodeURIComponent(projectId)}/runtime/sources`,{ signal:controller.signal }); if (active) { setRuntimeStatus(result); setRuntimeError(null); } }
+      catch (reason) { if (active) setRuntimeError(errorMessage(reason)); }
+      finally { if (active) timer = setTimeout(() => { void poll(); },3000); }
+    };
+    void poll(); return () => { active = false; controller.abort(); clearTimeout(timer); };
+  },[projectId]);
+  const sourceStatus = runtimeStatus?.sources.find((source) => source.id === draft.id);
+
 
   useEffect(() => {
     setProbeError(null);
@@ -178,6 +195,7 @@ export function DataSourcePanel({
         ? {
             url: draft.endpointRef.trim() ? "" : draft.url.trim(),
             ...(draft.endpointRef.trim() ? { endpointRef:draft.endpointRef.trim() } : {}),
+            collectionMode: draft.collectionMode,
             intervalSeconds: requiredInteger(draft.intervalSeconds, "轮询周期"),
             timeoutMs: requiredInteger(draft.timeoutMs, "请求超时"),
             timestampPath: draft.timestampPath || null,
@@ -186,6 +204,7 @@ export function DataSourcePanel({
         : {
             url: draft.endpointRef.trim() ? "" : draft.url.trim(),
             ...(draft.endpointRef.trim() ? { endpointRef:draft.endpointRef.trim() } : {}),
+            collectionMode: draft.collectionMode,
             heartbeatSeconds: requiredInteger(draft.heartbeatSeconds, "心跳周期"),
             reconnectMaxSeconds: requiredInteger(
               draft.reconnectMaxSeconds,
@@ -335,12 +354,21 @@ export function DataSourcePanel({
                     sourceType: event.target.value as DataSourceType,
                     url: "",
                     endpointRef: "",
+                    collectionMode: "demand",
                   }))}
                   value={draft.sourceType}
                 >
                   <option value="rest_polling">REST 轮询</option>
                   <option value="websocket">WebSocket</option>
                 </select>
+              </label>
+              <label className="is-wide">
+                <span>采集方式</span>
+                <select aria-label="采集方式" disabled={formDisabled} value={draft.collectionMode} onChange={(event) => setDraft((current) => ({ ...current,collectionMode:event.target.value as "demand" | "continuous" }))}>
+                  <option value="demand">按需采集 · 最后查看者退出后停止</option>
+                  <option value="continuous" disabled={runtimeStatus?.collection !== "central"}>持续采集 · 无人查看时仍运行</option>
+                </select>
+                {runtimeStatus?.collection === "per-request" ? <small>此宿主仅支持即时采集；持续模式需要独立运行服务。</small> : null}
               </label>
               <label className="is-wide">
                 <span>环境端点引用（可选）</span>
@@ -465,6 +493,13 @@ export function DataSourcePanel({
               </label>
             </div>
 
+            <div className="data-source-runtime-summary" role="status">
+              {runtimeError ? `无法读取采集状态：${runtimeError}` : sourceStatus ? <>
+                <strong>{sourceStatus.mode === "continuous" ? "持续采集" : "按需采集"} · {sourceStatus.state === "sampled" ? "已采样" : sourceStatus.state === "failed" ? "采集失败" : "正在采集"}</strong>
+                <span>查看订阅：{sourceStatus.subscribers} · 最近采样：{sourceStatus.collectedAt ? new Date(sourceStatus.collectedAt).toLocaleTimeString("zh-CN") : "尚无"}</span>
+                {sourceStatus.errorCode ? <small>错误：{sourceStatus.errorCode}</small> : <small>设备实时状态仍按字段映射和数据有效期校验。</small>}
+              </> : runtimeStatus?.collection === "central" ? "当前没有运行中的采集任务。" : "当前宿主使用按请求采集。"}
+            </div>
             <div className="data-source-security-note">
               <strong>凭据不会保存在这里</strong>
               <p>

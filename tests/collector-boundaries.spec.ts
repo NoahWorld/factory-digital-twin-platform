@@ -16,7 +16,7 @@ function fixture() {
         const wait = firstSource; firstSource = null; await wait?.(); return row;
       }
       return asset;
-    },async all() { return { results:enabled ? [binding] : [] }; } };
+    },async all() { return { results:sql.includes("json_extract") ? [] : enabled ? [binding] : [] }; } };
   } } as unknown as Database;
   const env:AppEnv = { DB,RUNTIME_POLLING_ENABLED:"true",RUNTIME_ALLOWED_HOSTS:"old,new" };
   return { env,setUrl(value:string) { url = value; },disable() { enabled = false; },gate(operation:() => Promise<void>) { firstSource = operation; } };
@@ -87,4 +87,21 @@ test("slow subscribers retain only the latest full frame and authorization loss 
     expect(decode((await reader.read()).value)).toContain('"sequence":100');
     callbacks[1](); await expect.poll(() => released).toBe(true); expect((await reader.read()).done).toBe(true); reader.releaseLock();
   } finally { globalThis.setInterval = original; }
+});
+
+test("continuous source capacity is explicit and releases admission for a previously blocked source",async () => {
+  const original = globalThis.fetch,now = new Date().toISOString();
+  let rows = Array.from({ length:257 },(_,index) => ({ id:`source-${index}`,project_id:"project",source_type:"rest_polling",name:`Source ${index}`,config_json:JSON.stringify({ url:`http://old/source-${index}`,intervalSeconds:60,timeoutMs:1000,timestampPath:null,credentialRef:null,collectionMode:"continuous" }),created_at:now,updated_at:now }));
+  const DB = { prepare() { return { bind() { return this; },async all() { return { results:rows }; } }; } } as unknown as Database;
+  globalThis.fetch = async () => Response.json({ value:42 });
+  const collector = new RuntimeCollector({ DB,RUNTIME_POLLING_ENABLED:"true",RUNTIME_ALLOWED_HOSTS:"old" });
+  try {
+    await collector.start();
+    let diagnostics = collector.diagnostics("project"); expect(diagnostics.sources).toHaveLength(257);
+    expect(diagnostics.sources.filter((source) => source.errorCode === "runtime_source_limit")).toHaveLength(1);
+    expect(diagnostics.sources.find((source) => source.id === "source-256")).toMatchObject({ state:"failed",errorCode:"runtime_source_limit",subscribers:0,collectedAt:null });
+    rows = rows.slice(1); await collector.refresh("project");
+    await expect.poll(() => collector.diagnostics("project").sources.find((source) => source.id === "source-256")?.state).toBe("sampled");
+    diagnostics = collector.diagnostics("project"); expect(diagnostics.sources).toHaveLength(256); expect(diagnostics.sources.every((source) => source.errorCode === null)).toBe(true);
+  } finally { await collector.close(); globalThis.fetch = original; }
 });

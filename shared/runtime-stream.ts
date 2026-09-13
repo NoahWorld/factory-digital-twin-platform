@@ -11,7 +11,9 @@ export type CentralConnection = {
 };
 export type RuntimeFrame = { epoch: string; sequence: number; connections: Record<string,CentralConnection> };
 export type RuntimeSubscription = { snapshot(): RuntimeFrame; release(): void };
+export type SourceDiagnostic = { id:string;name:string;mode:"demand" | "continuous";state:"collecting" | "sampled" | "failed";subscribers:number;collectedAt:string|null;errorCode:string|null };
 export type CentralRuntime = {
+  diagnostics?(projectId:string):{ epoch:string;sources:SourceDiagnostic[] };
   subscribe(projectId: string, assetRecordIds: string[], changed: (frame: RuntimeFrame) => void): Promise<RuntimeSubscription>;
 };
 

@@ -643,12 +643,13 @@ const handleApiRequest = async (
     return json({ asset, requestId });
   }
 
-  const centralRuntimeMatch = pathname.match(/^\/api\/v1\/projects\/([^/]+)\/runtime\/(capabilities|stream)$/);
+  const centralRuntimeMatch = pathname.match(/^\/api\/v1\/projects\/([^/]+)\/runtime\/(capabilities|stream|sources)$/);
   if (method === "GET" && centralRuntimeMatch) {
     const projectId = decodePathSegment(centralRuntimeMatch[1]);
     const authorize = async () => requireProjectAccess(env,await getAuthenticatedUser(env,request),projectId);
     await authorize();
     if (centralRuntimeMatch[2] === "capabilities") return json({ collection:env.CENTRAL_RUNTIME ? "central" : "per-request",requestId });
+    if (centralRuntimeMatch[2] === "sources") return json({ collection:env.CENTRAL_RUNTIME ? "central" : "per-request",...(env.CENTRAL_RUNTIME?.diagnostics?.(projectId) ?? { sources:[] }),requestId });
     return runtimeStream(env,request,projectId,authorize);
   }
 

@@ -7,6 +7,7 @@ export type DataSourceType = "rest_polling" | "websocket";
 export type RestPollingConfig = {
   url: string;
   endpointRef?: string;
+  collectionMode?: "demand" | "continuous";
   intervalSeconds: number;
   timeoutMs: number;
   timestampPath: string | null;
@@ -16,6 +17,7 @@ export type RestPollingConfig = {
 export type WebSocketConfig = {
   url: string;
   endpointRef?: string;
+  collectionMode?: "demand" | "continuous";
   heartbeatSeconds: number;
   reconnectMaxSeconds: number;
   credentialRef: string | null;
@@ -59,6 +61,7 @@ const dataSourceFields = new Set(["sourceType", "name", "config"]);
 const REST_CONFIG_FIELDS = new Set([
   "url",
   "endpointRef",
+  "collectionMode",
   "intervalSeconds",
   "timeoutMs",
   "timestampPath",
@@ -67,6 +70,7 @@ const REST_CONFIG_FIELDS = new Set([
 const WEBSOCKET_CONFIG_FIELDS = new Set([
   "url",
   "endpointRef",
+  "collectionMode",
   "heartbeatSeconds",
   "reconnectMaxSeconds",
   "credentialRef",
@@ -238,7 +242,8 @@ const validateConfig = (
   const config = requireObject(value, "config");
   const endpointRef = config.endpointRef == null || config.endpointRef === "" ? undefined : validateCredentialRef(config.endpointRef) ?? undefined;
   if (endpointRef && config.url !== "") throw new AppError(400,"data_source_endpoint_conflict","Use either a logical endpoint reference or a direct URL.");
-  const endpoint = endpointRef ? { endpointRef } : {};
+  if (config.collectionMode !== undefined && config.collectionMode !== "demand" && config.collectionMode !== "continuous") throw new AppError(400,"invalid_collection_mode","Collection mode must be demand or continuous.");
+  const endpoint = { ...(endpointRef ? { endpointRef } : {}),...(config.collectionMode ? { collectionMode:config.collectionMode as "demand" | "continuous" } : {}) };
   if (sourceType === "rest_polling") {
     assertKnownFields(
       config,
@@ -379,6 +384,11 @@ export const listDataSources = async (
     .bind(projectId)
     .all<DataSourceRow>();
   return (result.results ?? []).map(presentDataSource);
+};
+
+export const listContinuousDataSources = async (env:AppEnv,projectId?:string):Promise<DataSource[]> => {
+  const result = await env.DB.prepare(`SELECT ${dataSourceColumns} FROM data_sources WHERE json_extract(config_json,'$.collectionMode') = 'continuous' AND (? IS NULL OR project_id = ?) ORDER BY project_id,id`).bind(projectId ?? null,projectId ?? null).all<DataSourceRow>();
+  return result.results.map(presentDataSource);
 };
 
 export const getDataSource = async (

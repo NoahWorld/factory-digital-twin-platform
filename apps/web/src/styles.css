@@ -3685,6 +3685,7 @@ input:focus,
 }
 
 .data-source-panel-backdrop {
+  grid-template-rows: minmax(0, 1fr);
   position: fixed;
   z-index: 100;
   inset: 0;
@@ -3695,6 +3696,8 @@ input:focus,
 }
 
 .data-source-panel {
+  min-height: 0;
+  overflow: hidden;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   width: min(860px, 92vw);
@@ -3829,6 +3832,8 @@ input:focus,
 }
 
 .data-source-form {
+  min-height: 0;
+  min-width: 0;
   overflow: auto;
   padding: 24px;
 }
@@ -10596,3 +10601,6 @@ input:focus,
 
 .model-clip-repairs label { flex-wrap: wrap; }
 .model-clip-repairs label > span { flex-basis: 220px; }
+
+.data-source-runtime-summary { display: grid; gap: 7px; margin-top: 16px; padding: 12px 14px; border: 1px solid #294a55; border-radius: 8px; color: #a5c8cf; background: #0b1c27; font-size: 12px; }
+.data-source-runtime-summary strong { color: #c4f2e4; }

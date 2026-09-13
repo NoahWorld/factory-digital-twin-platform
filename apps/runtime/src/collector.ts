@@ -1,7 +1,7 @@
 import { AppError,type AppEnv } from "../../api/src/auth";
-import type { DataSource } from "../../api/src/data-sources";
+import { listContinuousDataSources,type DataSource } from "../../api/src/data-sources";
 import { loadRuntimeAssetPlan,fetchRuntimeSource,normalizeRuntimeAsset,type RuntimeAssetPlan,type SourceSample } from "../../api/src/runtime-state";
-import type { CentralConnection,CentralRuntime,RuntimeFrame,RuntimeSubscription } from "../../../shared/runtime-stream";
+import type { CentralConnection,CentralRuntime,RuntimeFrame,RuntimeSubscription,SourceDiagnostic } from "../../../shared/runtime-stream";
 
 type SourceJob = { generation:number; key: string; projectId: string; source: DataSource; controller: AbortController; timer?: ReturnType<typeof setTimeout>; queued: boolean; sample?: SourceSample; error?: AppError; failures: number };
 type Client = { generation:number; projectId: string; ids: string[]; identities:Map<string,string>; plans: Map<string,RuntimeAssetPlan>; errors: Map<string,AppError>; connections: Record<string,CentralConnection>; changed: (frame: RuntimeFrame) => void; sequence: number; released: boolean };
@@ -12,6 +12,8 @@ export class RuntimeCollector implements CentralRuntime {
   readonly epoch = crypto.randomUUID();
   private generations = new Map<string,number>();
   private version(projectId:string) { return this.generations.get(projectId) ?? 0; }
+  private continuous = new Map<string,DataSource>();
+  private unavailable = new Map<string,DataSource>();
   private jobs = new Map<string,SourceJob>();
   private clients = new Set<Client>();
   private queue: SourceJob[] = [];
@@ -26,6 +28,22 @@ export class RuntimeCollector implements CentralRuntime {
   private serial<T>(operation: () => Promise<T>): Promise<T> {
     const result = this.operations.then(operation); this.operations = result.then(() => {},() => {}); return result;
   }
+  async start() {
+    const sources = await listContinuousDataSources(this.env);
+    if (this.closed) return;
+    for (const source of sources) this.continuous.set(this.key(source.projectId,source.id),source);
+    this.reconcile();
+  }
+  diagnostics(projectId:string) {
+    const sources:SourceDiagnostic[] = [];
+    const configured = new Map([...this.jobs].map(([key,job]) => [key,job.source]));
+    for (const [key,source] of this.unavailable) configured.set(key,source);
+    for (const [key,source] of configured) if (source.projectId === projectId) {
+      const job = this.jobs.get(key);
+      sources.push({ id:source.id,name:source.name,mode:source.config.collectionMode ?? "demand",state:!job || job.error ? "failed" : job.sample ? "sampled" : "collecting",subscribers:[...this.clients].filter((client) => client.projectId === projectId && [...client.plans.values()].some((plan) => plan.sources.some((item) => item.id === source.id))).length,collectedAt:job?.sample?.collectedAt ?? null,errorCode:job?.error?.code ?? (!job ? "runtime_source_limit" : null) });
+    }
+    return { epoch:this.epoch,sources };
+  }
   async subscribe(projectId: string,ids: string[],changed: Client["changed"]): Promise<RuntimeSubscription> {
     return this.serial(async () => {
       if (this.closed) throw new AppError(503,"runtime_stopping","Runtime is stopping.");
@@ -39,7 +57,7 @@ export class RuntimeCollector implements CentralRuntime {
       this.update(client);
       if (!this.freshness) this.freshness = setInterval(() => { for (const entry of this.clients) this.update(entry); },1000);
       return { snapshot: () => this.frame(client),release: () => {
-        if (client.released) return; client.released = true; this.clients.delete(client); this.reconcile();
+        if (client.released) return; client.released = true; this.clients.delete(client); this.reconcile(); for (const entry of this.clients) this.update(entry);
         if (!this.clients.size) { clearInterval(this.freshness); this.freshness = undefined; }
       } };
     });
@@ -61,6 +79,7 @@ export class RuntimeCollector implements CentralRuntime {
   refresh(projectId: string): Promise<void> {
     this.generations.set(projectId,this.version(projectId)+1);
     for (const job of this.jobs.values()) if (job.projectId === projectId) this.stop(job);
+    for (const [key,source] of this.continuous) if (source.projectId === projectId) this.continuous.delete(key);
     for (const client of this.clients) if (client.projectId === projectId) {
       client.plans.clear();
       client.connections = Object.fromEntries(Object.entries(client.connections).map(([id,previous]) => [id,{ ...previous,status:"offline",errorCode:"runtime_configuration_changed",errorMessage:"数据配置已更新，正在重新采集。" }]));
@@ -68,6 +87,12 @@ export class RuntimeCollector implements CentralRuntime {
     }
     return this.serial(async () => {
       if (this.closed) return;
+      for (let attempt = 0; attempt < 4; attempt++) {
+        const generation = this.version(projectId),sources = await listContinuousDataSources(this.env,projectId);
+        if (generation !== this.version(projectId)) continue;
+        for (const source of sources) this.continuous.set(this.key(projectId,source.id),source);
+        break;
+      }
       for (const client of this.clients) if (client.projectId === projectId) await this.load(client);
       if (this.closed) return;
       this.reconcile(); for (const client of this.clients) if (client.projectId === projectId) this.update(client);
@@ -75,8 +100,10 @@ export class RuntimeCollector implements CentralRuntime {
   }
   private reconcile() {
     const wanted = new Map<string,{ projectId:string;source:DataSource }>();
+    for (const [key,source] of this.continuous) wanted.set(key,{ projectId:source.projectId,source });
     for (const client of this.clients) if (client.generation === this.version(client.projectId)) for (const plan of client.plans.values()) for (const source of plan.sources) wanted.set(this.key(client.projectId,source.id),{ projectId:client.projectId,source });
-    if (wanted.size > 256) throw new AppError(429,"runtime_source_limit","Runtime source limit reached.");
+    this.unavailable.clear();
+    for (const [key,{ source }] of [...wanted].slice(256)) { this.unavailable.set(key,source); wanted.delete(key); }
     for (const job of this.jobs.values()) if (!wanted.has(job.key) || !this.current(job) || JSON.stringify(wanted.get(job.key)?.source) !== JSON.stringify(job.source)) this.stop(job);
     for (const [key,{ projectId,source }] of wanted) if (!this.jobs.has(key)) {
       const job: SourceJob = { generation:this.version(projectId),key,projectId,source,controller:new AbortController(),queued:false,failures:0 };
@@ -125,6 +152,7 @@ export class RuntimeCollector implements CentralRuntime {
         for (const source of plan.sources) {
           const job = this.jobs.get(this.key(client.projectId,source.id));
           if (job?.error) throw job.error;
+          if (!job && this.unavailable.has(this.key(client.projectId,source.id))) throw new AppError(429,"runtime_source_limit","Runtime source capacity reached.");
           if (job?.sample) samples.set(source.id,job.sample);
         }
         if (samples.size !== plan.sources.length) { next[key] = { status:"loading",failureCount:0 }; continue; }
@@ -142,7 +170,7 @@ export class RuntimeCollector implements CentralRuntime {
   async close() {
     this.closed = true; clearInterval(this.freshness);
     for (const client of this.clients) client.released = true; this.clients.clear();
-    for (const job of this.jobs.values()) this.stop(job); this.queue = [];
+    for (const job of this.jobs.values()) this.stop(job); this.queue = []; this.continuous.clear(); this.unavailable.clear();
     await this.operations; await Promise.allSettled([...this.tasks]);
   }
 }
