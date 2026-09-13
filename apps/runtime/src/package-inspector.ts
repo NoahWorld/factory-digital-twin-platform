@@ -1,3 +1,4 @@
+import { MeshoptDecoder } from "meshoptimizer/decoder";
 import { openPromise,type Entry,type ZipFile } from "yauzl";
 import { crc32 } from "node:zlib";
 import { createHash } from "node:crypto";
@@ -70,7 +71,7 @@ export async function inspectPackageRequest(request:Request,directory:string,onC
       if (entry.uncompressedSize !== file.byteSize) throw invalid("Resource length does not match its manifest.");
       const bytes = await readEntry(zip,entry,file.byteSize,request.signal);
       if (createHash("sha256").update(bytes).digest("hex") !== file.sha256) throw invalid("Resource SHA256 validation failed.");
-      if (file.kind === "model") await verifyPackagedModel(bytes,manifest.snapshot.resources.models.find((model) => model.id === file.id)!,manifest.snapshot.legacyModelNames[file.id]);
+      if (file.kind === "model") await verifyPackagedModel(bytes,manifest.snapshot.resources.models.find((model) => model.id === file.id)!,manifest.snapshot.legacyModelNames[file.id],{meshopt:MeshoptDecoder});
       else verifyPackagedImage(bytes,manifest.snapshot.resources.images.find((image) => image.id === file.id)!);
       request.signal.throwIfAborted(); const name = `resource-${index}.bin`; await writeFile(join(directory,name),bytes,{ flag:"wx",mode:0o600 }); resources[file.path] = name;
     }

@@ -257,7 +257,7 @@ export const uploadModelAsset = async (
   const buffer = bytes.buffer as ArrayBuffer;
   const assetId = crypto.randomUUID();
   const basicInspection = format === "glb" ? inspectGlb(bytes) : inspectGltf(bytes);
-  const inspection: ModelInspection = { ...basicInspection, ...await inspectModelDetails(bytes, format, assetId) };
+  const inspection: ModelInspection = { ...basicInspection, ...await inspectModelDetails(bytes, format, assetId,env.MODEL_CODECS) };
   const sha256 = await sha256Hex(bytes);
   if (previous && inspection.objects) {
     const oldIndices = new Map(previous.inspection.objects?.map((object) => [modelObjectLocator(object), object]));
@@ -328,7 +328,7 @@ export async function inspectStoredModelAsset(env: AppEnv, projectId: string, as
   const object = await requireModelStorage(env).get(row.object_key);
   if (!object) throw new AppError(500, "model_asset_object_missing", "模型原始文件缺失，无法补充检查。");
   const bytes = new Uint8Array(await new Response(object.body).arrayBuffer());
-  const inspection = { ...(row.format === "glb" ? inspectGlb(bytes) : inspectGltf(bytes)), ...await inspectModelDetails(bytes, row.format, row.id) };
+  const inspection = { ...(row.format === "glb" ? inspectGlb(bytes) : inspectGltf(bytes)), ...await inspectModelDetails(bytes, row.format, row.id,env.MODEL_CODECS) };
   const oldIds = new Map(previous.objects?.map((object) => [modelObjectLocator(object), object.objectId]));
   const retainedIds = new Map(inspection.objects.map((object) => [object.objectId, oldIds.get(modelObjectLocator(object)) ?? object.objectId]));
   inspection.objects = inspection.objects.map((object) => ({ ...object, objectId: retainedIds.get(object.objectId)!, parentObjectId: object.parentObjectId ? retainedIds.get(object.parentObjectId)! : null }));
@@ -347,4 +347,4 @@ export async function listModelVersions(env: AppEnv, projectId: string, assetId:
 }
 
 /** Shared validation for package installation; ordinary uploads still own new IDs. */
-export const inspectModelBytes = async (bytes:Uint8Array,format:ModelFormat,assetId:string):Promise<ModelInspection> => ({ ...(format === "glb" ? inspectGlb(bytes) : inspectGltf(bytes)),...await inspectModelDetails(bytes,format,assetId) });
+export const inspectModelBytes = async (bytes:Uint8Array,format:ModelFormat,assetId:string,codecs?:AppEnv["MODEL_CODECS"]):Promise<ModelInspection> => ({ ...(format === "glb" ? inspectGlb(bytes) : inspectGltf(bytes)),...await inspectModelDetails(bytes,format,assetId,codecs) });

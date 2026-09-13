@@ -23,3 +23,13 @@ M6b已提交ac0ce5b。M7以roadmap原定预算为准，不将已有轻量24/240/
 最终m7-baseline-final.log中p95帧间隔16.8–18.6ms，均达到当前33.43ms预算。单文件最大24095688字节；每个视窗只取得一份模型文件和报告、共享一份几何/材质副本。缓存重载模型内容transferSize为0，报告仍按权限读取。冷首帧受首次WebGL/驱动编译影响，不能据单轮顺序比较宣称百万面比十万面更快。
 
 相同执行还通过资源共享/释放、旧模型性能、实例更新失败、WebGL及模块加载重试共10项。该结果只是静态无纹理曲面的短时基线，长时、多客户端、实时资产、压缩/LOD/实例批处理和GIS仍须后续验证。下一项优先补可复现压缩版本与解码能力；Meshopt不会降低面数或draw calls，不承诺提高此场景的FPS。
+
+## Meshopt读取与能力边界
+
+已接Node模型检查、headless旧名称解析、浏览器资源池与项目包实际资源复验的同一Meshopt解码链。浏览器使用Three0.185.1内带的Meshopt1.1解码器，Node显式使用meshoptimizer1.1.1，均随程序离线分发。实际压缩模型的检查报告新增可选compression，冻结快照声明meshopt-model-v1；无压缩模型不补字段，不改旧包身份。
+
+解码之前检查EXT的模式/stride/filter/count、父视图布局、fallback声明、总声明缓冲128MiB、实际压缩字节范围及累计解码64MiB。不能只限制accessor，因为小accessor可引用声明巨大解码目标的压缩view。API和浏览器都检查真实BIN或base64内嵌数据，错误布局不会进入decoder。
+
+本地workerd探针未能完成内嵌WASM解码器的顶层ready初始化（runtime reported hung），因此当前Worker实现不注册此能力，并在接收这类模型时明确503且不保存对象；旧模型仍按原路径处理。Node与Chrome已有实际成功证据，不将本地探针结果泛化为所有Cloudflare WASM配置均不可用。
+
+下一项生成新的不可变压缩版本，使用Transform4.5原EXTMeshoptCompression扩展，不调用会reorder/quantize的高层函数。U8索引先无损扩为U16，三角索引可能循环旋转但不改变面/绕序；必须核对对象/clip身份、属性、动画、材质与图片，未知扩展拒绝优化。原资源和全部版本谱系保留，压缩不保证文件变小或帧率增加。

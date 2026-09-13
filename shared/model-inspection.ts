@@ -1,3 +1,4 @@
+import type { MeshoptSummary } from "./gltf-meshopt";
 export type ModelObject = { objectId: string; nodeIndex: number; primitiveIndex?: number; attachment?: "mesh" | "camera" | "light"; name: string; nameIsGenerated?: boolean; parentObjectId: string | null; sourceId: string | null; nodeSourceId?: string | null; primitiveSourceId?: string | null; mesh: boolean; inDefaultScene?: boolean };
 export type ModelAnimation = { clipId: string; animationIndex: number; name: string; sourceId: string | null; startTime: number; duration: number; inDefaultScene: boolean;
   channels: Array<{ objectId: string; path: "translation" | "rotation" | "scale" | "weights"; interpolation: "LINEAR" | "STEP" | "CUBICSPLINE" }> };
@@ -11,6 +12,7 @@ export function modelObjectSourceKey(object: ModelObject): string | null {
   return object.sourceId ? JSON.stringify(["node", object.sourceId]) : null;
 }
 export type ModelInspectionDetails = {
+  compression?:MeshoptSummary;
   reportVersion: 2;
   objectManifestVersion: 2;
   animationManifestVersion: 1;

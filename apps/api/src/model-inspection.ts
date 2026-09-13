@@ -1,15 +1,22 @@
+import { inspectMeshoptDocument,inspectMeshoptBytes } from "../../../shared/gltf-meshopt";
 import { WebIO, MathUtils, type mat4, type vec3, type vec4, type GLTF, type Mesh, type Node } from "@gltf-transform/core";
 import { ALL_EXTENSIONS, type InstancedMesh } from "@gltf-transform/extensions";
-import { AppError } from "./auth";
+import { AppError,type AppEnv } from "./auth";
 import { modelSubObjectId, type ModelInspectionDetails, type ModelObject } from "../../../shared/model-inspection";
 import { inspectModelAnimations } from "./model-animation-inspection";
 
 /** Inspect embedded bytes only. readJSON/readBinary never fetch model URLs. */
-export async function inspectModelDetails(bytes: Uint8Array, format: "glb" | "gltf", assetId: string = crypto.randomUUID()): Promise<ModelInspectionDetails> {
+export async function inspectModelDetails(bytes: Uint8Array, format: "glb" | "gltf", assetId: string = crypto.randomUUID(),codecs?:AppEnv["MODEL_CODECS"]): Promise<ModelInspectionDetails> {
   const warnings: string[] = [];
   const io = new WebIO().registerExtensions(ALL_EXTENSIONS).setLogger({ debug() {}, info() {}, warn(message) { warnings.push(message); }, error(message) { warnings.push(message); } });
   try {
     const json = format === "glb" ? await io.binaryToJSON(bytes) : { json: JSON.parse(new TextDecoder().decode(bytes)) as GLTF.IGLTF, resources: {} };
+    const compression = inspectMeshoptDocument(json.json,format === "glb");
+    if (compression) {
+      inspectMeshoptBytes(bytes);
+      if (!codecs?.meshopt?.supported) throw new AppError(503,"model_codec_unavailable","此宿主不提供Meshopt模型检查，请使用支持该能力的独立运行器。");
+      await codecs.meshopt.ready;io.registerDependencies({ "meshopt.decoder":codecs.meshopt });
+    }
     // Prevent sparse or compressed metadata from requesting unbounded decoded allocations.
     let decodedBytes = 0;
     for (const [index, accessor] of (json.json.accessors ?? []).entries()) {
@@ -140,11 +147,12 @@ export async function inspectModelDetails(bytes: Uint8Array, format: "glb" | "gl
       if (container && light) objects.push({ ...base, objectId: modelSubObjectId(assetId, nodeIndex, "light"), attachment: "light", name: `${node.name || "节点"} 灯光`, nameIsGenerated: true, parentObjectId: nodeId, mesh: false });
     });
     const clips = inspectModelAnimations(root,objects,visited,json.json);
-    return { reportVersion: 2, objectManifestVersion: 2, animationManifestVersion: 1, clips, triangleCount, sceneTriangleCount, vertexCount,
+    return { ...(compression ? { compression }:{}),reportVersion: 2, objectManifestVersion: 2, animationManifestVersion: 1, clips, triangleCount, sceneTriangleCount, vertexCount,
       bounds: min.every(Number.isFinite) ? { min, max, scope: "default-scene-rest-pose" } : null,
       textures, coordinateUnit: "metre-by-gltf-spec", warnings: [...new Set(warnings)],
       objects };
   } catch (reason) {
+    if (reason instanceof AppError) throw reason;
     throw new AppError(400, "model_inspection_failed", `模型检查失败：${reason instanceof Error ? reason.message : String(reason)}`);
   }
 }

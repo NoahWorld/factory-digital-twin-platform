@@ -1,3 +1,5 @@
+import { inspectMeshoptBytes } from "../../../shared/gltf-meshopt";
+import { AppError,type AppEnv } from "./auth";
 import { Texture,PropertyBinding,type Object3D,type BufferGeometry,type Material,type Skeleton } from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { modelObjectLocator } from "../../../shared/model-inspection";
@@ -5,7 +7,7 @@ import type { LegacyModelNames } from "../../../shared/runtime-project";
 
 /** Use the same pinned loader as the viewport. Texture pixels are unnecessary for
  * object identity; replacing texture I/O keeps this inspection DOM/network-free. */
-export async function inspectLegacyModelNames(bytes:Uint8Array):Promise<LegacyModelNames> {
+export async function inspectLegacyModelNames(bytes:Uint8Array,codecs?:AppEnv["MODEL_CODECS"]):Promise<LegacyModelNames> {
   const textures:Texture[] = [];
   const loader = new GLTFLoader().register((parser) => {
     const getDependency = parser.getDependency.bind(parser),cache = new Map<number,Texture>();
@@ -25,6 +27,10 @@ export async function inspectLegacyModelNames(bytes:Uint8Array):Promise<LegacyMo
     };
     return { name:"NEWPOWER_HEADLESS_NAMES" };
   });
+  if (inspectMeshoptBytes(bytes)) {
+    if (!codecs?.meshopt?.supported) throw new AppError(503,"model_codec_unavailable","此宿主不提供Meshopt模型解析。");
+    await codecs.meshopt.ready;loader.setMeshoptDecoder(codecs.meshopt);
+  }
   const gltf = await loader.parseAsync(Uint8Array.from(bytes).buffer,"");
   try {
     const loadedMeshes = new Set<number>();

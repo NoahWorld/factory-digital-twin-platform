@@ -473,3 +473,9 @@ M6b本机技术能力检查：历史独立持久化及查询、服务器告警�
 新增独立运行页面的只读场景性能入口，按当前项目/固定版本筛选渲染器统计，加载/错误/暂停不显示旧帧率，配置变化清掉旧样本。统计实际渲染帧、三角面、调用、共享资源副本、最近240帧间隔及CPU提交耗时，不把资源数称为显存大小或把提交时间称为GPU耗时。
 
 m7-representative-baseline.log首轮6组×冷浏览器上下文/缓存重载通过；补持续提交量最小/最大值及无面板场景截图后，m7-baseline-final.log代表规模和资源/旧渲染器相关10项通过。约10万/100万面×1/10/100实例的所有最近样本保持全量提交，p95 16.8–18.6ms；详细参数、原始GLB、JSON结果及截图保留在证据目录，概要见m7-performance.md。check/build及m7-baseline-motion.log原生动画/骨骼形态/路径取消4项通过。M7仍未完成，继续可复现压缩、其他优化/GIS和至少30分钟稳定性。
+
+### M7 Meshopt读取先行检查点（2026-09-13）
+
+Node和Chrome实际读取Meshopt模型，模型报告/固定版本激活/资源渲染/项目ZIP资源验证通过；Worker明确返回model_codec_unavailable且资源列表仍为空。错误count/stride/filter/声明布局/实际字节范围在同步或异步decoder调用前被拒绝；GLB与base64内嵌GLTF均有专项。
+
+m7-codec-verified.log相关12项通过，首次另2项未通过：旧报告测试启动时遗漏隔离库参数，另一次Vite客户端重连后节点选择丢失。补齐完整环境并在稳定开发服务器上复验后，m7-codec-legacy-fixed.log共6项全部通过，包含旧报告升级和PNG纹理上传/重开。原trace出现两次vite connecting/connected，失败快照显示未选择组件；未因此修改产品选择行为。任务本地verify-local启动器已统一完整隔离测试变量并保留旧证据目录，避免混用Node-only与Worker测试参数。check/build、冻结锁安装及Worker smoke12通过。最终m7-codec-final.log的6项压缩/实际字节预算/包报告/旧名称复验通过。

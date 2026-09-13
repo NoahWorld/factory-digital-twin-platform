@@ -1,3 +1,4 @@
+import { validateMeshoptSummary } from "./gltf-meshopt";
 import { validateAlarmRules,validateAlarmCatalog,type AlarmRule } from "./alarm-rules";
 import { parseProjectDefinition,type ProjectDefinition } from "./project-definition";
 import { validateBindingCatalog,type MetricCatalogEntry } from "./component-bindings";
@@ -54,6 +55,7 @@ function modelMetadata(value:Record<string,unknown>,projectId:string):ModelAsset
   resourceMetadata(value,projectId,"model");
   if (!id(value.familyId) || !natural(value.versionNumber) || value.versionNumber < 1 || !(value.previousVersionId === null || id(value.previousVersionId)) || !record(value.inspection)) bad("模型版本元数据不正确。");
   const report = value.inspection as Record<string,unknown>;
+  if (report.compression !== undefined) validateMeshoptSummary(report.compression);
   if (report.format !== value.format || report.reportVersion !== 2 || report.objectManifestVersion !== 2 || report.animationManifestVersion !== 1 || typeof report.gltfVersion !== "string" || !report.gltfVersion.startsWith("2.") || report.externalResourceCount !== 0) bad("模型需要完整的可运行检查报告。");
   for (const field of ["nodeCount","sceneCount","meshCount","materialCount","textureCount","imageCount","animationCount","namedNodeCount","triangleCount","sceneTriangleCount","vertexCount"]) if (!natural(report[field])) bad(`模型报告${field}不正确。`);
   const objects = list(report.objects,"模型对象清单不正确。"),clips = list(report.clips,"模型动画清单不正确。");
@@ -90,7 +92,7 @@ export function parseRuntimeProjectSnapshot(input:unknown):RuntimeProjectSnapsho
   if (input.snapshotVersion === 1 && (input.alarmRules !== undefined || input.requiredCapabilities !== undefined)) bad("旧快照不能携带新告警能力。");
   const alarmRules = input.snapshotVersion === 2 ? validateAlarmRules(input.alarmRules):[];
   const requiredCapabilities = input.snapshotVersion === 2 ? input.requiredCapabilities:[];
-  if (!Array.isArray(requiredCapabilities) || requiredCapabilities.some((capability) => !["alarm-rules-v1","telemetry-bindings-v1","metric-transforms-v1","source-time-format-v1","mqtt-source-v1","sqlite-query-source-v1"].includes(String(capability))) || new Set(requiredCapabilities).size !== requiredCapabilities.length) bad("运行器不支持包中声明的必要能力。");
+  if (!Array.isArray(requiredCapabilities) || requiredCapabilities.some((capability) => !["alarm-rules-v1","telemetry-bindings-v1","metric-transforms-v1","source-time-format-v1","mqtt-source-v1","sqlite-query-source-v1","meshopt-model-v1"].includes(String(capability))) || new Set(requiredCapabilities).size !== requiredCapabilities.length) bad("运行器不支持包中声明的必要能力。");
   if (alarmRules.length > 0 && !(requiredCapabilities as string[]).includes("alarm-rules-v1")) bad("告警配置缺少必要能力声明。");
   const project = { id:input.project.id,name:input.project.name,runtimeRevision:input.project.runtimeRevision },definition = parseProjectDefinition(input.definition);
   if (definition.projectId !== project.id) bad("项目定义所属项目不一致。");
@@ -178,6 +180,6 @@ export function validateSnapshotReferences(snapshot:RuntimeProjectSnapshot) {
 }
 
 
-export function requiredRuntimeCapabilities(snapshot:Pick<RuntimeProjectSnapshot,"definition"|"alarmRules"> & Partial<Pick<RuntimeProjectSnapshot,"assetDataBindings"|"dataSources">>):string[] {
-  return [...((snapshot.alarmRules?.length ?? 0) > 0 ? ["alarm-rules-v1"]:[]),...(snapshot.definition.dataBindings.some((binding) => binding.version === 2) ? ["telemetry-bindings-v1"]:[]),...(snapshot.assetDataBindings?.some((binding) => binding.transform) ? ["metric-transforms-v1"]:[]),...(snapshot.dataSources?.some((source) => source.config.timestampFormat) ? ["source-time-format-v1"]:[]),...(snapshot.dataSources?.some((source) => source.sourceType === "mqtt") ? ["mqtt-source-v1"]:[]),...(snapshot.dataSources?.some((source) => source.sourceType === "sqlite_query") ? ["sqlite-query-source-v1"]:[])];
+export function requiredRuntimeCapabilities(snapshot:Pick<RuntimeProjectSnapshot,"definition"|"alarmRules"> & Partial<Pick<RuntimeProjectSnapshot,"assetDataBindings"|"dataSources"|"resources">>):string[] {
+  return [...((snapshot.alarmRules?.length ?? 0) > 0 ? ["alarm-rules-v1"]:[]),...(snapshot.definition.dataBindings.some((binding) => binding.version === 2) ? ["telemetry-bindings-v1"]:[]),...(snapshot.assetDataBindings?.some((binding) => binding.transform) ? ["metric-transforms-v1"]:[]),...(snapshot.dataSources?.some((source) => source.config.timestampFormat) ? ["source-time-format-v1"]:[]),...(snapshot.dataSources?.some((source) => source.sourceType === "mqtt") ? ["mqtt-source-v1"]:[]),...(snapshot.dataSources?.some((source) => source.sourceType === "sqlite_query") ? ["sqlite-query-source-v1"]:[]),...(snapshot.resources?.models.some((model) => model.inspection.compression?.codec === "meshopt") ? ["meshopt-model-v1"]:[])];
 }

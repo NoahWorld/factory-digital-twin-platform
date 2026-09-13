@@ -89,7 +89,7 @@ export async function captureRuntimeSnapshot(env:AppEnv,projectId:string,expecte
       if (models.has(id)) return; visiting.add(id);
       const row = await getModelAssetRow(env,projectId,id);
       const bytes = await verifyPublicationResource(env,projectId,"model",id,undefined,signal);
-      if (legacyRefs.has(id)) legacyModelNames[id] = await inspectLegacyModelNames(bytes);
+      if (legacyRefs.has(id)) legacyModelNames[id] = await inspectLegacyModelNames(bytes,env.MODEL_CODECS);
       const model = await inspectStoredModelAsset(env,projectId,id); models.set(id,model);
       if (row.previous_version_id) await includeModel(row.previous_version_id);
       visiting.delete(id);
@@ -100,7 +100,7 @@ export async function captureRuntimeSnapshot(env:AppEnv,projectId:string,expecte
     for (const image of images) await verifyPublicationResource(env,projectId,"image",image.id,image,signal);
     requireActiveRequest(signal); const current = await draftIdentity(env,projectId);
     if (current.runtime_revision !== identity.runtime_revision) { if (expectedRevision !== undefined) throw conflict(); continue; }
-    try { return parseRuntimeProjectSnapshot({ kind:"newpower.runtime-project",snapshotVersion:2,alarmRules,requiredCapabilities:requiredRuntimeCapabilities({ definition,alarmRules,assetDataBindings,dataSources }),project:{ id:projectId,name:identity.name,runtimeRevision:identity.runtime_revision },definition,assets,assetDataBindings,dataSources,legacyModelNames,resources:{ models:[...models.values()].sort((a,b) => a.id.localeCompare(b.id)),images } }); }
+    try { return parseRuntimeProjectSnapshot({ kind:"newpower.runtime-project",snapshotVersion:2,alarmRules,requiredCapabilities:requiredRuntimeCapabilities({ definition,alarmRules,assetDataBindings,dataSources,resources:{models:[...models.values()],images} }),project:{ id:projectId,name:identity.name,runtimeRevision:identity.runtime_revision },definition,assets,assetDataBindings,dataSources,legacyModelNames,resources:{ models:[...models.values()].sort((a,b) => a.id.localeCompare(b.id)),images } }); }
     catch (reason) { throw new AppError(409,"publication_dependencies_invalid",reason instanceof Error ? reason.message : "Runtime snapshot validation failed."); }
   }
   throw conflict();

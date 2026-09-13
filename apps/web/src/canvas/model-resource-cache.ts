@@ -1,3 +1,5 @@
+import { MeshoptDecoder } from "three/examples/jsm/libs/meshopt_decoder.module.js";
+import { inspectMeshoptBytes } from "../../../../shared/gltf-meshopt";
 import { AnimationClip, PropertyBinding, type BufferGeometry, type Material, type Object3D, type Skeleton, type Texture } from "three";
 import { GLTFLoader, type GLTF } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { clone } from "three/examples/jsm/utils/SkeletonUtils.js";
@@ -38,7 +40,8 @@ const modelPool = new ResourcePool<GLTF>(async (url, signal) => {
   if (!response.ok) throw new Error(`模型资源请求失败（HTTP ${response.status}）`);
   const bytes = await response.arrayBuffer();
   signal.throwIfAborted();
-  return new GLTFLoader().parseAsync(bytes, "");
+  inspectMeshoptBytes(new Uint8Array(bytes));
+  return new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).parseAsync(bytes, "");
 }, (gltf) => disposeObjectResources(gltf.scenes));
 
 export function acquireModelResource(url: string) {

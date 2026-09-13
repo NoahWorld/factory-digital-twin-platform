@@ -20,6 +20,7 @@
     "@types/ws": "8.18.1",
     "aedes": "1.1.2",
     "fflate": "0.8.3",
+    "meshoptimizer": "1.1.1",
     "ws": "8.21.3"
   }
 }
