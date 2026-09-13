@@ -1,3 +1,5 @@
+import type { AlarmEvaluationPlan } from "../../../shared/alarms";
+import { buildAlarmPlan,loadDraftAlarmPlan } from "./alarm-plan";
 import { loadTelemetryPlan,normalizeTelemetry,type TelemetryPlan } from "./telemetry-plan";
 import { readPublicationVersion } from "../../api/src/publications";
 import type { RuntimeProjectSnapshot } from "../../../shared/runtime-project";
@@ -28,6 +30,10 @@ export class RuntimeCollector implements CentralRuntime {
   private freshness?: ReturnType<typeof setInterval>;
   private telemetryFreshness?:ReturnType<typeof setInterval>;
   private removed = new Set<string>();
+  private alarmGenerations = new Map<string,number>();
+  private alarmLoading = new Map<string,Promise<void>>();
+  private alarmRetryAt = new Map<string,number>();
+  private pendingFixedAlarms = new Map<string,AlarmEvaluationPlan>();
   constructor(private env: AppEnv) {}
   private key(projectId: string,sourceId: string,versionId?:string) { return JSON.stringify([projectId,versionId ?? null,sourceId]); }
   private current(job: SourceJob) { return !this.closed && this.jobs.get(job.key) === job && !job.controller.signal.aborted && (!!job.versionId || job.generation === this.version(job.projectId)); }
@@ -38,14 +44,16 @@ export class RuntimeCollector implements CentralRuntime {
     const sources = await listContinuousDataSources(this.env);
     if (this.closed) return;
     for (const source of sources) this.continuous.set(this.key(source.projectId,source.id),source);
+    for (const id of new Set(sources.map((source) => source.projectId))) await this.configureDraftAlarms(id);
     await this.loadPublishedContinuous(); this.reconcile();
-    if (this.env.TELEMETRY) this.telemetryFreshness = setInterval(() => { for (const job of this.jobs.values()) if (job.sample || job.error) this.record(job,true); },1000);
+    if (this.env.TELEMETRY) this.telemetryFreshness = setInterval(() => { this.retryFixedAlarms();for (const id of new Set([...this.jobs.values()].filter((job) => !job.versionId).map((job) => job.projectId))) void this.configureDraftAlarms(id); for (const job of this.jobs.values()) if (job.sample || job.error) this.record(job,true); },1000);
   }
   private async loadPublishedContinuous(projectId?:string) {
     const rows = await this.env.DB.prepare("SELECT project_id,version_id FROM project_publications WHERE (? IS NULL OR project_id=?)").bind(projectId ?? null,projectId ?? null).all<{ project_id:string;version_id:string }>();
     const next = new Map<string,{ source:DataSource;versionId:string }>();
     for (const row of rows.results) {
       const { snapshot } = await readPublicationVersion(this.env,row.project_id,row.version_id);
+      this.configureFixedAlarms(snapshot,row.version_id);
       for (const source of snapshot.dataSources) if (source.config.collectionMode === "continuous") next.set(this.key(row.project_id,source.id,row.version_id),{ source,versionId:row.version_id });
     }
     for (const [key,value] of this.publishedContinuous) if (!projectId || value.source.projectId === projectId) this.publishedContinuous.delete(key);
@@ -70,6 +78,7 @@ export class RuntimeCollector implements CentralRuntime {
       if (this.clients.size >= 128) throw new AppError(429,"runtime_subscriber_limit","Runtime subscriber limit reached.");
       const client: Client = { versionId,snapshot:versionId ? (await readPublicationVersion(this.env,projectId,versionId)).snapshot : undefined,generation:-1,projectId,ids:[...new Set(ids)],identities:new Map(),plans:new Map(),errors:new Map(),connections:{},changed,sequence:0,released:false };
       if (!client.ids.length || client.ids.length > 100) throw new AppError(400,"runtime_demand_invalid","Subscribe to 1–100 asset record IDs.");
+      if (client.snapshot) this.configureFixedAlarms(client.snapshot,versionId!); else await this.configureDraftAlarms(projectId);
       await this.load(client);
       if (this.closed) throw new AppError(503,"runtime_stopping","Runtime is stopping.");
       this.clients.add(client);
@@ -106,6 +115,7 @@ export class RuntimeCollector implements CentralRuntime {
     if (this.removed.has(projectId)) return Promise.resolve();
     this.generations.set(projectId,this.version(projectId)+1);
     for (const job of this.jobs.values()) if (job.projectId === projectId && !job.versionId) this.stop(job);
+    this.deactivateAlarms(projectId,"draft");
     for (const [key,source] of this.continuous) if (source.projectId === projectId) this.continuous.delete(key);
     for (const client of this.clients) if (client.projectId === projectId && !client.versionId) {
       client.plans.clear();
@@ -120,6 +130,7 @@ export class RuntimeCollector implements CentralRuntime {
         for (const source of sources) this.continuous.set(this.key(projectId,source.id),source);
         break;
       }
+      await this.configureDraftAlarms(projectId);
       for (const client of this.clients) if (client.projectId === projectId && !client.versionId) await this.load(client);
       if (this.closed) return;
       await this.loadPublishedContinuous(projectId);
@@ -127,7 +138,37 @@ export class RuntimeCollector implements CentralRuntime {
       this.reconcile(); for (const client of this.clients) if (client.projectId === projectId) this.update(client);
     });
   }
+  private configureFixedAlarms(snapshot:RuntimeProjectSnapshot,versionId:string) {
+    if (!this.env.TELEMETRY?.configureAlarms) return;
+    const plan = buildAlarmPlan(snapshot,versionId),key = JSON.stringify([snapshot.project.id,versionId]);
+    try { this.env.TELEMETRY.configureAlarms(plan);this.pendingFixedAlarms.delete(key); }
+    catch { this.pendingFixedAlarms.set(key,plan);this.env.TELEMETRY.reportGap(snapshot.project.id,"alarm_state_write_failed"); }
+  }
+  private retryFixedAlarms() {
+    if (this.closed) return;
+    for (const [key,plan] of this.pendingFixedAlarms) {
+      if (this.removed.has(plan.projectId) || (![...this.publishedContinuous.values()].some((entry) => entry.source.projectId === plan.projectId && entry.versionId === plan.scopeId) && ![...this.clients].some((client) => client.projectId === plan.projectId && client.versionId === plan.scopeId))) { this.pendingFixedAlarms.delete(key);continue; }
+      try { this.env.TELEMETRY!.configureAlarms!(plan);this.pendingFixedAlarms.delete(key); } catch { this.env.TELEMETRY!.reportGap(plan.projectId,"alarm_state_write_failed"); }
+    }
+  }
+  private deactivateAlarms(projectId:string,scopeId:string) { try { this.env.TELEMETRY?.deactivateAlarms?.(projectId,scopeId); } catch { this.env.TELEMETRY?.reportGap(projectId,"alarm_state_write_failed"); } }
+  private configureDraftAlarms(projectId:string):Promise<void> {
+    if (this.alarmGenerations.get(projectId) === this.version(projectId) || (this.alarmRetryAt.get(projectId) ?? 0) > Date.now()) return Promise.resolve();
+    const pending = this.alarmLoading.get(projectId);if (pending) return pending;
+    const task = this.loadAndConfigureDraftAlarms(projectId).finally(() => { this.alarmLoading.delete(projectId);this.tasks.delete(task); });
+    this.alarmLoading.set(projectId,task);this.tasks.add(task);return task;
+  }
+  private async loadAndConfigureDraftAlarms(projectId:string) {
+    if (!this.env.TELEMETRY?.configureAlarms || this.removed.has(projectId) || this.closed) return;
+    for (let attempt=0;attempt<4;attempt++) {
+      const generation = this.version(projectId);
+      try { const plan = await loadDraftAlarmPlan(this.env,projectId);if (this.closed || this.removed.has(projectId)) return;if (generation !== this.version(projectId)) continue;this.env.TELEMETRY.configureAlarms(plan);this.alarmGenerations.set(projectId,generation);return; }
+      catch (reason) { if (this.closed || this.removed.has(projectId)) return;this.alarmRetryAt.set(projectId,Date.now()+1000);this.env.TELEMETRY.reportGap(projectId,failure(reason).code);return; }
+    }
+    this.alarmRetryAt.set(projectId,Date.now()+1000);this.env.TELEMETRY.reportGap(projectId,"alarm_configuration_busy");
+  }
   private reconcile() {
+    const previousScopes = new Map([...this.jobs.values()].map((job) => [JSON.stringify([job.projectId,job.versionId ?? "draft"]),{ projectId:job.projectId,scopeId:job.versionId ?? "draft" }]));
     const wanted = new Map<string,{ projectId:string;source:DataSource;versionId?:string }>();
     for (const [key,{ source,versionId }] of this.publishedContinuous) wanted.set(key,{ projectId:source.projectId,source,versionId });
     for (const [key,source] of this.continuous) wanted.set(key,{ projectId:source.projectId,source });
@@ -141,6 +182,7 @@ export class RuntimeCollector implements CentralRuntime {
       this.jobs.set(key,job); this.enqueue(job);
     }
     this.queue = this.queue.filter((job) => this.current(job));
+    for (const scope of previousScopes.values()) if (![...this.jobs.values()].some((job) => job.projectId === scope.projectId && (job.versionId ?? "draft") === scope.scopeId)) { this.deactivateAlarms(scope.projectId,scope.scopeId);if (scope.scopeId === "draft") this.alarmGenerations.delete(scope.projectId); }
   }
   private stop(job: SourceJob) { job.controller.abort(); clearTimeout(job.timer); this.jobs.delete(job.key); }
   private enqueue(job: SourceJob) {
@@ -215,7 +257,7 @@ export class RuntimeCollector implements CentralRuntime {
     this.env.TELEMETRY.enqueue(rows);
   }
   removeProject(projectId:string) {
-    this.removed.add(projectId); this.generations.set(projectId,this.version(projectId)+1);
+    this.removed.add(projectId);this.alarmGenerations.delete(projectId);this.alarmRetryAt.delete(projectId); this.generations.set(projectId,this.version(projectId)+1);
     for (const client of this.clients) if (client.projectId === projectId) { client.released = true; this.clients.delete(client); }
     for (const job of this.jobs.values()) if (job.projectId === projectId) this.stop(job);
     for (const [key,source] of this.continuous) if (source.projectId === projectId) this.continuous.delete(key);
@@ -254,7 +296,7 @@ export class RuntimeCollector implements CentralRuntime {
   async close() {
     this.closed = true; clearInterval(this.freshness); clearInterval(this.telemetryFreshness);
     for (const client of this.clients) client.released = true; this.clients.clear();
-    for (const job of this.jobs.values()) this.stop(job); this.queue = []; this.continuous.clear(); this.publishedContinuous.clear(); this.unavailable.clear();
+    for (const job of this.jobs.values()) this.stop(job); this.queue = []; this.continuous.clear(); this.publishedContinuous.clear(); this.unavailable.clear();this.pendingFixedAlarms.clear();
     await this.operations; await Promise.allSettled([...this.tasks]);
   }
 }

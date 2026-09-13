@@ -1,3 +1,5 @@
+import { parseAlarmQuery } from "../../../shared/alarms";
+import { readAlarmConfiguration,replaceAlarmRules } from "./alarm-rules";
 import { parseTelemetryQuery } from "../../../shared/telemetry";
 import { draftRestorationPreview,restoreVersionAsDraft } from "./draft-restoration";
 import { exportProjectPackage } from "./package-export";
@@ -757,6 +759,29 @@ const handleApiRequest = async (
       }
     }
     throw new AppError(405,"method_not_allowed","Unsupported publication operation.");
+  }
+
+  const alarmsMatch = pathname.match(/^\/api\/v1\/projects\/([^/]+)(?:\/versions\/([^/]+))?\/alarms$/);
+  if (alarmsMatch && method === "GET") {
+    const projectId = decodePathSegment(alarmsMatch[1]),versionId = alarmsMatch[2] ? decodePathSegment(alarmsMatch[2]):undefined;
+    await requireProjectAccess(env,await getAuthenticatedUser(env,request),projectId);
+    if (versionId) await readPublicationVersion(env,projectId,versionId);
+    if (!env.TELEMETRY?.queryAlarms) throw new AppError(503,"alarms_unavailable","当前宿主不提供持久告警，请使用独立运行器。");
+    return json({ ...env.TELEMETRY.queryAlarms(projectId,versionId ?? "draft",parseAlarmQuery(url.searchParams)),diagnostics:env.TELEMETRY.diagnostics(projectId),requestId });
+  }
+  const fixedAlarmRules = pathname.match(/^\/api\/v1\/projects\/([^/]+)\/versions\/([^/]+)\/alarm-rules$/);
+  if (fixedAlarmRules && method === "GET") {
+    const projectId = decodePathSegment(fixedAlarmRules[1]);await requireProjectAccess(env,await getAuthenticatedUser(env,request),projectId);
+    const { snapshot } = await readPublicationVersion(env,projectId,decodePathSegment(fixedAlarmRules[2]));
+    return json({ rules:snapshot.alarmRules ?? [],runtimeRevision:snapshot.project.runtimeRevision,requestId });
+  }
+
+  const alarmConfigurationMatch = pathname.match(/^\/api\/v1\/projects\/([^/]+)\/alarm-rules$/);
+  if (alarmConfigurationMatch && (method === "GET" || method === "PUT")) {
+    const projectId = decodePathSegment(alarmConfigurationMatch[1]),user = await getAuthenticatedUser(env,request),project = await requireProjectAccess(env,user,projectId);
+    if (method === "GET") return json({ ...await readAlarmConfiguration(env,projectId),requestId });
+    if (!canEditProject(user,project)) throw new AppError(403,"permission_denied","当前用户不能修改项目告警规则。");
+    return json({ ...await replaceAlarmRules(env,projectId,user.id,await readJsonObject(request,256*1024)),requestId });
   }
 
   const historyMatch = pathname.match(/^\/api\/v1\/projects\/([^/]+)(?:\/versions\/([^/]+))?\/telemetry\/(history|diagnostics)$/);

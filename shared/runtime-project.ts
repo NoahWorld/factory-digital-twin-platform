@@ -1,3 +1,4 @@
+import { validateAlarmRules,validateAlarmCatalog,type AlarmRule } from "./alarm-rules";
 import { parseProjectDefinition,type ProjectDefinition } from "./project-definition";
 import { validateBindingCatalog,type MetricCatalogEntry } from "./component-bindings";
 import { interactionAssetIds,ruleValues } from "./interactions";
@@ -15,7 +16,8 @@ import { modelObjectLocator } from "./model-inspection";
  * Export must externalize any legacy direct endpoint before packaging this envelope. */
 export type LegacyModelNames = { names:Record<string,string[]>;unstableNames:string[] };
 export type RuntimeProjectSnapshot = {
-  kind:"newpower.runtime-project";snapshotVersion:1;
+  kind:"newpower.runtime-project";snapshotVersion:1|2;
+  alarmRules?:AlarmRule[];requiredCapabilities?:string[];
   project:{ id:string;name:string;runtimeRevision:number };
   definition:ProjectDefinition;
   assets:Asset[];assetDataBindings:AssetDataBinding[];dataSources:DataSource[];
@@ -83,7 +85,13 @@ export function snapshotMetricCatalog(snapshot:Pick<RuntimeProjectSnapshot,"asse
 
 export function parseRuntimeProjectSnapshot(input:unknown):RuntimeProjectSnapshot {
   if (new TextEncoder().encode(JSON.stringify(input)).byteLength > MAX_RUNTIME_SNAPSHOT_BYTES) bad("快照元数据超过8MiB预算。");
-  if (!record(input) || input.kind !== "newpower.runtime-project" || input.snapshotVersion !== 1 || !record(input.project) || !id(input.project.id) || typeof input.project.name !== "string" || input.project.name.trim().length < 2 || input.project.name.length > 100 || !natural(input.project.runtimeRevision) || !record(input.resources)) return bad("快照格式、版本或项目信息不正确。");
+  if (!record(input) || input.kind !== "newpower.runtime-project" || ![1,2].includes(Number(input.snapshotVersion)) || !record(input.project) || !id(input.project.id) || typeof input.project.name !== "string" || input.project.name.trim().length < 2 || input.project.name.length > 100 || !natural(input.project.runtimeRevision) || !record(input.resources)) return bad("快照格式、版本或项目信息不正确。");
+  if (input.snapshotVersion !== 1 && input.snapshotVersion !== 2) return bad("不支持的快照版本。");
+  if (input.snapshotVersion === 1 && (input.alarmRules !== undefined || input.requiredCapabilities !== undefined)) bad("旧快照不能携带新告警能力。");
+  const alarmRules = input.snapshotVersion === 2 ? validateAlarmRules(input.alarmRules):[];
+  const requiredCapabilities = input.snapshotVersion === 2 ? input.requiredCapabilities:[];
+  if (!Array.isArray(requiredCapabilities) || requiredCapabilities.some((capability) => capability !== "alarm-rules-v1") || new Set(requiredCapabilities).size !== requiredCapabilities.length) bad("运行器不支持包中声明的必要能力。");
+  if (alarmRules.length > 0 && !(requiredCapabilities as string[]).includes("alarm-rules-v1")) bad("告警配置缺少必要能力声明。");
   const project = { id:input.project.id,name:input.project.name,runtimeRevision:input.project.runtimeRevision },definition = parseProjectDefinition(input.definition);
   if (definition.projectId !== project.id) bad("项目定义所属项目不一致。");
   const assets = list(input.assets,"资产列表不正确。").map((asset):Asset => {
@@ -121,7 +129,7 @@ export function parseRuntimeProjectSnapshot(input:unknown):RuntimeProjectSnapsho
     if (unstableNames.some((name) => !Object.hasOwn(copied,name))) bad("不稳定名称未包含在旧模型清单中。");
     legacyModelNames[assetId] = { names:copied,unstableNames:[...new Set(unstableNames)] };
   }
-  const snapshot:RuntimeProjectSnapshot = { kind:"newpower.runtime-project",snapshotVersion:1,project,definition,assets,assetDataBindings,dataSources,resources,legacyModelNames };
+  const snapshot:RuntimeProjectSnapshot = { kind:"newpower.runtime-project",snapshotVersion:input.snapshotVersion,...(input.snapshotVersion === 2 ? { alarmRules,requiredCapabilities:requiredCapabilities as string[] }:{}),project,definition,assets,assetDataBindings,dataSources,resources,legacyModelNames };
   const modelMap = new Map(resources.models.map((model) => [model.id,model]));
   for (const model of resources.models) {
     const root = modelMap.get(model.familyId),previous = model.previousVersionId ? modelMap.get(model.previousVersionId) : undefined;
@@ -132,6 +140,7 @@ export function parseRuntimeProjectSnapshot(input:unknown):RuntimeProjectSnapsho
 
 export function validateSnapshotReferences(snapshot:RuntimeProjectSnapshot) {
   const { definition,resources } = snapshot,ids = runtimeResourceIds(definition),models = new Map(resources.models.map((model) => [model.id,model])),images = new Set(resources.images.map((image) => image.id)),assets = new Set(snapshot.assets.map((asset) => asset.assetId)),catalog = snapshotMetricCatalog(snapshot);
+  validateAlarmCatalog(snapshot.alarmRules ?? [],catalog,assets);
   if (ids.models.some((id) => !models.has(id)) || ids.images.some((id) => !images.has(id))) bad("页面或场景依赖的资源缺失。");
   for (const binding of definition.dataBindings) { const error = validateBindingCatalog(binding,catalog); if (error) bad(error); }
   for (const assetId of interactionAssetIds(definition.interactions)) if (!assets.has(assetId)) bad(`交互引用的资产${assetId}不存在。`);

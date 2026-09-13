@@ -122,3 +122,17 @@ test("seven open WebSockets do not occupy REST handshake slots and shutdown canc
     await collector.close(); expect(closed).toBe(7);
   } finally { await collector.close(); globalThis.fetch = original; }
 });
+
+test("telemetry deactivation failure cannot keep an old source generation alive after configuration commits",async () => {
+  const state = fixture(),original = globalThis.fetch;let oldSignal:AbortSignal|undefined;
+  globalThis.fetch = async (input,init) => {
+    if (String(input).includes("old")) { oldSignal = init?.signal as AbortSignal;return new Promise<Response>((_,reject) => oldSignal!.addEventListener("abort",() => reject(new DOMException("Aborted","AbortError")),{ once:true })); }
+    return Response.json({ value:84 });
+  };
+  const collector = new RuntimeCollector(state.env);
+  try {
+    const subscription = await collector.subscribe("project",["record"],() => {});await expect.poll(() => !!oldSignal).toBe(true);
+    const gaps:string[] = [];state.env.TELEMETRY = { deactivateAlarms() { throw new Error("SQLITE_BUSY fixture"); },reportGap(_,code) { gaps.push(code); },enqueue() {},query() { return { records:[],nextCursor:null }; },diagnostics() { return { state:"ready",pending:0,dropped:0,lastPersistedAt:null,errorCode:null,retentionDays:7,maxRows:1000000 }; },removeProject() {} };
+    state.setUrl("http://new/");const refreshed = collector.refresh("project");expect(oldSignal!.aborted).toBe(true);expect(gaps).toContain("alarm_state_write_failed");await refreshed;await expect.poll(() => subscription.snapshot().connections.DEVICE?.snapshot?.values.value).toBe(84);subscription.release();
+  } finally { await collector.close();globalThis.fetch = original; }
+});

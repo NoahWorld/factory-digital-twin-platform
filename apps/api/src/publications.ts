@@ -1,3 +1,4 @@
+import { listAlarmRules } from "./alarm-rules";
 import { fetchRuntimeSource,normalizeRuntimeAsset,type SourceSample } from "./runtime-state";
 import { inspectLegacyModelNames } from "./legacy-model-names";
 import { AppError,currentProjectEditPredicate,requireCurrentProjectEditor,type AppEnv,type DatabaseStatement } from "./auth";
@@ -79,6 +80,7 @@ export async function captureRuntimeSnapshot(env:AppEnv,projectId:string,expecte
     if (expectedRevision !== undefined && identity.runtime_revision !== expectedRevision) throw conflict();
     const [definition,assets,dataSources,allImages] = await Promise.all([getProjectDefinition(env,projectId),listAssets(env,projectId),listDataSources(env,projectId),listImageAssets(env,projectId)]);
     const assetDataBindings = (await Promise.all(assets.map((asset) => listAssetDataBindings(env,projectId,asset.id)))).flat();
+    const alarmRules = await listAlarmRules(env,projectId);
     const legacyRefs = new Set(definition.pages.flatMap((page) => page.nodes).filter((node) => node.type === "model-3d" && !node.sceneId).flatMap((node) => node.resourceRefs));
     const legacyModelNames:RuntimeProjectSnapshot["legacyModelNames"] = Object.create(null);
     const refs = runtimeResourceIds(definition),models = new Map<string,ModelAsset>(),visiting = new Set<string>();
@@ -98,7 +100,7 @@ export async function captureRuntimeSnapshot(env:AppEnv,projectId:string,expecte
     for (const image of images) await verifyPublicationResource(env,projectId,"image",image.id,image,signal);
     requireActiveRequest(signal); const current = await draftIdentity(env,projectId);
     if (current.runtime_revision !== identity.runtime_revision) { if (expectedRevision !== undefined) throw conflict(); continue; }
-    try { return parseRuntimeProjectSnapshot({ kind:"newpower.runtime-project",snapshotVersion:1,project:{ id:projectId,name:identity.name,runtimeRevision:identity.runtime_revision },definition,assets,assetDataBindings,dataSources,legacyModelNames,resources:{ models:[...models.values()].sort((a,b) => a.id.localeCompare(b.id)),images } }); }
+    try { return parseRuntimeProjectSnapshot({ kind:"newpower.runtime-project",snapshotVersion:2,alarmRules,requiredCapabilities:alarmRules.length ? ["alarm-rules-v1"]:[],project:{ id:projectId,name:identity.name,runtimeRevision:identity.runtime_revision },definition,assets,assetDataBindings,dataSources,legacyModelNames,resources:{ models:[...models.values()].sort((a,b) => a.id.localeCompare(b.id)),images } }); }
     catch (reason) { throw new AppError(409,"publication_dependencies_invalid",reason instanceof Error ? reason.message : "Runtime snapshot validation failed."); }
   }
   throw conflict();
@@ -124,6 +126,7 @@ export async function createPublicationVersion(env:AppEnv,projectId:string,userI
 }
 
 export async function verifyPublicationData(env:AppEnv,snapshot:RuntimeProjectSnapshot,signal?:AbortSignal) {
+  for (const feature of snapshot.requiredCapabilities ?? []) if (!env.RUNTIME_CAPABILITIES?.has(feature)) throw new AppError(503,"publication_capability_unavailable",`当前宿主不提供版本要求的运行能力：${feature}`);
   requireActiveRequest(signal);
   const used = snapshot.dataSources.filter((source) => source.config.collectionMode === "continuous" || snapshot.assetDataBindings.some((binding) => binding.dataSourceId === source.id));
   const samples = new Map<string,SourceSample>(),controller = new AbortController(); let cursor = 0;

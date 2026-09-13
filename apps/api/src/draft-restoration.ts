@@ -8,10 +8,11 @@ export async function draftRestorationPreview(env:AppEnv,projectId:string,versio
     (SELECT COUNT(*) FROM project_pages WHERE project_id=projects.id) AS pages,
     (SELECT COUNT(*) FROM canvas_nodes WHERE project_id=projects.id) AS nodes,
     (SELECT COUNT(*) FROM assets WHERE project_id=projects.id) AS assets,
+    (SELECT COUNT(*) FROM project_alarm_rules WHERE project_id=projects.id) AS alarms,
     (SELECT COUNT(*) FROM data_sources WHERE project_id=projects.id) AS sources
-    FROM projects WHERE id=?`).bind(projectId).first<{ name:string;runtimeRevision:number;pages:number;nodes:number;assets:number;sources:number }>();
+    FROM projects WHERE id=?`).bind(projectId).first<{ name:string;runtimeRevision:number;pages:number;nodes:number;assets:number;sources:number;alarms:number }>();
   if (!row) throw new AppError(404,"project_not_found","Project not found.");
-  return { version,expectedRuntimeRevision:row.runtimeRevision,current:row,incoming:{ name:snapshot.project.name,pages:snapshot.definition.pages.length,nodes:snapshot.definition.pages.reduce((total,page) => total+page.nodes.length,0),assets:snapshot.assets.length,sources:snapshot.dataSources.length } };
+  return { version,expectedRuntimeRevision:row.runtimeRevision,current:row,incoming:{ name:snapshot.project.name,pages:snapshot.definition.pages.length,nodes:snapshot.definition.pages.reduce((total,page) => total+page.nodes.length,0),assets:snapshot.assets.length,sources:snapshot.dataSources.length,alarms:snapshot.alarmRules?.length ?? 0 } };
 }
 
 export async function restoreVersionAsDraft(env:AppEnv,projectId:string,versionId:string,userId:string,expectedRuntimeRevision:number,signal:AbortSignal) {
@@ -24,11 +25,13 @@ export async function restoreVersionAsDraft(env:AppEnv,projectId:string,versionI
   const canvasRevision = (current?.revision ?? 0)+1,id = crypto.randomUUID(),now = new Date().toISOString(),guard = "EXISTS(SELECT 1 FROM project_draft_restorations WHERE id=?)",statements:DatabaseStatement[] = [];
   statements.push(env.DB.prepare(`INSERT INTO project_draft_restorations(id,project_id,version_id,base_revision,created_by,created_at) SELECT ?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM projects WHERE id=? AND runtime_revision=?) AND ${currentProjectEditPredicate}`).bind(id,projectId,versionId,expectedRuntimeRevision,userId,now,projectId,expectedRuntimeRevision,userId,projectId));
   const remove = (sql:string,...values:unknown[]) => statements.push(env.DB.prepare(`${sql} AND ${guard}`).bind(...values,id));
+  remove("DELETE FROM project_alarm_rules WHERE project_id=?",projectId);
   remove("DELETE FROM project_canvases WHERE project_id=?",projectId);
   remove("DELETE FROM asset_data_bindings WHERE asset_id IN(SELECT id FROM assets WHERE project_id=?)",projectId);
   remove("DELETE FROM assets WHERE project_id=?",projectId);
   remove("DELETE FROM data_sources WHERE project_id=?",projectId);
   const insert = (table:string,columns:string[],values:unknown[]) => statements.push(env.DB.prepare(`INSERT INTO ${table}(${columns.join(",")}) SELECT ${values.map(() => "?").join(",")} WHERE ${guard}`).bind(...values,id));
+  for (const rule of snapshot.alarmRules ?? []) insert("project_alarm_rules",["project_id","id","config_json","updated_by_user_id","created_at","updated_at"],[projectId,rule.id,JSON.stringify(rule),userId,now,now]);
   for (const asset of snapshot.assets) insert("assets",["id","project_id","asset_key","model_node","name","asset_type","metadata_json","created_at","updated_at"],[asset.id,projectId,asset.assetId,asset.modelNode,asset.name,asset.assetType,JSON.stringify(asset.metadata),asset.createdAt,now]);
   for (const source of snapshot.dataSources) insert("data_sources",["id","project_id","source_type","name","config_json","created_at","updated_at"],[source.id,projectId,source.sourceType,source.name,JSON.stringify(source.config),source.createdAt,now]);
   for (const binding of snapshot.assetDataBindings) insert("asset_data_bindings",["id","asset_id","data_source_id","metric_key","source_path","value_type","unit","stale_after_seconds","created_at","updated_at"],[binding.id,binding.assetRecordId,binding.dataSourceId,binding.metricKey,binding.sourcePath,binding.valueType,binding.unit,binding.staleAfterSeconds,binding.createdAt,now]);

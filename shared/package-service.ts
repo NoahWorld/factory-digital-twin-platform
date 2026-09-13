@@ -1,6 +1,6 @@
 export type PackageInspection = {
   id:string;expiresAt:string;projectName:string;sourceProjectId:string;sourceVersionId:string;sourceVersionNumber:number;
-  pages:number;models:number;images:number;assets:number;bytes:number;
+  pages:number;models:number;images:number;assets:number;alarms:number;bytes:number;
   requiredEndpoints:Array<{ endpointRef:string;sourceIds:string[] }>;
 };
 export type PackageInstallRequest = { inspectionId:string;targetProjectId?:string;projectName?:string;expectedRuntimeRevision?:number };

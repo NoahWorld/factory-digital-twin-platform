@@ -135,7 +135,7 @@ export async function startRuntime(options: RuntimeOptions) {
   const telemetry = new TelemetryStore(telemetryPath);
   let database:SqliteDatabase;
   try { database = new SqliteDatabase(databasePath); } catch (reason) { telemetry.close(); throw reason; }
-  const env: AppEnv = { ...options.environment,TELEMETRY:telemetry,RUNTIME_DISTRIBUTION:(signal) => runtimeDistribution(bundle,signal),RESOLVE_SOURCE:resolver,DB: database,PROJECT_FILES: new FileBucket(join(dataDirectory,"objects")) };
+  const env: AppEnv = { ...options.environment,TELEMETRY:telemetry,RUNTIME_CAPABILITIES:new Set(["alarm-rules-v1"]),RUNTIME_DISTRIBUTION:(signal) => runtimeDistribution(bundle,signal),RESOLVE_SOURCE:resolver,DB: database,PROJECT_FILES: new FileBucket(join(dataDirectory,"objects")) };
   env.OPEN_WEBSOCKET_SOURCE = (source,requestId,onSample,signal) => openWebSocketSource(env,source,requestId,onSample,signal);
   const collector = new RuntimeCollector(env); env.CENTRAL_RUNTIME = collector;
   const packages = new LocalPackageService(env,join(dataDirectory,"project-imports")); env.PACKAGE_SERVICE = packages;
@@ -160,7 +160,7 @@ export async function startRuntime(options: RuntimeOptions) {
       let response = url.pathname.startsWith("/api/") || url.pathname === "/api" || url.pathname === "/health" ? await api.fetch(request,env) : await staticResponse(url.pathname,method,publicDirectory);
       const deletedProject = method === "DELETE" ? url.pathname.match(/^\/api\/v1\/projects\/([^/]+)$/):null;
       if (response.ok && deletedProject) collector.removeProject(decodeURIComponent(deletedProject[1]));
-      const dataMutation = url.pathname.match(/^\/api\/v1\/projects\/([^/]+)(?:\/(?:data-sources|assets|definition|canvas|model-assets|image-assets)(?:\/|$)|$)/);
+      const dataMutation = url.pathname.match(/^\/api\/v1\/projects\/([^/]+)(?:\/(?:data-sources|assets|definition|canvas|model-assets|image-assets|alarm-rules)(?:\/|$)|$)/);
       if (response.ok && !["GET","HEAD","OPTIONS"].includes(method) && dataMutation && !deletedProject && !url.pathname.endsWith("/test")) await collector.refresh(decodeURIComponent(dataMutation[1]));
       const activation = url.pathname.match(/^\/api\/v1\/projects\/([^/]+)\/versions\/[^/]+\/activate$/);
       if (response.ok && method === "POST" && activation) await collector.refreshPublication(decodeURIComponent(activation[1]));

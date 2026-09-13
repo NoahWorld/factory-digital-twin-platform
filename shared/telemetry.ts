@@ -9,6 +9,9 @@ export type TelemetryRow = TelemetryRecord & { id:number };
 export type TelemetryQuery = { scopeId:string;from:string;to:string;beforeId:number|null;limit:number;assetId:string|null;metricKey:string|null;configRevision:number|null };
 export type TelemetryDiagnostic = { state:"ready"|"degraded";pending:number;dropped:number;lastPersistedAt:string|null;errorCode:string|null;retentionDays:number;maxRows:number };
 export type TelemetryService = {
+  configureAlarms?(plan:import("./alarms").AlarmEvaluationPlan):void;
+  deactivateAlarms?(projectId:string,scopeId:string):void;
+  queryAlarms?(projectId:string,scopeId:string,input:import("./alarms").AlarmQuery):{ retentionDays:number;maxEvents:number;ruleStates:import("./alarms").AlarmRuleStatus[];active:import("./alarms").AlarmEpisode[];activeTruncated:boolean;records:import("./alarms").AlarmRecord[];nextCursor:number|null };
   enqueue(records:TelemetryRecord[]):void;
   reportGap(projectId:string,code:string,count?:number):void;
   query(projectId:string,input:TelemetryQuery):{ records:TelemetryRow[];nextCursor:number|null };

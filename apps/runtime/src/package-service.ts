@@ -4,7 +4,7 @@ import { createHash } from "node:crypto";
 import { AppError,currentProjectEditPredicate,currentProjectCreatePredicate,requireCurrentProjectEditor,type AppEnv,type DatabaseStatement } from "../../api/src/auth";
 import { inspectPackageRequest,type InspectedPackage } from "./package-inspector";
 import { canonicalJson } from "../../api/src/package-resource-validation";
-import { parseProjectPackageManifest,remapPackageSnapshot,type PackageIdentityMap } from "../../../shared/project-package";
+import { projectPackageIdentity,parseProjectPackageManifest,remapPackageSnapshot,type PackageIdentityMap } from "../../../shared/project-package";
 import type { PackageService,PackageInspection,PackageInstallRequest,PackageInstallResult } from "../../../shared/package-service";
 import { readPublicationVersion,verifyPublicationResource } from "../../api/src/publications";
 import type { ModelAsset } from "../../../shared/model-assets";
@@ -77,7 +77,7 @@ export class LocalPackageService implements PackageService {
       const owner:Owner = { userId,createdAt,expiresAt:createdAt+EXPIRES_MS };
       const inspected = await inspectPackageRequest(request,directory,() => writeFile(join(directory,"owner.json"),JSON.stringify(owner),{ flag:"wx",mode:0o600 }));
       const { manifest } = inspected;
-      return { id,expiresAt:new Date(owner.expiresAt).toISOString(),projectName:manifest.snapshot.project.name,sourceProjectId:manifest.source.projectId,sourceVersionId:manifest.source.versionId,sourceVersionNumber:manifest.source.versionNumber,pages:manifest.snapshot.definition.pages.length,models:manifest.snapshot.resources.models.length,images:manifest.snapshot.resources.images.length,assets:manifest.snapshot.assets.length,bytes:manifest.files.reduce((total,file) => total+file.byteSize,0),requiredEndpoints:manifest.requiredEndpoints };
+      return { id,expiresAt:new Date(owner.expiresAt).toISOString(),projectName:manifest.snapshot.project.name,sourceProjectId:manifest.source.projectId,sourceVersionId:manifest.source.versionId,sourceVersionNumber:manifest.source.versionNumber,pages:manifest.snapshot.definition.pages.length,models:manifest.snapshot.resources.models.length,images:manifest.snapshot.resources.images.length,assets:manifest.snapshot.assets.length,alarms:manifest.snapshot.alarmRules?.length ?? 0,bytes:manifest.files.reduce((total,file) => total+file.byteSize,0),requiredEndpoints:manifest.requiredEndpoints };
     } finally { this.activeUploads--; }
   }
   async discard(id:string,userId:string) { return this.exclusive(id,async () => {
@@ -108,7 +108,7 @@ export class LocalPackageService implements PackageService {
   }
   private async installOwned(input:PackageInstallRequest,userId:string,signal:AbortSignal):Promise<PackageInstallResult> {
     const directory = this.location(input.inspectionId),saved = JSON.parse(await readFile(join(directory,"inspected.json"),"utf8")) as InspectedPackage;
-    const manifest = parseProjectPackageManifest(saved.manifest),manifestHash = hash(canonicalJson(manifest)),projectId = input.targetProjectId ?? crypto.randomUUID(),isNew = !input.targetProjectId;
+    const wire = saved.wireManifest ?? saved.manifest,manifest = parseProjectPackageManifest(wire),manifestHash = hash(canonicalJson(projectPackageIdentity(wire))),projectId = input.targetProjectId ?? crypto.randomUUID(),isNew = !input.targetProjectId;
     cancelled(signal);
     const consumed = await this.env.DB.prepare("SELECT project_id,version_id,package_manifest_sha256 FROM project_package_imports WHERE id=? AND created_by=?").bind(input.inspectionId,userId).first<{ project_id:string;version_id:string;package_manifest_sha256:string }>();
     if (consumed) {

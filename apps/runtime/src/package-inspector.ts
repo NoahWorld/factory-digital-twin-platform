@@ -11,7 +11,7 @@ import { parseProjectPackageManifest,MAX_PACKAGE_BYTES,MAX_PACKAGE_ENTRIES,type 
 import { MAX_RUNTIME_SNAPSHOT_BYTES } from "../../../shared/runtime-project";
 import { verifyPackagedModel,verifyPackagedImage } from "../../api/src/package-resource-validation";
 
-export type InspectedPackage = { manifest:ProjectPackageManifest;resources:Record<string,string> };
+export type InspectedPackage = { manifest:ProjectPackageManifest;wireManifest?:unknown;resources:Record<string,string> };
 const MANIFEST_LIMIT = MAX_RUNTIME_SNAPSHOT_BYTES+1024*1024;
 const closeZip = (zip:ZipFile) => new Promise<void>((resolve) => { if (!zip.isOpen) { resolve(); return; } zip.once("close",resolve); zip.close(); });
 const invalid = (message:string) => new AppError(400,"invalid_project_package",message);
@@ -60,8 +60,8 @@ export async function inspectPackageRequest(request:Request,directory:string,onC
     const manifestEntry = entries.get("manifest.json"); if (!manifestEntry) throw invalid("Package manifest is missing.");
     phase = "manifest";
     const metadata = await readEntry(zip,manifestEntry,MANIFEST_LIMIT,request.signal);
-    let manifest:ProjectPackageManifest;
-    try { manifest = parseProjectPackageManifest(JSON.parse(new TextDecoder("utf-8",{ fatal:true }).decode(metadata))); }
+    let manifest:ProjectPackageManifest,wireManifest:unknown;
+    try { wireManifest = JSON.parse(new TextDecoder("utf-8",{ fatal:true }).decode(metadata)); manifest = parseProjectPackageManifest(wireManifest); }
     catch (reason) { throw invalid(reason instanceof Error ? reason.message : "Invalid package manifest."); }
     if (entries.size !== manifest.files.length+1 || manifest.files.some((file) => !entries.has(file.path))) throw invalid("Archive entries do not match the manifest.");
     const resources:Record<string,string> = Object.create(null);
@@ -75,8 +75,8 @@ export async function inspectPackageRequest(request:Request,directory:string,onC
       request.signal.throwIfAborted(); const name = `resource-${index}.bin`; await writeFile(join(directory,name),bytes,{ flag:"wx",mode:0o600 }); resources[file.path] = name;
     }
     await closeZip(zip); zip = undefined; await rm(archive);
-    await writeFile(join(directory,"inspected.json"),JSON.stringify({ manifest,resources }),{ flag:"wx",mode:0o600 });
-    return { manifest,resources };
+    await writeFile(join(directory,"inspected.json"),JSON.stringify({ manifest,...(manifest.snapshot.snapshotVersion === 2 ? { wireManifest }:{}),resources }),{ flag:"wx",mode:0o600 });
+    return { manifest,...(manifest.snapshot.snapshotVersion === 2 ? { wireManifest }:{}),resources };
   } catch (reason) {
     if (zip) await closeZip(zip);
     console.error(JSON.stringify({ event:"package_validation_failed",phase,errorCode:reason instanceof AppError ? reason.code : "package_validation_error",stack:reason instanceof Error ? reason.stack?.split("\n").filter((line) => line.trim().startsWith("at ")).slice(0,4) : [] }));

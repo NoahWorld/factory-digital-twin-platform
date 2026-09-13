@@ -78,3 +78,11 @@ export function remapPackageSnapshot(input:RuntimeProjectSnapshot,mapping:Packag
   // deliberately stay opaque and stable; never replace substrings in literals.
   return parseRuntimeProjectSnapshot(snapshot);
 }
+
+
+/** Keep the legacy v1 identity algorithm unchanged. New wire snapshots retain
+ * their original validated manifest identity across normalized runtime upgrades. */
+export function projectPackageIdentity(input:unknown):unknown {
+  const parsed = parseProjectPackageManifest(input);
+  return parsed.snapshot.snapshotVersion === 1 ? parsed:input;
+}

@@ -10631,3 +10631,20 @@ input:focus,
 .telemetry-table th { color: #b6d6e0; }
 .telemetry-table td { color: #deedf2; max-width: 240px; overflow-wrap: anywhere; }
 .telemetry-table small { display: block; max-width: 160px; color: #f3bba1; margin-top: 5px; }
+
+.alarm-panel { width: min(1160px, 100vw); grid-template-rows: auto auto minmax(0, 1fr); }
+.alarm-tabs { display: flex; gap: 10px; align-items: center; padding: 16px 24px; border-bottom: 1px solid #294251; }
+.alarm-tabs button, .alarm-config-body button, .alarm-config-body input:not([type=checkbox]), .alarm-config-body select { border: 1px solid #355766; border-radius: 6px; background: #102330; color: #e0edf2; padding: 9px 12px; }
+.alarm-tabs button[aria-pressed=true] { border-color: #70d6f3; background: #173849; }
+.alarm-tabs span { color: #b2cbd1; margin-left: auto; }
+.alarm-config-body { min-height: 0; overflow: hidden; }
+.alarm-config-body label { margin: 12px 0; flex-wrap: wrap; }
+.alarm-config-body label > input:not([type=checkbox]), .alarm-config-body label > select { flex: 1; }
+.alarm-config-body button:disabled { opacity: .5; }
+.alarm-config-body .publication-actions { position: sticky; bottom: -20px; padding: 16px 0; background: #071721; border-top: 1px solid #294251; }
+.alarm-active-list { display: grid; gap: 12px; }
+.alarm-active-list article { border: 1px solid #976a37; border-left: 4px solid #e9a850; border-radius: 6px; padding: 14px 18px; background: #33271a; }
+.alarm-active-list article[data-severity=critical] { border-color: #c36a73; border-left-color: #fc6b7d; background: #381d25; }
+.alarm-active-list article[data-severity=info] { border-color: #477f9b; background: #102e3c; }
+.alarm-active-list p { margin: 8px 0; }
+.alarm-active-list small { color: #d8d0bf; }

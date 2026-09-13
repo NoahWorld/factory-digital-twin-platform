@@ -3,7 +3,7 @@ import { useEffect,useState } from "react";
 import { request,errorMessage } from "./api";
 import type { PublicationVersion,PublicationPointer } from "../../../shared/runtime-project";
 
-type RestorePreview = { version:PublicationVersion;expectedRuntimeRevision:number;current:{ name:string;pages:number;nodes:number;assets:number;sources:number };incoming:{ name:string;pages:number;nodes:number;assets:number;sources:number } };
+type RestorePreview = { version:PublicationVersion;expectedRuntimeRevision:number;current:{ name:string;pages:number;nodes:number;assets:number;sources:number;alarms:number };incoming:{ name:string;pages:number;nodes:number;assets:number;sources:number;alarms:number } };
 type DraftCheck = { runtimeRevision:number;canvasRevision:number;projectName:string;pages:number;scenes:number;assets:number;dataSources:number;models:number;images:number };
 export function PublicationPanel({ projectId,editable,onClose }:{ projectId:string;editable:boolean;onClose():void }) {
   const [restorePreview,setRestorePreview] = useState<RestorePreview|null>(null);
@@ -39,7 +39,7 @@ export function PublicationPanel({ projectId,editable,onClose }:{ projectId:stri
         {error ? <p role="alert" className="data-source-form-error">{error}</p> : null}
         {notice ? <p role="status" className="data-source-form-notice">{notice}</p> : null}
         {restorePreview ? <section className="publication-draft" aria-label="草稿恢复预览"><h3>用版本 {restorePreview.version.versionNumber} 替换当前草稿</h3><p>这会替换已保存的页面、资产和数据映射。当前发布版本保持不变；恢复的持续数据源按其配置运行。</p>
-          <table><thead><tr><th>内容</th><th>当前草稿</th><th>恢复后</th></tr></thead><tbody>{([['页面','pages'],['组件','nodes'],['设备','assets'],['数据源','sources']] as const).map(([label,key]) => <tr key={key}><td>{label}</td><td>{restorePreview.current[key]}</td><td>{restorePreview.incoming[key]}</td></tr>)}</tbody></table><p>项目名称：{restorePreview.current.name} → {restorePreview.incoming.name}</p><div className="publication-actions"><button className="primary-button" disabled={busy} onClick={restore}>确认替换草稿</button><button className="secondary-button" disabled={busy} onClick={() => setRestorePreview(null)}>取消恢复</button></div></section> : null}
+          <table><thead><tr><th>内容</th><th>当前草稿</th><th>恢复后</th></tr></thead><tbody>{([['页面','pages'],['组件','nodes'],['设备','assets'],['数据源','sources'],['告警规则','alarms']] as const).map(([label,key]) => <tr key={key}><td>{label}</td><td>{restorePreview.current[key]}</td><td>{restorePreview.incoming[key]}</td></tr>)}</tbody></table><p>项目名称：{restorePreview.current.name} → {restorePreview.incoming.name}</p><div className="publication-actions"><button className="primary-button" disabled={busy} onClick={restore}>确认替换草稿</button><button className="secondary-button" disabled={busy} onClick={() => setRestorePreview(null)}>取消恢复</button></div></section> : null}
         {editable ? <section className="publication-draft"><h3>创建版本</h3><button className="secondary-button" disabled={busy || loading} onClick={check}>检查已保存配置与资源</button>
           {draft ? <><p>{draft.pages} 页 · {draft.scenes} 个场景 · {draft.assets} 台设备 · {draft.models} 个模型 · {draft.images} 张图片</p><small>配置修订 {draft.runtimeRevision} · 画布版本 {draft.canvasRevision}</small><label>版本说明<input aria-label="版本说明" value={label} maxLength={200} disabled={busy} onChange={(event) => setLabel(event.target.value)} /></label><button className="primary-button" disabled={busy} onClick={create}>冻结为新版本</button></> : null}
         </section> : null}

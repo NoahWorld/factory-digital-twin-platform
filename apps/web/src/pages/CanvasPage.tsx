@@ -1,3 +1,4 @@
+import { AlarmPanel } from "../AlarmPanel";
 import { TelemetryPanel } from "../TelemetryPanel";
 import { PublicationPanel } from "../PublicationPanel";
 import type { SceneViewportRuntime } from "../canvas/scene-viewport-runtime";
@@ -77,6 +78,7 @@ export function CanvasPage({ initialTemplateId, mode, projectId,versionId }: Can
   const [selectedModelSceneNodePath, setSelectedModelSceneNodePath] = useState<string | null>(null);
   const [selectedSceneObject, setSelectedSceneObject] = useState<{ nodeId: string; target: ObjectTarget } | null>(null);
   const [configurationError, setConfigurationError] = useState<string | null>(null);
+  const [showAlarms,setShowAlarms] = useState(false);
   const [showTelemetry,setShowTelemetry] = useState(false);
   const [showPublications,setShowPublications] = useState(false);
   const [showDataSources, setShowDataSources] = useState(false);
@@ -492,11 +494,11 @@ export function CanvasPage({ initialTemplateId, mode, projectId,versionId }: Can
             <button className="secondary-button compact-button" disabled={saving} onClick={() => setShowInteractions(true)} type="button">交互编排</button>
             <button className="secondary-button compact-button" onClick={() => setShowAssets(true)} type="button">资产与指标</button>
             <button className="secondary-button compact-button" onClick={() => setShowDataSources(true)} type="button">数据源</button>
-            <button className="secondary-button compact-button" onClick={() => setShowTelemetry(true)} type="button">历史数据</button><button className="secondary-button compact-button" disabled={saving || dirty} title={dirty ? "请先保存画布" : undefined} onClick={() => setShowPublications(true)} type="button">发布与版本</button>
+            <button className="secondary-button compact-button" onClick={() => setShowTelemetry(true)} type="button">历史数据</button><button className="secondary-button compact-button" onClick={() => setShowAlarms(true)} type="button">告警</button><button className="secondary-button compact-button" disabled={saving || dirty} title={dirty ? "请先保存画布" : undefined} onClick={() => setShowPublications(true)} type="button">发布与版本</button>
             <button className="secondary-button compact-button" disabled={!selectedNodeId || !canEdit || saving} onClick={deleteSelectedNode} type="button">删除组件</button>
             <button className="secondary-button compact-button" disabled={saving || configurationError !== null} onClick={() => void openPreview()} title={configurationError ?? undefined} type="button">预览</button>
             <button className="primary-button compact-button" disabled={!dirty || saving || !canEdit || configurationError !== null} onClick={() => void save()} title={configurationError ?? undefined} type="button">{saving ? "保存中…" : "保存画布"}</button>
-          </> : <>{versionId ? <span className="published-version-label">固定发布版本 V{publishedVersion?.versionNumber ?? "…"}</span> : null}<button className="secondary-button compact-button" onClick={() => setShowInteractionDebug(true)} type="button">交互调试</button><button className="secondary-button compact-button" onClick={() => setShowTelemetry(true)} type="button">历史数据</button><a className="secondary-button compact-button" href={canvasRoutePath(projectId, "canvas", document?.pageId)}>返回编辑</a></>}
+          </> : <>{versionId ? <span className="published-version-label">固定发布版本 V{publishedVersion?.versionNumber ?? "…"}</span> : null}<button className="secondary-button compact-button" onClick={() => setShowInteractionDebug(true)} type="button">交互调试</button><button className="secondary-button compact-button" onClick={() => setShowTelemetry(true)} type="button">历史数据</button><button className="secondary-button compact-button" onClick={() => setShowAlarms(true)} type="button">告警</button><a className="secondary-button compact-button" href={canvasRoutePath(projectId, "canvas", document?.pageId)}>返回编辑</a></>}
         </div>
       </header>
       <div className="canvas-message-stack">
@@ -673,6 +675,7 @@ export function CanvasPage({ initialTemplateId, mode, projectId,versionId }: Can
       {showInteractionDebug && mode === "preview" ? <InteractionDebugger runtime={interactions.runtime} snapshot={interactions.snapshot} config={editor.project.interactions} onClose={() => setShowInteractionDebug(false)} /> : null}
       {mode === "preview" && !showInteractionDebug && interactions.snapshot.traces.some((trace) => trace.status === "failed" || trace.status === "limited") ? <button className="interaction-error-notice" type="button" onClick={() => setShowInteractionDebug(true)}>交互执行有失败或限制，查看调试记录</button> : null}
       {showAssets ? <AssetPanel projectId={projectId} editable={canEdit && !saving} onClose={() => { setShowAssets(false); setCatalogRevision((value) => value + 1); }} /> : null}
+      {showAlarms ? <AlarmPanel projectId={projectId} versionId={versionId} editable={canEdit} onClose={() => setShowAlarms(false)} />:null}
       {showTelemetry ? <TelemetryPanel projectId={projectId} versionId={versionId} onClose={() => setShowTelemetry(false)} />:null}
       {showPublications ? <PublicationPanel projectId={projectId} editable={canEdit} onClose={() => setShowPublications(false)} /> : null}
       {showDataSources ? (

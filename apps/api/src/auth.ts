@@ -38,6 +38,7 @@ export type ObjectBucket = {
 };
 
 export type AppEnv = {
+  RUNTIME_CAPABILITIES?:ReadonlySet<string>;
   TELEMETRY?: import("../../../shared/telemetry").TelemetryService;
   RUNTIME_DISTRIBUTION?: (signal:AbortSignal) => Response;
   PACKAGE_SERVICE?: import("../../../shared/package-service").PackageService;
