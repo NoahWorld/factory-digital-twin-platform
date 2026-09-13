@@ -1,3 +1,4 @@
+import { PersistedBoundNode } from "./PersistedBoundNode";
 import { useProjectRuntimeContext } from "../project-runtime";
 import { ChartNode } from "./ChartNode";
 import { DashboardNode } from "./DashboardNode";
@@ -12,6 +13,7 @@ export function BoundNode({ node, interactive }: { node: CanvasNode; interactive
   if (!runtime || runtime.loading) return message("正在加载数据绑定…", "loading");
   if (runtime.error) return message(runtime.error);
   if (!binding) return message(`绑定 ${node.dataBindingRefs[0]} 不存在，请在属性面板重新配置或切回静态演示。`);
+  if (binding.version === 2) return <PersistedBoundNode node={node} binding={binding} interactive={interactive}/>;
   const result = resolveBinding(binding, runtime.assets, runtime.metrics, runtime.connections, runtime.selectedAssetId);
   if (result.error) return message(result.error, "empty");
   const rows = result.rows;

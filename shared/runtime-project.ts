@@ -90,7 +90,7 @@ export function parseRuntimeProjectSnapshot(input:unknown):RuntimeProjectSnapsho
   if (input.snapshotVersion === 1 && (input.alarmRules !== undefined || input.requiredCapabilities !== undefined)) bad("旧快照不能携带新告警能力。");
   const alarmRules = input.snapshotVersion === 2 ? validateAlarmRules(input.alarmRules):[];
   const requiredCapabilities = input.snapshotVersion === 2 ? input.requiredCapabilities:[];
-  if (!Array.isArray(requiredCapabilities) || requiredCapabilities.some((capability) => capability !== "alarm-rules-v1") || new Set(requiredCapabilities).size !== requiredCapabilities.length) bad("运行器不支持包中声明的必要能力。");
+  if (!Array.isArray(requiredCapabilities) || requiredCapabilities.some((capability) => !["alarm-rules-v1","telemetry-bindings-v1"].includes(String(capability))) || new Set(requiredCapabilities).size !== requiredCapabilities.length) bad("运行器不支持包中声明的必要能力。");
   if (alarmRules.length > 0 && !(requiredCapabilities as string[]).includes("alarm-rules-v1")) bad("告警配置缺少必要能力声明。");
   const project = { id:input.project.id,name:input.project.name,runtimeRevision:input.project.runtimeRevision },definition = parseProjectDefinition(input.definition);
   if (definition.projectId !== project.id) bad("项目定义所属项目不一致。");
@@ -135,6 +135,7 @@ export function parseRuntimeProjectSnapshot(input:unknown):RuntimeProjectSnapsho
     const root = modelMap.get(model.familyId),previous = model.previousVersionId ? modelMap.get(model.previousVersionId) : undefined;
     if (!root || root.versionNumber !== 1 || root.previousVersionId !== null || (model.versionNumber === 1 && model.id !== model.familyId) || (model.versionNumber > 1 && (!previous || previous.familyId !== model.familyId || previous.versionNumber >= model.versionNumber))) bad("模型资源版本链不完整或不一致。");
   }
+  for (const feature of requiredRuntimeCapabilities(snapshot)) if (!snapshot.requiredCapabilities?.includes(feature)) bad(`运行快照缺少必要能力声明：${feature}`);
   validateSnapshotReferences(snapshot); return snapshot;
 }
 
@@ -142,7 +143,7 @@ export function validateSnapshotReferences(snapshot:RuntimeProjectSnapshot) {
   const { definition,resources } = snapshot,ids = runtimeResourceIds(definition),models = new Map(resources.models.map((model) => [model.id,model])),images = new Set(resources.images.map((image) => image.id)),assets = new Set(snapshot.assets.map((asset) => asset.assetId)),catalog = snapshotMetricCatalog(snapshot);
   validateAlarmCatalog(snapshot.alarmRules ?? [],catalog,assets);
   if (ids.models.some((id) => !models.has(id)) || ids.images.some((id) => !images.has(id))) bad("页面或场景依赖的资源缺失。");
-  for (const binding of definition.dataBindings) { const error = validateBindingCatalog(binding,catalog); if (error) bad(error); }
+  for (const binding of definition.dataBindings) { const error = validateBindingCatalog(binding,catalog,assets); if (error) bad(error); }
   for (const assetId of interactionAssetIds(definition.interactions)) if (!assets.has(assetId)) bad(`交互引用的资产${assetId}不存在。`);
   for (const rule of definition.interactions.rules) for (const value of ruleValues(rule)) if (value.kind === "metric" && !catalog.some((item) => item.assetId === value.assetId && item.metricKey === value.metricKey)) bad("交互引用的指标不存在。");
   for (const rule of definition.interactions.rules) if (rule.trigger.type === "data.change" && rule.trigger.sourceId && rule.trigger.metricKey && !catalog.some((item) => item.assetId === rule.trigger.sourceId && item.metricKey === rule.trigger.metricKey)) bad("交互触发器引用的指标不存在。");
@@ -174,4 +175,9 @@ export function validateSnapshotReferences(snapshot:RuntimeProjectSnapshot) {
       }
     }
   }
+}
+
+
+export function requiredRuntimeCapabilities(snapshot:Pick<RuntimeProjectSnapshot,"definition"|"alarmRules">):string[] {
+  return [...((snapshot.alarmRules?.length ?? 0) > 0 ? ["alarm-rules-v1"]:[]),...(snapshot.definition.dataBindings.some((binding) => binding.version === 2) ? ["telemetry-bindings-v1"]:[])];
 }

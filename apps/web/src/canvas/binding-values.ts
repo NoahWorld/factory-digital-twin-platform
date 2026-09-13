@@ -30,7 +30,7 @@ export function readBindingCell(connection: RuntimeAssetConnection | undefined, 
 }
 
 export function resolveBinding(binding: ComponentBinding, assets: ProjectAsset[], catalog: MetricCatalogEntry[], connections: Record<string, RuntimeAssetConnection>, selectedAssetId: string | null) {
-  const error = validateBindingCatalog(binding, catalog);
+  const error = validateBindingCatalog(binding,catalog,new Set(assets.map((asset) => asset.assetId)));
   if (error) return { error, rows: [] };
   const assetIds = binding.selection === "selected" ? selectedAssetId && binding.assetIds.includes(selectedAssetId) ? [selectedAssetId] : [] : binding.assetIds;
   if (assetIds.length === 0) return { error: "请从设备选择器或表格选择一台适用设备。", rows: [] };

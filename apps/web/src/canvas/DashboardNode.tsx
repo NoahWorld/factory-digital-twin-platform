@@ -94,14 +94,14 @@ const RankingList = ({ props }: { props: RankingListProps }) => {
   );
 };
 
-const AlarmList = ({ props }: { props: AlarmListProps }) => (
+const AlarmList = ({ props,rowAssetIds,onAssetSelect }: { props: AlarmListProps } & TableInteraction) => (
   <div className="dashboard-alarm-list">
     {props.items.map((item, index) => (
-      <div className={`dashboard-alarm-row is-${item.tone}`} key={`${item.time}-${item.source}-${index}`}>
+      <div className={`dashboard-alarm-row is-${item.tone}`} data-alarm-label={"label" in item && typeof item.label === "string" ? item.label:undefined} key={`${item.time}-${item.source}-${index}`}>
         <i aria-hidden="true" />
         <time>{item.time}</time>
-        <div><strong>{item.source}</strong><span>{item.message}</span></div>
-        <em>{toneLabel[item.tone]}</em>
+        <div><strong>{rowAssetIds?.[index] && onAssetSelect ? <button type="button" className="dashboard-asset-select" aria-label={`选择告警设备 ${rowAssetIds[index]}`} onClick={() => onAssetSelect(rowAssetIds[index])}>{item.source}</button>:item.source}</strong><span title={item.message}>{item.message}</span></div>
+        <em>{"label" in item && typeof item.label === "string" ? item.label:toneLabel[item.tone]}</em>
       </div>
     ))}
   </div>
@@ -144,14 +144,14 @@ const dashboardBody = (node: CanvasNode, props: DashboardBaseProps, interaction:
     case "progress-list": return <ProgressList props={props as ProgressListProps} />;
     case "status-grid": return <StatusGrid props={props as StatusGridProps} />;
     case "ranking-list": return <RankingList props={props as RankingListProps} />;
-    case "alarm-list": return <AlarmList props={props as AlarmListProps} />;
+    case "alarm-list": return <AlarmList props={props as AlarmListProps} {...interaction} />;
     case "data-table": return <DataTable props={props as DataTableProps} {...interaction} />;
     case "event-timeline": return <EventTimeline props={props as EventTimelineProps} />;
     default: throw new Error(`DashboardNode body received unsupported node type: ${node.type}`);
   }
 };
 
-export const DashboardNode = memo(function DashboardNode({ node, ...interaction }: { node: CanvasNode } & TableInteraction) {
+export const DashboardNode = memo(function DashboardNode({ node,alarmItems,...interaction }: { node:CanvasNode;alarmItems?:AlarmListProps["items"] } & TableInteraction) {
   if (!isDashboardNodeType(node.type)) {
     throw new Error(`DashboardNode received unsupported node type: ${node.type}`);
   }
@@ -164,7 +164,7 @@ export const DashboardNode = memo(function DashboardNode({ node, ...interaction 
     );
   }
 
-  const props = parsed.value;
+  const props = node.type === "alarm-list" && alarmItems ? { ...parsed.value,items:alarmItems }:parsed.value;
   if (node.type === "metric-card") {
     const metric = props as import("./types").MetricCardProps;
     return (

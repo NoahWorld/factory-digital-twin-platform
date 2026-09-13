@@ -1,3 +1,5 @@
+import { queryHistorySeries } from "./history-series";
+import type { HistorySeriesQuery } from "../../../shared/history-series";
 import { AlarmEngine } from "./alarm-engine";
 import type { AlarmEvaluationPlan,AlarmQuery } from "../../../shared/alarms";
 import { existsSync,readFileSync,writeFileSync,renameSync,rmSync } from "node:fs";
@@ -91,6 +93,7 @@ export class TelemetryStore implements TelemetryService {
     catch { console.error(JSON.stringify({ event:"telemetry_gap_persistence_failed",errorCode:"telemetry_write_failed",uncommittedRecords:this.pendingCount })); }
   }
   private drain() { while (this.pending.length) { this.flush();if (this.writeFailed) return false; }return true; }
+  querySeries(projectId:string,input:HistorySeriesQuery) { return queryHistorySeries(this.db,projectId,input); }
   query(projectId:string,input:TelemetryQuery) {
     const rows = this.db.statement(`SELECT id,project_id AS projectId,scope_id AS scopeId,config_revision AS configRevision,sample_id AS sampleId,asset_id AS assetId,asset_record_id AS assetRecordId,metric_key AS metricKey,source_id AS sourceId,binding_id AS bindingId,value_json AS valueJson,value_type AS valueType,unit,source_timestamp AS sourceTimestamp,collected_at AS collectedAt,quality,error_code AS errorCode FROM metric_history WHERE project_id=? AND scope_id=? AND collected_at>=? AND collected_at<=? AND (? IS NULL OR id<?) AND (? IS NULL OR asset_id=?) AND (? IS NULL OR metric_key=?) AND (? IS NULL OR config_revision=?) ORDER BY id DESC LIMIT ?`).all(projectId,input.scopeId,input.from,input.to,input.beforeId,input.beforeId,input.assetId,input.assetId,input.metricKey,input.metricKey,input.configRevision,input.configRevision,input.limit+1) as Array<Omit<TelemetryRow,"value">&{ valueJson:string }>;
     const more = rows.length > input.limit,selected = rows.slice(0,input.limit).map(({ valueJson,...row }) => ({ ...row,value:JSON.parse(valueJson) })) as TelemetryRow[];

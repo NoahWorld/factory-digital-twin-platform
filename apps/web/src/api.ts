@@ -9,6 +9,7 @@ export class ApiRequestError extends Error {
     readonly code: string,
     readonly requestId: string | undefined,
     message: string,
+    readonly status = 0,
   ) {
     super(message);
   }
@@ -41,6 +42,7 @@ export async function request<T>(path: string, init: RequestInit = {}): Promise<
       failure?.error ?? "request_failed",
       failure?.requestId,
       failure?.message ?? `API request failed with HTTP ${response.status}.`,
+      response.status,
     );
   }
 

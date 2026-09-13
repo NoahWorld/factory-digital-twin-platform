@@ -10648,3 +10648,9 @@ input:focus,
 .alarm-active-list article[data-severity=info] { border-color: #477f9b; background: #102e3c; }
 .alarm-active-list p { margin: 8px 0; }
 .alarm-active-list small { color: #d8d0bf; }
+
+.history-chart-content { grid-template-rows: auto minmax(0, 1fr) auto; }
+.history-chart-caption { margin: 2px 10px 4px; color: var(--canvas-theme-text); font-size: 10px; opacity: .7; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bound-node-message .secondary-button { font-size: 12px; padding: 6px 12px; }
+.dashboard-alarm-row[data-alarm-label="提示"] > i { background: #73cdef; }
+.dashboard-alarm-row[data-alarm-label="提示"] > em { color: #73cdef; }

@@ -1,3 +1,4 @@
+import type { PersistedQueryStore } from "./persisted-query-store";
 import { createContext, useContext, useEffect, useMemo, useSyncExternalStore } from "react";
 import type { ComponentBinding, MetricCatalogEntry } from "../../../shared/component-bindings";
 import type { CanvasNode } from "./canvas/types";
@@ -9,6 +10,7 @@ export type RuntimeCatalog = { assets: ProjectAsset[]; metrics: MetricCatalogEnt
 export const runtimeCatalogPath = (projectId: string) => `/api/v1/projects/${encodeURIComponent(projectId)}/runtime-catalog`;
 
 export type ProjectRuntimeContextValue = RuntimeCatalog & {
+  queries:PersistedQueryStore;
   enabled: boolean;
   loading: boolean;
   error: string | null;

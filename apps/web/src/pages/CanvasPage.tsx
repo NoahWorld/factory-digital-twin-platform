@@ -1,3 +1,4 @@
+import { createPersistedQueryStore } from "../persisted-query-client";
 import { AlarmPanel } from "../AlarmPanel";
 import { TelemetryPanel } from "../TelemetryPanel";
 import { PublicationPanel } from "../PublicationPanel";
@@ -132,6 +133,7 @@ export function CanvasPage({ initialTemplateId, mode, projectId,versionId }: Can
     if (catalogProjectId !== projectId || document?.projectId !== projectId) return [];
     const ids = new Set<string>();
     for (const binding of activeBindings) {
+      if (binding.target === "history") continue;
       if (binding.selection === "fixed") binding.assetIds.forEach((id) => ids.add(id));
       else if (selectedRuntimeAssetId && binding.assetIds.includes(selectedRuntimeAssetId)) ids.add(selectedRuntimeAssetId);
     }
@@ -143,6 +145,8 @@ export function CanvasPage({ initialTemplateId, mode, projectId,versionId }: Can
     }
     return [...ids];
   }, [editor?.project.interactions, document?.pageId, activeBindings, catalogProjectId, document?.projectId, mappedRuntimeAssets, mode, legacyModelCount, visibleScenes, projectId, selectedRuntimeAssetId]);
+  const persistedQueries = useMemo(() => createPersistedQueryStore(projectId,versionId),[projectId,versionId]);
+  useEffect(() => () => persistedQueries.dispose(),[persistedQueries]);
   const runtimeConnections = useProjectRuntime(projectId, catalogProjectId === projectId ? projectAssets : [], neededAssetIds,versionId);
   const interactionHost: InteractionHost["perform"] = (action, value, signal) => {
     if (signal.aborted) throw new Error("交互已取消。");
@@ -474,7 +478,7 @@ export function CanvasPage({ initialTemplateId, mode, projectId,versionId }: Can
   const selectedNode = selectedNodeId ? document.nodes.find((node) => node.id === selectedNodeId) ?? null : null;
   return (
     <InteractionContext.Provider value={{ emit: interactions.emit, hiddenNodes: hiddenInteractionNodes, registerViewport }}>
-    <ProjectRuntimeContext.Provider value={{ assets: projectAssets, metrics: metricCatalog, enabled: true, loading: assetListLoading, error: assetLoadError, bindings: activeBindings, connections: runtimeConnections, selectedAssetId: selectedRuntimeAssetId, selectAsset: selectRuntimeAsset, changeBinding }}>
+    <ProjectRuntimeContext.Provider value={{ queries:persistedQueries,assets: projectAssets, metrics: metricCatalog, enabled: true, loading: assetListLoading, error: assetLoadError, bindings: activeBindings, connections: runtimeConnections, selectedAssetId: selectedRuntimeAssetId, selectAsset: selectRuntimeAsset, changeBinding }}>
     <main className={`canvas-page canvas-page-${mode}`}>
       <header className="canvas-toolbar">
         <div className="canvas-toolbar-title"><a aria-label="返回项目列表" className="canvas-back-link" href="#/projects">←</a><div><span>{mode === "edit" ? "2D 画布" : "可视化预览"}</span><strong>{projectName}</strong></div></div>
@@ -606,7 +610,7 @@ export function CanvasPage({ initialTemplateId, mode, projectId,versionId }: Can
                       ? `${staleDeviceCount === offlineDeviceCount ? "🟠" : "🔴"} ${offlineSummary} · 正在重连（第 ${Math.max(...runtimeConnectionList.map((state) => state.failureCount))} 次）`
                       : liveDeviceCount > 0
                         ? `🟢 在线 ${liveDeviceCount} 台 · 共享设备数据`
-                        : neededAssetIds.length === 0 ? "未选择设备或未配置数据绑定" : "🟡 正在连接设备数据…"}
+                        : neededAssetIds.length === 0 ? activeBindings.some((binding) => binding.target === "history") ? "历史记录 · 不代表当前实时状态":"未选择设备或未配置数据绑定" : "🟡 正在连接设备数据…"}
               </span>
               <label className="runtime-asset-picker"><span>当前设备</span><select aria-label="当前设备" value={selectedRuntimeAssetId ?? ""} onChange={(event) => selectRuntimeAsset(event.target.value || null)}><option value="">请选择设备</option>{projectAssets.map((asset) => <option key={asset.assetId} value={asset.assetId}>{asset.name}</option>)}</select></label>
               {selectedRuntimeAsset ? <button className="secondary-button compact-button" onClick={() => setShowRuntimeDetails((value) => !value)} type="button">设备详情</button> : null}

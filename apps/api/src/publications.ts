@@ -8,7 +8,7 @@ import { listAssetDataBindings } from "./asset-data-bindings";
 import { listDataSources } from "./data-sources";
 import { getModelAssetRow,inspectStoredModelAsset,type ModelAsset } from "./model-assets";
 import { listImageAssets } from "./image-assets";
-import { parseRuntimeProjectSnapshot,runtimeResourceIds,type RuntimeProjectSnapshot,type PublicationVersion,type PublicationPointer } from "../../../shared/runtime-project";
+import { requiredRuntimeCapabilities,parseRuntimeProjectSnapshot,runtimeResourceIds,type RuntimeProjectSnapshot,type PublicationVersion,type PublicationPointer } from "../../../shared/runtime-project";
 
 const digest = async (bytes:Uint8Array):Promise<string> => [...new Uint8Array(await crypto.subtle.digest("SHA-256",bytes as Uint8Array<ArrayBuffer>))].map((value) => value.toString(16).padStart(2,"0")).join("");
 type DraftIdentity = { id:string;name:string;runtime_revision:number };
@@ -100,7 +100,7 @@ export async function captureRuntimeSnapshot(env:AppEnv,projectId:string,expecte
     for (const image of images) await verifyPublicationResource(env,projectId,"image",image.id,image,signal);
     requireActiveRequest(signal); const current = await draftIdentity(env,projectId);
     if (current.runtime_revision !== identity.runtime_revision) { if (expectedRevision !== undefined) throw conflict(); continue; }
-    try { return parseRuntimeProjectSnapshot({ kind:"newpower.runtime-project",snapshotVersion:2,alarmRules,requiredCapabilities:alarmRules.length ? ["alarm-rules-v1"]:[],project:{ id:projectId,name:identity.name,runtimeRevision:identity.runtime_revision },definition,assets,assetDataBindings,dataSources,legacyModelNames,resources:{ models:[...models.values()].sort((a,b) => a.id.localeCompare(b.id)),images } }); }
+    try { return parseRuntimeProjectSnapshot({ kind:"newpower.runtime-project",snapshotVersion:2,alarmRules,requiredCapabilities:requiredRuntimeCapabilities({ definition,alarmRules }),project:{ id:projectId,name:identity.name,runtimeRevision:identity.runtime_revision },definition,assets,assetDataBindings,dataSources,legacyModelNames,resources:{ models:[...models.values()].sort((a,b) => a.id.localeCompare(b.id)),images } }); }
     catch (reason) { throw new AppError(409,"publication_dependencies_invalid",reason instanceof Error ? reason.message : "Runtime snapshot validation failed."); }
   }
   throw conflict();

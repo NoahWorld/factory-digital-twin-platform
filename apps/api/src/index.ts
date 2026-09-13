@@ -1,3 +1,4 @@
+import { parseHistorySeriesQuery } from "../../../shared/history-series";
 import { parseAlarmQuery } from "../../../shared/alarms";
 import { readAlarmConfiguration,replaceAlarmRules } from "./alarm-rules";
 import { parseTelemetryQuery } from "../../../shared/telemetry";
@@ -784,13 +785,14 @@ const handleApiRequest = async (
     return json({ ...await replaceAlarmRules(env,projectId,user.id,await readJsonObject(request,256*1024)),requestId });
   }
 
-  const historyMatch = pathname.match(/^\/api\/v1\/projects\/([^/]+)(?:\/versions\/([^/]+))?\/telemetry\/(history|diagnostics)$/);
+  const historyMatch = pathname.match(/^\/api\/v1\/projects\/([^/]+)(?:\/versions\/([^/]+))?\/telemetry\/(history|diagnostics|series)$/);
   if (method === "GET" && historyMatch) {
     const projectId = decodePathSegment(historyMatch[1]),versionId = historyMatch[2] ? decodePathSegment(historyMatch[2]):undefined;
     await requireProjectAccess(env,await getAuthenticatedUser(env,request),projectId);
     if (versionId) await readPublicationVersion(env,projectId,versionId);
     if (!env.TELEMETRY) throw new AppError(503,"telemetry_unavailable","This host does not provide persistent history. Use the independent runtime.");
     if (historyMatch[3] === "diagnostics") return json({ diagnostics:env.TELEMETRY.diagnostics(projectId),requestId });
+    if (historyMatch[3] === "series") { if (!env.TELEMETRY.querySeries) throw new AppError(503,"history_series_unavailable","当前宿主不提供历史曲线查询。");return json({ ...env.TELEMETRY.querySeries(projectId,parseHistorySeriesQuery(url.searchParams,versionId ?? "draft")),diagnostics:env.TELEMETRY.diagnostics(projectId),requestId }); }
     const query = parseTelemetryQuery(url.searchParams,versionId ?? "draft");
     return json({ ...env.TELEMETRY.query(projectId,query),diagnostics:env.TELEMETRY.diagnostics(projectId),requestId });
   }

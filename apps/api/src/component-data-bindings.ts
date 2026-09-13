@@ -27,9 +27,10 @@ export async function validateComponentReferences(
 ): Promise<ComponentBinding[]> {
   const active = validateLocalComponentReferences(nodes, definitions);
   if (active.length === 0) return [];
-  const catalog = await listMetricCatalog(env, projectId);
+  const [catalog,assets] = await Promise.all([listMetricCatalog(env,projectId),env.DB.prepare("SELECT asset_key AS assetId FROM assets WHERE project_id=?").bind(projectId).all<{ assetId:string }>()]);
+  const assetIds = new Set(assets.results.map((asset) => asset.assetId));
   for (const binding of active) {
-    const error = validateBindingCatalog(binding, catalog);
+    const error = validateBindingCatalog(binding,catalog,assetIds);
     if (error) throw new AppError(400, "invalid_component_binding_metric", `绑定 ${binding.id}：${error}`);
   }
   return active;

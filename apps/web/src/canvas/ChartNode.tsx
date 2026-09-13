@@ -12,7 +12,7 @@ type ChartSize = { width: number; height: number };
 
 const SERIES_COLORS = ["#46e3b7", "#55d8ff", "#ffbd59", "#a78bfa", "#ff6b7a", "#5aa0ff", "#7ed957", "#ff8f5c"];
 
-const useChartSize = () => {
+export const useChartSize = () => {
   const svgRef = useRef<SVGSVGElement>(null);
   const animationFrameRef = useRef<number | null>(null);
   const [size, setSize] = useState<ChartSize>({ width: 0, height: 0 });
