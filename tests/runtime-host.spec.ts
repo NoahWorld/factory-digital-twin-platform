@@ -35,6 +35,9 @@ test("a copied Node bundle starts without the workspace, preserves project CAS a
       const now = new Date().toISOString(); await fixtureDb.prepare("INSERT INTO project_members (project_id,user_id,role,created_at,updated_at) VALUES(?,?,'viewer',?,?)").bind(demo.projectId,user.id,now,now).run();
     } finally { fixtureDb.close(); }
     viewer = await apiRequest.newContext({ baseURL: runtime.url }); expect((await viewer.post("/api/v1/auth/login",{ data: { email: viewerEmail,password: viewerPassword } })).status()).toBe(200);
+    const viewerSources = (await (await viewer.get(`${path}/data-sources`)).json()).dataSources;
+    expect(viewerSources).toHaveLength(2); expect(viewerSources.every((source:{ config:{ url:string;credentialRef:string|null;timestampPath:string|null } }) => source.config.url === "" && source.config.credentialRef === null && source.config.timestampPath === null)).toBe(true);
+    expect((await viewer.post(`${path}/data-sources/${viewerSources[0].id}/test`)).status()).toBe(403);
     expect((await viewer.get(`${path}/definition`)).status()).toBe(200); expect((await viewer.patch(`${path}/definition`,{ data: { ...patch,expectedRevision: definition.revision } })).status()).toBe(403);
     const requests: string[] = []; page.on("request",(request) => { if (new URL(request.url()).pathname.startsWith("/api/")) requests.push(request.url()); });
     await page.goto(`${runtime.url}/#/projects`); await page.getByLabel("邮箱",{ exact: true }).fill(email); await page.getByLabel("密码",{ exact: true }).fill(password); await page.getByRole("button",{ name: "登录平台",exact: true }).click();
@@ -61,10 +64,15 @@ test("Node HTTP returns bounded JSON and upload errors without consuming an unli
     const response = await api.post("/api/v1/auth/bootstrap",{ headers: { "x-bootstrap-token": runtime.bootstrap },data: JSON.stringify({ padding: "x".repeat(70000) }) });
     expect(response.status(),await response.text()).toBe(413); expect((await response.json()).error).toBe("request_body_too_large");
     expect((await (await api.get("/api/v1/auth/bootstrap-status")).json()).setupRequired).toBe(true);
-    let produced = 0;
-    const body = new ReadableStream<Uint8Array>({ pull(controller) { produced++; if (produced > 100) controller.close(); else controller.enqueue(new TextEncoder().encode("x".repeat(65536))); } });
-    const streamed = await fetch(`${runtime.url}/api/v1/auth/bootstrap`,{ method: "POST",headers: { "x-bootstrap-token": runtime.bootstrap,"content-type": "application/json" },body,duplex: "half" } as RequestInit);
-    expect(streamed.status).toBe(413); await streamed.text(); expect(produced).toBeLessThan(100);
+    let produced = 0,release!:() => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    // More than the API budget is available, but the request cannot finish until
+    // the error response arrives. This avoids measuring Undici/OS prebuffering.
+    const body = new ReadableStream<Uint8Array>({ async pull(controller) { produced++; if (produced > 8) { await gate; controller.close(); } else controller.enqueue(new TextEncoder().encode("x".repeat(65536))); } });
+    try {
+      const streamed = await fetch(`${runtime.url}/api/v1/auth/bootstrap`,{ method: "POST",headers: { "x-bootstrap-token": runtime.bootstrap,"content-type": "application/json" },body,duplex: "half",signal:AbortSignal.timeout(5000) } as RequestInit);
+      expect(streamed.status).toBe(413); expect(streamed.headers.get("connection")).toBe("close"); await streamed.text(); expect(produced).toBeLessThanOrEqual(9);
+    } finally { release(); }
     expect((await (await api.get("/api/v1/auth/bootstrap-status")).json()).setupRequired).toBe(true);
   } finally { await api.dispose(); await runtime.dispose(); }
 });

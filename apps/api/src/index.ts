@@ -814,7 +814,9 @@ const handleApiRequest = async (
     const project = await requireProjectAccess(env, user, projectId);
 
     if (method === "GET") {
-      return json({ dataSources: await listDataSources(env, projectId), requestId });
+      const sources = await listDataSources(env,projectId);
+      const dataSources = canEditProject(user,project) ? sources : sources.map((source) => ({ ...source,config:{ ...source.config,url:"",credentialRef:null,...("timestampPath" in source.config ? { timestampPath:null } : {}) } }));
+      return json({ dataSources,requestId });
     }
     if (!canEditProject(user, project)) {
       throw new AppError(

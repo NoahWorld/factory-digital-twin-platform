@@ -6,6 +6,7 @@ export type DataSourceType = "rest_polling" | "websocket";
 
 export type RestPollingConfig = {
   url: string;
+  endpointRef?: string;
   intervalSeconds: number;
   timeoutMs: number;
   timestampPath: string | null;
@@ -14,6 +15,7 @@ export type RestPollingConfig = {
 
 export type WebSocketConfig = {
   url: string;
+  endpointRef?: string;
   heartbeatSeconds: number;
   reconnectMaxSeconds: number;
   credentialRef: string | null;
@@ -56,6 +58,7 @@ type DataSourceRow = {
 const dataSourceFields = new Set(["sourceType", "name", "config"]);
 const REST_CONFIG_FIELDS = new Set([
   "url",
+  "endpointRef",
   "intervalSeconds",
   "timeoutMs",
   "timestampPath",
@@ -63,6 +66,7 @@ const REST_CONFIG_FIELDS = new Set([
 ]);
 const WEBSOCKET_CONFIG_FIELDS = new Set([
   "url",
+  "endpointRef",
   "heartbeatSeconds",
   "reconnectMaxSeconds",
   "credentialRef",
@@ -174,7 +178,7 @@ const validateTimestampPath = (value: unknown): string | null => {
   return path;
 };
 
-const validateConnectionUrl = (
+export const validateConnectionUrl = (
   value: unknown,
   protocols: string[],
   sourceLabel: string,
@@ -232,6 +236,9 @@ const validateConfig = (
   value: unknown,
 ): DataSourceConfig => {
   const config = requireObject(value, "config");
+  const endpointRef = config.endpointRef == null || config.endpointRef === "" ? undefined : validateCredentialRef(config.endpointRef) ?? undefined;
+  if (endpointRef && config.url !== "") throw new AppError(400,"data_source_endpoint_conflict","Use either a logical endpoint reference or a direct URL.");
+  const endpoint = endpointRef ? { endpointRef } : {};
   if (sourceType === "rest_polling") {
     assertKnownFields(
       config,
@@ -240,7 +247,8 @@ const validateConfig = (
       "REST polling config",
     );
     return {
-      url: validateConnectionUrl(config.url, ["http:", "https:"], "REST polling"),
+      url: endpointRef ? "" : validateConnectionUrl(config.url, ["http:", "https:"], "REST polling"),
+      ...endpoint,
       intervalSeconds: validateInteger(
         config.intervalSeconds,
         "config.intervalSeconds",
@@ -260,7 +268,8 @@ const validateConfig = (
     "WebSocket config",
   );
   return {
-    url: validateConnectionUrl(config.url, ["ws:", "wss:"], "WebSocket"),
+    url: endpointRef ? "" : validateConnectionUrl(config.url, ["ws:", "wss:"], "WebSocket"),
+    ...endpoint,
     heartbeatSeconds: validateInteger(
       config.heartbeatSeconds,
       "config.heartbeatSeconds",

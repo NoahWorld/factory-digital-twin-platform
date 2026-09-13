@@ -23,6 +23,7 @@ type DataSourceDraft = {
   sourceType: DataSourceType;
   name: string;
   url: string;
+  endpointRef: string;
   intervalSeconds: string;
   timeoutMs: string;
   timestampPath: string;
@@ -36,6 +37,7 @@ const emptyDraft = (): DataSourceDraft => ({
   sourceType: "rest_polling",
   name: "",
   url: "",
+  endpointRef: "",
   intervalSeconds: "10",
   timeoutMs: "5000",
   timestampPath: "",
@@ -49,6 +51,7 @@ const draftFromSource = (source: ProjectDataSource): DataSourceDraft => ({
   sourceType: source.sourceType,
   name: source.name,
   url: source.config.url,
+  endpointRef: source.config.endpointRef ?? "",
   intervalSeconds: source.sourceType === "rest_polling"
     ? String(source.config.intervalSeconds)
     : "10",
@@ -173,14 +176,16 @@ export function DataSourcePanel({
     try {
       const config = draft.sourceType === "rest_polling"
         ? {
-            url: draft.url,
+            url: draft.endpointRef.trim() ? "" : draft.url.trim(),
+            ...(draft.endpointRef.trim() ? { endpointRef:draft.endpointRef.trim() } : {}),
             intervalSeconds: requiredInteger(draft.intervalSeconds, "轮询周期"),
             timeoutMs: requiredInteger(draft.timeoutMs, "请求超时"),
             timestampPath: draft.timestampPath || null,
             credentialRef: draft.credentialRef || null,
           }
         : {
-            url: draft.url,
+            url: draft.endpointRef.trim() ? "" : draft.url.trim(),
+            ...(draft.endpointRef.trim() ? { endpointRef:draft.endpointRef.trim() } : {}),
             heartbeatSeconds: requiredInteger(draft.heartbeatSeconds, "心跳周期"),
             reconnectMaxSeconds: requiredInteger(
               draft.reconnectMaxSeconds,
@@ -329,6 +334,7 @@ export function DataSourcePanel({
                     ...current,
                     sourceType: event.target.value as DataSourceType,
                     url: "",
+                    endpointRef: "",
                   }))}
                   value={draft.sourceType}
                 >
@@ -337,20 +343,25 @@ export function DataSourcePanel({
                 </select>
               </label>
               <label className="is-wide">
+                <span>环境端点引用（可选）</span>
+                <input aria-label="环境端点引用（可选）" aria-describedby="data-source-endpoint-help" disabled={formDisabled} maxLength={120} value={draft.endpointRef} placeholder="例如：equipment-gateway" onChange={(event) => setDraft((current) => ({ ...current,endpointRef:event.target.value,url:event.target.value ? "" : current.url }))} />
+                <small id="data-source-endpoint-help">使用引用后，地址与认证由运行服务器配置；项目只保存引用名称。</small>
+              </label>
+              <label className="is-wide">
                 <span>{draft.sourceType === "rest_polling" ? "HTTP(S) 地址" : "WS(S) 地址"}</span>
                 <input
-                  disabled={formDisabled}
+                  disabled={formDisabled || !!draft.endpointRef}
                   maxLength={2048}
                   onChange={(event) => setDraft((current) => ({
                     ...current,
                     url: event.target.value,
                   }))}
                   placeholder={
-                    draft.sourceType === "rest_polling"
+                    draft.endpointRef ? "由服务器环境解析，不在项目中保存" : !editable ? "连接地址仅对编辑者可见" : draft.sourceType === "rest_polling"
                       ? "http://gateway.local/api/equipment/state"
                       : "ws://gateway.local/realtime"
                   }
-                  required
+                  required={!draft.endpointRef}
                   type="url"
                   value={draft.url}
                 />

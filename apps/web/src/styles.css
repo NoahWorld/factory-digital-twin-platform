@@ -238,7 +238,8 @@ label > span {
   font-weight: 650;
 }
 
-input {
+input,
+.data-source-form-grid select {
   width: 100%;
   padding: 12px 13px;
   border: 1px solid #2e4358;
@@ -252,7 +253,8 @@ input::placeholder {
   color: #61798c;
 }
 
-input:focus {
+input:focus,
+.data-source-form-grid select:focus {
   border-color: #76d3fa;
   box-shadow: 0 0 0 3px rgba(102, 201, 241, 0.12);
 }

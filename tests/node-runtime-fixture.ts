@@ -5,14 +5,14 @@ import { join,resolve } from "node:path";
 import { randomBytes } from "node:crypto";
 import type { TestInfo } from "@playwright/test";
 
-export async function nodeRuntimeFixture(testInfo: TestInfo) {
+export async function nodeRuntimeFixture(testInfo: TestInfo,allowedHosts?:string[]) {
   const root = testInfo.outputPath("standalone"),bundle = join(root,"bundle"),data = join(root,"data"),config = join(root,"runtime.env");
   const bootstrap = randomBytes(24).toString("hex");
   const mock = new URL(process.env.NEWPOWER_MOCK_URL ?? "http://127.0.0.1:8790");
   if (mock.protocol !== "http:" || !["127.0.0.1","localhost"].includes(mock.hostname)) throw new Error("Node runtime fixtures require a local mock source.");
   await mkdir(root,{ recursive: true,mode: 0o700 });
   await cp(resolve("apps/runtime/dist"),bundle,{ recursive: true });
-  await writeFile(config,`BOOTSTRAP_TOKEN=${bootstrap}\nRUNTIME_POLLING_ENABLED=true\nRUNTIME_ALLOWED_HOSTS=${mock.host}\n`,{ mode: 0o600 });
+  await writeFile(config,`BOOTSTRAP_TOKEN=${bootstrap}\nRUNTIME_POLLING_ENABLED=true\nRUNTIME_ALLOWED_HOSTS=${allowedHosts?.join(",") ?? mock.host}\n`,{ mode: 0o600 });
   const log = createWriteStream(join(root,"runtime.log"),{ flags: "a",mode: 0o600 });
   let child: ChildProcessWithoutNullStreams | null = null;
   const start = async () => {
@@ -42,6 +42,6 @@ export async function nodeRuntimeFixture(testInfo: TestInfo) {
       current.kill("SIGTERM");
     });
   };
-  try { const url = await start(); return { url,bootstrap,dataDirectory: data,bundleDirectory: bundle,databasePath: join(data,"config.sqlite"),restart: async () => { await stop(); return start(); },dispose: async () => { try { await stop(); } finally { log.end(); } } }; }
+  try { const url = await start(); return { url,bootstrap,dataDirectory: data,bundleDirectory: bundle,databasePath: join(data,"config.sqlite"),setSources: async (value:unknown) => { await writeFile(join(root,"sources.json"),JSON.stringify(value),{ mode:0o600 }); await writeFile(config,`BOOTSTRAP_TOKEN=${bootstrap}\nRUNTIME_POLLING_ENABLED=true\nRUNTIME_ALLOWED_HOSTS=${allowedHosts?.join(",") ?? mock.host}\nSOURCE_ENVIRONMENT_FILE=sources.json\n`,{ mode:0o600 }); },restart: async () => { await stop(); return start(); },dispose: async () => { try { await stop(); } finally { log.end(); } } }; }
   catch (reason) { try { await stop(); } finally { log.end(); } throw reason; }
 }

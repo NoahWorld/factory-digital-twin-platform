@@ -30,3 +30,5 @@ Node 宿主提供项目内 `GET /runtime/capabilities` 和 `GET /runtime/stream?
 SSE 每次发送完整标准快照及服务器 epoch/订阅 sequence，最多1MiB；慢消费者只保留一个已排队帧和最新待发送帧，不无限累积。15秒心跳及会话/项目权限复核，取消、失权、关闭、超限均释放需求。运行快照不再提供客户 sourcePath；映射编辑层保留其配置职责。
 
 这一检查点只完成按需 REST。显式持续采集、环境逻辑端点/凭据解析和真实 WebSocket 上游仍接续实施；临时Node数据目录与Worker库继续分开。
+
+逻辑环境端点已实现：endpointRef与直接URL互斥，Node私有sources JSON按项目绑定有效地址及凭据，服务重启载入。原项目源配置不随环境变化；REST即时/集中采集和连接测试共用解析及限制。查看者列表隐藏地址/凭据配置，标准流不提供sourcePath；上游原文私有回显被拒绝。实际UI/认证/换环境与出口检查见acceptance.md。持续模式与WS仍是下一项。

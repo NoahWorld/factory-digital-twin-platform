@@ -37,6 +37,7 @@ export type ObjectBucket = {
 };
 
 export type AppEnv = {
+  RESOLVE_SOURCE?: (source: import("./data-sources").DataSource) => { url:string;headers:Record<string,string> };
   CENTRAL_RUNTIME?: import("../../../shared/runtime-stream").CentralRuntime;
   DB: Database;
   PROJECT_FILES?: ObjectBucket;

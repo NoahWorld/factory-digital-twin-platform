@@ -13,3 +13,7 @@ node server.mjs --data-dir ./data --config ./runtime.env --port 8792
 配置库迁移沿用 `apps/api/migrations`，产物携带对应 SQL 和校验历史。初次创建新库；后续有迁移时先在线备份并检查完整性，成功后才执行事务。未知/漂移的迁移历史、失败备份、SQL错误或外键问题均阻止升级。不会自动重置或重放未跟踪的旧数据库；现有 Worker 验收库继续保留。
 
 SQLite 批次使用原子事务、准确 changes 和外键。当前 Node 24.18 尚没有 StatementSync.close，适配器限制保留的预编译语句数量，并在关闭时释放数据库连接。SQLite 原生模块在 Node 24 文档中标为 release candidate，当前方法均以本机 24.18 实测为准，未直接照用较新文档新增接口。参考[Node 24 官方 SQLite 文档](https://raw.githubusercontent.com/nodejs/node/v24.x/doc/api/sqlite.md)。
+
+环境端点通过 `SOURCE_ENVIRONMENT_FILE`（相对runtime.env）或 `--sources` 指定私有JSON，参考 `sources.example.json`。在数据源表单填写“环境端点引用”，地址留空；服务器按引用解析实际URL，并要求当前项目ID明确列于该端点的projectIds，仍检查精确host:port白名单。凭据只能用于绑定的逻辑端点，不能携带到任意直接URL；服务启动时载入，修改文件后需重启。文件不得放在public或项目导出包内。当前按此方式支持REST，WS执行仍待后续接入。
+
+运行/测试响应拒绝上游回显已配置的凭据或逻辑端点实际地址，错误只报告代码；原始上游内容不记日志。普通查看者的数据源列表隐藏直接URL、凭据引用及时间戳路径；旧编辑配置仍支持直接URL，实际内网交付应切换逻辑端点。

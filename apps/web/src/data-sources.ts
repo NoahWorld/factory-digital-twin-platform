@@ -2,6 +2,7 @@ export type DataSourceType = "rest_polling" | "websocket";
 
 export type RestPollingConfig = {
   url: string;
+  endpointRef?: string;
   intervalSeconds: number;
   timeoutMs: number;
   timestampPath: string | null;
@@ -10,6 +11,7 @@ export type RestPollingConfig = {
 
 export type WebSocketConfig = {
   url: string;
+  endpointRef?: string;
   heartbeatSeconds: number;
   reconnectMaxSeconds: number;
   credentialRef: string | null;

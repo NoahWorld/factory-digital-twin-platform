@@ -278,3 +278,20 @@ M4本地技术验收通过。M6a继续建立独立宿主、集中采集和环境
 - `m6a-central-transport-check.log`、`m6a-central-transport-build.log`：三包check和完整build通过；`m6a-central-smoke.log`：Worker旧REST smoke12通过。
 
 这是按需REST检查点；持续采集、逻辑环境地址和凭据、真实WS上游及后续M5–M8仍未完成。M6a与总目标保持进行中。
+
+## M6a 逻辑环境端点与凭据检查点（2026-09-13）
+
+起点 `3f265a2`。数据源可保存 endpointRef，实际URL和认证头来自Node的私有sources JSON；端点绑定明确项目ID及凭据引用，不能将凭据附到任意直接URL或其他项目。服务器启动载入并验证环境，项目定义不包含环境值；静态目录禁止放置环境文件。环境与直接URL共用连接URL校验，精确host:port、拒绝重定向、超时和响应限制继续生效。
+
+实际Chrome在数据源面板填写逻辑引用→保存→连接测试及字段发现；HTTP服务只接受正确服务器认证头。按资产即时采集与集中SSE均收到标准数据，响应中无凭据、有效端点或sourcePath。关闭宿主、改变私有环境指向另一地址后重启，同一项目和源配置完全不变，读到新端点72.4值。已查看最终逻辑引用界面截图；新增输入具有明确可访问名称，连接类型沿用暗色表单样式。
+
+权限和出口：查看者的数据源列表隐藏直接URL、凭据引用及源时间戳路径，禁止连接测试；原始字段映射只由配置层持有。上游原文回显配置中的认证信息或环境地址会以 `data_source_private_echo` 拒绝，不把其内容带入错误或标准缓存。合成反例覆盖大小写不敏感Bearer、Basic处理、短密钥子串和不含端口的主机名；这不是对任意编码/变换内容的通用泄露检测。
+
+回归发现超大上传拒绝后HTTP层仍排空后续请求体，已改为暂停接收、发出最终错误并关闭连接。旧生产者计数会受Undici/操作系统预缓冲影响，测试改为主动阻止请求结束，证明服务器在其结束前返回413并声明关闭，未降低API字节限制。
+
+- `m6a-environment-regression.log`：16项中15通过，1项旧上传生产者计数失败；上述停止接收修复后复验通过。
+- `m6a-environment-http.log`：宿主、资源/关闭、环境UI/鉴权/重启9项通过。
+- `m6a-environment-final.log`：共享URL校验后的最终环境及宿主5项通过，含真实标准采集/SSE出口、查看者隐藏和413早返回。
+- `m6a-environment-final-check.log`、`m6a-environment-final-build.log`、`m6a-environment-source-build.log`：类型检查与构建通过；`m6a-environment-smoke.log`：Worker原REST smoke12通过。
+
+前两次环境UI测试未找到输入的精确名称：说明文字位于label中，已给输入明确名称并关联帮助文本；修复后实际操作通过。旧编辑配置仍兼容直接URL；内网交付采用逻辑端点。持续采集、WS及后续M5–M8继续进行，未关闭总目标。

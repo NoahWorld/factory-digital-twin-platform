@@ -347,25 +347,44 @@ const readLimitedText = async (
   return { text: new TextDecoder().decode(body), byteSize: totalBytes };
 };
 
+const rejectPrivateEcho = (payload:unknown,config:RestPollingConfig,headers:Record<string,string>):void => {
+  const secrets = new Set(Object.values(headers).filter(Boolean));
+  const authorization = headers.authorization;
+  const bearer = authorization?.match(/^Bearer +(.+?) *$/i),basic = authorization?.match(/^Basic +(\S+) *$/i);
+  if (bearer) secrets.add(bearer[1]);
+  if (basic) {
+    try {
+      const bytes = atob(basic[1]),unicode = new TextDecoder().decode(Uint8Array.from(bytes,(character) => character.charCodeAt(0)));
+      for (const decoded of [bytes,unicode]) { secrets.add(decoded); const colon = decoded.indexOf(":"); if (colon >= 0) secrets.add(decoded.slice(colon+1)); }
+    } catch { /* Invalid header is handled by upstream authentication. */ }
+  }
+  if (headers.cookie) for (const cookie of headers.cookie.split(";")) { const index = cookie.indexOf("="); if (index >= 0) secrets.add(cookie.slice(index+1).trim()); }
+  if (config.endpointRef) { const endpoint = new URL(config.url); secrets.add(endpoint.href); secrets.add(endpoint.host); secrets.add(endpoint.hostname); secrets.add(endpoint.hostname.replace(/^\[|\]$/g,"")); }
+  secrets.delete(""); if (!secrets.size) return;
+  const contains = (value:string) => [...secrets].some((secret) => value.includes(secret));
+  const pending:unknown[] = [payload];
+  while (pending.length) {
+    const value = pending.pop();
+    if (typeof value === "string" && contains(value)) throw new AppError(502,"data_source_private_echo","Upstream echoed private environment information; the response was rejected.");
+    if (value && typeof value === "object") for (const [key,item] of Object.entries(value)) {
+      if (contains(key)) throw new AppError(502,"data_source_private_echo","Upstream echoed private environment information; the response was rejected.");
+      pending.push(item);
+    }
+  }
+};
+
 const fetchJson = async (
   source: DataSource,
   config: RestPollingConfig,
   requestId: string,
   signal?: AbortSignal,
+  headers: Record<string,string> = {},
 ): Promise<{
   payload: unknown;
   collectedAt: string;
   durationMs: number;
   responseBytes: number;
 }> => {
-  if (config.credentialRef) {
-    throw new AppError(
-      501,
-      "credential_resolution_not_implemented",
-      `Data source ${source.id} references a credential, but the local credential resolver is not implemented.`,
-    );
-  }
-
   if (signal?.aborted) throw new AppError(499,"data_source_cancelled",`Data source ${source.id} collection was cancelled.`);
   const controller = new AbortController();
   const cancel = () => controller.abort(); signal?.addEventListener("abort",cancel,{ once: true });
@@ -375,6 +394,7 @@ const fetchJson = async (
   try {
     response = await fetch(config.url, {
       headers: {
+        ...headers,
         accept: "application/json",
         "x-factory-twin-request-id": requestId,
       },
@@ -396,6 +416,7 @@ const fetchJson = async (
     } catch {
       throw new AppError(502, "data_source_invalid_json", `Data source ${source.id} did not return valid JSON.`);
     }
+    rejectPrivateEcho(payload,config,headers);
     return {
       payload,
       collectedAt: new Date().toISOString(),
@@ -411,7 +432,7 @@ const fetchJson = async (
     throw new AppError(
       502,
       "data_source_request_failed",
-      `Data source ${source.id} request failed: ${error instanceof Error ? error.message : String(error)}`,
+      `Data source ${source.id} request failed.`,
     );
   } finally {
     if (response && !consumed) { controller.abort(); await response.body?.cancel().catch(() => {}); }
@@ -422,7 +443,7 @@ const fetchJson = async (
 const requireAllowedRestSource = (
   env: AppEnv,
   source: DataSource,
-): RestPollingConfig => {
+): { config:RestPollingConfig;headers:Record<string,string> } => {
   if (env.RUNTIME_POLLING_ENABLED !== "true") {
     throw new AppError(503, "runtime_polling_disabled", "REST runtime polling is disabled on this server.");
   }
@@ -430,7 +451,10 @@ const requireAllowedRestSource = (
   if (allowedHosts.size === 0) {
     throw new AppError(503, "runtime_allowed_hosts_missing", "REST runtime polling requires at least one explicitly allowed host.");
   }
-  const config = requireRestConfig(source);
+  const original = requireRestConfig(source);
+  if (!env.RESOLVE_SOURCE && (original.endpointRef || original.credentialRef)) throw new AppError(503,"source_environment_unavailable","This source requires server environment configuration.");
+  const resolved = env.RESOLVE_SOURCE?.(source) ?? { url:original.url,headers:{} };
+  const config = { ...original,url:resolved.url };
   const url = new URL(config.url);
   if (!allowedHosts.has(url.host.toLowerCase())) {
     throw new AppError(
@@ -439,7 +463,7 @@ const requireAllowedRestSource = (
       `Data source ${source.id} host is not in RUNTIME_ALLOWED_HOSTS.`,
     );
   }
-  return config;
+  return { config,headers:resolved.headers };
 };
 
 export const probeRestDataSource = async (
@@ -450,8 +474,8 @@ export const probeRestDataSource = async (
   signal?: AbortSignal,
 ): Promise<RestDataSourceProbe> => {
   const source = await getDataSource(env, projectId, dataSourceId);
-  const config = requireAllowedRestSource(env, source);
-  const fetched = await fetchJson(source, config, requestId,signal);
+  const { config,headers } = requireAllowedRestSource(env, source);
+  const fetched = await fetchJson(source, config, requestId,signal,headers);
   const timestamp = inspectSourceTimestamp(fetched.payload, source, config);
   const discovery = discoverScalarFields(fetched.payload);
   return {
@@ -479,8 +503,10 @@ export const loadRuntimeAssetPlan = async (env: AppEnv, projectId: string, asset
   return { asset,bindings,sources };
 };
 
-export const fetchRuntimeSource = (env: AppEnv, source: DataSource, requestId: string, signal?: AbortSignal): Promise<SourceSample> =>
-  fetchJson(source,requireAllowedRestSource(env,source),requestId,signal);
+export const fetchRuntimeSource = (env: AppEnv, source: DataSource, requestId: string, signal?: AbortSignal): Promise<SourceSample> => {
+  const { config,headers } = requireAllowedRestSource(env,source);
+  return fetchJson(source,config,requestId,signal,headers);
+};
 
 export const normalizeRuntimeAsset = (plan: RuntimeAssetPlan, samples: Map<string,SourceSample>): AssetRuntimeState => {
   const { asset,bindings } = plan;

@@ -8,6 +8,7 @@ import { parseArgs,parseEnv } from "node:util";
 import { Readable } from "node:stream";
 import api from "../../api/src/index";
 import type { AppEnv } from "../../api/src/auth";
+import { createSourceResolver,parseSourceEnvironment } from "./source-environment";
 import { RuntimeCollector } from "./collector";
 import { SqliteDatabase } from "./sqlite-database";
 import { FileBucket } from "./file-bucket";
@@ -15,6 +16,7 @@ import { migrateRuntimeDatabase } from "./migrations";
 
 export type RuntimeOptions = {
   dataDirectory: string;
+  sourceEnvironment?: unknown;
   publicDirectory?: string;
   migrationsDirectory?: string;
   host?: string;
@@ -25,7 +27,7 @@ export type RuntimeOptions = {
 const contentTypes: Record<string,string> = { ".html": "text/html; charset=utf-8",".js": "application/javascript; charset=utf-8",".mjs": "application/javascript; charset=utf-8",".css": "text/css; charset=utf-8",".svg": "image/svg+xml",".png": "image/png",".jpg": "image/jpeg",".jpeg": "image/jpeg",".webp": "image/webp",".ico": "image/x-icon",".woff2": "font/woff2",".json": "application/json" };
 const notFound = () => new Response("Not found",{ status: 404,headers: { "content-type": "text/plain; charset=utf-8" } });
 
-function incomingBody(request: IncomingMessage): ReadableStream<Uint8Array> {
+function incomingBody(request: IncomingMessage,response:ServerResponse): ReadableStream<Uint8Array> {
   let cleanup = () => {};
   return new ReadableStream<Uint8Array>({
     start(controller) {
@@ -38,8 +40,9 @@ function incomingBody(request: IncomingMessage): ReadableStream<Uint8Array> {
     pull() { request.resume(); },
     cancel() {
       cleanup();
-      // A bounded API reader can return 413 without destroying the response socket.
-      request.once("error",() => {}); request.resume();
+      // Stop consuming a rejected upload, but let its final HTTP error flush.
+      response.setHeader("connection","close"); response.shouldKeepAlive = false;
+      request.once("error",() => {}); request.pause();
     },
   },{ highWaterMark: 65536,size: (chunk) => chunk.byteLength });
 }
@@ -101,6 +104,7 @@ export async function startRuntime(options: RuntimeOptions) {
   const [major,minor] = process.versions.node.split(".").map(Number);
   if (major !== 24 || minor < 18) throw new Error("This runtime requires Node.js 24.18 or later in the Node 24 series.");
   if (!options.dataDirectory) throw new Error("A runtime data directory is required.");
+  const resolver = createSourceResolver(parseSourceEnvironment(options.sourceEnvironment ?? { version:1,endpoints:{},credentials:{} }));
   const port = options.port ?? 8792;
   if (!Number.isInteger(port) || port < 0 || port > 65535) throw new Error("Runtime port must be an integer between 0 and 65535.");
   let origin = "";
@@ -120,7 +124,7 @@ export async function startRuntime(options: RuntimeOptions) {
   const databasePath = join(dataDirectory,"config.sqlite");
   const migration = await migrateRuntimeDatabase(databasePath,migrationsDirectory);
   const database = new SqliteDatabase(databasePath);
-  const env: AppEnv = { ...options.environment,DB: database,PROJECT_FILES: new FileBucket(join(dataDirectory,"objects")) };
+  const env: AppEnv = { ...options.environment,RESOLVE_SOURCE:resolver,DB: database,PROJECT_FILES: new FileBucket(join(dataDirectory,"objects")) };
   const collector = new RuntimeCollector(env); env.CENTRAL_RUNTIME = collector;
   const requests = new Set<AbortController>();
   const handlers = new Set<Promise<void>>();
@@ -138,7 +142,7 @@ export async function startRuntime(options: RuntimeOptions) {
       for (let index = 0; index < incoming.rawHeaders.length; index+=2) headers.append(incoming.rawHeaders[index],incoming.rawHeaders[index+1]);
       const method = incoming.method ?? "GET";
       if (!["GET","HEAD","POST","PATCH","PUT","DELETE","OPTIONS"].includes(method)) { incoming.resume(); outgoing.writeHead(405); outgoing.end("Method not allowed"); return; }
-      const request = new Request(url,{ method,headers,signal: controller.signal,...(!["GET","HEAD"].includes(method) ? { body: incomingBody(incoming),duplex: "half" } : {}) } as RequestInit);
+      const request = new Request(url,{ method,headers,signal: controller.signal,...(!["GET","HEAD"].includes(method) ? { body: incomingBody(incoming,outgoing),duplex: "half" } : {}) } as RequestInit);
       let response = url.pathname.startsWith("/api/") || url.pathname === "/api" || url.pathname === "/health" ? await api.fetch(request,env) : await staticResponse(url.pathname,method,publicDirectory);
       const dataMutation = url.pathname.match(/^\/api\/v1\/projects\/([^/]+)(?:\/(?:data-sources|assets)(?:\/|$)|$)/);
       if (response.ok && !["GET","HEAD","OPTIONS"].includes(method) && dataMutation && !url.pathname.endsWith("/test")) await collector.refresh(decodeURIComponent(dataMutation[1]));
@@ -177,16 +181,24 @@ export async function startRuntime(options: RuntimeOptions) {
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
-  const { values } = parseArgs({ options: { "data-dir": { type: "string" },config: { type: "string" },host: { type: "string" },port: { type: "string" },"public-origin": { type: "string" } } });
+  const { values } = parseArgs({ options: { "data-dir": { type: "string" },config: { type: "string" },sources: { type: "string" },host: { type: "string" },port: { type: "string" },"public-origin": { type: "string" } } });
   const configPath = values.config ?? process.env.NEWPOWER_RUNTIME_CONFIG;
   if (configPath) {
     const file = await realpath(resolve(configPath)),publicRoot = await realpath(fileURLToPath(new URL("./public",import.meta.url)));
     if (file.startsWith(publicRoot+sep)) throw new Error("Runtime environment files must remain outside public assets.");
   }
   const configuration = configPath ? parseEnv(await readFile(resolve(configPath),"utf8")) : {};
+  const sourceFile = values.sources ?? configuration.SOURCE_ENVIRONMENT_FILE;
+  let sourceEnvironment: unknown;
+  if (sourceFile) {
+    const file = await realpath(resolve(configPath ? dirname(resolve(configPath)) : process.cwd(),sourceFile));
+    const publicRoot = await realpath(fileURLToPath(new URL("./public",import.meta.url)));
+    if (file.startsWith(publicRoot+sep) || !(await stat(file)).isFile() || (await stat(file)).size > 1024*1024) throw new Error("Source environment must be a private JSON file outside public assets, at most 1 MiB.");
+    try { sourceEnvironment = JSON.parse(await readFile(file,"utf8")); } catch { throw new Error("Source environment JSON could not be read or parsed."); }
+  }
   const dataDirectory = values["data-dir"] ?? process.env.NEWPOWER_RUNTIME_DIR;
   if (!dataDirectory) throw new Error("Use --data-dir or NEWPOWER_RUNTIME_DIR to select an isolated runtime directory.");
-  const runtime = await startRuntime({ dataDirectory,host: values.host ?? process.env.NEWPOWER_RUNTIME_HOST,port: Number(values.port ?? process.env.NEWPOWER_RUNTIME_PORT ?? 8792),publicOrigin: values["public-origin"] ?? configuration.PUBLIC_ORIGIN,
+  const runtime = await startRuntime({ dataDirectory,sourceEnvironment,host: values.host ?? process.env.NEWPOWER_RUNTIME_HOST,port: Number(values.port ?? process.env.NEWPOWER_RUNTIME_PORT ?? 8792),publicOrigin: values["public-origin"] ?? configuration.PUBLIC_ORIGIN,
     environment: { BOOTSTRAP_TOKEN: configuration.BOOTSTRAP_TOKEN,RUNTIME_POLLING_ENABLED: configuration.RUNTIME_POLLING_ENABLED,RUNTIME_ALLOWED_HOSTS: configuration.RUNTIME_ALLOWED_HOSTS,SESSION_TTL_HOURS: configuration.SESSION_TTL_HOURS } });
   console.log(JSON.stringify({ event: "runtime_listening",url: runtime.url,migrations: runtime.migration.applied,verifiedBackup: runtime.migration.backupPath }));
   const stop = () => { void runtime.close().then(() => { process.exitCode = 0; },(reason) => { console.error(String(reason)); process.exitCode = 1; }); };
