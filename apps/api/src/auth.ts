@@ -38,6 +38,7 @@ export type ObjectBucket = {
 };
 
 export type AppEnv = {
+  TELEMETRY?: import("../../../shared/telemetry").TelemetryService;
   RUNTIME_DISTRIBUTION?: (signal:AbortSignal) => Response;
   PACKAGE_SERVICE?: import("../../../shared/package-service").PackageService;
   OPEN_WEBSOCKET_SOURCE?: (source:import("./data-sources").DataSource,requestId:string,onSample:(sample:import("./runtime-state").SourceSample) => void,signal:AbortSignal) => Promise<{ closed:Promise<void>;close():void }>;

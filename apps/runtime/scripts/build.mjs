@@ -9,6 +9,7 @@ const built = await build({ metafile:true, entryPoints: [fileURLToPath(new URL("
 await mkdir(`${root}dist/migrations`,{ recursive: true });
 await cp(fileURLToPath(new URL("../../api/migrations",import.meta.url)),`${root}dist/migrations`,{ recursive: true });
 await cp(fileURLToPath(new URL("../../web/dist",import.meta.url)),`${root}dist/public`,{ recursive: true });
+await cp(`${root}telemetry-migrations`,`${root}dist/telemetry-migrations`,{ recursive:true });
 
 const packages = new Map();
 for (const input of Object.keys(built.metafile.inputs)) {

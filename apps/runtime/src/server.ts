@@ -1,3 +1,4 @@
+import { TelemetryStore } from "./telemetry-store";
 import { runtimeDistribution } from "./runtime-distribution";
 import { acquireRuntimeLock } from "./runtime-lock";
 import { LocalPackageService } from "./package-service";
@@ -129,12 +130,16 @@ export async function startRuntime(options: RuntimeOptions) {
   try {
   const databasePath = join(dataDirectory,"config.sqlite");
   const migration = await migrateRuntimeDatabase(databasePath,migrationsDirectory);
-  const database = new SqliteDatabase(databasePath);
-  const env: AppEnv = { ...options.environment,RUNTIME_DISTRIBUTION:(signal) => runtimeDistribution(bundle,signal),RESOLVE_SOURCE:resolver,DB: database,PROJECT_FILES: new FileBucket(join(dataDirectory,"objects")) };
+  const telemetryPath = join(dataDirectory,"telemetry.sqlite");
+  await migrateRuntimeDatabase(telemetryPath,join(bundle,"telemetry-migrations"),join(dataDirectory,"telemetry-backups"));
+  const telemetry = new TelemetryStore(telemetryPath);
+  let database:SqliteDatabase;
+  try { database = new SqliteDatabase(databasePath); } catch (reason) { telemetry.close(); throw reason; }
+  const env: AppEnv = { ...options.environment,TELEMETRY:telemetry,RUNTIME_DISTRIBUTION:(signal) => runtimeDistribution(bundle,signal),RESOLVE_SOURCE:resolver,DB: database,PROJECT_FILES: new FileBucket(join(dataDirectory,"objects")) };
   env.OPEN_WEBSOCKET_SOURCE = (source,requestId,onSample,signal) => openWebSocketSource(env,source,requestId,onSample,signal);
   const collector = new RuntimeCollector(env); env.CENTRAL_RUNTIME = collector;
   const packages = new LocalPackageService(env,join(dataDirectory,"project-imports")); env.PACKAGE_SERVICE = packages;
-  try { await packages.initialize(); await collector.start(); } catch (reason) { await collector.close(); database.close(); throw reason; }
+  try { await telemetry.reconcileProjects(new Set((await database.prepare("SELECT id FROM projects").all<{ id:string }>()).results.map((row) => row.id))); await packages.initialize(); await collector.start(); } catch (reason) { await collector.close(); try { telemetry.close(); } finally { database.close(); } throw reason; }
   const requests = new Set<AbortController>();
   const handlers = new Set<Promise<void>>();
   let stopping = false;
@@ -153,8 +158,10 @@ export async function startRuntime(options: RuntimeOptions) {
       if (!["GET","HEAD","POST","PATCH","PUT","DELETE","OPTIONS"].includes(method)) { incoming.resume(); outgoing.writeHead(405); outgoing.end("Method not allowed"); return; }
       const request = new Request(url,{ method,headers,signal: controller.signal,...(!["GET","HEAD"].includes(method) ? { body: incomingBody(incoming,outgoing),duplex: "half" } : {}) } as RequestInit);
       let response = url.pathname.startsWith("/api/") || url.pathname === "/api" || url.pathname === "/health" ? await api.fetch(request,env) : await staticResponse(url.pathname,method,publicDirectory);
-      const dataMutation = url.pathname.match(/^\/api\/v1\/projects\/([^/]+)(?:\/(?:data-sources|assets)(?:\/|$)|$)/);
-      if (response.ok && !["GET","HEAD","OPTIONS"].includes(method) && dataMutation && !url.pathname.endsWith("/test")) await collector.refresh(decodeURIComponent(dataMutation[1]));
+      const deletedProject = method === "DELETE" ? url.pathname.match(/^\/api\/v1\/projects\/([^/]+)$/):null;
+      if (response.ok && deletedProject) collector.removeProject(decodeURIComponent(deletedProject[1]));
+      const dataMutation = url.pathname.match(/^\/api\/v1\/projects\/([^/]+)(?:\/(?:data-sources|assets|definition|canvas|model-assets|image-assets)(?:\/|$)|$)/);
+      if (response.ok && !["GET","HEAD","OPTIONS"].includes(method) && dataMutation && !deletedProject && !url.pathname.endsWith("/test")) await collector.refresh(decodeURIComponent(dataMutation[1]));
       const activation = url.pathname.match(/^\/api\/v1\/projects\/([^/]+)\/versions\/[^/]+\/activate$/);
       if (response.ok && method === "POST" && activation) await collector.refreshPublication(decodeURIComponent(activation[1]));
       const restored = url.pathname.match(/^\/api\/v1\/projects\/([^/]+)\/versions\/[^/]+\/restore-draft$/);
@@ -171,8 +178,8 @@ export async function startRuntime(options: RuntimeOptions) {
   });
   try {
     server.listen(port,options.host ?? "127.0.0.1"); await once(server,"listening");
-  } catch (reason) { await collector.close(); database.close(); throw reason; }
-  const address = server.address(); if (!address || typeof address === "string") { database.close(); throw new Error("Runtime did not bind a TCP address."); }
+  } catch (reason) { await collector.close(); try { telemetry.close(); } finally { database.close(); } throw reason; }
+  const address = server.address(); if (!address || typeof address === "string") { await collector.close(); try { telemetry.close(); } finally { database.close(); } throw new Error("Runtime did not bind a TCP address."); }
   const localUrl = `http://${address.family === "IPv6" ? `[${address.address}]` : address.address}:${address.port}`;
   origin ||= localUrl;
   let closing: Promise<void> | null = null;
@@ -184,8 +191,8 @@ export async function startRuntime(options: RuntimeOptions) {
     let timeout: ReturnType<typeof setTimeout> | undefined;
     try {
       await Promise.race([settled,new Promise<never>((_,reject) => { timeout = setTimeout(() => reject(new Error("Runtime requests did not stop within ten seconds; database closure is deferred until they finish.")),10000); })]);
-      database.close(); await unlock();
-    } catch (reason) { void settled.then(async () => { database.close(); await unlock(); }); throw reason; }
+      try { telemetry.close(); } finally { database.close(); } await unlock();
+    } catch (reason) { void settled.then(async () => { try { telemetry.close(); } finally { database.close(); } await unlock(); }); throw reason; }
     finally { clearTimeout(timeout); }
   };
   return { url: localUrl,environment: env,migration,databasePath,

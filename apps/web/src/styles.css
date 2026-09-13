@@ -10618,3 +10618,16 @@ input:focus,
 .publication-version small, .publication-draft small { color: #7fa0aa; }
 .publication-actions { display: flex; gap: 12px; flex-wrap: wrap; }
 .published-version-label { padding: 6px 10px; border: 1px solid #41715e; border-radius: 5px; color: #abe5c8; }
+
+.telemetry-panel { width: min(1120px, 100vw); grid-template-rows: auto minmax(0, 1fr); }
+.telemetry-content { overflow: auto; padding: 24px; min-height: 0; }
+.telemetry-content > p { color: #b2cbd1; line-height: 1.7; }
+.telemetry-filters { display: flex; gap: 12px; align-items: end; flex-wrap: wrap; margin: 18px 0; }
+.telemetry-filters label { display: grid; gap: 8px; flex: 1 1 140px; color: #c7dade; }
+.telemetry-filters input, .telemetry-filters select { width: 100%; min-height: 40px; border: 1px solid #304d5d; border-radius: 6px; padding: 8px; background: #0b1a28; color: #e4f2f7; }
+.telemetry-table { overflow-x: auto; }
+.telemetry-table table { border-collapse: collapse; width: 100%; font-size: 13px; text-align: left; }
+.telemetry-table th, .telemetry-table td { padding: 12px 10px; border-bottom: 1px solid #294251; vertical-align: top; }
+.telemetry-table th { color: #b6d6e0; }
+.telemetry-table td { color: #deedf2; max-width: 240px; overflow-wrap: anywhere; }
+.telemetry-table small { display: block; max-width: 160px; color: #f3bba1; margin-top: 5px; }

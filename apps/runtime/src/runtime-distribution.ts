@@ -56,7 +56,7 @@ export function runtimeDistribution(bundleDirectory:string,signal:AbortSignal):R
       }
     }
     yield { path:"dependencies.json",bytes:await readFile(join(bundleDirectory,"dependencies.json"),{ signal }) };
-    yield* folder("migrations"); yield* folder("public"); yield* folder("licenses");
+    yield* folder("telemetry-migrations"); yield* folder("migrations"); yield* folder("public"); yield* folder("licenses");
   }
   return new Response(zipStream(entries,signal),{ headers:{ "content-type":"application/zip","content-disposition":"attachment; filename=NewPower-runtime.zip","cache-control":"no-store" } });
 }

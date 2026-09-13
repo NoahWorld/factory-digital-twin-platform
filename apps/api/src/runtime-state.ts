@@ -138,7 +138,7 @@ const resolveJsonPath = (
   return current;
 };
 
-const inspectSourceTimestamp = (
+export const inspectRuntimeSourceTimestamp = (
   payload: unknown,
   source: DataSource,
   config: { timestampPath?:string|null },
@@ -181,7 +181,7 @@ const sourceTimestamp = (
   config: { timestampPath?:string|null },
   staleAfterSeconds: number,
 ): string | null => {
-  const inspected = inspectSourceTimestamp(payload, source, config);
+  const inspected = inspectRuntimeSourceTimestamp(payload, source, config);
   if (
     inspected.sourceAgeSeconds !== null
     && inspected.sourceAgeSeconds > staleAfterSeconds
@@ -458,7 +458,7 @@ export function parseRuntimeSourceSample(source:DataSource,config:DataSourceConf
   if (responseBytes > MAX_RESPONSE_BYTES) throw new AppError(502,"data_source_response_too_large","Source message exceeds the byte limit.");
   let payload:unknown;
   try { payload = JSON.parse(text); } catch { throw new AppError(502,"data_source_invalid_json","Source did not send valid JSON."); }
-  rejectPrivateEcho(payload,config,headers); inspectSourceTimestamp(payload,source,config);
+  rejectPrivateEcho(payload,config,headers); inspectRuntimeSourceTimestamp(payload,source,config);
   return { payload,responseBytes,collectedAt:new Date(receivedAt).toISOString(),durationMs:Math.max(0,Date.now()-receivedAt) };
 }
 
@@ -472,7 +472,7 @@ export const probeRestDataSource = async (
   const source = await getDataSource(env, projectId, dataSourceId);
   const config = source.config;
   const fetched = await fetchRuntimeSource(env,source,requestId,signal);
-  const timestamp = inspectSourceTimestamp(fetched.payload, source, config);
+  const timestamp = inspectRuntimeSourceTimestamp(fetched.payload, source, config);
   const discovery = discoverScalarFields(fetched.payload);
   return {
     dataSource: {

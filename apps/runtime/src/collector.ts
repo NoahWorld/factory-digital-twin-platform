@@ -1,3 +1,4 @@
+import { loadTelemetryPlan,normalizeTelemetry,type TelemetryPlan } from "./telemetry-plan";
 import { readPublicationVersion } from "../../api/src/publications";
 import type { RuntimeProjectSnapshot } from "../../../shared/runtime-project";
 import { AppError,type AppEnv } from "../../api/src/auth";
@@ -5,7 +6,7 @@ import { listContinuousDataSources,type DataSource } from "../../api/src/data-so
 import { loadRuntimeAssetPlan,fetchRuntimeSource,normalizeRuntimeAsset,type RuntimeAssetPlan,type SourceSample } from "../../api/src/runtime-state";
 import type { CentralConnection,CentralRuntime,RuntimeFrame,RuntimeSubscription,SourceDiagnostic } from "../../../shared/runtime-stream";
 
-type SourceJob = { versionId?:string; generation:number; key: string; projectId: string; source: DataSource; controller: AbortController; timer?: ReturnType<typeof setTimeout>; queued: boolean; sample?: SourceSample; error?: AppError; failures: number };
+type SourceJob = { telemetryId:string;telemetrySequence:number;telemetryLoading?:Promise<void>;telemetryRetryAt?:number;telemetryPlan?:TelemetryPlan;qualities:Map<string,string>; versionId?:string; generation:number; key: string; projectId: string; source: DataSource; controller: AbortController; timer?: ReturnType<typeof setTimeout>; queued: boolean; sample?: SourceSample; error?: AppError; failures: number };
 type Client = { versionId?:string;snapshot?:RuntimeProjectSnapshot; generation:number; projectId: string; ids: string[]; identities:Map<string,string>; plans: Map<string,RuntimeAssetPlan>; errors: Map<string,AppError>; connections: Record<string,CentralConnection>; changed: (frame: RuntimeFrame) => void; sequence: number; released: boolean };
 const failure = (reason: unknown) => reason instanceof AppError ? reason : new AppError(502,"collection_failed","Source collection failed.");
 
@@ -25,6 +26,8 @@ export class RuntimeCollector implements CentralRuntime {
   private operations: Promise<void> = Promise.resolve();
   private closed = false;
   private freshness?: ReturnType<typeof setInterval>;
+  private telemetryFreshness?:ReturnType<typeof setInterval>;
+  private removed = new Set<string>();
   constructor(private env: AppEnv) {}
   private key(projectId: string,sourceId: string,versionId?:string) { return JSON.stringify([projectId,versionId ?? null,sourceId]); }
   private current(job: SourceJob) { return !this.closed && this.jobs.get(job.key) === job && !job.controller.signal.aborted && (!!job.versionId || job.generation === this.version(job.projectId)); }
@@ -36,6 +39,7 @@ export class RuntimeCollector implements CentralRuntime {
     if (this.closed) return;
     for (const source of sources) this.continuous.set(this.key(source.projectId,source.id),source);
     await this.loadPublishedContinuous(); this.reconcile();
+    if (this.env.TELEMETRY) this.telemetryFreshness = setInterval(() => { for (const job of this.jobs.values()) if (job.sample || job.error) this.record(job,true); },1000);
   }
   private async loadPublishedContinuous(projectId?:string) {
     const rows = await this.env.DB.prepare("SELECT project_id,version_id FROM project_publications WHERE (? IS NULL OR project_id=?)").bind(projectId ?? null,projectId ?? null).all<{ project_id:string;version_id:string }>();
@@ -62,6 +66,7 @@ export class RuntimeCollector implements CentralRuntime {
   async subscribe(projectId: string,ids: string[],changed: Client["changed"],versionId?:string): Promise<RuntimeSubscription> {
     return this.serial(async () => {
       if (this.closed) throw new AppError(503,"runtime_stopping","Runtime is stopping.");
+      if (this.removed.has(projectId)) throw new AppError(404,"project_not_found","Project no longer exists.");
       if (this.clients.size >= 128) throw new AppError(429,"runtime_subscriber_limit","Runtime subscriber limit reached.");
       const client: Client = { versionId,snapshot:versionId ? (await readPublicationVersion(this.env,projectId,versionId)).snapshot : undefined,generation:-1,projectId,ids:[...new Set(ids)],identities:new Map(),plans:new Map(),errors:new Map(),connections:{},changed,sequence:0,released:false };
       if (!client.ids.length || client.ids.length > 100) throw new AppError(400,"runtime_demand_invalid","Subscribe to 1–100 asset record IDs.");
@@ -98,6 +103,7 @@ export class RuntimeCollector implements CentralRuntime {
   }
   /** Invalidate synchronously so an old fetch cannot publish while new config is loading. */
   refresh(projectId: string): Promise<void> {
+    if (this.removed.has(projectId)) return Promise.resolve();
     this.generations.set(projectId,this.version(projectId)+1);
     for (const job of this.jobs.values()) if (job.projectId === projectId && !job.versionId) this.stop(job);
     for (const [key,source] of this.continuous) if (source.projectId === projectId) this.continuous.delete(key);
@@ -130,7 +136,8 @@ export class RuntimeCollector implements CentralRuntime {
     for (const [key,{ source }] of [...wanted].slice(256)) { this.unavailable.set(key,source); wanted.delete(key); }
     for (const job of this.jobs.values()) if (!wanted.has(job.key) || !this.current(job) || JSON.stringify(wanted.get(job.key)?.source) !== JSON.stringify(job.source)) this.stop(job);
     for (const [key,{ projectId,source,versionId }] of wanted) if (!this.jobs.has(key)) {
-      const job: SourceJob = { versionId,generation:this.version(projectId),key,projectId,source,controller:new AbortController(),queued:false,failures:0 };
+      if (this.removed.has(projectId)) continue;
+      const job: SourceJob = { telemetryId:crypto.randomUUID(),telemetrySequence:0,qualities:new Map(),versionId,generation:this.version(projectId),key,projectId,source,controller:new AbortController(),queued:false,failures:0 };
       this.jobs.set(key,job); this.enqueue(job);
     }
     this.queue = this.queue.filter((job) => this.current(job));
@@ -147,6 +154,8 @@ export class RuntimeCollector implements CentralRuntime {
     }
   }
   private async poll(job: SourceJob) {
+    await this.prepareTelemetry(job);
+    if (!this.current(job)) return;
     if (job.source.sourceType === "websocket") return this.connectWebSocket(job);
     let delay = 2;
     const requestId = crypto.randomUUID(),startedAt = Date.now();
@@ -160,6 +169,7 @@ export class RuntimeCollector implements CentralRuntime {
       job.error = failure(reason); job.failures++; delay = Math.min(2 ** Math.min(job.failures-1,5),30);
     }
     if (!this.current(job)) return;
+    this.record(job);
     console.log(JSON.stringify({ event:"runtime_source_collected",requestId,projectId:job.projectId,dataSourceId:job.source.id,durationMs:Date.now()-startedAt,errorCode:job.error?.code ?? null }));
     for (const client of this.clients) if (client.projectId === job.projectId) this.update(client);
     job.timer = setTimeout(() => this.enqueue(job),Math.max(1,delay)*1000);
@@ -168,7 +178,7 @@ export class RuntimeCollector implements CentralRuntime {
     const requestId = crypto.randomUUID();
     const failed = (reason:unknown) => {
       if (!this.current(job)) return;
-      job.error = failure(reason); job.failures++;
+      job.error = failure(reason); job.failures++; this.record(job);
       console.log(JSON.stringify({ event:"runtime_websocket_failed",requestId,projectId:job.projectId,dataSourceId:job.source.id,errorCode:job.error.code }));
       for (const client of this.clients) if (client.projectId === job.projectId) this.update(client);
       const maximum = "reconnectMaxSeconds" in job.source.config ? job.source.config.reconnectMaxSeconds : 30;
@@ -177,13 +187,41 @@ export class RuntimeCollector implements CentralRuntime {
     try {
       if (!this.env.OPEN_WEBSOCKET_SOURCE) throw new AppError(503,"websocket_runtime_unavailable","WebSocket collection is unavailable.");
       const connection = await this.env.OPEN_WEBSOCKET_SOURCE(job.source,requestId,(sample) => {
-        if (!this.current(job)) return; job.sample = sample; job.error = undefined; job.failures = 0;
+        if (!this.current(job)) return; job.sample = sample; job.error = undefined; job.failures = 0; this.record(job);
         for (const client of this.clients) if (client.projectId === job.projectId) this.update(client);
       },job.controller.signal);
       if (!this.current(job)) { connection.close(); await connection.closed.catch(() => {}); return; }
       console.log(JSON.stringify({ event:"runtime_websocket_connected",requestId,projectId:job.projectId,dataSourceId:job.source.id }));
       const lifetime = connection.closed.catch(failed).finally(() => this.tasks.delete(lifetime)); this.tasks.add(lifetime);
     } catch (reason) { failed(reason); }
+  }
+  private prepareTelemetry(job:SourceJob):Promise<void> {
+    if (!this.env.TELEMETRY || job.telemetryPlan || !this.current(job) || (job.telemetryRetryAt ?? 0) > Date.now()) return Promise.resolve();
+    if (job.telemetryLoading) return job.telemetryLoading;
+    const task = (async () => {
+      try { const plan = await loadTelemetryPlan(this.env,job.source,job.versionId); if (this.current(job)) job.telemetryPlan = plan; }
+      catch (reason) { if (this.current(job)) { job.telemetryRetryAt = Date.now()+1000; this.env.TELEMETRY!.reportGap(job.projectId,failure(reason).code); } }
+    })().finally(() => { job.telemetryLoading = undefined; this.tasks.delete(task); });
+    job.telemetryLoading = task; this.tasks.add(task); return task;
+  }
+  private record(job:SourceJob,onlyQualityChanges=false) {
+    if (!this.current(job) || !this.env.TELEMETRY) return;
+    if (!job.telemetryPlan) { void this.prepareTelemetry(job); this.env.TELEMETRY.reportGap(job.projectId,"telemetry_plan_unavailable"); return; }
+    const sampleId = `${this.epoch}/${job.telemetryId}/${++job.telemetrySequence}`;
+    const rows = normalizeTelemetry(job.telemetryPlan,job.source,sampleId,job.sample,job.error,job.versionId).filter((row) => {
+      const state = `${row.quality}:${row.errorCode}`,previous = job.qualities.get(row.bindingId); job.qualities.set(row.bindingId,state);
+      return !(previous === state && (onlyQualityChanges || row.quality !== "good"));
+    });
+    this.env.TELEMETRY.enqueue(rows);
+  }
+  removeProject(projectId:string) {
+    this.removed.add(projectId); this.generations.set(projectId,this.version(projectId)+1);
+    for (const client of this.clients) if (client.projectId === projectId) { client.released = true; this.clients.delete(client); }
+    for (const job of this.jobs.values()) if (job.projectId === projectId) this.stop(job);
+    for (const [key,source] of this.continuous) if (source.projectId === projectId) this.continuous.delete(key);
+    for (const [key,value] of this.publishedContinuous) if (value.source.projectId === projectId) this.publishedContinuous.delete(key);
+    if (!this.clients.size) { clearInterval(this.freshness); this.freshness = undefined; }
+    this.reconcile(); this.env.TELEMETRY?.removeProject(projectId);
   }
   private frame(client: Client): RuntimeFrame { return { epoch:this.epoch,sequence:client.sequence,connections:client.connections }; }
   private update(client: Client) {
@@ -214,7 +252,7 @@ export class RuntimeCollector implements CentralRuntime {
     client.connections = next; client.sequence++; client.changed(this.frame(client));
   }
   async close() {
-    this.closed = true; clearInterval(this.freshness);
+    this.closed = true; clearInterval(this.freshness); clearInterval(this.telemetryFreshness);
     for (const client of this.clients) client.released = true; this.clients.clear();
     for (const job of this.jobs.values()) this.stop(job); this.queue = []; this.continuous.clear(); this.publishedContinuous.clear(); this.unavailable.clear();
     await this.operations; await Promise.allSettled([...this.tasks]);

@@ -1,3 +1,4 @@
+import { parseTelemetryQuery } from "../../../shared/telemetry";
 import { draftRestorationPreview,restoreVersionAsDraft } from "./draft-restoration";
 import { exportProjectPackage } from "./package-export";
 import { directChangesDatabase } from "./direct-changes-database";
@@ -758,12 +759,23 @@ const handleApiRequest = async (
     throw new AppError(405,"method_not_allowed","Unsupported publication operation.");
   }
 
+  const historyMatch = pathname.match(/^\/api\/v1\/projects\/([^/]+)(?:\/versions\/([^/]+))?\/telemetry\/(history|diagnostics)$/);
+  if (method === "GET" && historyMatch) {
+    const projectId = decodePathSegment(historyMatch[1]),versionId = historyMatch[2] ? decodePathSegment(historyMatch[2]):undefined;
+    await requireProjectAccess(env,await getAuthenticatedUser(env,request),projectId);
+    if (versionId) await readPublicationVersion(env,projectId,versionId);
+    if (!env.TELEMETRY) throw new AppError(503,"telemetry_unavailable","This host does not provide persistent history. Use the independent runtime.");
+    if (historyMatch[3] === "diagnostics") return json({ diagnostics:env.TELEMETRY.diagnostics(projectId),requestId });
+    const query = parseTelemetryQuery(url.searchParams,versionId ?? "draft");
+    return json({ ...env.TELEMETRY.query(projectId,query),diagnostics:env.TELEMETRY.diagnostics(projectId),requestId });
+  }
+
   const centralRuntimeMatch = pathname.match(/^\/api\/v1\/projects\/([^/]+)\/runtime\/(capabilities|stream|sources)$/);
   if (method === "GET" && centralRuntimeMatch) {
     const projectId = decodePathSegment(centralRuntimeMatch[1]);
     const authorize = async () => requireProjectAccess(env,await getAuthenticatedUser(env,request),projectId);
     await authorize();
-    const capabilities = { collection:env.CENTRAL_RUNTIME ? "central" : "per-request",protocols:env.OPEN_WEBSOCKET_SOURCE ? ["rest_polling","websocket"] : ["rest_polling"] };
+    const capabilities = { history:!!env.TELEMETRY,collection:env.CENTRAL_RUNTIME ? "central" : "per-request",protocols:env.OPEN_WEBSOCKET_SOURCE ? ["rest_polling","websocket"] : ["rest_polling"] };
     if (centralRuntimeMatch[2] === "capabilities") return json({ ...capabilities,requestId });
     if (centralRuntimeMatch[2] === "sources") return json({ ...capabilities,...(env.CENTRAL_RUNTIME?.diagnostics?.(projectId) ?? { sources:[] }),requestId });
     return runtimeStream(env,request,projectId,authorize);
