@@ -262,3 +262,19 @@ M4本地技术验收通过。M6a继续建立独立宿主、集中采集和环境
 - `m6a-host-smoke.log`：旧Worker真实REST smoke12项通过。
 
 当前仍为按请求采集，健康接口明确标识 `per-request`。这是M6a基础检查点，下一项集中REST调度/订阅、环境凭据、WS及后续总目标继续进行。
+
+## M6a 按需集中 REST 与多客户端检查点（2026-09-13）
+
+起点 `043000e`。提取同一源采集和资产标准化，Node按项目/源/配置代次集中调度，通过受会话及项目权限保护的SSE向多客户端发送有界标准快照。前端保留原连接消费接口，按宿主声明选择集中模式或Worker即时模式；集中连接故障不会触发逐设备回退。运行快照不再输出sourcePath。
+
+实际两个独立Chrome会话、两个资产引用同一HTTP源，连续周期的请求间距至少1.8秒（配置2秒），没有每设备runtime-state请求。关闭一个会话后另一会话仍收到温度变化，503立即失联、旧时间戳陈旧、恢复后重新在线；最后会话退出后再等2.6秒没有上游请求。截图 `m6a-central-integration-fixed/central-runtime-two-indepe-c52e0-and-release-the-last-demand/central-two-clients.png` 已查看。
+
+复核发现并修复：订阅加载与配置刷新交错会留下旧URL任务；计划失败会把业务assetId换成数据库ID并丢旧值；初始超限后仍安装SSE定时器；EventSource终态没有实际重试；畸形live状态可没有snapshot。相应代次/签名、身份保留、超限释放、终态退避和共享入站校验均有反例测试。慢消费者仅保留当前排队帧与最新全量帧；15秒权限复核失败释放需求，取消和关闭会中止上游。
+
+- `m6a-central-integration-fixed.log`：实际双浏览器共享/故障/退出通过。首次测试未选择设备就查“当前选中设备”的值，按实际操作先选设备后通过。
+- `m6a-central-regression.log`：完整100项运行，98通过、1个示例按设计跳过，1项镜头保持失败。
+- 镜头失败为拖动后的阻尼采样：固定100帧后仍偏移约0.0009，超过原0.0005阈值。测试改为连续测到镜头稳定后再检查实例编辑，保持原断言精度；产品镜头实现未改。
+- `m6a-central-transport.log`：最终传输边界、旧宿主、双客户端和场景操作10项通过；`m6a-camera-settled.log`：使用稳定采样的场景完整操作通过。
+- `m6a-central-transport-check.log`、`m6a-central-transport-build.log`：三包check和完整build通过；`m6a-central-smoke.log`：Worker旧REST smoke12通过。
+
+这是按需REST检查点；持续采集、逻辑环境地址和凭据、真实WS上游及后续M5–M8仍未完成。M6a与总目标保持进行中。

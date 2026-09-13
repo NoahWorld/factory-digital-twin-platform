@@ -1,3 +1,4 @@
+import { runtimeStream } from "./runtime-stream";
 import { getProjectDefinition, persistProjectPatch } from "./project-definitions";
 import { readUploadBytes } from "./upload-body";
 import { validateProjectPatch } from "../../../shared/project-definition";
@@ -640,6 +641,15 @@ const handleApiRequest = async (
       durationMs: Date.now() - startedAt,
     }));
     return json({ asset, requestId });
+  }
+
+  const centralRuntimeMatch = pathname.match(/^\/api\/v1\/projects\/([^/]+)\/runtime\/(capabilities|stream)$/);
+  if (method === "GET" && centralRuntimeMatch) {
+    const projectId = decodePathSegment(centralRuntimeMatch[1]);
+    const authorize = async () => requireProjectAccess(env,await getAuthenticatedUser(env,request),projectId);
+    await authorize();
+    if (centralRuntimeMatch[2] === "capabilities") return json({ collection:env.CENTRAL_RUNTIME ? "central" : "per-request",requestId });
+    return runtimeStream(env,request,projectId,authorize);
   }
 
   const assetRuntimeStateMatch = pathname.match(

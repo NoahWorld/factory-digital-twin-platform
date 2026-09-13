@@ -15,7 +15,7 @@ test("a copied Node bundle starts without the workspace, preserves project CAS a
   let viewer: Awaited<ReturnType<typeof apiRequest.newContext>> | null = null;
   try {
     expect(await readdir(runtime.bundleDirectory)).not.toContain("node_modules");
-    expect((await (await api.get("/health")).json()).runtime).toEqual({ host: "node",database: "sqlite",collection: "per-request" });
+    expect((await (await api.get("/health")).json()).runtime).toEqual({ host: "node",database: "sqlite",collection: "central" });
     expect((await anonymous.get("/api/v1/projects")).status()).toBe(401);
     const bootstrap = await api.post("/api/v1/auth/bootstrap",{ headers: { "x-bootstrap-token": runtime.bootstrap },data: { email,password,displayName: "Local runtime owner" } });
     expect(bootstrap.status(),await bootstrap.text()).toBe(201); expect(bootstrap.headers()["set-cookie"]?.includes("HttpOnly")).toBe(true);

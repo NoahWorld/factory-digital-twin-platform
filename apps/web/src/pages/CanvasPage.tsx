@@ -647,7 +647,6 @@ export function CanvasPage({ initialTemplateId, mode, projectId }: CanvasPagePro
                         <div className="runtime-metric-card" key={metric.bindingId}>
                           <span>{metric.metricKey}</span>
                           <strong>{formatRuntimeValue(metric.value)}{metric.unit ? <small>{metric.unit}</small> : null}</strong>
-                          <code>{metric.sourcePath}</code>
                         </div>
                       ))}
                     </div>

@@ -18,7 +18,6 @@ export type AssetRuntimeState = {
   metrics: Array<{
     bindingId: string;
     metricKey: string;
-    sourcePath: string;
     value: RuntimeMetricValue;
     valueType: AssetDataBinding["valueType"];
     unit: string | null;
@@ -470,55 +469,28 @@ export const probeRestDataSource = async (
   };
 };
 
-export const collectAssetRuntimeState = async (
-  env: AppEnv,
-  projectId: string,
-  assetRecordId: string,
-  requestId: string,
-  signal?: AbortSignal,
-): Promise<AssetRuntimeState> => {
-  const [asset, bindings] = await Promise.all([
-    getAsset(env, projectId, assetRecordId),
-    listAssetDataBindings(env, projectId, assetRecordId),
-  ]);
-  if (bindings.length === 0) {
-    throw new AppError(409, "asset_data_binding_required", `Asset ${asset.assetId} has no data bindings.`);
-  }
+export type SourceSample = Awaited<ReturnType<typeof fetchJson>>;
+export type RuntimeAssetPlan = { asset: Asset; bindings: AssetDataBinding[]; sources: DataSource[] };
 
-  const bindingGroups = new Map<string, AssetDataBinding[]>();
-  for (const binding of bindings) {
-    const group = bindingGroups.get(binding.dataSourceId) ?? [];
-    group.push(binding);
-    bindingGroups.set(binding.dataSourceId, group);
-  }
+export const loadRuntimeAssetPlan = async (env: AppEnv, projectId: string, assetRecordId: string): Promise<RuntimeAssetPlan> => {
+  const [asset, bindings] = await Promise.all([getAsset(env, projectId, assetRecordId),listAssetDataBindings(env, projectId, assetRecordId)]);
+  if (!bindings.length) throw new AppError(409,"asset_data_binding_required",`Asset ${asset.assetId} has no data bindings.`);
+  const sources = await Promise.all([...new Set(bindings.map((binding) => binding.dataSourceId))].map((id) => getDataSource(env,projectId,id)));
+  return { asset,bindings,sources };
+};
 
-  const group = new AbortController(); const cancel = () => group.abort();
-  signal?.addEventListener("abort",cancel,{ once: true }); if (signal?.aborted) group.abort();
-  const tasks = [...bindingGroups.entries()].map(async ([dataSourceId, sourceBindings]) => {
-      const source = await getDataSource(env, projectId, dataSourceId);
-      const config = requireAllowedRestSource(env, source);
-      const fetched = await fetchJson(source, config, requestId,group.signal);
-      const staleAfterSeconds = Math.min(
-        ...sourceBindings.map((binding) => binding.staleAfterSeconds),
-      );
-      return {
-        source,
-        config,
-        bindings: sourceBindings,
-        sourceTimestamp: sourceTimestamp(
-          fetched.payload,
-          source,
-          config,
-          staleAfterSeconds,
-        ),
-        ...fetched,
-      };
-    });
-  let sourceResults: Awaited<(typeof tasks)[number]>[];
-  try { sourceResults = await Promise.all(tasks); }
-  catch (reason) { group.abort(); await Promise.allSettled(tasks); throw reason; }
-  finally { signal?.removeEventListener("abort",cancel); }
+export const fetchRuntimeSource = (env: AppEnv, source: DataSource, requestId: string, signal?: AbortSignal): Promise<SourceSample> =>
+  fetchJson(source,requireAllowedRestSource(env,source),requestId,signal);
 
+export const normalizeRuntimeAsset = (plan: RuntimeAssetPlan, samples: Map<string,SourceSample>): AssetRuntimeState => {
+  const { asset,bindings } = plan;
+  const sourceResults = plan.sources.map((source) => {
+    const config = requireRestConfig(source), sample = samples.get(source.id);
+    if (!sample) throw new AppError(503,"data_source_pending","Waiting for the first source sample.");
+    const sourceBindings = bindings.filter((binding) => binding.dataSourceId === source.id);
+    return { source,config,bindings: sourceBindings,...sample,
+      sourceTimestamp: sourceTimestamp(sample.payload,source,config,Math.min(...sourceBindings.map((binding) => binding.staleAfterSeconds))) };
+  });
   const values: Record<string, RuntimeMetricValue> = {};
   const metrics: AssetRuntimeState["metrics"] = [];
   const sources: AssetRuntimeState["sources"] = [];
@@ -544,7 +516,6 @@ export const collectAssetRuntimeState = async (
       metrics.push({
         bindingId: binding.id,
         metricKey: binding.metricKey,
-        sourcePath: binding.sourcePath,
         value,
         valueType: binding.valueType,
         unit: binding.unit,
@@ -575,4 +546,15 @@ export const collectAssetRuntimeState = async (
     pollAfterSeconds: Math.min(...sourceResults.map((result) => result.config.intervalSeconds)),
     staleAfterSeconds: Math.min(...bindings.map((binding) => binding.staleAfterSeconds)),
   };
+};
+
+
+export const collectAssetRuntimeState = async (env: AppEnv, projectId: string, assetRecordId: string, requestId: string, signal?: AbortSignal): Promise<AssetRuntimeState> => {
+  const plan = await loadRuntimeAssetPlan(env,projectId,assetRecordId);
+  const controller = new AbortController(),cancel = () => controller.abort();
+  signal?.addEventListener("abort",cancel,{ once: true }); if (signal?.aborted) cancel();
+  const tasks = plan.sources.map(async (source) => [source.id,await fetchRuntimeSource(env,source,requestId,controller.signal)] as const);
+  try { return normalizeRuntimeAsset(plan,new Map(await Promise.all(tasks))); }
+  catch (reason) { controller.abort(); await Promise.allSettled(tasks); throw reason; }
+  finally { signal?.removeEventListener("abort",cancel); }
 };

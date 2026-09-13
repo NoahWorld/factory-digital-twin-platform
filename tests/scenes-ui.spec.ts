@@ -42,7 +42,21 @@ test("convert, compose independent model instances, preserve camera and reuse or
     const box = await page.locator(".model-3d-renderer canvas").boundingBox();
     await page.mouse.move(box!.x + box!.width * .5, box!.y + box!.height * .5); await page.mouse.down();
     await page.mouse.move(box!.x + box!.width * .5 + 80, box!.y + box!.height * .5 + 30, { steps: 8 }); await page.mouse.up();
-    await page.evaluate(() => new Promise<void>((resolve) => { let count = 0; const frame = () => ++count >= 100 ? resolve() : requestAnimationFrame(frame); requestAnimationFrame(frame); }));
+    // OrbitControls damping can still move ~0.001 after 100 frames. Measure its
+    // convergence before testing whether editing an instance resets the camera.
+    await page.evaluate(async () => {
+      const url = performance.getEntriesByType("resource").map((entry) => entry.name).filter((name) => name.includes("/src/canvas/scene-viewport-runtime.ts")).at(-1)!;
+      const { sceneViewportDiagnostics } = await import(/* @vite-ignore */ url);
+      let previous:number[] | undefined,stable = 0;
+      for (let frame = 0; frame < 600; frame++) {
+        await new Promise(requestAnimationFrame);
+        const current = sceneViewportDiagnostics()[0],values = [...current.camera,...current.target];
+        stable = previous && values.every((value:number,index:number) => Math.abs(value-previous![index]) < 0.000001) ? stable+1 : 0;
+        if (stable >= 10) return;
+        previous = values;
+      }
+      throw new Error("Camera did not settle after drag.");
+    });
     const before = (await diagnostics(page))[0];
     await number("实例位置 X", "-7");
     const after = (await diagnostics(page))[0];

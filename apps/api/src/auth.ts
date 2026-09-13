@@ -37,6 +37,7 @@ export type ObjectBucket = {
 };
 
 export type AppEnv = {
+  CENTRAL_RUNTIME?: import("../../../shared/runtime-stream").CentralRuntime;
   DB: Database;
   PROJECT_FILES?: ObjectBucket;
   BOOTSTRAP_TOKEN?: string;

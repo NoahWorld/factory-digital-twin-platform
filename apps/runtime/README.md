@@ -1,6 +1,6 @@
 # NewPower 本地运行宿主
 
-Node.js 24.18+（24 系列），复用现有 API、项目 schema、权限和模型检查。SQLite 保存配置，本地文件存储实现原有 ObjectBucket 接口；静态前端和 API 同源服务。当前阶段仍是按请求 REST 采集，集中采集在 M6a 后续接入，不能按宿主启动状态认定已完成。
+Node.js 24.18+（24 系列），复用现有 API、项目 schema、权限和模型检查。SQLite 保存配置，本地文件存储实现原有 ObjectBucket 接口；静态前端和 API 同源服务。当前支持按需集中 REST 采集；多个客户端按源共享任务，通过同源 SSE 读取标准状态。最后订阅释放停止采集，故障和陈旧明确显示；持续采集、环境凭据和上游 WebSocket 在 M6a 后续接入。
 
 在仓库根目录执行 `pnpm build`，产物位于 `apps/runtime/dist`。该目录包含服务器、迁移和前端，可以复制到独立目录；运行时仅需匹配版本的 Node，不依赖 Vite、Wrangler、源码目录或 node_modules。完整发布/项目打包与回滚仍归 M5。
 

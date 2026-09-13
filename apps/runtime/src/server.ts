@@ -8,6 +8,7 @@ import { parseArgs,parseEnv } from "node:util";
 import { Readable } from "node:stream";
 import api from "../../api/src/index";
 import type { AppEnv } from "../../api/src/auth";
+import { RuntimeCollector } from "./collector";
 import { SqliteDatabase } from "./sqlite-database";
 import { FileBucket } from "./file-bucket";
 import { migrateRuntimeDatabase } from "./migrations";
@@ -120,6 +121,7 @@ export async function startRuntime(options: RuntimeOptions) {
   const migration = await migrateRuntimeDatabase(databasePath,migrationsDirectory);
   const database = new SqliteDatabase(databasePath);
   const env: AppEnv = { ...options.environment,DB: database,PROJECT_FILES: new FileBucket(join(dataDirectory,"objects")) };
+  const collector = new RuntimeCollector(env); env.CENTRAL_RUNTIME = collector;
   const requests = new Set<AbortController>();
   const handlers = new Set<Promise<void>>();
   let stopping = false;
@@ -138,8 +140,10 @@ export async function startRuntime(options: RuntimeOptions) {
       if (!["GET","HEAD","POST","PATCH","PUT","DELETE","OPTIONS"].includes(method)) { incoming.resume(); outgoing.writeHead(405); outgoing.end("Method not allowed"); return; }
       const request = new Request(url,{ method,headers,signal: controller.signal,...(!["GET","HEAD"].includes(method) ? { body: incomingBody(incoming),duplex: "half" } : {}) } as RequestInit);
       let response = url.pathname.startsWith("/api/") || url.pathname === "/api" || url.pathname === "/health" ? await api.fetch(request,env) : await staticResponse(url.pathname,method,publicDirectory);
+      const dataMutation = url.pathname.match(/^\/api\/v1\/projects\/([^/]+)(?:\/(?:data-sources|assets)(?:\/|$)|$)/);
+      if (response.ok && !["GET","HEAD","OPTIONS"].includes(method) && dataMutation && !url.pathname.endsWith("/test")) await collector.refresh(decodeURIComponent(dataMutation[1]));
       if (request.body && !request.body.locked) { if (!request.bodyUsed) outgoing.setHeader("connection","close"); await request.body.cancel(); }
-      if (url.pathname === "/health" && response.ok) response = new Response(JSON.stringify({ ...await response.json() as object,runtime: { host: "node",database: "sqlite",collection: "per-request" } }),{ status: response.status,headers: response.headers });
+      if (url.pathname === "/health" && response.ok) response = new Response(JSON.stringify({ ...await response.json() as object,runtime: { host: "node",database: "sqlite",collection: "central" } }),{ status: response.status,headers: response.headers });
       await writeRuntimeResponse(response,outgoing,controller.signal);
     })().catch((reason) => {
       if (!controller.signal.aborted) console.error(JSON.stringify({ event: "runtime_http_error",path: incoming.url?.split("?")[0],message: reason instanceof Error ? reason.message : String(reason) }));
@@ -150,7 +154,7 @@ export async function startRuntime(options: RuntimeOptions) {
   });
   try {
     server.listen(port,options.host ?? "127.0.0.1"); await once(server,"listening");
-  } catch (reason) { database.close(); throw reason; }
+  } catch (reason) { await collector.close(); database.close(); throw reason; }
   const address = server.address(); if (!address || typeof address === "string") { database.close(); throw new Error("Runtime did not bind a TCP address."); }
   const localUrl = `http://${address.family === "IPv6" ? `[${address.address}]` : address.address}:${address.port}`;
   origin ||= localUrl;
@@ -159,7 +163,7 @@ export async function startRuntime(options: RuntimeOptions) {
     stopping = true;
     const stopped = new Promise<void>((resolve) => server.close(() => resolve()));
     requests.forEach((request) => request.abort()); server.closeAllConnections(); await stopped;
-    const settled = Promise.allSettled([...handlers]);
+    const settled = Promise.allSettled([...handlers,collector.close()]);
     let timeout: ReturnType<typeof setTimeout> | undefined;
     try {
       await Promise.race([settled,new Promise<never>((_,reject) => { timeout = setTimeout(() => reject(new Error("Runtime requests did not stop within ten seconds; database closure is deferred until they finish.")),10000); })]);

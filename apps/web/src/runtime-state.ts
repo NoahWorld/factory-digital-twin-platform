@@ -9,7 +9,6 @@ export type AssetRuntimeState = {
   metrics: Array<{
     bindingId: string;
     metricKey: string;
-    sourcePath: string;
     value: RuntimeMetricValue;
     valueType: "number" | "string" | "boolean" | "timestamp";
     unit: string | null;
