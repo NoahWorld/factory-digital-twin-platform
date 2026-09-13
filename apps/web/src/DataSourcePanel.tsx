@@ -1,3 +1,4 @@
+import type { TimestampFormat } from "../../../shared/metric-transforms";
 import { useEffect, useState, type FormEvent } from "react";
 import type { SourceDiagnostic } from "../../../shared/runtime-stream";
 import { errorMessage, request } from "./api";
@@ -29,6 +30,8 @@ type DataSourceDraft = {
   intervalSeconds: string;
   timeoutMs: string;
   timestampPath: string;
+  timestampFormat:TimestampFormat;
+  timestampFormatExplicit:boolean;
   heartbeatSeconds: string;
   sampleIntervalMs: string;
   topics: string;
@@ -46,6 +49,8 @@ const emptyDraft = (): DataSourceDraft => ({
   intervalSeconds: "10",
   timeoutMs: "5000",
   timestampPath: "",
+  timestampFormat:"iso",
+  timestampFormatExplicit:false,
   heartbeatSeconds: "30",
   sampleIntervalMs: "100",
   topics: "",
@@ -67,6 +72,8 @@ const draftFromSource = (source: ProjectDataSource): DataSourceDraft => ({
     ? String(source.config.timeoutMs)
     : "5000",
   timestampPath: source.config.timestampPath ?? "",
+  timestampFormat:source.config.timestampFormat ?? "iso",
+  timestampFormatExplicit:source.config.timestampFormat !== undefined,
   sampleIntervalMs: source.sourceType === "websocket" ? String(source.config.sampleIntervalMs ?? 100) : "100",
   topics: source.sourceType === "websocket" ? (source.config.topics ?? []).join("\n") : "",
   heartbeatSeconds: source.sourceType === "websocket"
@@ -203,6 +210,7 @@ export function DataSourcePanel({
             intervalSeconds: requiredInteger(draft.intervalSeconds, "轮询周期"),
             timeoutMs: requiredInteger(draft.timeoutMs, "请求超时"),
             timestampPath: draft.timestampPath || null,
+            ...(draft.timestampPath && (draft.timestampFormat !== "iso" || draft.timestampFormatExplicit) ? { timestampFormat:draft.timestampFormat }:{}),
             credentialRef: draft.credentialRef || null,
           }
         : {
@@ -210,6 +218,7 @@ export function DataSourcePanel({
             ...(draft.endpointRef.trim() ? { endpointRef:draft.endpointRef.trim() } : {}),
             collectionMode: draft.collectionMode,
             timestampPath: draft.timestampPath || null,
+            ...(draft.timestampPath && (draft.timestampFormat !== "iso" || draft.timestampFormatExplicit) ? { timestampFormat:draft.timestampFormat }:{}),
             sampleIntervalMs: requiredInteger(draft.sampleIntervalMs,"采样间隔"),
             topics: draft.topics.split("\n").map((topic) => topic.trim()).filter(Boolean),
             heartbeatSeconds: requiredInteger(draft.heartbeatSeconds, "心跳周期"),
@@ -488,6 +497,7 @@ export function DataSourcePanel({
                 <label><span>采样间隔（毫秒）</span><input disabled={formDisabled} type="number" min={16} max={60000} required value={draft.sampleIntervalMs} onChange={(event) => setDraft((current) => ({ ...current,sampleIntervalMs:event.target.value }))} /></label>
                 <label className="is-wide"><span>订阅主题（每行一个，可选）</span><textarea aria-label="订阅主题（每行一个，可选）" disabled={formDisabled} maxLength={4128} rows={3} value={draft.topics} onChange={(event) => setDraft((current) => ({ ...current,topics:event.target.value }))} /><small>每次连接后发送type=subscribe及topics列表。上游每条数据消息应包含完整源快照。</small></label>
               </> : null}
+              <label className="is-wide"><span>源时间格式</span><select aria-label="源时间格式" disabled={formDisabled || !draft.timestampPath} value={draft.timestampFormat} onChange={(event) => setDraft((current) => ({ ...current,timestampFormat:event.target.value as TimestampFormat,timestampFormatExplicit:true }))}><option value="iso">ISO日期文本</option><option value="unix_seconds">Unix秒</option><option value="unix_ms">Unix毫秒</option></select><small>用于整份源数据的新鲜度判断，与单个指标的时间转换分开。</small></label>
               <label className="is-wide">
                 <span>服务端凭据引用（可选）</span>
                 <input

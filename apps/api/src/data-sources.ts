@@ -1,3 +1,4 @@
+import { validateTimestampFormat,type TimestampFormat } from "../../../shared/metric-transforms";
 import { AppError, type AppEnv } from "./auth";
 
 type JsonObject = Record<string, unknown>;
@@ -5,6 +6,7 @@ type JsonObject = Record<string, unknown>;
 export type DataSourceType = "rest_polling" | "websocket";
 
 export type RestPollingConfig = {
+  timestampFormat?:TimestampFormat;
   url: string;
   endpointRef?: string;
   collectionMode?: "demand" | "continuous";
@@ -15,6 +17,7 @@ export type RestPollingConfig = {
 };
 
 export type WebSocketConfig = {
+  timestampFormat?:TimestampFormat;
   url: string;
   endpointRef?: string;
   collectionMode?: "demand" | "continuous";
@@ -68,6 +71,7 @@ const REST_CONFIG_FIELDS = new Set([
   "intervalSeconds",
   "timeoutMs",
   "timestampPath",
+  "timestampFormat",
   "credentialRef",
 ]);
 const WEBSOCKET_CONFIG_FIELDS = new Set([
@@ -76,6 +80,7 @@ const WEBSOCKET_CONFIG_FIELDS = new Set([
   "collectionMode",
   "heartbeatSeconds",
   "timestampPath",
+  "timestampFormat",
   "sampleIntervalMs",
   "topics",
   "reconnectMaxSeconds",
@@ -249,7 +254,8 @@ const validateConfig = (
   const endpointRef = config.endpointRef == null || config.endpointRef === "" ? undefined : validateCredentialRef(config.endpointRef) ?? undefined;
   if (endpointRef && config.url !== "") throw new AppError(400,"data_source_endpoint_conflict","Use either a logical endpoint reference or a direct URL.");
   if (config.collectionMode !== undefined && config.collectionMode !== "demand" && config.collectionMode !== "continuous") throw new AppError(400,"invalid_collection_mode","Collection mode must be demand or continuous.");
-  const endpoint = { ...(endpointRef ? { endpointRef } : {}),...(config.collectionMode ? { collectionMode:config.collectionMode as "demand" | "continuous" } : {}) };
+  if (config.timestampFormat !== undefined && !config.timestampPath) throw new AppError(400,"invalid_timestamp_format","A source time format requires a timestamp path.");
+  const endpoint = { ...(config.timestampFormat !== undefined ? { timestampFormat:validateTimestampFormat(config.timestampFormat) }:{}), ...(endpointRef ? { endpointRef } : {}),...(config.collectionMode ? { collectionMode:config.collectionMode as "demand" | "continuous" } : {}) };
   if (sourceType === "rest_polling") {
     assertKnownFields(
       config,

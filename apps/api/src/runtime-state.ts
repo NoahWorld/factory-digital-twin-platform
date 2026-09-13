@@ -1,3 +1,4 @@
+import { applyMetricTransform,timestampToIso,type TimestampFormat } from "../../../shared/metric-transforms";
 import { listAssetDataBindings, type AssetDataBinding } from "./asset-data-bindings";
 import { getAsset, type Asset } from "./assets";
 import { AppError, type AppEnv } from "./auth";
@@ -141,7 +142,7 @@ const resolveJsonPath = (
 export const inspectRuntimeSourceTimestamp = (
   payload: unknown,
   source: DataSource,
-  config: { timestampPath?:string|null },
+  config: { timestampPath?:string|null;timestampFormat?:TimestampFormat },
 ): { sourceTimestamp: string | null; sourceAgeSeconds: number | null } => {
   if (!config.timestampPath) {
     return { sourceTimestamp: null, sourceAgeSeconds: null };
@@ -151,15 +152,10 @@ export const inspectRuntimeSourceTimestamp = (
     config.timestampPath,
     `Data source ${source.id} timestampPath`,
   );
-  if (typeof value !== "string" || !Number.isFinite(Date.parse(value))) {
-    throw new AppError(
-      422,
-      "source_timestamp_invalid",
-      `Data source ${source.id} timestampPath must resolve to an ISO-compatible timestamp string.`,
-    );
-  }
-
-  const timestampMs = Date.parse(value);
+  let normalized:string;
+  try { normalized = timestampToIso(value,config.timestampFormat ?? "iso"); }
+  catch { throw new AppError(422,"source_timestamp_invalid",config.timestampFormat && config.timestampFormat !== "iso" ? `Data source ${source.id} timestamp does not match its configured numeric time format.`:`Data source ${source.id} timestampPath must resolve to an ISO-compatible timestamp string.`); }
+  const timestampMs = Date.parse(normalized);
   const now = Date.now();
   const futureToleranceMs = 5 * 60 * 1000;
   if (timestampMs > now + futureToleranceMs) {
@@ -178,7 +174,7 @@ export const inspectRuntimeSourceTimestamp = (
 const sourceTimestamp = (
   payload: unknown,
   source: DataSource,
-  config: { timestampPath?:string|null },
+  config: { timestampPath?:string|null;timestampFormat?:TimestampFormat },
   staleAfterSeconds: number,
 ): string | null => {
   const inspected = inspectRuntimeSourceTimestamp(payload, source, config);
@@ -529,11 +525,11 @@ export const normalizeRuntimeAsset = (plan: RuntimeAssetPlan, samples: Map<strin
     for (const binding of result.bindings) {
       const value = validateMetricValue(
         binding,
-        resolveJsonPath(
+        applyMetricTransform(resolveJsonPath(
           result.payload,
           binding.sourcePath,
           `Binding ${binding.id}`,
-        ),
+        ),binding.transform,binding.id),
       );
       values[binding.metricKey] = value;
       metrics.push({

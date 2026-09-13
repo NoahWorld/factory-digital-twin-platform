@@ -135,7 +135,7 @@ export async function startRuntime(options: RuntimeOptions) {
   const telemetry = new TelemetryStore(telemetryPath);
   let database:SqliteDatabase;
   try { database = new SqliteDatabase(databasePath); } catch (reason) { telemetry.close(); throw reason; }
-  const env: AppEnv = { ...options.environment,TELEMETRY:telemetry,RUNTIME_CAPABILITIES:new Set(["alarm-rules-v1","telemetry-bindings-v1"]),RUNTIME_DISTRIBUTION:(signal) => runtimeDistribution(bundle,signal),RESOLVE_SOURCE:resolver,DB: database,PROJECT_FILES: new FileBucket(join(dataDirectory,"objects")) };
+  const env: AppEnv = { ...options.environment,TELEMETRY:telemetry,RUNTIME_CAPABILITIES:new Set(["alarm-rules-v1","telemetry-bindings-v1","metric-transforms-v1","source-time-format-v1"]),RUNTIME_DISTRIBUTION:(signal) => runtimeDistribution(bundle,signal),RESOLVE_SOURCE:resolver,DB: database,PROJECT_FILES: new FileBucket(join(dataDirectory,"objects")) };
   env.OPEN_WEBSOCKET_SOURCE = (source,requestId,onSample,signal) => openWebSocketSource(env,source,requestId,onSample,signal);
   const collector = new RuntimeCollector(env); env.CENTRAL_RUNTIME = collector;
   const packages = new LocalPackageService(env,join(dataDirectory,"project-imports")); env.PACKAGE_SERVICE = packages;

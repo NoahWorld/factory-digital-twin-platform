@@ -2,9 +2,9 @@ import { validateBindingCatalog, type ComponentBinding, type MetricCatalogEntry 
 import type { ProjectAsset } from "./assets";
 import type { RuntimeAssetConnection, RuntimeMetricValue } from "../runtime-state";
 
-export type BindingCell = { state: "live" | "loading" | "empty" | "null" | "type-error" | "stale" | "offline"; text: string; value?: RuntimeMetricValue; unit?: string };
+export type BindingCell = { state: "live" | "loading" | "empty" | "null" | "type-error" | "transform-error" | "stale" | "offline"; text: string; value?: RuntimeMetricValue; unit?: string };
 export const bindingStateLabels: Record<BindingCell["state"], string> = {
-  live: "实时", loading: "读取中", empty: "指标缺失", null: "空值", "type-error": "类型错误", stale: "数据陈旧", offline: "设备失联",
+  live: "实时", loading: "读取中", empty: "指标缺失", null: "空值", "type-error": "类型错误", "transform-error": "转换错误", stale: "数据陈旧", offline: "设备失联",
 };
 export const formatBindingValue = (value: RuntimeMetricValue) => value === null ? "空值" : typeof value === "boolean" ? value ? "是" : "否" : String(value);
 
@@ -13,6 +13,7 @@ export function readBindingCell(connection: RuntimeAssetConnection | undefined, 
   if (connection.status === "offline") {
     const state = connection.errorCode === "data_source_stale" ? "stale"
       : connection.errorCode === "metric_type_mismatch" ? "type-error"
+      : connection.errorCode?.startsWith("metric_transform_") ? "transform-error"
       : connection.errorCode === "source_path_not_found" || connection.errorCode === "asset_data_binding_required" ? "empty" : "offline";
     return { state, text: connection.errorMessage ?? bindingStateLabels[state] };
   }

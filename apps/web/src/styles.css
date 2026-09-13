@@ -10654,3 +10654,16 @@ input:focus,
 .bound-node-message .secondary-button { font-size: 12px; padding: 6px 12px; }
 .dashboard-alarm-row[data-alarm-label="提示"] > i { background: #73cdef; }
 .dashboard-alarm-row[data-alarm-label="提示"] > em { color: #73cdef; }
+
+.metric-transform-editor { min-width: 0; border: 1px solid #304d5e; border-radius: 6px; padding: 12px; margin: 12px 0; }
+.metric-transform-editor > fieldset { min-width: 0; border: 1px solid #304d5e; border-radius: 6px; margin: 12px 0; padding: 12px; }
+.metric-transform-editor p, .metric-transform-editor small { color: #a9c2cd; line-height: 1.55; }
+.metric-transform-editor button, .metric-transform-editor select, .metric-transform-editor input:not([type=checkbox]) { border: 1px solid #3b5e70; border-radius: 5px; background: #102330; color: #e1edf2; padding: 7px 10px; max-width: 100%; min-width: 0; }
+.metric-transform-editor label { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 10px 0; }
+.metric-transform-editor input[type=checkbox] { width: auto; }
+.metric-transform-numbers, .metric-transform-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.metric-transform-numbers label { flex: 1 1 100px; }
+.metric-transform-numbers input { width: 100%; }
+.metric-transform-enum-row { border-bottom: 1px solid #304d5e; padding-bottom: 10px; }
+.metric-transform-enum-row .interaction-fields { display: flex; flex-wrap: wrap; gap: 6px; }
+.metric-transform-editor button:disabled { opacity: .45; }

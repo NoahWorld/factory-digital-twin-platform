@@ -1,3 +1,4 @@
+import { validateMetricTransform,type MetricTransform } from "../../../shared/metric-transforms";
 import { AppError, type AppEnv } from "./auth";
 
 type JsonObject = Record<string, unknown>;
@@ -5,6 +6,7 @@ type JsonObject = Record<string, unknown>;
 export type MetricValueType = "number" | "string" | "boolean" | "timestamp";
 
 export type AssetDataBinding = {
+  transform?:MetricTransform;
   id: string;
   assetRecordId: string;
   dataSourceId: string;
@@ -20,6 +22,7 @@ export type AssetDataBinding = {
 };
 
 export type AssetDataBindingCreateInput = {
+  transform?:MetricTransform;
   dataSourceId: string;
   metricKey: string;
   sourcePath: string;
@@ -29,6 +32,7 @@ export type AssetDataBindingCreateInput = {
 };
 
 type AssetDataBindingRow = {
+  transform_json?:string|null;
   id: string;
   asset_id: string;
   data_source_id: string;
@@ -44,6 +48,7 @@ type AssetDataBindingRow = {
 };
 
 const bindingFields = new Set([
+  "transform",
   "dataSourceId",
   "metricKey",
   "sourcePath",
@@ -178,6 +183,7 @@ export const validateAssetDataBindingCreate = (
 ): AssetDataBindingCreateInput => {
   assertKnownFields(body);
   return {
+    ...(body.transform == null ? {}:{ transform:validateMetricTransform(body.transform) }),
     dataSourceId: validateReferenceId(body.dataSourceId, "dataSourceId"),
     metricKey: validateMetricKey(body.metricKey),
     sourcePath: validateSourcePath(body.sourcePath),
@@ -190,6 +196,7 @@ export const validateAssetDataBindingCreate = (
 const presentBinding = (row: AssetDataBindingRow): AssetDataBinding => {
   try {
     return {
+      ...(row.transform_json ? { transform:validateMetricTransform(JSON.parse(row.transform_json)) }:{}),
       id: validateReferenceId(row.id, "stored binding ID"),
       assetRecordId: validateReferenceId(row.asset_id, "stored asset record ID"),
       dataSourceId: validateReferenceId(row.data_source_id, "stored data source ID"),
@@ -215,7 +222,7 @@ const presentBinding = (row: AssetDataBindingRow): AssetDataBinding => {
 const bindingColumns = `
   b.id, b.asset_id, b.data_source_id, d.name AS data_source_name,
   d.source_type AS data_source_type, b.metric_key, b.source_path,
-  b.value_type, b.unit, b.stale_after_seconds, b.created_at, b.updated_at
+  b.value_type, b.unit, b.stale_after_seconds, b.created_at, b.updated_at, b.transform_json
 `;
 
 const requireProjectAsset = async (
@@ -364,8 +371,8 @@ export const createAssetDataBinding = async (
   await runBindingWrite(() => env.DB.prepare(
     `INSERT INTO asset_data_bindings (
       id, asset_id, data_source_id, metric_key, source_path,
-      value_type, unit, stale_after_seconds, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      value_type, unit, stale_after_seconds, created_at, updated_at, transform_json
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   )
     .bind(
       id,
@@ -378,6 +385,7 @@ export const createAssetDataBinding = async (
       input.staleAfterSeconds,
       now,
       now,
+      input.transform ? JSON.stringify(input.transform):null,
     )
     .run());
 
@@ -401,7 +409,9 @@ export const updateAssetDataBinding = async (
   }
 
   const current = await getBinding(env, projectId, assetRecordId, bindingId);
+  const transform = "transform" in body ? body.transform === null ? undefined:validateMetricTransform(body.transform):current.transform;
   const next: AssetDataBindingCreateInput = {
+    ...(transform ? { transform }:{}),
     dataSourceId: "dataSourceId" in body
       ? validateReferenceId(body.dataSourceId, "dataSourceId")
       : current.dataSourceId,
@@ -426,7 +436,8 @@ export const updateAssetDataBinding = async (
   await runBindingWrite(() => env.DB.prepare(
     `UPDATE asset_data_bindings
      SET data_source_id = ?, metric_key = ?, source_path = ?,
-         value_type = ?, unit = ?, stale_after_seconds = ?, updated_at = ?
+         value_type = ?, unit = ?, stale_after_seconds = ?, updated_at = ?,
+         transform_json = CASE WHEN ?=1 THEN ? ELSE transform_json END
      WHERE asset_id = ? AND id = ?`,
   )
     .bind(
@@ -437,6 +448,8 @@ export const updateAssetDataBinding = async (
       next.unit,
       next.staleAfterSeconds,
       now,
+      "transform" in body ? 1:0,
+      next.transform ? JSON.stringify(next.transform):null,
       assetRecordId,
       bindingId,
     )

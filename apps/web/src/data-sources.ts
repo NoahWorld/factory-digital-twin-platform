@@ -1,6 +1,8 @@
+import type { TimestampFormat } from "../../../shared/metric-transforms";
 export type DataSourceType = "rest_polling" | "websocket";
 
 export type RestPollingConfig = {
+  timestampFormat?:TimestampFormat;
   url: string;
   endpointRef?: string;
   collectionMode?: "demand" | "continuous";
@@ -11,6 +13,7 @@ export type RestPollingConfig = {
 };
 
 export type WebSocketConfig = {
+  timestampFormat?:TimestampFormat;
   url: string;
   endpointRef?: string;
   collectionMode?: "demand" | "continuous";

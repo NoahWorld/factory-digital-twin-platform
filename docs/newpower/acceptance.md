@@ -437,3 +437,11 @@ Worker回归发现D1 meta.changes含触发器更新，原单行保存返回2而�
 最终`m6b-widget-final.log`7项新组件/API和原绑定UI复验通过，`m6b-widget-final-check.log`/`m6b-widget-final-build.log`通过。后续数据转换与MQTT/只读SQL尚未实现，M6b整体和完整引擎目标继续进行。
 
 组件检查点旧Worker smoke12最终通过，日志 `m6b-widget-smoke.log`。完整回归的旧提示差异已按原文字修复，相关验证全部收齐。
+
+## M6b 指标转换（2026-09-13，本机检查点）
+
+0020_metric_transforms.sql先在新Node库通过3项适配器检查；停止原Worker后执行受控备份迁移并按原配置重启。备份test/backups/before-migration-2026-09-13T09-30-24-537Z-c25e4e3a-a026-46e6-adb9-70c5439ecf95.sqlite，m6b-transform-migration-readback.json显示三个保留示例共20段原内容不变、FK0。
+
+独立HTTP/Node实际接口验证：数字文本140先减32再乘5/9得到60，枚举与Unix时间转换进入标准状态及无查看者历史，省略PATCH保留/显式null清除、NULL/错误不回显/陈旧/未来时间通过。真实Chrome编辑排序、保存重开、小数枚举、空数值不变零、时间步骤和运行错误恢复通过。原UI检查定位当前设备时使用了与实际可访问名称不匹配的label选择器，改为读取实际combobox后通过；没有放宽产品断言。
+
+快照/ZIP导入/草稿恢复验证转换及时间格式保留、ID重映射、旧v1字节和包身份不变、旧告警依赖签名不变、新转换改变语义签名、缺失能力声明拒绝。m6b-transform-ui-fixed.log共5项通过；m6b-transform-regression.log完整162项通过、1示例跳过（6.5分钟）。m6b-transform-final-runtime.log追加固定版本真实运行通过；该次新增告警测试遗漏原契约要求的recoveryCondition:null，修正测试输入后m6b-transform-alarm-fixed.log的2项转换告警/包复验通过。转换值60进入服务器告警记录，清除转换产生retired而非假恢复。最终check/build及Worker smoke12通过（m6b-transform-smoke.log）；M6b整体仍待MQTT/只读SQL与后续诊断验收。

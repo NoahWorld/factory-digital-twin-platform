@@ -90,7 +90,7 @@ export function parseRuntimeProjectSnapshot(input:unknown):RuntimeProjectSnapsho
   if (input.snapshotVersion === 1 && (input.alarmRules !== undefined || input.requiredCapabilities !== undefined)) bad("旧快照不能携带新告警能力。");
   const alarmRules = input.snapshotVersion === 2 ? validateAlarmRules(input.alarmRules):[];
   const requiredCapabilities = input.snapshotVersion === 2 ? input.requiredCapabilities:[];
-  if (!Array.isArray(requiredCapabilities) || requiredCapabilities.some((capability) => !["alarm-rules-v1","telemetry-bindings-v1"].includes(String(capability))) || new Set(requiredCapabilities).size !== requiredCapabilities.length) bad("运行器不支持包中声明的必要能力。");
+  if (!Array.isArray(requiredCapabilities) || requiredCapabilities.some((capability) => !["alarm-rules-v1","telemetry-bindings-v1","metric-transforms-v1","source-time-format-v1"].includes(String(capability))) || new Set(requiredCapabilities).size !== requiredCapabilities.length) bad("运行器不支持包中声明的必要能力。");
   if (alarmRules.length > 0 && !(requiredCapabilities as string[]).includes("alarm-rules-v1")) bad("告警配置缺少必要能力声明。");
   const project = { id:input.project.id,name:input.project.name,runtimeRevision:input.project.runtimeRevision },definition = parseProjectDefinition(input.definition);
   if (definition.projectId !== project.id) bad("项目定义所属项目不一致。");
@@ -108,7 +108,7 @@ export function parseRuntimeProjectSnapshot(input:unknown):RuntimeProjectSnapsho
   const sourceMap = new Map(dataSources.map((source) => [source.id,source])),assetRecords = new Set(assets.map((asset) => asset.id));
   const assetDataBindings = list(input.assetDataBindings,"指标映射列表不正确。").map((binding):AssetDataBinding => {
     if (!id(binding.id) || !id(binding.assetRecordId) || !assetRecords.has(binding.assetRecordId) || !date(binding.createdAt) || !date(binding.updatedAt)) return bad("指标映射所属资产不正确。");
-    const fields = validateAssetDataBindingCreate({ dataSourceId:binding.dataSourceId,metricKey:binding.metricKey,sourcePath:binding.sourcePath,valueType:binding.valueType,unit:binding.unit,staleAfterSeconds:binding.staleAfterSeconds });
+    const fields = validateAssetDataBindingCreate({ ...(binding.transform !== undefined ? { transform:binding.transform }:{}),dataSourceId:binding.dataSourceId,metricKey:binding.metricKey,sourcePath:binding.sourcePath,valueType:binding.valueType,unit:binding.unit,staleAfterSeconds:binding.staleAfterSeconds });
     const source = sourceMap.get(fields.dataSourceId); if (!source) return bad("指标映射数据源缺失。");
     return { id:binding.id,assetRecordId:binding.assetRecordId,...fields,dataSourceName:source.name,dataSourceType:source.sourceType,createdAt:binding.createdAt,updatedAt:binding.updatedAt };
   });
@@ -178,6 +178,6 @@ export function validateSnapshotReferences(snapshot:RuntimeProjectSnapshot) {
 }
 
 
-export function requiredRuntimeCapabilities(snapshot:Pick<RuntimeProjectSnapshot,"definition"|"alarmRules">):string[] {
-  return [...((snapshot.alarmRules?.length ?? 0) > 0 ? ["alarm-rules-v1"]:[]),...(snapshot.definition.dataBindings.some((binding) => binding.version === 2) ? ["telemetry-bindings-v1"]:[])];
+export function requiredRuntimeCapabilities(snapshot:Pick<RuntimeProjectSnapshot,"definition"|"alarmRules"> & Partial<Pick<RuntimeProjectSnapshot,"assetDataBindings"|"dataSources">>):string[] {
+  return [...((snapshot.alarmRules?.length ?? 0) > 0 ? ["alarm-rules-v1"]:[]),...(snapshot.definition.dataBindings.some((binding) => binding.version === 2) ? ["telemetry-bindings-v1"]:[]),...(snapshot.assetDataBindings?.some((binding) => binding.transform) ? ["metric-transforms-v1"]:[]),...(snapshot.dataSources?.some((source) => source.config.timestampFormat) ? ["source-time-format-v1"]:[])];
 }

@@ -1,6 +1,8 @@
+import type { MetricTransform } from "../../../../shared/metric-transforms";
 export type MetricValueType = "number" | "string" | "boolean" | "timestamp";
 
 export type AssetDataBinding = {
+  transform?:MetricTransform;
   id: string;
   assetRecordId: string;
   dataSourceId: string;

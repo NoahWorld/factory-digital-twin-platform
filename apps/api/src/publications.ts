@@ -100,7 +100,7 @@ export async function captureRuntimeSnapshot(env:AppEnv,projectId:string,expecte
     for (const image of images) await verifyPublicationResource(env,projectId,"image",image.id,image,signal);
     requireActiveRequest(signal); const current = await draftIdentity(env,projectId);
     if (current.runtime_revision !== identity.runtime_revision) { if (expectedRevision !== undefined) throw conflict(); continue; }
-    try { return parseRuntimeProjectSnapshot({ kind:"newpower.runtime-project",snapshotVersion:2,alarmRules,requiredCapabilities:requiredRuntimeCapabilities({ definition,alarmRules }),project:{ id:projectId,name:identity.name,runtimeRevision:identity.runtime_revision },definition,assets,assetDataBindings,dataSources,legacyModelNames,resources:{ models:[...models.values()].sort((a,b) => a.id.localeCompare(b.id)),images } }); }
+    try { return parseRuntimeProjectSnapshot({ kind:"newpower.runtime-project",snapshotVersion:2,alarmRules,requiredCapabilities:requiredRuntimeCapabilities({ definition,alarmRules,assetDataBindings,dataSources }),project:{ id:projectId,name:identity.name,runtimeRevision:identity.runtime_revision },definition,assets,assetDataBindings,dataSources,legacyModelNames,resources:{ models:[...models.values()].sort((a,b) => a.id.localeCompare(b.id)),images } }); }
     catch (reason) { throw new AppError(409,"publication_dependencies_invalid",reason instanceof Error ? reason.message : "Runtime snapshot validation failed."); }
   }
   throw conflict();

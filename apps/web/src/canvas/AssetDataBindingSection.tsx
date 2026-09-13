@@ -1,3 +1,5 @@
+import { MetricTransformEditor } from "./MetricTransformEditor";
+import { validateMetricTransform,type MetricTransform } from "../../../../shared/metric-transforms";
 import { useEffect, useState, type FormEvent } from "react";
 import { errorMessage, request } from "../api";
 import {
@@ -22,6 +24,7 @@ type AssetDataBindingSectionProps = {
 };
 
 type AssetDataBindingDraft = {
+  transform:MetricTransform|null;
   id: string | null;
   dataSourceId: string;
   metricKey: string;
@@ -33,6 +36,7 @@ type AssetDataBindingDraft = {
 
 const newDraft = (dataSourceId = ""): AssetDataBindingDraft => ({
   id: null,
+  transform:null,
   dataSourceId,
   metricKey: "",
   sourcePath: "$.data.value",
@@ -45,6 +49,7 @@ const draftFromBinding = (
   binding: AssetDataBinding,
 ): AssetDataBindingDraft => ({
   id: binding.id,
+  transform:binding.transform ? structuredClone(binding.transform):null,
   dataSourceId: binding.dataSourceId,
   metricKey: binding.metricKey,
   sourcePath: binding.sourcePath,
@@ -152,7 +157,10 @@ export function AssetDataBindingSection({
     setSaveError(null);
     setNotice(null);
     try {
+      const originalTransform = dataBindings.find((binding) => binding.id === draft.id)?.transform ?? null;
+      const transform = draft.transform ? validateMetricTransform(draft.transform):null;
       const payload = {
+        ...(JSON.stringify(transform) === JSON.stringify(originalTransform) ? {}:{ transform }),
         dataSourceId: draft.dataSourceId,
         metricKey: draft.metricKey,
         sourcePath: draft.sourcePath,
@@ -379,6 +387,7 @@ export function AssetDataBindingSection({
                   value={draft.staleAfterSeconds}
                 />
               </label>
+              <MetricTransformEditor value={draft.transform} disabled={formDisabled} onChange={(transform) => setDraft((current) => ({ ...current,transform }))}/>
               <p className="inspector-help">
                 路径统一使用以 <code>$</code> 开头的 JSON 路径；同一资产内的指标键必须唯一。
               </p>
