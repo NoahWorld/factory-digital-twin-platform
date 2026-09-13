@@ -1,6 +1,6 @@
 # NewPower 本地运行宿主
 
-Node.js 24.18+（24 系列），复用现有 API、项目 schema、权限和模型检查。SQLite 保存配置，本地文件存储实现原有 ObjectBucket 接口；静态前端和 API 同源服务。当前支持按需或持续集中 REST 采集；多个客户端按源共享任务，通过同源 SSE 读取标准状态。按需源最后订阅释放后停止，持续源在无人查看及重启后仍采样，故障和陈旧明确显示。支持环境逻辑端点与凭据，上游 WebSocket 在 M6a 后续接入。
+Node.js 24.18+（24 系列），复用现有 API、项目 schema、权限和模型检查。SQLite 保存配置，本地文件存储实现原有 ObjectBucket 接口；静态前端和 API 同源服务。当前支持按需或持续集中 REST 采集；多个客户端按源共享任务，通过同源 SSE 读取标准状态。按需源最后订阅释放后停止，持续源在无人查看及重启后仍采样，故障和陈旧明确显示。支持环境逻辑端点与凭据，上游WebSocket支持服务器鉴权、心跳、主题订阅恢复和有界采样；协议见仓库docs/newpower/websocket-sources.md。
 
 在仓库根目录执行 `pnpm build`，产物位于 `apps/runtime/dist`。该目录包含服务器、迁移和前端，可以复制到独立目录；运行时仅需匹配版本的 Node，不依赖 Vite、Wrangler、源码目录或 node_modules。完整发布/项目打包与回滚仍归 M5。
 
@@ -14,6 +14,6 @@ node server.mjs --data-dir ./data --config ./runtime.env --port 8792
 
 SQLite 批次使用原子事务、准确 changes 和外键。当前 Node 24.18 尚没有 StatementSync.close，适配器限制保留的预编译语句数量，并在关闭时释放数据库连接。SQLite 原生模块在 Node 24 文档中标为 release candidate，当前方法均以本机 24.18 实测为准，未直接照用较新文档新增接口。参考[Node 24 官方 SQLite 文档](https://raw.githubusercontent.com/nodejs/node/v24.x/doc/api/sqlite.md)。
 
-环境端点通过 `SOURCE_ENVIRONMENT_FILE`（相对runtime.env）或 `--sources` 指定私有JSON，参考 `sources.example.json`。在数据源表单填写“环境端点引用”，地址留空；服务器按引用解析实际URL，并要求当前项目ID明确列于该端点的projectIds，仍检查精确host:port白名单。凭据只能用于绑定的逻辑端点，不能携带到任意直接URL；服务启动时载入，修改文件后需重启。文件不得放在public或项目导出包内。当前按此方式支持REST，WS执行仍待后续接入。
+环境端点通过 `SOURCE_ENVIRONMENT_FILE`（相对runtime.env）或 `--sources` 指定私有JSON，参考 `sources.example.json`。在数据源表单填写“环境端点引用”，地址留空；服务器按引用解析实际URL，并要求当前项目ID明确列于该端点的projectIds，仍检查精确host:port白名单。凭据只能用于绑定的逻辑端点，不能携带到任意直接URL；服务启动时载入，修改文件后需重启。文件不得放在public或项目导出包内。REST和WebSocket均复用该环境解析。
 
 运行/测试响应拒绝上游回显已配置的凭据或逻辑端点实际地址，错误只报告代码；原始上游内容不记日志。普通查看者的数据源列表隐藏直接URL、凭据引用及时间戳路径；旧编辑配置仍支持直接URL，实际内网交付应切换逻辑端点。

@@ -1,7 +1,7 @@
 import { listAssetDataBindings, type AssetDataBinding } from "./asset-data-bindings";
 import { getAsset, type Asset } from "./assets";
 import { AppError, type AppEnv } from "./auth";
-import { getDataSource, type DataSource, type RestPollingConfig } from "./data-sources";
+import { getDataSource, type DataSource, type RestPollingConfig,type DataSourceConfig } from "./data-sources";
 
 const MAX_RESPONSE_BYTES = 256 * 1024;
 const MAX_DISCOVERED_FIELDS = 200;
@@ -141,7 +141,7 @@ const resolveJsonPath = (
 const inspectSourceTimestamp = (
   payload: unknown,
   source: DataSource,
-  config: RestPollingConfig,
+  config: { timestampPath?:string|null },
 ): { sourceTimestamp: string | null; sourceAgeSeconds: number | null } => {
   if (!config.timestampPath) {
     return { sourceTimestamp: null, sourceAgeSeconds: null };
@@ -178,7 +178,7 @@ const inspectSourceTimestamp = (
 const sourceTimestamp = (
   payload: unknown,
   source: DataSource,
-  config: RestPollingConfig,
+  config: { timestampPath?:string|null },
   staleAfterSeconds: number,
 ): string | null => {
   const inspected = inspectSourceTimestamp(payload, source, config);
@@ -347,7 +347,7 @@ const readLimitedText = async (
   return { text: new TextDecoder().decode(body), byteSize: totalBytes };
 };
 
-const rejectPrivateEcho = (payload:unknown,config:RestPollingConfig,headers:Record<string,string>):void => {
+const rejectPrivateEcho = (payload:unknown,config:DataSourceConfig,headers:Record<string,string>):void => {
   const secrets = new Set(Object.values(headers).filter(Boolean));
   const authorization = headers.authorization;
   const bearer = authorization?.match(/^Bearer +(.+?) *$/i),basic = authorization?.match(/^Basic +(\S+) *$/i);
@@ -440,31 +440,27 @@ const fetchJson = async (
   }
 };
 
-const requireAllowedRestSource = (
-  env: AppEnv,
-  source: DataSource,
-): { config:RestPollingConfig;headers:Record<string,string> } => {
-  if (env.RUNTIME_POLLING_ENABLED !== "true") {
-    throw new AppError(503, "runtime_polling_disabled", "REST runtime polling is disabled on this server.");
-  }
+export const resolveAllowedRuntimeSource = (env:AppEnv,source:DataSource):{ url:string;headers:Record<string,string> } => {
+  if (env.RUNTIME_POLLING_ENABLED !== "true") throw new AppError(503,"runtime_polling_disabled","Runtime source collection is disabled on this server.");
   const allowedHosts = runtimeHosts(env);
-  if (allowedHosts.size === 0) {
-    throw new AppError(503, "runtime_allowed_hosts_missing", "REST runtime polling requires at least one explicitly allowed host.");
-  }
-  const original = requireRestConfig(source);
+  if (!allowedHosts.size) throw new AppError(503,"runtime_allowed_hosts_missing","Runtime collection requires an explicitly allowed host.");
+  const original = source.config;
   if (!env.RESOLVE_SOURCE && (original.endpointRef || original.credentialRef)) throw new AppError(503,"source_environment_unavailable","This source requires server environment configuration.");
   const resolved = env.RESOLVE_SOURCE?.(source) ?? { url:original.url,headers:{} };
-  const config = { ...original,url:resolved.url };
-  const url = new URL(config.url);
-  if (!allowedHosts.has(url.host.toLowerCase())) {
-    throw new AppError(
-      403,
-      "runtime_data_source_host_not_allowed",
-      `Data source ${source.id} host is not in RUNTIME_ALLOWED_HOSTS.`,
-    );
-  }
-  return { config,headers:resolved.headers };
+  const url = new URL(resolved.url);
+  if (!(source.sourceType === "rest_polling" ? ["http:","https:"] : ["ws:","wss:"]).includes(url.protocol)) throw new AppError(409,"source_endpoint_protocol_mismatch","Source protocol does not match its configured type.");
+  if (!allowedHosts.has(url.host.toLowerCase())) throw new AppError(403,"runtime_data_source_host_not_allowed",`Data source ${source.id} host is not in RUNTIME_ALLOWED_HOSTS.`);
+  return resolved;
 };
+
+export function parseRuntimeSourceSample(source:DataSource,config:DataSourceConfig,headers:Record<string,string>,text:string,receivedAt=Date.now()):SourceSample {
+  const responseBytes = new TextEncoder().encode(text).byteLength;
+  if (responseBytes > MAX_RESPONSE_BYTES) throw new AppError(502,"data_source_response_too_large","Source message exceeds the byte limit.");
+  let payload:unknown;
+  try { payload = JSON.parse(text); } catch { throw new AppError(502,"data_source_invalid_json","Source did not send valid JSON."); }
+  rejectPrivateEcho(payload,config,headers); inspectSourceTimestamp(payload,source,config);
+  return { payload,responseBytes,collectedAt:new Date(receivedAt).toISOString(),durationMs:Math.max(0,Date.now()-receivedAt) };
+}
 
 export const probeRestDataSource = async (
   env: AppEnv,
@@ -474,8 +470,8 @@ export const probeRestDataSource = async (
   signal?: AbortSignal,
 ): Promise<RestDataSourceProbe> => {
   const source = await getDataSource(env, projectId, dataSourceId);
-  const { config,headers } = requireAllowedRestSource(env, source);
-  const fetched = await fetchJson(source, config, requestId,signal,headers);
+  const config = source.config;
+  const fetched = await fetchRuntimeSource(env,source,requestId,signal);
   const timestamp = inspectSourceTimestamp(fetched.payload, source, config);
   const discovery = discoverScalarFields(fetched.payload);
   return {
@@ -504,14 +500,15 @@ export const loadRuntimeAssetPlan = async (env: AppEnv, projectId: string, asset
 };
 
 export const fetchRuntimeSource = (env: AppEnv, source: DataSource, requestId: string, signal?: AbortSignal): Promise<SourceSample> => {
-  const { config,headers } = requireAllowedRestSource(env,source);
+  if (source.sourceType === "websocket") return firstWebSocketSample(env,source,requestId,signal);
+  const { url,headers } = resolveAllowedRuntimeSource(env,source),config = { ...requireRestConfig(source),url };
   return fetchJson(source,config,requestId,signal,headers);
 };
 
 export const normalizeRuntimeAsset = (plan: RuntimeAssetPlan, samples: Map<string,SourceSample>): AssetRuntimeState => {
   const { asset,bindings } = plan;
   const sourceResults = plan.sources.map((source) => {
-    const config = requireRestConfig(source), sample = samples.get(source.id);
+    const config = { ...source.config,intervalSeconds:"intervalSeconds" in source.config ? source.config.intervalSeconds : Math.max(1,(source.config.sampleIntervalMs ?? 100)/1000) }, sample = samples.get(source.id);
     if (!sample) throw new AppError(503,"data_source_pending","Waiting for the first source sample.");
     const sourceBindings = bindings.filter((binding) => binding.dataSourceId === source.id);
     return { source,config,bindings: sourceBindings,...sample,
@@ -584,3 +581,23 @@ export const collectAssetRuntimeState = async (env: AppEnv, projectId: string, a
   catch (reason) { controller.abort(); await Promise.allSettled(tasks); throw reason; }
   finally { signal?.removeEventListener("abort",cancel); }
 };
+
+
+function firstWebSocketSample(env:AppEnv,source:DataSource,requestId:string,signal?:AbortSignal):Promise<SourceSample> {
+  const open = env.OPEN_WEBSOCKET_SOURCE;
+  if (!open) return Promise.reject(new AppError(503,"websocket_runtime_unavailable","This host does not provide WebSocket collection."));
+  return new Promise((resolve,reject) => {
+    const controller = new AbortController(); let settled = false;
+    const finish = (error?:unknown,sample?:SourceSample) => {
+      if (settled) return; settled = true; clearTimeout(timeout); signal?.removeEventListener("abort",cancel); controller.abort();
+      if (error) reject(error); else resolve(sample!);
+    };
+    const cancel = () => finish(new AppError(499,"data_source_cancelled","Source collection cancelled."));
+    const timeout = setTimeout(() => finish(new AppError(504,"data_source_timeout","WebSocket did not provide a sample within ten seconds.")),10000);
+    signal?.addEventListener("abort",cancel,{ once:true }); if (signal?.aborted) { cancel(); return; }
+    void Promise.resolve().then(() => open(source,requestId,(sample) => finish(undefined,sample),controller.signal)).then((connection) => {
+      if (settled) connection.close();
+      else void connection.closed.then(() => finish(new AppError(502,"data_source_disconnected","WebSocket closed before providing a sample.")),(reason) => finish(reason));
+    },(reason) => finish(reason));
+  });
+}

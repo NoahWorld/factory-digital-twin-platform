@@ -105,3 +105,20 @@ test("continuous source capacity is explicit and releases admission for a previo
     diagnostics = collector.diagnostics("project"); expect(diagnostics.sources).toHaveLength(256); expect(diagnostics.sources.every((source) => source.errorCode === null)).toBe(true);
   } finally { await collector.close(); globalThis.fetch = original; }
 });
+
+test("seven open WebSockets do not occupy REST handshake slots and shutdown cancels every lifetime",async () => {
+  const original = globalThis.fetch,now = new Date().toISOString(); let sockets = 0,closed = 0,rest = 0;
+  const rows = Array.from({ length:8 },(_,index) => ({ id:`source-${index}`,project_id:"project",source_type:index < 7 ? "websocket" : "rest_polling",name:`Source ${index}`,config_json:JSON.stringify(index < 7 ? { url:`ws://old/source-${index}`,heartbeatSeconds:5,reconnectMaxSeconds:5,credentialRef:null,collectionMode:"continuous" } : { url:"http://old/rest",intervalSeconds:60,timeoutMs:1000,timestampPath:null,credentialRef:null,collectionMode:"continuous" }),created_at:now,updated_at:now }));
+  const DB = { prepare() { return { bind() { return this; },async all() { return { results:rows }; } }; } } as unknown as Database;
+  globalThis.fetch = async () => { rest++; return Response.json({ value:42 }); };
+  const collector = new RuntimeCollector({ DB,RUNTIME_POLLING_ENABLED:"true",RUNTIME_ALLOWED_HOSTS:"old",OPEN_WEBSOCKET_SOURCE:async (_,__,sample,signal) => {
+    sockets++; sample({ payload:{ value:1 },responseBytes:11,collectedAt:now,durationMs:0 });
+    const lifetime = new Promise<void>((_,reject) => signal.addEventListener("abort",() => { closed++; reject(new Error("Stopped")); },{ once:true }));
+    return { closed:lifetime,close() {} };
+  } });
+  try {
+    await collector.start(); await expect.poll(() => sockets).toBe(7); await expect.poll(() => rest).toBe(1);
+    expect(collector.diagnostics("project").sources.every((source) => source.state === "sampled")).toBe(true);
+    await collector.close(); expect(closed).toBe(7);
+  } finally { await collector.close(); globalThis.fetch = original; }
+});

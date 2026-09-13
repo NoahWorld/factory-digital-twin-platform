@@ -16,6 +16,8 @@
     "check": "pnpm --recursive run check"
   },
   "devDependencies": {
-    "@playwright/test": "1.62.0"
+    "@playwright/test": "1.62.0",
+    "@types/ws": "8.18.1",
+    "ws": "8.21.3"
   }
 }

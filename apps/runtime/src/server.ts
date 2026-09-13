@@ -9,6 +9,7 @@ import { Readable } from "node:stream";
 import api from "../../api/src/index";
 import type { AppEnv } from "../../api/src/auth";
 import { createSourceResolver,parseSourceEnvironment } from "./source-environment";
+import { openWebSocketSource } from "./websocket-source";
 import { RuntimeCollector } from "./collector";
 import { SqliteDatabase } from "./sqlite-database";
 import { FileBucket } from "./file-bucket";
@@ -125,6 +126,7 @@ export async function startRuntime(options: RuntimeOptions) {
   const migration = await migrateRuntimeDatabase(databasePath,migrationsDirectory);
   const database = new SqliteDatabase(databasePath);
   const env: AppEnv = { ...options.environment,RESOLVE_SOURCE:resolver,DB: database,PROJECT_FILES: new FileBucket(join(dataDirectory,"objects")) };
+  env.OPEN_WEBSOCKET_SOURCE = (source,requestId,onSample,signal) => openWebSocketSource(env,source,requestId,onSample,signal);
   const collector = new RuntimeCollector(env); env.CENTRAL_RUNTIME = collector;
   try { await collector.start(); } catch (reason) { await collector.close(); database.close(); throw reason; }
   const requests = new Set<AbortController>();

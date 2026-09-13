@@ -15,6 +15,9 @@ export type WebSocketConfig = {
   endpointRef?: string;
   collectionMode?: "demand" | "continuous";
   heartbeatSeconds: number;
+  timestampPath?: string | null;
+  sampleIntervalMs?: number;
+  topics?: string[];
   reconnectMaxSeconds: number;
   credentialRef: string | null;
 };

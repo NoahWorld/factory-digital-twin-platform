@@ -312,3 +312,19 @@ M4本地技术验收通过。M6a继续建立独立宿主、集中采集和环境
 - `m6a-continuous-final-check.log`、`m6a-continuous-final-build.log`：check/build通过；`m6a-continuous-smoke.log`：旧Worker REST smoke12通过。
 
 只读复核未发现新的具体缺陷。M6a剩余真实WS上游接入及总阶段验收继续；M5–M8未完成。
+
+## M6a WebSocket 与完整本机验收（2026-09-13）
+
+起点 `1b518f9`。固定ws 8.21.3接入Node，复用私有环境解析、主机边界、源样本检查、资产标准化、集中缓存和SSE。配置支持主题订阅、源时间戳、采样间隔、心跳和重连上限；连接测试获取首个有效样本并释放。旧Worker明确不提供WS执行，原REST保留。
+
+实际UI把源改为WebSocket和逻辑端点，保存主题并测试字段；上游要求正确的服务器认证头。两个独立Chrome浏览器、两个设备共享一个上游连接和一次订阅；两边数值与三维选择正确，浏览器没有直接WebSocket连接。上游断开并拒绝握手时显示失联，重新允许后自动恢复订阅；陈旧时间戳明确失效并能恢复。关闭一方不断流，最后一方退出关闭上游且不再重连。又改为持续模式并重启独立宿主，零查看者重新建立订阅，切回按需后停止。
+
+原生协议测试覆盖两轮正常ping/pong、无pong超时、合法消息合并、非法JSON/二进制/超大消息/过多分片/速率限制/私有回显、拒绝302与首样本异常清理。7条持续WebSocket的合成调度测试证明寿命不占REST并发槽，退出取消全部寿命；这项是调度契约检查，非吞吐量证明。可复制构建不依赖运行目录node_modules，可选原生插件不进入产物。
+
+- `m6a-ws-ui-fixed.log`：真实UI/认证/双客户端/订阅恢复与退出通过。首次定位器使用完整label文本选择下拉框未匹配，改按其实际combobox可访问名称操作。
+- `m6a-ws-continuous.log`：上述完整操作再加实际持续WS重启/释放通过。
+- `m6a-ws-boundaries.log`：5项实际协议/边界通过；`m6a-ws-scheduler.log`：6项调度/代次/容量边界通过。
+- `m6a-complete-regression.log`：完整113项通过，示例创建1项按设计跳过，覆盖M0–M4、独立宿主、REST/WS、权限及生命周期。
+- `m6a-ws-final-check.log`、`m6a-ws-build.log`：check/build通过；`m6a-complete-smoke.log`：旧Worker REST smoke12项通过。
+
+配置和双客户端截图已查看。协议/预算详见websocket-sources.md；实际客户私有协议、证书环境、生产网络和吞吐量仍待现场验证，M7另有规模与长时验收。M6a本地技术验收通过，继续M5冻结发布版本及独立交付，完整目标保持active。

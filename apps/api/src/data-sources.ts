@@ -19,6 +19,9 @@ export type WebSocketConfig = {
   endpointRef?: string;
   collectionMode?: "demand" | "continuous";
   heartbeatSeconds: number;
+  timestampPath?: string | null;
+  sampleIntervalMs?: number;
+  topics?: string[];
   reconnectMaxSeconds: number;
   credentialRef: string | null;
 };
@@ -72,6 +75,9 @@ const WEBSOCKET_CONFIG_FIELDS = new Set([
   "endpointRef",
   "collectionMode",
   "heartbeatSeconds",
+  "timestampPath",
+  "sampleIntervalMs",
+  "topics",
   "reconnectMaxSeconds",
   "credentialRef",
 ]);
@@ -272,7 +278,11 @@ const validateConfig = (
     "unknown_data_source_config_field",
     "WebSocket config",
   );
+  if (config.topics !== undefined && (!Array.isArray(config.topics) || config.topics.length > 32 || !config.topics.every((topic) => typeof topic === "string" && topic.length > 0 && topic.length <= 128 && !/[\u0000-\u001f\u007f]/.test(topic)))) throw new AppError(400,"invalid_websocket_topics","Use at most 32 printable subscription topics of at most 128 characters.");
   return {
+    ...(config.timestampPath !== undefined ? { timestampPath:validateTimestampPath(config.timestampPath) } : {}),
+    ...(config.sampleIntervalMs !== undefined ? { sampleIntervalMs:validateInteger(config.sampleIntervalMs,"config.sampleIntervalMs",16,60000) } : {}),
+    ...(config.topics !== undefined ? { topics:[...new Set(config.topics as string[])] } : {}),
     url: endpointRef ? "" : validateConnectionUrl(config.url, ["ws:", "wss:"], "WebSocket"),
     ...endpoint,
     heartbeatSeconds: validateInteger(

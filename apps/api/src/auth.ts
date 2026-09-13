@@ -37,6 +37,7 @@ export type ObjectBucket = {
 };
 
 export type AppEnv = {
+  OPEN_WEBSOCKET_SOURCE?: (source:import("./data-sources").DataSource,requestId:string,onSample:(sample:import("./runtime-state").SourceSample) => void,signal:AbortSignal) => Promise<{ closed:Promise<void>;close():void }>;
   RESOLVE_SOURCE?: (source: import("./data-sources").DataSource) => { url:string;headers:Record<string,string> };
   CENTRAL_RUNTIME?: import("../../../shared/runtime-stream").CentralRuntime;
   DB: Database;

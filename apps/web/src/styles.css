@@ -239,7 +239,8 @@ label > span {
 }
 
 input,
-.data-source-form-grid select {
+.data-source-form-grid select,
+.data-source-form-grid textarea {
   width: 100%;
   padding: 12px 13px;
   border: 1px solid #2e4358;
@@ -254,7 +255,8 @@ input::placeholder {
 }
 
 input:focus,
-.data-source-form-grid select:focus {
+.data-source-form-grid select:focus,
+.data-source-form-grid textarea:focus {
   border-color: #76d3fa;
   box-shadow: 0 0 0 3px rgba(102, 201, 241, 0.12);
 }

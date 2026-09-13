@@ -30,6 +30,8 @@ type DataSourceDraft = {
   timeoutMs: string;
   timestampPath: string;
   heartbeatSeconds: string;
+  sampleIntervalMs: string;
+  topics: string;
   reconnectMaxSeconds: string;
   credentialRef: string;
 };
@@ -45,6 +47,8 @@ const emptyDraft = (): DataSourceDraft => ({
   timeoutMs: "5000",
   timestampPath: "",
   heartbeatSeconds: "30",
+  sampleIntervalMs: "100",
+  topics: "",
   reconnectMaxSeconds: "60",
   credentialRef: "",
 });
@@ -62,9 +66,9 @@ const draftFromSource = (source: ProjectDataSource): DataSourceDraft => ({
   timeoutMs: source.sourceType === "rest_polling"
     ? String(source.config.timeoutMs)
     : "5000",
-  timestampPath: source.sourceType === "rest_polling"
-    ? source.config.timestampPath ?? ""
-    : "",
+  timestampPath: source.config.timestampPath ?? "",
+  sampleIntervalMs: source.sourceType === "websocket" ? String(source.config.sampleIntervalMs ?? 100) : "100",
+  topics: source.sourceType === "websocket" ? (source.config.topics ?? []).join("\n") : "",
   heartbeatSeconds: source.sourceType === "websocket"
     ? String(source.config.heartbeatSeconds)
     : "30",
@@ -115,12 +119,12 @@ export function DataSourcePanel({
   const [probeError, setProbeError] = useState<string | null>(null);
   const [probeResult, setProbeResult] = useState<RestDataSourceProbe | null>(null);
   const [draft, setDraft] = useState<DataSourceDraft>(emptyDraft);
-  const [runtimeStatus,setRuntimeStatus] = useState<{ collection:string;sources:SourceDiagnostic[] } | null>(null);
+  const [runtimeStatus,setRuntimeStatus] = useState<{ collection:string;protocols?:string[];sources:SourceDiagnostic[] } | null>(null);
   const [runtimeError,setRuntimeError] = useState<string | null>(null);
   useEffect(() => {
     let active = true,timer:ReturnType<typeof setTimeout>; const controller = new AbortController();
     const poll = async () => {
-      try { const result = await request<{ collection:string;sources:SourceDiagnostic[] }>(`/api/v1/projects/${encodeURIComponent(projectId)}/runtime/sources`,{ signal:controller.signal }); if (active) { setRuntimeStatus(result); setRuntimeError(null); } }
+      try { const result = await request<{ collection:string;protocols?:string[];sources:SourceDiagnostic[] }>(`/api/v1/projects/${encodeURIComponent(projectId)}/runtime/sources`,{ signal:controller.signal }); if (active) { setRuntimeStatus(result); setRuntimeError(null); } }
       catch (reason) { if (active) setRuntimeError(errorMessage(reason)); }
       finally { if (active) timer = setTimeout(() => { void poll(); },3000); }
     };
@@ -166,7 +170,7 @@ export function DataSourcePanel({
   };
 
   const probeSource = async () => {
-    if (!draft.id || draft.sourceType !== "rest_polling" || probing) return;
+    if (!draft.id || (draft.sourceType === "websocket" && !runtimeStatus?.protocols?.includes("websocket")) || probing) return;
     setProbing(true);
     setProbeError(null);
     setProbeResult(null);
@@ -205,6 +209,9 @@ export function DataSourcePanel({
             url: draft.endpointRef.trim() ? "" : draft.url.trim(),
             ...(draft.endpointRef.trim() ? { endpointRef:draft.endpointRef.trim() } : {}),
             collectionMode: draft.collectionMode,
+            timestampPath: draft.timestampPath || null,
+            sampleIntervalMs: requiredInteger(draft.sampleIntervalMs,"采样间隔"),
+            topics: draft.topics.split("\n").map((topic) => topic.trim()).filter(Boolean),
             heartbeatSeconds: requiredInteger(draft.heartbeatSeconds, "心跳周期"),
             reconnectMaxSeconds: requiredInteger(
               draft.reconnectMaxSeconds,
@@ -247,7 +254,7 @@ export function DataSourcePanel({
     : false;
   const probeDisabled = formDisabled
     || probing
-    || draft.sourceType !== "rest_polling"
+    || (draft.sourceType === "websocket" && !runtimeStatus?.protocols?.includes("websocket"))
     || !draft.id
     || hasUnsavedChanges;
 
@@ -326,7 +333,7 @@ export function DataSourcePanel({
                   {probing ? "测试中…" : "测试连接并发现字段"}
                 </button>
                 {draft.id && hasUnsavedChanges ? <small>请先保存修改</small> : null}
-                {draft.sourceType === "websocket" ? <small>WebSocket 执行尚未开放</small> : null}
+                {draft.sourceType === "websocket" && !runtimeStatus?.protocols?.includes("websocket") ? <small>当前宿主不支持WebSocket采集，请使用独立运行服务。</small> : null}
               </div>
             </div>
 
@@ -476,6 +483,11 @@ export function DataSourcePanel({
                   </label>
                 </>
               )}
+              {draft.sourceType === "websocket" ? <>
+                <label className="is-wide"><span>数据时间戳路径</span><input disabled={formDisabled} value={draft.timestampPath} maxLength={256} placeholder="例如：$.timestamp" onChange={(event) => setDraft((current) => ({ ...current,timestampPath:event.target.value }))} /></label>
+                <label><span>采样间隔（毫秒）</span><input disabled={formDisabled} type="number" min={16} max={60000} required value={draft.sampleIntervalMs} onChange={(event) => setDraft((current) => ({ ...current,sampleIntervalMs:event.target.value }))} /></label>
+                <label className="is-wide"><span>订阅主题（每行一个，可选）</span><textarea aria-label="订阅主题（每行一个，可选）" disabled={formDisabled} maxLength={4128} rows={3} value={draft.topics} onChange={(event) => setDraft((current) => ({ ...current,topics:event.target.value }))} /><small>每次连接后发送type=subscribe及topics列表。上游每条数据消息应包含完整源快照。</small></label>
+              </> : null}
               <label className="is-wide">
                 <span>服务端凭据引用（可选）</span>
                 <input
