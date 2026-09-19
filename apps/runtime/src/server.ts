@@ -1,3 +1,4 @@
+import {createModelOptimizer} from "./model-optimization-service";
 import { MeshoptDecoder } from "meshoptimizer/decoder";
 import { createSqliteQuerySource } from "./sqlite-query-source";
 import { createMqttResolver } from "./mqtt-environment";
@@ -142,6 +143,7 @@ export async function startRuntime(options: RuntimeOptions) {
   let database:SqliteDatabase;
   try { database = new SqliteDatabase(databasePath); } catch (reason) { telemetry.close(); throw reason; }
   const env: AppEnv = { ...options.environment,MODEL_CODECS:modelCodecs,TELEMETRY:telemetry,RUNTIME_CAPABILITIES:new Set(["alarm-rules-v1","telemetry-bindings-v1","metric-transforms-v1","source-time-format-v1","mqtt-source-v1","sqlite-query-source-v1",...(modelCodecs ? ["meshopt-model-v1"]:[])]),RUNTIME_DISTRIBUTION:(signal) => runtimeDistribution(bundle,signal),RESOLVE_SOURCE:resolver,RESOLVE_MQTT_SOURCE:mqttResolver,DB: database,PROJECT_FILES: new FileBucket(join(dataDirectory,"objects")) };
+  if(modelCodecs) env.OPTIMIZE_MODEL = createModelOptimizer(env,join(bundle,"model-compression-worker.mjs"));
   env.FETCH_SQLITE_QUERY_SOURCE = createSqliteQuerySource(env,sourceEnvironment,{ directory:actualData,environmentDirectory:options.sourceEnvironmentDirectory ?? process.cwd(),workerPath:join(bundle,"sqlite-query-worker.mjs") });
   env.OPEN_MQTT_SOURCE = (source,requestId,onSample,signal) => openMqttSource(env,source,requestId,onSample,signal);
   env.OPEN_WEBSOCKET_SOURCE = (source,requestId,onSample,signal) => openWebSocketSource(env,source,requestId,onSample,signal);

@@ -1,3 +1,4 @@
+import {validateCompressionProvenance} from "../../../shared/model-compression";
 import { inspectMeshoptDocument,inspectMeshoptBytes } from "../../../shared/gltf-meshopt";
 import { WebIO, MathUtils, type mat4, type vec3, type vec4, type GLTF, type Mesh, type Node } from "@gltf-transform/core";
 import { ALL_EXTENSIONS, type InstancedMesh } from "@gltf-transform/extensions";
@@ -11,7 +12,10 @@ export async function inspectModelDetails(bytes: Uint8Array, format: "glb" | "gl
   const io = new WebIO().registerExtensions(ALL_EXTENSIONS).setLogger({ debug() {}, info() {}, warn(message) { warnings.push(message); }, error(message) { warnings.push(message); } });
   try {
     const json = format === "glb" ? await io.binaryToJSON(bytes) : { json: JSON.parse(new TextDecoder().decode(bytes)) as GLTF.IGLTF, resources: {} };
+    const provenance = json.json.asset.extras?.newpowerCompression;
+    const optimization = provenance === undefined ? undefined:validateCompressionProvenance(provenance);
     const compression = inspectMeshoptDocument(json.json,format === "glb");
+    if(optimization && (!compression || optimization.compressedViews!==compression.views || optimization.decodedBytes!==compression.decodedBytes || optimization.preservedViews!==(json.json.bufferViews?.length ?? 0)-compression.views)) throw new Error("压缩来源记录与文件布局不符");
     if (compression) {
       inspectMeshoptBytes(bytes);
       if (!codecs?.meshopt?.supported) throw new AppError(503,"model_codec_unavailable","此宿主不提供Meshopt模型检查，请使用支持该能力的独立运行器。");
@@ -147,7 +151,7 @@ export async function inspectModelDetails(bytes: Uint8Array, format: "glb" | "gl
       if (container && light) objects.push({ ...base, objectId: modelSubObjectId(assetId, nodeIndex, "light"), attachment: "light", name: `${node.name || "节点"} 灯光`, nameIsGenerated: true, parentObjectId: nodeId, mesh: false });
     });
     const clips = inspectModelAnimations(root,objects,visited,json.json);
-    return { ...(compression ? { compression }:{}),reportVersion: 2, objectManifestVersion: 2, animationManifestVersion: 1, clips, triangleCount, sceneTriangleCount, vertexCount,
+    return { ...(optimization ? {optimization}:{}),...(compression ? { compression }:{}),reportVersion: 2, objectManifestVersion: 2, animationManifestVersion: 1, clips, triangleCount, sceneTriangleCount, vertexCount,
       bounds: min.every(Number.isFinite) ? { min, max, scope: "default-scene-rest-pose" } : null,
       textures, coordinateUnit: "metre-by-gltf-spec", warnings: [...new Set(warnings)],
       objects };

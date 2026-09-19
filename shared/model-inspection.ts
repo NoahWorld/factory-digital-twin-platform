@@ -1,3 +1,4 @@
+import type {ModelCompressionProvenance} from "./model-compression";
 import type { MeshoptSummary } from "./gltf-meshopt";
 export type ModelObject = { objectId: string; nodeIndex: number; primitiveIndex?: number; attachment?: "mesh" | "camera" | "light"; name: string; nameIsGenerated?: boolean; parentObjectId: string | null; sourceId: string | null; nodeSourceId?: string | null; primitiveSourceId?: string | null; mesh: boolean; inDefaultScene?: boolean };
 export type ModelAnimation = { clipId: string; animationIndex: number; name: string; sourceId: string | null; startTime: number; duration: number; inDefaultScene: boolean;
@@ -13,6 +14,7 @@ export function modelObjectSourceKey(object: ModelObject): string | null {
 }
 export type ModelInspectionDetails = {
   compression?:MeshoptSummary;
+  optimization?:ModelCompressionProvenance;
   reportVersion: 2;
   objectManifestVersion: 2;
   animationManifestVersion: 1;

@@ -21,6 +21,7 @@ export function ModelReplacementDialog({ projectId, scene, instanceId, initialAs
   const mounted = useRef(true); const instance = scene.instances.find((instance) => instance.id === instanceId)!;
   const [models, setModels] = useState<ModelAsset[]>([]); const [previous, setPrevious] = useState<ModelAsset | null>(null);
   const [candidateId, setCandidateId] = useState(initialAssetId ?? ""); const [candidate, setCandidate] = useState<ModelAsset | null>(null);
+  const [optimizationSupported,setOptimizationSupported]=useState<boolean|null>(null);const [optimizationError,setOptimizationError]=useState<string|null>(null);const optimization=useRef<AbortController|null>(null);
   const [loading, setLoading] = useState(true); const [targetLoading, setTargetLoading] = useState(false); const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null); const [choices, setChoices] = useState<Record<string,string>>({});
   const [clipChoices,setClipChoices] = useState<Record<string,string>>({});
@@ -32,7 +33,7 @@ export function ModelReplacementDialog({ projectId, scene, instanceId, initialAs
   const [clipPreviewMessage,setClipPreviewMessage] = useState("");
   const clipPreviewCommand = useRef<AbortController | null>(null);
   const [previewMode, setPreviewMode] = useState<"old" | "new">("new");
-  useEffect(() => { mounted.current = true; dialog.current?.showModal(); return () => { mounted.current = false; dialog.current?.close(); }; }, []);
+  useEffect(() => { mounted.current = true; dialog.current?.showModal(); return () => { mounted.current = false;optimization.current?.abort(); dialog.current?.close(); }; }, []);
   useEffect(() => {
     const controller = new AbortController(); setLoading(true); setError(null);
     void Promise.all([request<ModelAssetListResponse>(modelAssetsPath(projectId), { signal: controller.signal }), request<{ modelAsset: ModelAsset }>(`${modelAssetsPath(projectId)}/${encodeURIComponent(instance.modelAssetId)}/inspect`, { method: "POST", signal: controller.signal })])
@@ -53,6 +54,13 @@ export function ModelReplacementDialog({ projectId, scene, instanceId, initialAs
       .catch((reason) => { if (!controller.signal.aborted) setError(errorMessage(reason)); }).finally(() => { if (!controller.signal.aborted) setTargetLoading(false); });
     return () => controller.abort();
   }, [candidateId, models, projectId]);
+  useEffect(()=>{const controller=new AbortController();setOptimizationSupported(null);setOptimizationError(null);void request<{supported:boolean}>(`${modelAssetsPath(projectId)}/${instance.modelAssetId}/optimize`,{signal:controller.signal}).then((result)=>{if(!controller.signal.aborted)setOptimizationSupported(result.supported);}).catch((reason)=>{if(!controller.signal.aborted)setOptimizationError(errorMessage(reason));});return()=>controller.abort();},[projectId,instance.modelAssetId]);
+  const optimize=async()=>{
+    if(uploading || !previous)return;const controller=new AbortController();optimization.current=controller;setUploading(true);setError(null);
+    try{const result=await request<{modelAsset:ModelAsset}>(`${modelAssetsPath(projectId)}/${previous.id}/optimize`,{method:"POST",body:"{}",signal:controller.signal});if(mounted.current && !controller.signal.aborted){setModels((items)=>[result.modelAsset,...items]);setCandidateId(result.modelAsset.id);onModelAdded?.(result.modelAsset);}}
+    catch(reason){if(mounted.current && !controller.signal.aborted)setError(errorMessage(reason));}
+    finally{if(mounted.current)setUploading(false);if(optimization.current===controller)optimization.current=null;}
+  };
   const planResult = useMemo(() => {
     try { return { plan: previous && candidate ? planModelReplacement(scene, instanceId, previous, candidate) : null, error: null }; }
     catch (reason) { return { plan: null, error: errorMessage(reason) }; }
@@ -108,6 +116,7 @@ export function ModelReplacementDialog({ projectId, scene, instanceId, initialAs
       <section className="model-version-controls">
         <p>当前实例：<strong>{instance.name}</strong> · {previous?.originalFilename ?? "正在读取…"} · v{previous?.versionNumber ?? "—"}</p>
         <label>候选模型<select aria-label="替换模型版本" value={candidateId} disabled={busy} onChange={(event) => setCandidateId(event.target.value)}><option value="">选择版本或项目内其他模型</option>{models.map((model) => <option key={model.id} value={model.id}>{model.originalFilename} · v{model.versionNumber}{model.id === instance.modelAssetId ? "（当前）" : ""}</option>)}</select></label>
+        {optimizationSupported ? <button type="button" disabled={busy || !!previous?.inspection.compression} onClick={()=>void optimize()}>生成Meshopt压缩版本</button>:<p className="inspector-help">{optimizationError ? `压缩能力检查失败：${optimizationError}`:optimizationSupported===null ? "正在检查压缩能力…":"此宿主未提供模型压缩能力，可在独立运行器中生成。"}</p>}
         <button type="button" disabled={busy} onClick={() => input.current?.click()}>{uploading ? "正在检查新版本…" : "上传后续模型版本"}</button>
         <input type="file" hidden ref={input} accept=".gltf,.glb" onChange={async (event) => {
           const file = event.target.files?.[0]; event.target.value = ""; if (!file) return; setUploading(true); setError(null);
@@ -120,6 +129,7 @@ export function ModelReplacementDialog({ projectId, scene, instanceId, initialAs
         {error || saveError || validation || planResult.error ? <p className="inspector-inline-error" role="alert">{error ?? validation ?? planResult.error ?? saveError}</p> : null}
       </section>
       {plan?.clipReferences.length ? <section className="model-clip-repairs"><h3>受影响原生动画 · {plan.clipReferences.length}</h3><label><input type="checkbox" checked={scaleClipTimes} onChange={(event) => setScaleClipTimes(event.target.checked)} />按新片段总时长同比调整采样时间</label>{plan.clipReferences.map((ref) => <label key={ref.clipId}><span>{ref.name} · {ref.duration.toFixed(2)} 秒 · {ref.tracks} 条轨道</span><select aria-label={`片段映射 ${ref.name}`} value={clipChoices[ref.clipId] ?? ""} onChange={(event) => setClipChoices((current) => ({ ...current,[ref.clipId]: event.target.value }))}><option value="">选择新动画片段</option><option value="__remove__">移除相关原生动画轨道</option>{plan.clipCandidates.map((clip) => <option key={clip.clipId} value={clip.clipId}>{clip.name || "未命名片段"} · 片段 {clip.animationIndex+1} · {clip.duration.toFixed(2)} 秒</option>)}</select><button type="button" onClick={() => { setPreviewMode("old"); setPreviewClipId(ref.clipId); setPreviewAttempt((value) => value+1); }}>预览旧片段</button><button type="button" disabled={!clipMap[ref.clipId]} onClick={() => { setPreviewMode("new"); setPreviewClipId(clipMap[ref.clipId]); setPreviewAttempt((value) => value+1); }}>预览新片段</button></label>)}<p>映射保留轨道与交互引用；移除最后轨道时，仍被引用的动画须先修复关联动作。</p></section> : null}
+      {candidate?.inspection.optimization ? <p className="model-optimization-report" role="status">压缩版本：{candidate.inspection.optimization.sourceBytes.toLocaleString()} → {candidate.byteSize.toLocaleString()} 字节（{candidate.byteSize <= candidate.inspection.optimization.sourceBytes ? "减少":"增加"}{(Math.abs(1-candidate.byteSize/candidate.inspection.optimization.sourceBytes)*100).toFixed(1)}%）；逐字节验证属性与索引保留。原版本保留，应用替换后可撤销。</p>:null}
       {plan ? <div className="model-replacement-grid">
         <section className="model-reference-list"><h3>受影响对象 · {plan.references.length}</h3><input aria-label="搜索受影响对象" placeholder="搜索旧对象名称" value={referenceSearch} onChange={(event) => setReferenceSearch(event.target.value)} />
           {filteredRefs.slice(0,200).map((ref) => <button key={ref.objectId} type="button" className={`${activeReference === ref.objectId ? "is-selected" : ""} ${!choices[ref.objectId] ? "is-unresolved" : ""}`} onClick={() => setActiveReference(ref.objectId)}><strong>{ref.name}</strong><span>资产绑定 {ref.bindings}{ref.transform ? " · 变换" : ""}{ref.appearance ? " · 外观" : ""}{ref.motionTracks ? ` · 动画轨道 ${ref.motionTracks}` : ""}</span><small>{choices[ref.objectId] === "__remove__" ? "明确移除" : !choices[ref.objectId] ? "需要选择" : choices[ref.objectId] !== ref.suggestedId ? "手动对应" : matchLabels[ref.match]}</small></button>)}

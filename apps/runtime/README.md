@@ -27,3 +27,5 @@ SQLite只读查询在私有sqliteQueries中登记queryRef对应的项目、datab
 结果默认是rows数组；设置rowKey列后返回records对象，键必须是唯一的设备编号格式字符串。建议多设备查询使用rowKey，例如$.records.DEVICE-001.temperature，避免行删除后索引移动错配。空结果分别是空rows或records；NULL保留，大整数超出安全范围、BLOB、重复列/键及超量结果明确失败。需要完整大整数时请在登记SQL中显式CAST AS TEXT并映射为文本。
 
 独立sqlite-query-worker.mjs随程序包分发。每次查询独立进程，以只读/禁扩展/默认拒绝的authorizer执行；SQLite原生堆64MiB、Node堆64MiB、结果256KiB、最多128列，全宿主最多6个查询进程，总超时500–5000毫秒包含启动/文件检查/执行。timeout和取消杀进程并等待退出，SQLite busy timeout仅处理锁等待。输入禁止NUL，SQL尾部只能是空白（不接受第二条语句或尾随注释），不开放任意PRAGMA/写入/ATTACH或未列入白名单的函数。只读WAL读取仍依赖SQLite现场文件权限，不将数据库当作immutable忽略WAL。
+
+模型版本支持Meshopt精确缓冲压缩：GET/POST /api/v1/projects/:projectId/model-assets/:assetId/optimize（POST空对象），仅编辑者可生成；UI在“模型版本与替换”提供入口。独立model-compression-worker.mjs随运行包分发，单任务/30秒/25MiB输出上限，原资源与对象、动画ID保留；生成版本不会自动替换或激活项目。报告显示实际大小，属性/索引不量化或重排。未知扩展拒绝生成，U8索引等不适合压缩的视图原样保留。Worker未提供此能力时明确返回503。

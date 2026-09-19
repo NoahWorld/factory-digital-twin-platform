@@ -1,3 +1,4 @@
+import {validateCompressionProvenance} from "./model-compression";
 import { validateMeshoptSummary } from "./gltf-meshopt";
 import { validateAlarmRules,validateAlarmCatalog,type AlarmRule } from "./alarm-rules";
 import { parseProjectDefinition,type ProjectDefinition } from "./project-definition";
@@ -55,6 +56,7 @@ function modelMetadata(value:Record<string,unknown>,projectId:string):ModelAsset
   resourceMetadata(value,projectId,"model");
   if (!id(value.familyId) || !natural(value.versionNumber) || value.versionNumber < 1 || !(value.previousVersionId === null || id(value.previousVersionId)) || !record(value.inspection)) bad("模型版本元数据不正确。");
   const report = value.inspection as Record<string,unknown>;
+  if(report.optimization !== undefined) validateCompressionProvenance(report.optimization);
   if (report.compression !== undefined) validateMeshoptSummary(report.compression);
   if (report.format !== value.format || report.reportVersion !== 2 || report.objectManifestVersion !== 2 || report.animationManifestVersion !== 1 || typeof report.gltfVersion !== "string" || !report.gltfVersion.startsWith("2.") || report.externalResourceCount !== 0) bad("模型需要完整的可运行检查报告。");
   for (const field of ["nodeCount","sceneCount","meshCount","materialCount","textureCount","imageCount","animationCount","namedNodeCount","triangleCount","sceneTriangleCount","vertexCount"]) if (!natural(report[field])) bad(`模型报告${field}不正确。`);
@@ -135,6 +137,7 @@ export function parseRuntimeProjectSnapshot(input:unknown):RuntimeProjectSnapsho
   const modelMap = new Map(resources.models.map((model) => [model.id,model]));
   for (const model of resources.models) {
     const root = modelMap.get(model.familyId),previous = model.previousVersionId ? modelMap.get(model.previousVersionId) : undefined;
+    if(model.inspection.optimization && (!previous || previous.sha256!==model.inspection.optimization.sourceSha256 || previous.byteSize!==model.inspection.optimization.sourceBytes)) bad("压缩来源与不可变资源版本链不符。");
     if (!root || root.versionNumber !== 1 || root.previousVersionId !== null || (model.versionNumber === 1 && model.id !== model.familyId) || (model.versionNumber > 1 && (!previous || previous.familyId !== model.familyId || previous.versionNumber >= model.versionNumber))) bad("模型资源版本链不完整或不一致。");
   }
   for (const feature of requiredRuntimeCapabilities(snapshot)) if (!snapshot.requiredCapabilities?.includes(feature)) bad(`运行快照缺少必要能力声明：${feature}`);

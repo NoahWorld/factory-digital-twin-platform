@@ -1,4 +1,4 @@
-import { AppError, type AppEnv } from "./auth";
+import { AppError,currentProjectEditPredicate,requireCurrentProjectEditor, type AppEnv } from "./auth";
 
 export type ModelFormat = "glb" | "gltf";
 
@@ -248,6 +248,7 @@ export const uploadModelAsset = async (
   userId: string,
   rawFilename: string | null,
   previousAssetId?: string,
+  derivation?:{sourceSha256:string},
 ): Promise<ModelAsset> => {
   const modelStorage = requireModelStorage(env);
   const { filename, format } = validateFilename(rawFilename);
@@ -259,14 +260,20 @@ export const uploadModelAsset = async (
   const basicInspection = format === "glb" ? inspectGlb(bytes) : inspectGltf(bytes);
   const inspection: ModelInspection = { ...basicInspection, ...await inspectModelDetails(bytes, format, assetId,env.MODEL_CODECS) };
   const sha256 = await sha256Hex(bytes);
+  if(inspection.optimization && !derivation) throw new AppError(400,"model_derivation_required","带压缩来源声明的模型须通过生成版本或完整项目包导入验证。");
+  if(derivation && (!previous || previous.sha256!==derivation.sourceSha256 || inspection.optimization?.sourceSha256!==previous.sha256)) throw new AppError(409,"model_derivation_source_changed","压缩来源与当前资源不一致。");
+  if(derivation && previous?.inspection.objects) {
+    const old = new Map(previous.inspection.objects.map((object)=>[modelObjectLocator(object),object]));
+    if(inspection.objects?.length!==old.size || inspection.objects.some((object)=>{const source=old.get(modelObjectLocator(object));return !source || source.name!==object.name || source.mesh!==object.mesh || source.sourceId!==object.sourceId;})) throw new AppError(409,"model_derivation_identity_changed","压缩产物改变了原对象结构。");
+  }
   if (previous && inspection.objects) {
     const oldIndices = new Map(previous.inspection.objects?.map((object) => [modelObjectLocator(object), object]));
     const oldSources = new Map(previous.inspection.objects?.filter((object) => modelObjectSourceKey(object)).map((object) => [modelObjectSourceKey(object), object]));
     const retained = new Map(inspection.objects.map((object) => [object.objectId,
-      (previous.sha256 === sha256 ? oldIndices.get(modelObjectLocator(object)) : modelObjectSourceKey(object) ? oldSources.get(modelObjectSourceKey(object)) : undefined)?.objectId ?? object.objectId]));
+      ((derivation || previous.sha256 === sha256) ? oldIndices.get(modelObjectLocator(object)) : modelObjectSourceKey(object) ? oldSources.get(modelObjectSourceKey(object)) : undefined)?.objectId ?? object.objectId]));
     inspection.objects = inspection.objects.map((object) => ({ ...object, objectId: retained.get(object.objectId)!, parentObjectId: object.parentObjectId ? retained.get(object.parentObjectId)! : null }));
     const oldClips = previous.inspection.clips ?? [];
-    inspection.clips = inspection.clips?.map((clip) => ({ ...clip,clipId: (previous.sha256 === sha256 ? oldClips.find((old) => old.animationIndex === clip.animationIndex) : clip.sourceId ? oldClips.find((old) => old.sourceId === clip.sourceId) : undefined)?.clipId ?? clip.clipId,
+    inspection.clips = inspection.clips?.map((clip) => ({ ...clip,clipId: ((derivation || previous.sha256 === sha256) ? oldClips.find((old) => old.animationIndex === clip.animationIndex) : clip.sourceId ? oldClips.find((old) => old.sourceId === clip.sourceId) : undefined)?.clipId ?? clip.clipId,
       channels: clip.channels.map((channel) => ({ ...channel,objectId: retained.get(channel.objectId)! })) }));
   }
   const familyId = previous?.familyId ?? assetId;
@@ -274,19 +281,26 @@ export const uploadModelAsset = async (
   const contentType = format === "glb" ? "model/gltf-binary" : "model/gltf+json";
   const now = new Date().toISOString();
 
+  request.signal.throwIfAborted();await requireCurrentProjectEditor(env,userId,projectId);
   await modelStorage.put(objectKey, buffer, {
     httpMetadata: { contentType },
     customMetadata: { assetId, projectId, sha256, originalFilename: filename },
   });
 
+  let committed=false;
   try {
-    await env.DB.prepare(`INSERT INTO model_assets
+    // Ordinary uploads finish an accepted object write during shutdown; derived work remains cancellable before publication.
+    if(derivation) request.signal.throwIfAborted();
+    const result=await env.DB.prepare(`INSERT INTO model_assets
       (id,project_id,original_filename,format,content_type,byte_size,sha256,object_key,inspection_json,created_by_user_id,created_at,family_id,version_number,previous_version_id)
-      SELECT ?,?,?,?,?,?,?,?,?,?,?,?,COALESCE((SELECT MAX(version_number) FROM model_assets WHERE project_id=? AND family_id=?),0)+1,?`)
-      .bind(assetId,projectId,filename,format,contentType,buffer.byteLength,sha256,objectKey,JSON.stringify(inspection),userId,now,familyId,projectId,familyId,previous?.id ?? null).run();
+      SELECT ?,?,?,?,?,?,?,?,?,?,?,?,COALESCE((SELECT MAX(version_number) FROM model_assets WHERE project_id=? AND family_id=?),0)+1,? WHERE ${currentProjectEditPredicate} AND EXISTS(SELECT 1 FROM projects WHERE id=?)`)
+      .bind(assetId,projectId,filename,format,contentType,buffer.byteLength,sha256,objectKey,JSON.stringify(inspection),userId,now,familyId,projectId,familyId,previous?.id ?? null,userId,projectId,projectId).run();
+    committed=result.meta?.changes === 1;
+    if(!committed) {await requireCurrentProjectEditor(env,userId,projectId);throw new AppError(409,"model_project_changed","模型保存时项目已经变化。");}
   } catch (error) {
-    try { await modelStorage.delete(objectKey); }
+    try { if(!committed) await modelStorage.delete(objectKey); }
     catch (cleanupError) { throw new AppError(500, "model_asset_cleanup_failed", `模型元数据保存失败，临时对象 ${assetId} 清理也失败：${String(cleanupError)}；原始错误：${String(error)}`); }
+    if(error instanceof AppError) throw error;
     throw new AppError(500, "model_asset_metadata_write_failed", `模型已检查但元数据保存失败：${error instanceof Error ? error.message : String(error)}`);
   }
   return presentModelAsset(await getModelAssetRow(env, projectId, assetId));

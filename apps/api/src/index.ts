@@ -465,6 +465,19 @@ const handleApiRequest = async (
     );
   }
 
+  const modelOptimizationMatch=pathname.match(/^\/api\/v1\/projects\/([^/]+)\/model-assets\/([^/]+)\/optimize$/);
+  if(modelOptimizationMatch && (method==="GET" || method==="POST")) {
+    const user=await getAuthenticatedUser(env,request),projectId=decodePathSegment(modelOptimizationMatch[1]),assetId=decodePathSegment(modelOptimizationMatch[2]),project=await requireProjectAccess(env,user,projectId);
+    await getModelAssetRow(env,projectId,assetId);
+    if(method==="GET") return json({supported:!!env.OPTIMIZE_MODEL,algorithm:"meshopt-buffer-views-v1",requestId});
+    if(!canEditProject(user,project)) throw new AppError(403,"permission_denied","当前权限不能生成模型压缩版本。");
+    if(!env.OPTIMIZE_MODEL) throw new AppError(503,"model_optimizer_unavailable","此宿主不提供模型压缩，请使用独立运行器。");
+    const body=await readJsonObject(request);if(Object.keys(body).length) throw new AppError(400,"invalid_model_optimization","当前压缩策略不接受额外参数。");
+    const started=Date.now(),modelAsset=await env.OPTIMIZE_MODEL(request,projectId,assetId,user.id);
+    console.log(JSON.stringify({event:"model_optimized",requestId,projectId,sourceModelAssetId:assetId,modelAssetId:modelAsset.id,sourceSha256:modelAsset.inspection.optimization?.sourceSha256,sha256:modelAsset.sha256,durationMs:Date.now()-started}));
+    return json({modelAsset,requestId},201);
+  }
+
   const modelVersionsMatch = pathname.match(/^\/api\/v1\/projects\/([^/]+)\/model-assets\/([^/]+)\/versions$/);
   if ((method === "GET" || method === "POST") && modelVersionsMatch) {
     const startedAt = Date.now();

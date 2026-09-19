@@ -1,8 +1,9 @@
+import {verifyModelCompression} from "./model-compression";
 import { MeshoptDecoder } from "meshoptimizer/decoder";
 import { openPromise,type Entry,type ZipFile } from "yauzl";
 import { crc32 } from "node:zlib";
 import { createHash } from "node:crypto";
-import { mkdir,writeFile,rm } from "node:fs/promises";
+import { mkdir,writeFile,rm,readFile } from "node:fs/promises";
 import { createWriteStream } from "node:fs";
 import { join } from "node:path";
 import { Readable,Transform } from "node:stream";
@@ -74,6 +75,10 @@ export async function inspectPackageRequest(request:Request,directory:string,onC
       if (file.kind === "model") await verifyPackagedModel(bytes,manifest.snapshot.resources.models.find((model) => model.id === file.id)!,manifest.snapshot.legacyModelNames[file.id],{meshopt:MeshoptDecoder});
       else verifyPackagedImage(bytes,manifest.snapshot.resources.images.find((image) => image.id === file.id)!);
       request.signal.throwIfAborted(); const name = `resource-${index}.bin`; await writeFile(join(directory,name),bytes,{ flag:"wx",mode:0o600 }); resources[file.path] = name;
+    }
+    for(const model of manifest.snapshot.resources.models) if(model.inspection.optimization) {
+      request.signal.throwIfAborted();const previous=manifest.snapshot.resources.models.find((item)=>item.id===model.previousVersionId)!;
+      await verifyModelCompression(await readFile(join(directory,resources[`resources/model/${previous.id}`])),await readFile(join(directory,resources[`resources/model/${model.id}`])));
     }
     await closeZip(zip); zip = undefined; await rm(archive);
     await writeFile(join(directory,"inspected.json"),JSON.stringify({ manifest,...(manifest.snapshot.snapshotVersion === 2 ? { wireManifest }:{}),resources }),{ flag:"wx",mode:0o600 });
