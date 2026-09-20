@@ -1,0 +1,79 @@
+.login-showcase {
+  --showcase-glow: rgba(62, 149, 190, 0.18);
+  --showcase-start: #0c2132;
+  --showcase-end: #081521;
+  --showcase-caption: rgba(8, 21, 33, 0.9);
+  position: relative;
+  aspect-ratio: 3 / 2;
+  overflow: hidden;
+  isolation: isolate;
+  border: 1px solid var(--ui-border);
+  border-radius: 20px;
+  background:
+    radial-gradient(ellipse at 48% 38%, var(--showcase-glow), transparent 65%),
+    linear-gradient(145deg, var(--showcase-start), var(--showcase-end));
+  box-shadow: inset 0 1px rgba(187, 230, 250, 0.06), 0 20px 60px rgba(0, 0, 0, 0.15);
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+[data-ui-theme="light"] .login-showcase {
+  --showcase-glow: rgba(83, 170, 211, 0.16);
+  --showcase-start: #edf6fb;
+  --showcase-end: #dce9f2;
+  --showcase-caption: rgba(229, 239, 247, 0.94);
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.8), 0 20px 60px rgba(28, 58, 88, 0.08);
+}
+
+.login-showcase-stage {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.login-showcase figcaption {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 24px 18px 16px;
+  background: linear-gradient(transparent, var(--showcase-caption));
+  color: var(--ui-text);
+  font-size: 0.75rem;
+  pointer-events: none;
+}
+
+.login-showcase figcaption span {
+  color: var(--ui-text-muted);
+  font-size: 0.65rem;
+}
+
+.login-showcase-motion {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--ui-accent-border);
+  border-radius: 50%;
+  background: var(--ui-surface-raised);
+  color: var(--ui-accent);
+  cursor: pointer;
+}
+
+.login-showcase-motion:hover {
+  border-color: var(--ui-accent);
+  background: var(--ui-hover);
+}
+
+.login-showcase-motion:focus-visible {
+  outline: 2px solid var(--ui-accent);
+  outline-offset: 3px;
+}

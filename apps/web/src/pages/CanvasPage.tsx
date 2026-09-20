@@ -13,6 +13,7 @@ import { ThemeDialog } from "../canvas/ThemeDialog";
 import { applyCanvasThemeToNode, applyCanvasThemeToNodes, canvasThemePresetLabels } from "../canvas/themes";
 import { CANVAS_DRAG_TYPE, componentLabels, createCanvasNode, isAssetDetailNodeType, isBackgroundNodeType, isModel3DNodeType, isScene3DNodeType, type CanvasDocument, type CanvasNode, type CanvasNodeType, type CanvasPatchResponse, type CanvasResponse, type CanvasTheme, type ModelNodeAppearance } from "../canvas/types";
 import { DataSourcePanel } from "../DataSourcePanel";
+import { ThemeToggle } from "../theme/ThemeToggle";
 import { deviceVisualStatus, type DeviceVisualStatus } from "../runtime-state";
 import { AssetRuntimeDetailPanel } from "../twin/AssetRuntimeDetailPanel";
 import { AssetRuntimeStatusBanner } from "../twin/AssetRuntimeStatusBanner";
@@ -489,6 +490,7 @@ export function CanvasPage({ initialAssetId, initialTemplateId, mode, projectId 
         <div className="canvas-toolbar-title"><a aria-label="返回项目列表" className="canvas-back-link" href="#/projects">←</a><div><span>{mode === "edit" ? "2D 画布" : "可视化预览"}</span><strong>{projectName}</strong></div></div>
         <div className="canvas-document-meta"><span>{document.width} × {document.height}</span><span>{canvasThemePresetLabels[document.theme.presetId]}</span><span>版本 {document.revision}</span>{mode === "edit" ? <span className={dirty ? "is-dirty" : "is-saved"}>{dirty ? "有未保存更改" : "已保存"}</span> : null}</div>
         <div className="canvas-toolbar-actions">
+          <ThemeToggle />
           {mode === "edit" ? <>
             <button className="secondary-button compact-button" disabled={!canEdit || saving} onClick={() => setShowTemplates(true)} type="button">模板</button>
             <button className="secondary-button compact-button canvas-theme-button" disabled={!canEdit || saving} onClick={() => setShowThemes(true)} type="button">

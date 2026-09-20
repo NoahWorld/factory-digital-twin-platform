@@ -1,0 +1,118 @@
+.ui-theme-controls.ui-theme-controls {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: stretch;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--ui-border);
+  border-radius: 10px;
+  background: var(--ui-surface);
+  color: var(--ui-text);
+}
+
+.ui-theme-controls button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ui-text);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.ui-theme-controls button:hover {
+  background: var(--ui-hover);
+  color: var(--ui-text-strong);
+}
+
+.ui-theme-controls .ui-theme-system {
+  width: 30px;
+  padding: 5px;
+  color: var(--ui-text-muted);
+}
+
+.ui-theme-controls .ui-theme-system[aria-pressed="true"] {
+  background: var(--ui-accent-soft);
+  color: var(--ui-accent);
+}
+
+.ui-theme-controls svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.ui-theme-controls .ui-theme-toggle > span {
+  display: inline;
+  color: inherit;
+  font-size: inherit;
+  letter-spacing: normal;
+}
+
+.ui-theme-controls button:focus-visible,
+.ui-theme-storage-notice button:focus-visible {
+  outline: 2px solid var(--ui-accent);
+  outline-offset: 3px;
+}
+
+.auth-theme-controls {
+  position: absolute;
+  top: 24px;
+  right: 32px;
+}
+
+.ui-theme-storage-notice {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 10000;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  width: min(440px, calc(100vw - 32px));
+  padding: 14px 16px;
+  border: 1px solid var(--ui-border-strong);
+  border-radius: 12px;
+  background: var(--ui-surface-raised);
+  color: var(--ui-text);
+  font-size: 13px;
+  line-height: 1.6;
+  box-shadow: 0 8px 32px #0002;
+}
+
+.ui-theme-storage-notice button {
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: var(--ui-hover);
+  color: var(--ui-text);
+  cursor: pointer;
+}
+
+@media (max-width: 860px) {
+  .auth-theme-controls {
+    top: 16px;
+    right: 20px;
+  }
+
+  .auth-shell:has(.auth-theme-controls) {
+    padding-top: 80px;
+  }
+}

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { errorMessage, request } from "../api";
 import { Model3DInspector } from "../canvas/Model3DInspector";
 import { Model3DNode } from "../canvas/Model3DNode";
+import { ThemeToggle } from "../theme/ThemeToggle";
 import type { ModelSceneSnapshot } from "../canvas/model-scene";
 import { canvasRoutePath, projectCanvasPath } from "../canvas/routes";
 import {
@@ -173,6 +174,7 @@ export default function Model3DEditorPage({
           <span className={dirty ? "is-dirty" : "is-saved"}>{dirty ? "有未保存更改" : "已同步到画布"}</span>
         </div>
         <div className="canvas-toolbar-actions">
+          <ThemeToggle />
           <button className="secondary-button compact-button" onClick={returnToCanvas} type="button">返回画布</button>
           <button
             className="secondary-button compact-button"

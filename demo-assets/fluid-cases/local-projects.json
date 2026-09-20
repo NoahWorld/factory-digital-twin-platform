@@ -1,0 +1,17 @@
+[
+  {
+    "name": "钢水浇注与连铸",
+    "sceneUrl": "http://127.0.0.1:5173/#/projects/3fc3b7c3-336a-498f-b8bd-537dc18bc94d/scene-preview",
+    "dashboardUrl": "http://127.0.0.1:5173/#/projects/4525dd2b-0330-48be-af09-99888d9fcffa/preview"
+  },
+  {
+    "name": "污水处理与中水回用",
+    "sceneUrl": "http://127.0.0.1:5173/#/projects/53eca60c-e227-4031-9383-cc10da7feac9/scene-preview",
+    "dashboardUrl": "http://127.0.0.1:5173/#/projects/ea3afa05-d4a1-4ff9-97ba-3c40369776b1/preview"
+  },
+  {
+    "name": "工业循环冷却水站",
+    "sceneUrl": "http://127.0.0.1:5173/#/projects/1d14ca33-1ddc-4d88-98be-d7771b1399db/scene-preview",
+    "dashboardUrl": "http://127.0.0.1:5173/#/projects/cbdf45f0-620c-4345-8bb6-38af57a34697/preview"
+  }
+]

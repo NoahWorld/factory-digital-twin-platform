@@ -20,6 +20,23 @@
     "test:models": "node scripts/test-builtin-models.mjs",
     "smoke:models": "node scripts/smoke-builtin-models.mjs",
     "test:scene-runtime": "node scripts/test-scene-runtime.mjs",
-    "test:composable-dashboard": "node scripts/test-composable-dashboard.mjs"
+    "test:ui-theme": "node scripts/test-ui-theme.mjs",
+    "test:composable-dashboard": "node scripts/test-composable-dashboard.mjs",
+    "backend:init": "node scripts/init-local.mjs",
+    "backend:contracts": "node scripts/backend-contracts.mjs",
+    "backend:contracts:check": "node scripts/backend-contracts.mjs --check",
+    "backend:verify": "mvn -B -f apps/backend/pom.xml verify",
+    "backend:up": "docker compose --env-file deploy/local/.env -f deploy/local/compose.yml up -d --build",
+    "backend:up:prebuilt": "docker compose --env-file deploy/local/.env -f deploy/local/compose.yml -f deploy/local/prebuilt.yml up -d --build",
+    "backend:down": "docker compose --env-file deploy/local/.env -f deploy/local/compose.yml down",
+    "backend:logs": "docker compose --env-file deploy/local/.env -f deploy/local/compose.yml logs --tail=100 -f",
+    "backend:bootstrap": "node scripts/bootstrap-local.mjs",
+    "backend:smoke": "node scripts/backend-smoke.mjs",
+    "dev:web:java": "VITE_DEV_API_TARGET=http://127.0.0.1:18080 pnpm --filter @factory-twin/web dev",
+    "backend:backup": "node scripts/backend-backup.mjs",
+    "backend:backup:verify": "node scripts/backend-verify-backup.mjs",
+    "backend:recover:wrangler:prepare": "node --no-warnings scripts/import-wrangler-local.mjs",
+    "backend:recover:wrangler:apply": "node --no-warnings scripts/import-wrangler-local.mjs --apply",
+    "backend:recover:wrangler:verify": "node --no-warnings scripts/import-wrangler-local.mjs --verify-only"
   }
 }

@@ -13,3 +13,5 @@ coverage/
 *.log
 *.tsbuildinfo
 .DS_Store
+apps/backend/target/
+deploy/local/.local/

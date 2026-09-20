@@ -43,7 +43,7 @@ export function TemplatesPage({
 
       <div className="template-dialog-notice template-page-notice">
         <strong>以下均为虚构演示案例</strong>
-        <span>企业、地点与数值为模拟内容，画布结构和组件均可实际编辑；首次保存后，项目列表会自动生成封面。</span>
+        <span>企业、地点与数值为模拟内容，画布结构和组件均可实际编辑；项目创建后即有默认封面，保存画布会自动更新。</span>
       </div>
 
       <div className="template-category-toolbar">

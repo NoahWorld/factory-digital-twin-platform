@@ -1,0 +1,771 @@
+{
+  "version": 1,
+  "units": "meters",
+  "dataLabel": "虚构演示 / 模拟数据",
+  "simulation": "Visual process animation, not engineering CFD or a live plant connection.",
+  "cases": [
+    {
+      "id": "steel",
+      "title": "钢水浇注与连铸",
+      "accent": "#ffab62",
+      "theme": "steel-orange",
+      "flow": "钢包浇注 → 中间包稳流 → 结晶器 → 二冷喷淋 → 铸坯输出",
+      "summary": "高温液态金属的自由流束、液面扰动、冲击飞溅及连铸冷却。",
+      "kpis": [
+        [
+          "钢液温度",
+          "1,565",
+          "°C"
+        ],
+        [
+          "浇注拉速",
+          "1.10",
+          "m/min"
+        ],
+        [
+          "冷却水量",
+          "92",
+          "m³/h"
+        ]
+      ],
+      "steps": [
+        [
+          "01",
+          "钢包浇注",
+          "倾斜钢包、连续流束、冲击飞溅"
+        ],
+        [
+          "02",
+          "中间包稳流",
+          "蓄流液面、挡坝、浸入式水口"
+        ],
+        [
+          "03",
+          "凝固与二冷",
+          "结晶器、导辊、喷淋、铸坯"
+        ],
+        [
+          "04",
+          "冷却水辅助",
+          "供回水环路、泵组、控制柜"
+        ]
+      ],
+      "trend": {
+        "title": "模拟钢液温度",
+        "unit": "°C",
+        "values": [
+          1572,
+          1568,
+          1566,
+          1565,
+          1563,
+          1565
+        ]
+      },
+      "controls": [
+        "重点观察钢包出口流束与落点飞溅",
+        "中间包液面持续波动，水口向下输送",
+        "二冷区喷淋与铸坯拉出同时播放"
+      ],
+      "modules": [
+        {
+          "id": "site",
+          "label": "连铸工位与安全底座",
+          "filename": "steel-site.ea3bb34a32f7.glb",
+          "sha256": "ea3bb34a32f7efbe5345226df9e07f62773296d496669b20034953cdf74ae02a",
+          "bytes": 1014236,
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "background": true,
+          "type": "site",
+          "metrics": {},
+          "description": "钢包浇注 → 中间包稳流 → 结晶器 → 二冷喷淋 → 铸坯输出",
+          "meshCount": 9,
+          "nodeCount": 27,
+          "animationCount": 1,
+          "animationChannels": 54,
+          "bounds": {
+            "min": [
+              -12,
+              -0.48000001907348633,
+              -7.5
+            ],
+            "max": [
+              12,
+              7.789999961853027,
+              7.579999923706055
+            ]
+          }
+        },
+        {
+          "id": "ladle",
+          "label": "01 钢包与可视浇注流束",
+          "filename": "steel-ladle.156911d307aa.glb",
+          "sha256": "156911d307aa92317ddafe46cbc580bab3edf50db1d3c69262c3d0522f69d1e9",
+          "bytes": 940480,
+          "position": [
+            -6,
+            0,
+            -1
+          ],
+          "background": false,
+          "type": "ladle",
+          "metrics": {
+            "温度": "1,565 °C",
+            "工况": "连续浇注演示",
+            "介质": "钢水"
+          },
+          "description": "钢包内液面、连续流束与冲击飞溅。剖面用于观察钢液。",
+          "meshCount": 10,
+          "nodeCount": 36,
+          "animationCount": 1,
+          "animationChannels": 79,
+          "bounds": {
+            "min": [
+              -1.8000000715255737,
+              0.2550000250339508,
+              -1.524999976158142
+            ],
+            "max": [
+              1.9786099195480347,
+              7.400000095367432,
+              2.427500009536743
+            ]
+          }
+        },
+        {
+          "id": "tundish",
+          "label": "02 中间包稳流与结晶器",
+          "filename": "steel-tundish.fe31ec76405c.glb",
+          "sha256": "fe31ec76405c5edd976916d14c32c22cdccb2a5a519734dc5342a411c63161d0",
+          "bytes": 364536,
+          "position": [
+            -2.5,
+            0,
+            -1
+          ],
+          "background": false,
+          "type": "tundish",
+          "metrics": {
+            "液位": "720 mm",
+            "钢液温度": "1,542 °C",
+            "作用": "缓冲 / 稳流"
+          },
+          "description": "钢包注入中间包，经耐火浸入式水口进入结晶器。",
+          "meshCount": 12,
+          "nodeCount": 18,
+          "animationCount": 1,
+          "animationChannels": 16,
+          "bounds": {
+            "min": [
+              -2.75,
+              0,
+              -1.25
+            ],
+            "max": [
+              2.75,
+              4.599999904632568,
+              2.427500009536743
+            ]
+          }
+        },
+        {
+          "id": "caster",
+          "label": "03 结晶器、二冷喷淋与拉坯",
+          "filename": "steel-caster.983c09426959.glb",
+          "sha256": "983c0942695952428ed1fec56f8063ee46652095d32783f52fef559cd7612e28",
+          "bytes": 1702508,
+          "position": [
+            -0.5,
+            0,
+            -1
+          ],
+          "background": false,
+          "type": "continuous_caster",
+          "metrics": {
+            "拉速": "1.10 m/min",
+            "二冷水量": "92 m³/h",
+            "铸坯": "方坯演示"
+          },
+          "description": "钢液进入水冷结晶器，铸坯沿导辊弯曲引出并经二次喷淋冷却。",
+          "meshCount": 11,
+          "nodeCount": 72,
+          "animationCount": 1,
+          "animationChannels": 186,
+          "bounds": {
+            "min": [
+              -0.4749999940395355,
+              0.20000000298023224,
+              -1.0700000524520874
+            ],
+            "max": [
+              9,
+              2.959999996423721,
+              2.427500009536743
+            ]
+          }
+        },
+        {
+          "id": "utilities",
+          "label": "04 连铸冷却水辅助站",
+          "filename": "steel-utilities.cde280978616.glb",
+          "sha256": "cde280978616569a114c7a7ade6b912c3deb0818ed97af91687e90fd7f9a7991",
+          "bytes": 536332,
+          "position": [
+            -5,
+            0,
+            4
+          ],
+          "background": false,
+          "type": "cooling_station",
+          "metrics": {
+            "供水温度": "28 °C",
+            "回水温度": "36 °C",
+            "说明": "模拟辅助系统"
+          },
+          "description": "供回水支路连接结晶器及二冷段，蓝色表示冷供水，红色表示热回水。",
+          "meshCount": 6,
+          "nodeCount": 7,
+          "animationCount": 0,
+          "animationChannels": 0,
+          "bounds": {
+            "min": [
+              -2.5,
+              0.08999999612569809,
+              -0.5249999761581421
+            ],
+            "max": [
+              2.6500000953674316,
+              1.5,
+              1.277500033378601
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "water",
+      "title": "污水处理与中水回用",
+      "accent": "#66ddd0",
+      "theme": "energy-green",
+      "flow": "格栅进水 → 生化曝气 → 二沉分离 → 消毒接触 → 回用供水",
+      "summary": "从原水到回用水，展示跌水、动态水面、曝气与污泥回流支路。",
+      "kpis": [
+        [
+          "进水流量",
+          "120",
+          "m³/h"
+        ],
+        [
+          "溶解氧",
+          "2.4",
+          "mg/L"
+        ],
+        [
+          "回用流量",
+          "108",
+          "m³/h"
+        ]
+      ],
+      "steps": [
+        [
+          "01",
+          "预处理",
+          "格栅拦截、进水跌落、调节池"
+        ],
+        [
+          "02",
+          "曝气处理",
+          "池底布气、上升气泡、水面扰动"
+        ],
+        [
+          "03",
+          "沉淀与污泥",
+          "旋转刮泥、污泥回流及外排"
+        ],
+        [
+          "04",
+          "消毒与回用",
+          "折流接触池、回用泵与出水"
+        ]
+      ],
+      "trend": {
+        "title": "模拟分段 COD",
+        "unit": "mg/L",
+        "values": [
+          280,
+          235,
+          130,
+          65,
+          38,
+          32
+        ]
+      },
+      "controls": [
+        "观察曝气气泡由池底上升至水面",
+        "透明侧壁展示液位及池内结构",
+        "二沉池缓慢旋转，出水与污泥支路分流"
+      ],
+      "modules": [
+        {
+          "id": "site",
+          "label": "水处理工艺底座与连接管网",
+          "filename": "water-site.312db70c24f0.glb",
+          "sha256": "312db70c24f0f3eb938c2559da9730242060cfe042da375ddce32886dc3f052f",
+          "bytes": 1214984,
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "background": true,
+          "type": "site",
+          "metrics": {},
+          "description": "格栅进水 → 生化曝气 → 二沉分离 → 消毒接触 → 回用供水",
+          "meshCount": 11,
+          "nodeCount": 48,
+          "animationCount": 1,
+          "animationChannels": 117,
+          "bounds": {
+            "min": [
+              -12,
+              -0.48000001907348633,
+              -7.5
+            ],
+            "max": [
+              12,
+              1.2899999618530273,
+              7.579999923706055
+            ]
+          }
+        },
+        {
+          "id": "inlet",
+          "label": "01 格栅与进水调节池",
+          "filename": "water-inlet.8743fc70c47a.glb",
+          "sha256": "8743fc70c47a56047a901bc865b63d00597128e7968f6d06afdc321e4b67bf1d",
+          "bytes": 652644,
+          "position": [
+            -7,
+            0,
+            -1
+          ],
+          "background": false,
+          "type": "screening",
+          "metrics": {
+            "进水流量": "120 m³/h",
+            "COD": "280 mg/L",
+            "池位": "1.2 m"
+          },
+          "description": "原水经格栅拦截大颗粒后进入调节段，跌水与扰动水面可见。",
+          "meshCount": 13,
+          "nodeCount": 23,
+          "animationCount": 1,
+          "animationChannels": 28,
+          "bounds": {
+            "min": [
+              -3.299999952316284,
+              0,
+              -2.049999952316284
+            ],
+            "max": [
+              2.049999952316284,
+              2.756999969482422,
+              2.427500009536743
+            ]
+          }
+        },
+        {
+          "id": "aeration",
+          "label": "02 生化曝气池",
+          "filename": "water-aeration.805d52c12148.glb",
+          "sha256": "805d52c121486fe6538daed47f7bf136b82438caa709704cf38ff56f233749cf",
+          "bytes": 1260656,
+          "position": [
+            -1,
+            0,
+            -1
+          ],
+          "background": false,
+          "type": "aeration",
+          "metrics": {
+            "溶解氧": "2.4 mg/L",
+            "风量": "680 m³/h",
+            "水温": "24 °C"
+          },
+          "description": "池底微孔曝气、上升气泡和水面波纹；透明观察侧用于演示。",
+          "meshCount": 13,
+          "nodeCount": 54,
+          "animationCount": 1,
+          "animationChannels": 115,
+          "bounds": {
+            "min": [
+              -2.9000000953674316,
+              0,
+              -2.5999999046325684
+            ],
+            "max": [
+              2.9000000953674316,
+              3.0269999504089355,
+              3.327500104904175
+            ]
+          }
+        },
+        {
+          "id": "clarifier",
+          "label": "03 二沉池与刮泥机",
+          "filename": "water-clarifier.25e3a853884b.glb",
+          "sha256": "25e3a853884b1931ae5f0b4e2b7aa4c9866502bdff51d1538e463053b9da46e8",
+          "bytes": 297580,
+          "position": [
+            6,
+            0,
+            -1
+          ],
+          "background": false,
+          "type": "clarifier",
+          "metrics": {
+            "表面负荷": "0.9 m³/(m²·h)",
+            "泥位": "0.55 m",
+            "刮泥机": "慢速连续演示"
+          },
+          "description": "辐流沉淀、旋转刮泥及出水回用支路；底部污泥输送至排泥/回流站。",
+          "meshCount": 14,
+          "nodeCount": 26,
+          "animationCount": 1,
+          "animationChannels": 5,
+          "bounds": {
+            "min": [
+              -2.950000047683716,
+              0.004999999888241291,
+              -2.950000047683716
+            ],
+            "max": [
+              2.950000047683716,
+              2.657000000700355,
+              3.327500104904175
+            ]
+          }
+        },
+        {
+          "id": "sludge",
+          "label": "04 污泥回流与排泥站",
+          "filename": "water-sludge.4198e8fe8e9b.glb",
+          "sha256": "4198e8fe8e9b7d2f9210c5e24849d206dd13f91a9f9254e82b0dc14664320e86",
+          "bytes": 415388,
+          "position": [
+            -1,
+            0,
+            4.25
+          ],
+          "background": false,
+          "type": "sludge_pump",
+          "metrics": {
+            "回流比": "60 %",
+            "排泥量": "8 m³/d",
+            "方式": "回流 + 剩余污泥"
+          },
+          "description": "回流污泥返回生化段，剩余污泥经排泥支路外送；不包含脱水车间。",
+          "meshCount": 7,
+          "nodeCount": 8,
+          "animationCount": 1,
+          "animationChannels": 1,
+          "bounds": {
+            "min": [
+              -2.549999952316284,
+              0.08999999612569809,
+              -0.8299999833106995
+            ],
+            "max": [
+              2.1500000953674316,
+              1.8450000286102295,
+              1.2274999618530273
+            ]
+          }
+        },
+        {
+          "id": "reuse",
+          "label": "05 消毒接触与回用供水",
+          "filename": "water-reuse.51488b14631e.glb",
+          "sha256": "51488b14631e04ced4d9da65edd18fa4ab6c9b95e7d87c87b740ae4a87ae000f",
+          "bytes": 611676,
+          "position": [
+            6,
+            0,
+            4.2
+          ],
+          "background": false,
+          "type": "reuse",
+          "metrics": {
+            "浊度": "1.2 NTU",
+            "回用流量": "108 m³/h",
+            "出水COD": "32 mg/L"
+          },
+          "description": "折流接触段与回用泵站展示处理末端。全部水质数值为虚构示例。",
+          "meshCount": 10,
+          "nodeCount": 15,
+          "animationCount": 1,
+          "animationChannels": 16,
+          "bounds": {
+            "min": [
+              -3.4000000953674316,
+              0,
+              -1.2000000476837158
+            ],
+            "max": [
+              3.0667660236358643,
+              1.5,
+              1.6775000095367432
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "cooling",
+      "title": "工业循环冷却水站",
+      "accent": "#63caff",
+      "theme": "deep-blue",
+      "flow": "冷却塔集水 → 循环泵 → 换热器吸热 → 热回水 → 塔内喷淋",
+      "summary": "供水、换热、热回水及塔内散热组成闭环，含补水与投药辅助单元。",
+      "kpis": [
+        [
+          "循环流量",
+          "240",
+          "m³/h"
+        ],
+        [
+          "供回水温差",
+          "8",
+          "°C"
+        ],
+        [
+          "换热负荷",
+          "2.2",
+          "MW"
+        ]
+      ],
+      "steps": [
+        [
+          "01",
+          "冷却塔",
+          "布水喷淋、填料水膜、风机与集水盘"
+        ],
+        [
+          "02",
+          "循环供水",
+          "一用一备泵组与蓝色供水管"
+        ],
+        [
+          "03",
+          "负载换热",
+          "透明壳体、铜管束、独立热回路"
+        ],
+        [
+          "04",
+          "回水与补水",
+          "红色热回水、补水箱、投药装置"
+        ]
+      ],
+      "trend": {
+        "title": "模拟循环温度",
+        "unit": "°C",
+        "values": [
+          29,
+          29.5,
+          34,
+          37,
+          33,
+          29
+        ]
+      },
+      "controls": [
+        "冷却塔前部剖开，可观察喷淋和水膜",
+        "蓝管供冷水，红管输送热回水",
+        "换热器透明壳体内可见水流方向"
+      ],
+      "modules": [
+        {
+          "id": "site",
+          "label": "循环冷却闭环管网与底座",
+          "filename": "cooling-site.0471caaac80f.glb",
+          "sha256": "0471caaac80f80bd01b5abcb53a83effb978b7cc2e3687d2e39806b62f038bbe",
+          "bytes": 1135660,
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "background": true,
+          "type": "site",
+          "metrics": {},
+          "description": "冷却塔集水 → 循环泵 → 换热器吸热 → 热回水 → 塔内喷淋",
+          "meshCount": 10,
+          "nodeCount": 49,
+          "animationCount": 1,
+          "animationChannels": 120,
+          "bounds": {
+            "min": [
+              -12,
+              -0.48000001907348633,
+              -7.5
+            ],
+            "max": [
+              12,
+              5.299877643585205,
+              7.579999923706055
+            ]
+          }
+        },
+        {
+          "id": "tower",
+          "label": "01 开式冷却塔剖面与喷淋",
+          "filename": "cooling-tower.ceca6f8c6ee4.glb",
+          "sha256": "ceca6f8c6ee4f51c3854b41efe07f91bc475b8d27bbae5513ed9e4c988f3620c",
+          "bytes": 2983308,
+          "position": [
+            -6,
+            0,
+            -1
+          ],
+          "background": false,
+          "type": "cooling_tower",
+          "metrics": {
+            "进塔温度": "37 °C",
+            "出塔温度": "29 °C",
+            "风机": "运行演示"
+          },
+          "description": "剖面展示布水喷头、填料、下落水膜、集水盘与风机。",
+          "meshCount": 16,
+          "nodeCount": 140,
+          "animationCount": 1,
+          "animationChannels": 356,
+          "bounds": {
+            "min": [
+              -2.5999999046325684,
+              0,
+              -2.5999999046325684
+            ],
+            "max": [
+              2.5999999046325684,
+              5.900000095367432,
+              3.2274999618530273
+            ]
+          }
+        },
+        {
+          "id": "pumps",
+          "label": "02 一用一备循环泵组",
+          "filename": "cooling-pumps.9ef072f7fb40.glb",
+          "sha256": "9ef072f7fb4054071f1678b469b2e7faa84b458b64a7b704a966a2210dd6d905",
+          "bytes": 597092,
+          "position": [
+            -2,
+            0,
+            3.1
+          ],
+          "background": false,
+          "type": "circulation_pumps",
+          "metrics": {
+            "运行泵": "P-01",
+            "备用泵": "P-02",
+            "流量": "240 m³/h",
+            "出口压力": "0.28 MPa"
+          },
+          "description": "泵组与供水干管组成连续闭环，备用泵保留为业务场景组成。",
+          "meshCount": 7,
+          "nodeCount": 8,
+          "animationCount": 0,
+          "animationChannels": 0,
+          "bounds": {
+            "min": [
+              -2.299999952316284,
+              1.1920929132713809e-8,
+              -0.9750000238418579
+            ],
+            "max": [
+              2.299999952316284,
+              1.4199999570846558,
+              1.5774999856948853
+            ]
+          }
+        },
+        {
+          "id": "exchanger",
+          "label": "03 换热器与热负载",
+          "filename": "cooling-exchanger.c6f80da525b1.glb",
+          "sha256": "c6f80da525b1c16d22a75de0eaeffe607d9002ec380a9fe44a94131d9ef38427",
+          "bytes": 650824,
+          "position": [
+            4.5,
+            0,
+            -1
+          ],
+          "background": false,
+          "type": "heat_exchanger",
+          "metrics": {
+            "热侧入口": "62 °C",
+            "热侧出口": "45 °C",
+            "负荷": "2.2 MW"
+          },
+          "description": "透明壳体显示铜管束与壳程水流，独立热负载回路与冷却水换热。",
+          "meshCount": 10,
+          "nodeCount": 31,
+          "animationCount": 1,
+          "animationChannels": 66,
+          "bounds": {
+            "min": [
+              -2.5999999046325684,
+              0.05000000074505806,
+              -3.6500000953674316
+            ],
+            "max": [
+              2.5999999046325684,
+              3.0363881587982178,
+              2.177500009536743
+            ]
+          }
+        },
+        {
+          "id": "makeup",
+          "label": "04 补水与水质辅助单元",
+          "filename": "cooling-makeup.9555b054154b.glb",
+          "sha256": "9555b054154be3b6b1b19323d89aa6db01ed386e220171fbab17ffd7393a5bfc",
+          "bytes": 323680,
+          "position": [
+            7,
+            0,
+            3.8
+          ],
+          "background": false,
+          "type": "makeup_tank",
+          "metrics": {
+            "补水量": "3.6 m³/h",
+            "电导率": "850 μS/cm",
+            "补水液位": "72 %"
+          },
+          "description": "补水接入集水盘，药剂投加与水质监测组成辅助业务闭环。",
+          "meshCount": 9,
+          "nodeCount": 10,
+          "animationCount": 1,
+          "animationChannels": 1,
+          "bounds": {
+            "min": [
+              -2.3499999046325684,
+              0.10000000894069672,
+              -0.9100000262260437
+            ],
+            "max": [
+              2.3499999046325684,
+              2.130000114440918,
+              1.527500033378601
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

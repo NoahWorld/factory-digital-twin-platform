@@ -1,8 +1,8 @@
-import { FormEvent, lazy, Suspense, useEffect, useState } from "react";
+import { FormEvent, lazy, Suspense, useEffect, useState, type KeyboardEvent } from "react";
 import { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH } from "../../../shared/auth-constraints";
 import { standaloneSceneRoutePath, type ProjectType } from "../../../shared/standalone-3d";
 import { apiUrl, ApiRequestError, errorMessage, request } from "./api";
-import loginFactoryIllustration from "./assets/login-factory.webp";
+import { LoginShowcase } from "./auth/LoginShowcase";
 import { canvasRoutePath, projectTemplateCanvasPath } from "./canvas/routes";
 import {
   getCanvasTemplate,
@@ -12,26 +12,16 @@ import {
 import { CanvasPage } from "./pages/CanvasPage";
 import { ResourcesPage } from "./pages/ResourcesPage";
 import { TemplatesPage } from "./pages/TemplatesPage";
+import { PRODUCT_NAME } from "./product-config";
+import { ThemeToggle } from "./theme/ThemeToggle";
 
 const Model3DEditorPage = lazy(() => import("./pages/Model3DEditorPage"));
-const ProductLandingPage = lazy(() => import("./pages/ProductLandingPage"));
 const IndustrialLandingPage = lazy(() => import("./pages/IndustrialLandingPage"));
 const Standalone3DProjectPage = lazy(() => import("./pages/Standalone3DProjectPage"));
 
-type ProductLandingVariant = "original" | "industrial";
-
-function getProductLandingVariant(): ProductLandingVariant | null {
+function isProductLandingRoute(): boolean {
   const hash = window.location.hash;
-
-  if (hash === "" || hash === "#/") {
-    return "original";
-  }
-
-  if (hash === "#/industrial") {
-    return "industrial";
-  }
-
-  return null;
+  return hash === "" || hash === "#/" || hash === "#/industrial";
 }
 
 type Capability = {
@@ -185,13 +175,12 @@ function LoginForm({ onSuccess }: LoginFormProps) {
   return (
     <form className="auth-form" onSubmit={submit}>
       <label>
-        <span>账号或邮箱</span>
+        <span>账号</span>
         <input
           autoComplete="username"
           disabled={submitting}
           maxLength={254}
           onChange={(event) => setIdentifier(event.target.value)}
-          placeholder="admin 或 name@company.com"
           required
           type="text"
           value={identifier}
@@ -341,6 +330,7 @@ type AuthPageProps = {
 function AuthPage({ setupRequired, onSuccess }: AuthPageProps) {
   return (
     <main className="auth-shell">
+      <ThemeToggle className="auth-theme-controls" />
       <section className="auth-intro">
         <p className="eyebrow">Factory Digital Twin</p>
         <h1><span>工厂数字孪生</span><span>交付平台</span></h1>
@@ -348,16 +338,7 @@ function AuthPage({ setupRequired, onSuccess }: AuthPageProps) {
           面向交付人员的 2D + 3D 项目配置台。<br />
           统一配置场景、资产与数据。
         </p>
-        <figure className="auth-illustration">
-          <img
-            alt="工厂数字孪生场景示意：剖面厂房内的机械臂生产线与数字控制室相连"
-            decoding="async"
-            fetchPriority="high"
-            height={1024}
-            src={loginFactoryIllustration}
-            width={1536}
-          />
-        </figure>
+        <LoginShowcase />
         <a className="auth-product-link" href="#/">
           查看产品介绍 <span aria-hidden="true">→</span>
         </a>
@@ -365,11 +346,11 @@ function AuthPage({ setupRequired, onSuccess }: AuthPageProps) {
       <section className="auth-card">
         <p className="eyebrow">{setupRequired ? "First setup" : "Sign in"}</p>
         <h2>{setupRequired ? "初始化平台管理员" : "登录"}</h2>
-        <p className="auth-copy">
-          {setupRequired
-            ? "仅在还没有任何用户时可执行。首个管理员账号固定为 admin，初始化令牌不会被保存到浏览器。"
-            : "管理员可使用 admin 登录，其他用户也可使用已绑定邮箱登录。"}
-        </p>
+        {setupRequired ? (
+          <p className="auth-copy">
+            仅在还没有任何用户时可执行。首个管理员账号固定为 admin，初始化令牌不会被保存到浏览器。
+          </p>
+        ) : null}
         {setupRequired ? <BootstrapForm onSuccess={onSuccess} /> : <LoginForm onSuccess={onSuccess} />}
         <div className="security-note">
           <span>权限边界</span>
@@ -381,19 +362,21 @@ function AuthPage({ setupRequired, onSuccess }: AuthPageProps) {
 }
 
 type CreateProjectDialogProps = {
+  initialProjectType: ProjectType;
   onClose: () => void;
   onCreated: (project: Project, templateId: CanvasTemplateId | null) => void;
   templateId: CanvasTemplateId | null;
 };
 
 function CreateProjectDialog({
+  initialProjectType,
   onClose,
   onCreated,
   templateId,
 }: CreateProjectDialogProps) {
   const template = templateId ? getCanvasTemplate(templateId) : null;
   const [name, setName] = useState(() => template ? `${template.name}项目` : "");
-  const [projectType, setProjectType] = useState<ProjectType>("2d");
+  const [projectType, setProjectType] = useState<ProjectType>(initialProjectType);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -425,7 +408,7 @@ function CreateProjectDialog({
         <h2>{template ? "使用模板创建项目" : "创建空白项目"}</h2>
         <p>
           {template
-            ? `将创建一个新项目，并在画布中载入“${template.name}”模板；确认效果后保存画布即可生成项目封面。`
+            ? `将创建一个新项目，并在画布中载入“${template.name}”模板；项目会立即显示默认封面，保存画布后自动更新。`
             : "新项目默认处于草稿状态，创建人自动成为项目负责人。"}
         </p>
         {!template ? (
@@ -648,6 +631,7 @@ const currentWorkspaceRoute = (): WorkspaceRoute => {
 function Workspace({ user, onLogout }: WorkspaceProps) {
   const [route, setRoute] = useState<WorkspaceRoute>(currentWorkspaceRoute);
   const [projects, setProjects] = useState<Project[]>([]);
+  const [projectTypeFilter, setProjectTypeFilter] = useState<ProjectType>("2d");
   const [loadingProjects, setLoadingProjects] = useState(true);
   const [projectError, setProjectError] = useState<string | null>(null);
   const [showCreateProject, setShowCreateProject] = useState(false);
@@ -703,6 +687,7 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
 
   const createProject = (project: Project, templateId: CanvasTemplateId | null) => {
     setProjects((current) => [project, ...current]);
+    setProjectTypeFilter(project.projectType);
     setShowCreateProject(false);
     setCreateProjectTemplateId(null);
     if (templateId) {
@@ -739,6 +724,25 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
         ? `项目已删除，但对象存储清理需要处理：${warning}`
         : "项目已永久删除。",
     );
+  };
+
+  const projectCounts = {
+    "2d": projects.filter((project) => project.projectType === "2d").length,
+    "3d": projects.filter((project) => project.projectType === "3d").length,
+  } satisfies Record<ProjectType, number>;
+  const visibleProjects = projects.filter(
+    (project) => project.projectType === projectTypeFilter,
+  );
+  const switchProjectTypeWithKeyboard = (event: KeyboardEvent<HTMLButtonElement>) => {
+    const nextType = event.key === "ArrowLeft" || event.key === "Home"
+      ? "2d"
+      : event.key === "ArrowRight" || event.key === "End"
+        ? "3d"
+        : null;
+    if (!nextType) return;
+    event.preventDefault();
+    setProjectTypeFilter(nextType);
+    document.getElementById(`project-type-tab-${nextType}`)?.focus();
   };
 
   if (route.kind === "canvas") {
@@ -788,7 +792,7 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
         <a className="brand" href="#/projects">
           <span className="brand-mark">◫</span>
           <span>
-            <strong>Factory Twin</strong>
+            <strong>{PRODUCT_NAME}</strong>
             <small>交付配置台</small>
           </span>
         </a>
@@ -798,6 +802,7 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
           <a aria-current={route.kind === "resources" ? "page" : undefined} href="#/resources">资源库</a>
         </nav>
         <div className="user-menu">
+          <ThemeToggle />
           <div>
             <strong>{user.displayName}</strong>
             <span>{user.roles.includes("platform_admin") ? "平台管理员" : "交付账号"}</span>
@@ -841,6 +846,45 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
           ) : null}
         </div>
 
+        <div className="project-type-tabs-shell">
+          <div className="project-type-tabs-copy">
+            <strong>交付类型</strong>
+            <span>2D 看板与 3D 场景分开管理</span>
+          </div>
+          <div aria-label="项目交付类型" className="project-type-tabs" role="tablist">
+            <button
+              aria-controls="project-list-panel"
+              aria-selected={projectTypeFilter === "2d"}
+              className={projectTypeFilter === "2d" ? "is-active" : ""}
+              id="project-type-tab-2d"
+              onKeyDown={switchProjectTypeWithKeyboard}
+              onClick={() => setProjectTypeFilter("2d")}
+              role="tab"
+              tabIndex={projectTypeFilter === "2d" ? 0 : -1}
+              type="button"
+            >
+              <span aria-hidden="true" className="project-type-tab-mark is-2d">2D</span>
+              <span>看板项目</span>
+              <small>{projectCounts["2d"]}</small>
+            </button>
+            <button
+              aria-controls="project-list-panel"
+              aria-selected={projectTypeFilter === "3d"}
+              className={projectTypeFilter === "3d" ? "is-active" : ""}
+              id="project-type-tab-3d"
+              onKeyDown={switchProjectTypeWithKeyboard}
+              onClick={() => setProjectTypeFilter("3d")}
+              role="tab"
+              tabIndex={projectTypeFilter === "3d" ? 0 : -1}
+              type="button"
+            >
+              <span aria-hidden="true" className="project-type-tab-mark is-3d">3D</span>
+              <span>场景项目</span>
+              <small>{projectCounts["3d"]}</small>
+            </button>
+          </div>
+        </div>
+
         {projectNotice ? (
           <div className="project-notice" role="status">
             <span>{projectNotice}</span>
@@ -849,21 +893,36 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
         ) : null}
 
         {projectError ? (
-          <section className="state-card error-state">
+          <section
+            aria-labelledby={`project-type-tab-${projectTypeFilter}`}
+            className="state-card error-state"
+            id="project-list-panel"
+            role="tabpanel"
+          >
             <h2>项目列表加载失败</h2>
             <p>{projectError}</p>
           </section>
         ) : null}
 
         {loadingProjects ? (
-          <section className="state-card">
+          <section
+            aria-labelledby={`project-type-tab-${projectTypeFilter}`}
+            className="state-card"
+            id="project-list-panel"
+            role="tabpanel"
+          >
             <p className="eyebrow">Loading</p>
             <h2>正在加载项目…</h2>
           </section>
         ) : null}
 
         {!loadingProjects && !projectError && projects.length === 0 ? (
-          <section className="empty-projects">
+          <section
+            aria-labelledby={`project-type-tab-${projectTypeFilter}`}
+            className="empty-projects"
+            id="project-list-panel"
+            role="tabpanel"
+          >
             <div className="empty-icon">◇</div>
             <h2>还没有项目</h2>
             <p>从一个客户工厂开始，后续将为它配置模型、资产、数据和运行看板。</p>
@@ -883,9 +942,31 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
           </section>
         ) : null}
 
-        {!loadingProjects && !projectError && projects.length > 0 ? (
-          <section aria-label="项目列表" className="project-grid">
-            {projects.map((project) => {
+        {!loadingProjects && !projectError && projects.length > 0 && visibleProjects.length === 0 ? (
+          <section
+            aria-labelledby={`project-type-tab-${projectTypeFilter}`}
+            className="empty-projects empty-projects-filtered"
+            id="project-list-panel"
+            role="tabpanel"
+          >
+            <div className={`empty-icon is-${projectTypeFilter}`}>{projectTypeFilter.toUpperCase()}</div>
+            <h2>还没有{projectTypeFilter === "2d" ? " 2D 看板" : " 3D 场景"}</h2>
+            <p>
+              {projectTypeFilter === "2d"
+                ? "创建看板项目，用画布组织指标、设备状态和三维联动组件。"
+                : "创建场景项目，用真实模型搭建独立三维空间与设备联动。"}
+            </p>
+          </section>
+        ) : null}
+
+        {!loadingProjects && !projectError && visibleProjects.length > 0 ? (
+          <section
+            aria-labelledby={`project-type-tab-${projectTypeFilter}`}
+            className="project-grid"
+            id="project-list-panel"
+            role="tabpanel"
+          >
+            {visibleProjects.map((project) => {
               const canRename = isPlatformAdmin
                 || project.projectRole === "owner"
                 || project.projectRole === "editor";
@@ -903,12 +984,12 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
                     className="project-card-cover"
                     href={editPath}
                   >
-                    {project.projectType === "2d" && project.coverUrl ? (
-                      <img alt={`${project.name} 画布缩略图`} src={apiUrl(project.coverUrl)} />
+                    {project.coverUrl ? (
+                      <img alt={`${project.name} 项目封面`} src={apiUrl(project.coverUrl)} />
                     ) : (
                       <span className="project-card-cover-empty">
                         <i aria-hidden="true">{project.projectType === "3d" ? "⬡" : "◇"}</i>
-                        <strong>{project.projectType === "3d" ? "独立 3D 场景" : "保存画布后生成封面"}</strong>
+                        <strong>{project.projectType === "3d" ? "3D 场景封面" : "2D 画布封面"}</strong>
                       </span>
                     )}
                   </a>
@@ -967,6 +1048,7 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
 
       {showCreateProject ? (
         <CreateProjectDialog
+          initialProjectType={createProjectTemplateId ? "2d" : projectTypeFilter}
           onClose={() => setShowCreateProject(false)}
           onCreated={createProject}
           templateId={createProjectTemplateId}
@@ -991,9 +1073,7 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
 }
 
 export function App() {
-  const [productLandingVariant, setProductLandingVariant] = useState<ProductLandingVariant | null>(
-    getProductLandingVariant,
-  );
+  const [showProductLanding, setShowProductLanding] = useState(isProductLandingRoute);
   const [initializing, setInitializing] = useState(true);
   const [setupRequired, setSetupRequired] = useState(false);
   const [user, setUser] = useState<CurrentUser | null>(null);
@@ -1001,7 +1081,7 @@ export function App() {
 
   useEffect(() => {
     const updatePublicRoute = () => {
-      setProductLandingVariant(getProductLandingVariant());
+      setShowProductLanding(isProductLandingRoute());
     };
 
     window.addEventListener("hashchange", updatePublicRoute);
@@ -1009,7 +1089,7 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    if (productLandingVariant) {
+    if (showProductLanding) {
       return;
     }
 
@@ -1054,7 +1134,7 @@ export function App() {
     return () => {
       active = false;
     };
-  }, [productLandingVariant]);
+  }, [showProductLanding]);
 
   const authenticated = (nextUser: CurrentUser) => {
     setSetupRequired(false);
@@ -1070,10 +1150,10 @@ export function App() {
     }
   };
 
-  if (productLandingVariant) {
+  if (showProductLanding) {
     return (
       <Suspense fallback={<main className="loading-shell"><h1>正在打开产品介绍…</h1></main>}>
-        {productLandingVariant === "industrial" ? <IndustrialLandingPage /> : <ProductLandingPage />}
+        <IndustrialLandingPage />
       </Suspense>
     );
   }

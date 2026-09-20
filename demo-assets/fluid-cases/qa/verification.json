@@ -1,0 +1,182 @@
+{
+  "models": [
+    {
+      "case": "steel",
+      "module": "site",
+      "meshInstances": 26,
+      "triangles": 11222,
+      "animated": true,
+      "loopVerified": true
+    },
+    {
+      "case": "steel",
+      "module": "ladle",
+      "meshInstances": 34,
+      "triangles": 7227,
+      "animated": true,
+      "loopVerified": true
+    },
+    {
+      "case": "steel",
+      "module": "tundish",
+      "meshInstances": 17,
+      "triangles": 5682,
+      "animated": true,
+      "loopVerified": true
+    },
+    {
+      "case": "steel",
+      "module": "caster",
+      "meshInstances": 71,
+      "triangles": 13207,
+      "animated": true,
+      "loopVerified": true
+    },
+    {
+      "case": "steel",
+      "module": "utilities",
+      "meshInstances": 6,
+      "triangles": 5521,
+      "animated": false,
+      "loopVerified": true
+    },
+    {
+      "case": "water",
+      "module": "site",
+      "meshInstances": 47,
+      "triangles": 14385,
+      "animated": true,
+      "loopVerified": true
+    },
+    {
+      "case": "water",
+      "module": "inlet",
+      "meshInstances": 22,
+      "triangles": 8302,
+      "animated": true,
+      "loopVerified": true
+    },
+    {
+      "case": "water",
+      "module": "aeration",
+      "meshInstances": 53,
+      "triangles": 17107,
+      "animated": true,
+      "loopVerified": true
+    },
+    {
+      "case": "water",
+      "module": "clarifier",
+      "meshInstances": 24,
+      "triangles": 6030,
+      "animated": true,
+      "loopVerified": true
+    },
+    {
+      "case": "water",
+      "module": "sludge",
+      "meshInstances": 7,
+      "triangles": 4191,
+      "animated": true,
+      "loopVerified": true
+    },
+    {
+      "case": "water",
+      "module": "reuse",
+      "meshInstances": 14,
+      "triangles": 6767,
+      "animated": true,
+      "loopVerified": true
+    },
+    {
+      "case": "cooling",
+      "module": "site",
+      "meshInstances": 48,
+      "triangles": 14253,
+      "animated": true,
+      "loopVerified": true
+    },
+    {
+      "case": "cooling",
+      "module": "tower",
+      "meshInstances": 138,
+      "triangles": 22643,
+      "animated": true,
+      "loopVerified": true
+    },
+    {
+      "case": "cooling",
+      "module": "pumps",
+      "meshInstances": 7,
+      "triangles": 6144,
+      "animated": false,
+      "loopVerified": true
+    },
+    {
+      "case": "cooling",
+      "module": "exchanger",
+      "meshInstances": 30,
+      "triangles": 7570,
+      "animated": true,
+      "loopVerified": true
+    },
+    {
+      "case": "cooling",
+      "module": "makeup",
+      "meshInstances": 9,
+      "triangles": 3215,
+      "animated": true,
+      "loopVerified": true
+    }
+  ],
+  "pages": [
+    {
+      "case": "steel",
+      "mode": "scene",
+      "url": "http://127.0.0.1:5173/#/projects/3fc3b7c3-336a-498f-b8bd-537dc18bc94d/scene-preview",
+      "canvasCount": 1,
+      "errors": [],
+      "animationVisible": true
+    },
+    {
+      "case": "steel",
+      "mode": "dashboard",
+      "url": "http://127.0.0.1:5173/#/projects/4525dd2b-0330-48be-af09-99888d9fcffa/preview",
+      "canvasCount": 1,
+      "errors": [],
+      "animationVisible": false
+    },
+    {
+      "case": "water",
+      "mode": "scene",
+      "url": "http://127.0.0.1:5173/#/projects/53eca60c-e227-4031-9383-cc10da7feac9/scene-preview",
+      "canvasCount": 1,
+      "errors": [],
+      "animationVisible": true
+    },
+    {
+      "case": "water",
+      "mode": "dashboard",
+      "url": "http://127.0.0.1:5173/#/projects/ea3afa05-d4a1-4ff9-97ba-3c40369776b1/preview",
+      "canvasCount": 1,
+      "errors": [],
+      "animationVisible": false
+    },
+    {
+      "case": "cooling",
+      "mode": "scene",
+      "url": "http://127.0.0.1:5173/#/projects/1d14ca33-1ddc-4d88-98be-d7771b1399db/scene-preview",
+      "canvasCount": 1,
+      "errors": [],
+      "animationVisible": true
+    },
+    {
+      "case": "cooling",
+      "mode": "dashboard",
+      "url": "http://127.0.0.1:5173/#/projects/cbdf45f0-620c-4345-8bb6-38af57a34697/preview",
+      "canvasCount": 1,
+      "errors": [],
+      "animationVisible": false
+    }
+  ]
+}

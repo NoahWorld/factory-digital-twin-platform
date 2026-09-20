@@ -1,0 +1,1097 @@
+{
+  "version": 2,
+  "units": "meters",
+  "dataLabel": "虚构行业案例 / 模拟数据",
+  "simulation": "Process visualization with authored glTF animation; not CFD, engineering design or telemetry-driven fluid simulation.",
+  "cases": [
+    {
+      "id": "steel",
+      "title": "四流方坯连铸生产区",
+      "accent": "#e8a54e",
+      "theme": "steel-orange",
+      "footprint": [
+        68,
+        34
+      ],
+      "flow": "钢包准备 → 底注保护浇注 → 四流结晶与二冷 → 拉矫切割 → 横移冷床",
+      "summary": "高位浇注、四流弧形铸机和低位出坯组成纵深生产线；工业灰、耐火褐和克制的钢液橙构成材质层次。",
+      "settings": {
+        "backgroundColor": "#242a30",
+        "cameraView": "isometric",
+        "cameraFov": 35,
+        "modelScale": 1.24,
+        "environmentLightIntensity": 0.65,
+        "keyLightIntensity": 2.8,
+        "keyLightColor": "#ffe6c7",
+        "environmentLightColor": "#c3d3e3"
+      },
+      "modules": [
+        {
+          "caseId": "steel",
+          "id": "site",
+          "label": "连铸车间、行车与管廊",
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "description": "68 × 34 m 连铸工段；高位钢包和中间包、四流弧形铸机、切割辊道与横向冷床。",
+          "background": true,
+          "filename": "steel-site.4fc6c295bb34.glb",
+          "sha256": "4fc6c295bb34ad4d1564187fa0fa09330c7b99cdaff5994baa8ef97bf7a69e5b",
+          "bytes": 2354788,
+          "type": "equipment",
+          "metrics": {},
+          "meshCount": 9,
+          "triangles": 24073,
+          "nodeCount": 11,
+          "animationCount": 0,
+          "animationChannels": 0,
+          "textureCount": 2,
+          "bounds": {
+            "min": [
+              -34,
+              -0.5649999976158142,
+              -17
+            ],
+            "max": [
+              34,
+              16.100000381469727,
+              17
+            ]
+          }
+        },
+        {
+          "caseId": "steel",
+          "id": "ladle",
+          "label": "钢包回转台与保护浇注",
+          "position": [
+            -8,
+            0,
+            1
+          ],
+          "description": "直立钢包通过底部滑动水口和耐火长水口供钢；局部剖口展示连续钢流，其余位置保留耐火保护。",
+          "filename": "steel-ladle.a4b943516670.glb",
+          "sha256": "a4b9435166709e770f37ae6afe60b20e99b4a22d1c911b1936271497842545e0",
+          "bytes": 1157608,
+          "background": false,
+          "type": "equipment",
+          "metrics": {},
+          "meshCount": 13,
+          "triangles": 11084,
+          "nodeCount": 19,
+          "animationCount": 1,
+          "animationChannels": 16,
+          "textureCount": 3,
+          "bounds": {
+            "min": [
+              -10.161999702453613,
+              -5.9604645663569045e-09,
+              -2.299999952316284
+            ],
+            "max": [
+              2.1619999408721924,
+              15.199999809265137,
+              3.0059967041015625
+            ]
+          }
+        },
+        {
+          "caseId": "steel",
+          "id": "tundish",
+          "label": "中间包、挡坝与四路浸入式水口",
+          "position": [
+            -8,
+            0,
+            1
+          ],
+          "description": "中间包分配至四流结晶器；液面低于包沿，挡坝引导钢流，钢液表面保留覆盖渣。",
+          "filename": "steel-tundish.2a51ed720050.glb",
+          "sha256": "2a51ed720050c493bcb9079f1699e3b5a46cf070688f5fb96d6429c36b08cb8c",
+          "bytes": 453264,
+          "background": false,
+          "type": "equipment",
+          "metrics": {},
+          "meshCount": 6,
+          "triangles": 4688,
+          "nodeCount": 8,
+          "animationCount": 1,
+          "animationChannels": 4,
+          "textureCount": 2,
+          "bounds": {
+            "min": [
+              -2.259999990463257,
+              7.239999771118164,
+              -8.390000343322754
+            ],
+            "max": [
+              2.259999990463257,
+              11.199999809265137,
+              8.380000114440918
+            ]
+          }
+        },
+        {
+          "caseId": "steel",
+          "id": "caster",
+          "label": "第 1 流结晶、二冷与拉矫",
+          "position": [
+            -8,
+            0,
+            -5
+          ],
+          "description": "方坯在铜结晶器内形成坯壳，沿弧形辊列拉出；两侧喷嘴细雾接触坯面，冷却水进入下方回收沟。",
+          "filename": "steel-caster.b43660e8b19e.glb",
+          "sha256": "b43660e8b19ebcf586e832bdae732b5744cbf8f166d438bc2918618ae7c059b5",
+          "bytes": 2700356,
+          "background": false,
+          "type": "equipment",
+          "metrics": {},
+          "meshCount": 9,
+          "triangles": 18273,
+          "nodeCount": 81,
+          "animationCount": 1,
+          "animationChannels": 224,
+          "textureCount": 3,
+          "bounds": {
+            "min": [
+              -0.800000011920929,
+              -9.536743306171047e-08,
+              -1
+            ],
+            "max": [
+              22.149999618530273,
+              8.300000190734863,
+              1.357800006866455
+            ]
+          }
+        },
+        {
+          "caseId": "steel",
+          "id": "caster2",
+          "label": "第 2 流结晶、二冷与拉矫",
+          "position": [
+            -8,
+            0,
+            -1
+          ],
+          "description": "方坯在铜结晶器内形成坯壳，沿弧形辊列拉出；两侧喷嘴细雾接触坯面，冷却水进入下方回收沟。",
+          "filename": "steel-caster2.1fb49c708139.glb",
+          "sha256": "1fb49c708139c6089c971c4ddae5c3a432242c943fcd2d07891675693b3e7193",
+          "bytes": 2713996,
+          "background": false,
+          "type": "equipment",
+          "metrics": {},
+          "meshCount": 9,
+          "triangles": 18415,
+          "nodeCount": 81,
+          "animationCount": 1,
+          "animationChannels": 224,
+          "textureCount": 3,
+          "bounds": {
+            "min": [
+              -0.800000011920929,
+              -9.536743306171047e-08,
+              -1
+            ],
+            "max": [
+              22.149999618530273,
+              8.300000190734863,
+              1.357800006866455
+            ]
+          }
+        },
+        {
+          "caseId": "steel",
+          "id": "caster3",
+          "label": "第 3 流结晶、二冷与拉矫",
+          "position": [
+            -8,
+            0,
+            3
+          ],
+          "description": "方坯在铜结晶器内形成坯壳，沿弧形辊列拉出；两侧喷嘴细雾接触坯面，冷却水进入下方回收沟。",
+          "filename": "steel-caster3.fef1b68448a0.glb",
+          "sha256": "fef1b68448a00d887bce2cb6606648f196eab4826f42eaf27b887af9f75abb56",
+          "bytes": 2725420,
+          "background": false,
+          "type": "equipment",
+          "metrics": {},
+          "meshCount": 9,
+          "triangles": 18534,
+          "nodeCount": 81,
+          "animationCount": 1,
+          "animationChannels": 224,
+          "textureCount": 3,
+          "bounds": {
+            "min": [
+              -0.800000011920929,
+              -9.536743306171047e-08,
+              -1
+            ],
+            "max": [
+              22.149999618530273,
+              8.300000190734863,
+              1.357800006866455
+            ]
+          }
+        },
+        {
+          "caseId": "steel",
+          "id": "caster4",
+          "label": "第 4 流结晶、二冷与拉矫",
+          "position": [
+            -8,
+            0,
+            7
+          ],
+          "description": "方坯在铜结晶器内形成坯壳，沿弧形辊列拉出；两侧喷嘴细雾接触坯面，冷却水进入下方回收沟。",
+          "filename": "steel-caster4.05bc602dce43.glb",
+          "sha256": "05bc602dce43add5b69901aca908ee06a3c3697783a318fa74f4414ba12becd4",
+          "bytes": 2699016,
+          "background": false,
+          "type": "equipment",
+          "metrics": {},
+          "meshCount": 9,
+          "triangles": 18259,
+          "nodeCount": 81,
+          "animationCount": 1,
+          "animationChannels": 224,
+          "textureCount": 3,
+          "bounds": {
+            "min": [
+              -0.800000011920929,
+              -9.536743306171047e-08,
+              -1
+            ],
+            "max": [
+              22.149999618530273,
+              8.300000190734863,
+              1.357800006866455
+            ]
+          }
+        },
+        {
+          "caseId": "steel",
+          "id": "finishing",
+          "label": "定尺切割、移钢与冷床",
+          "position": [
+            20,
+            0,
+            1
+          ],
+          "description": "四流切割辊道汇入横向移钢冷床，展示铸坯由连续成形到定尺输出。",
+          "filename": "steel-finishing.4253b913e432.glb",
+          "sha256": "4253b913e4321433e317ed55352252dd44b80f3def0f248871e55716abac8b47",
+          "bytes": 878168,
+          "background": false,
+          "type": "equipment",
+          "metrics": {},
+          "meshCount": 6,
+          "triangles": 8715,
+          "nodeCount": 10,
+          "animationCount": 1,
+          "animationChannels": 8,
+          "textureCount": 2,
+          "bounds": {
+            "min": [
+              -8.600000381469727,
+              -0.005000011995434761,
+              -7.5
+            ],
+            "max": [
+              11.460000038146973,
+              2.8499999046325684,
+              9.01259994506836
+            ]
+          }
+        },
+        {
+          "caseId": "steel",
+          "id": "utilities",
+          "label": "二冷回水、沉淀与循环泵",
+          "position": [
+            -25,
+            0,
+            -8
+          ],
+          "description": "喷淋回水进入集水和沉淀单元，经泵组回送；供回水管以冷蓝和氧化红区分。",
+          "filename": "steel-utilities.13594d573dee.glb",
+          "sha256": "13594d573dee7de0b5111d7d1ec617c6d405cbcd954991ab2aad1e7cdf91a0a2",
+          "bytes": 965916,
+          "background": false,
+          "type": "equipment",
+          "metrics": {},
+          "meshCount": 11,
+          "triangles": 9296,
+          "nodeCount": 15,
+          "animationCount": 1,
+          "animationChannels": 4,
+          "textureCount": 3,
+          "bounds": {
+            "min": [
+              -4.300000190734863,
+              0.04500000178813934,
+              -3.0328240394592285
+            ],
+            "max": [
+              8.142374038696289,
+              2.5950000286102295,
+              4.01039981842041
+            ]
+          }
+        },
+        {
+          "caseId": "steel",
+          "id": "refining",
+          "label": "钢包准备与精炼工位",
+          "position": [
+            -24,
+            0,
+            3
+          ],
+          "description": "待浇钢包、精炼罩、三电极及除尘管廊构成上游工位；当前演示聚焦后续连铸。",
+          "filename": "steel-refining.cf1d0d55694f.glb",
+          "sha256": "cf1d0d55694f9edfbdf23194a24239fb6ce984ff924df0a4345fef4a5477b89c",
+          "bytes": 277464,
+          "background": false,
+          "type": "equipment",
+          "metrics": {},
+          "meshCount": 6,
+          "triangles": 2463,
+          "nodeCount": 7,
+          "animationCount": 0,
+          "animationChannels": 0,
+          "textureCount": 2,
+          "bounds": {
+            "min": [
+              -4,
+              4.7683716530855236e-08,
+              -6.0000834465026855
+            ],
+            "max": [
+              4,
+              9.897063255310059,
+              5.01092004776001
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "water",
+      "title": "双列生化污水处理与再生水厂",
+      "accent": "#28746b",
+      "theme": "light-industrial",
+      "footprint": [
+        82,
+        72
+      ],
+      "flow": "格栅配水 → 双列缺氧/好氧 → 双二沉池 → 过滤消毒 → 回用 / 污泥处理",
+      "summary": "开放式土建厂区，以双列矩形池、双圆形二沉池、道路绿化和厂务建筑组织空间；主水线、回流污泥及泥线分开表达。",
+      "settings": {
+        "backgroundColor": "#dce1d5",
+        "cameraView": "isometric",
+        "cameraFov": 35,
+        "modelScale": 1.26,
+        "environmentLightIntensity": 0.75,
+        "keyLightIntensity": 2.65,
+        "keyLightColor": "#fff2d9",
+        "environmentLightColor": "#e1ecf0"
+      },
+      "modules": [
+        {
+          "caseId": "water",
+          "id": "site",
+          "label": "双列水厂道路、绿化与连接管渠",
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "description": "82 × 72 m 厂区；双列生化和双二沉池形成主线，回流污泥、剩余污泥和回用水各有去向。",
+          "background": true,
+          "filename": "water-site.1a52b20b62dd.glb",
+          "sha256": "1a52b20b62dd5b3b728b2197b8be57be5f82102777aefeb21f4eac4953b3f715",
+          "bytes": 3729968,
+          "type": "equipment",
+          "metrics": {},
+          "meshCount": 13,
+          "triangles": 37927,
+          "nodeCount": 43,
+          "animationCount": 0,
+          "animationChannels": 0,
+          "textureCount": 3,
+          "bounds": {
+            "min": [
+              -41,
+              -0.75,
+              -36
+            ],
+            "max": [
+              41,
+              4.550000190734863,
+              36
+            ]
+          }
+        },
+        {
+          "caseId": "water",
+          "id": "inlet",
+          "label": "格栅、提升与配水渠",
+          "position": [
+            -29,
+            0,
+            0
+          ],
+          "description": "原水经过粗细格栅和提升井，在高位配水渠分至两列生化池；短跌水水幕落入消能池。",
+          "filename": "water-inlet.54683f010f0e.glb",
+          "sha256": "54683f010f0ed3ae36447cdbe2b33a34a967b8b295a83e3866287f179e6c13e9",
+          "bytes": 812320,
+          "background": false,
+          "type": "equipment",
+          "metrics": {},
+          "meshCount": 12,
+          "triangles": 17354,
+          "nodeCount": 25,
+          "animationCount": 1,
+          "animationChannels": 24,
+          "textureCount": 3,
+          "bounds": {
+            "min": [
+              -4.949999809265137,
+              -1.1920929132713809e-08,
+              -11.800000190734863
+            ],
+            "max": [
+              5.099999904632568,
+              4.275000095367432,
+              11.800000190734863
+            ]
+          }
+        },
+        {
+          "caseId": "water",
+          "id": "aeration",
+          "label": "A 列缺氧—好氧生化池",
+          "position": [
+            -10,
+            0,
+            -12
+          ],
+          "description": "前段缺氧搅拌，后段底部微孔曝气；内回流返回缺氧段，池壁剖口显示水深。",
+          "filename": "water-aeration.d7d61566fdac.glb",
+          "sha256": "d7d61566fdac9cd265cc29e79a60627e67f6b1d0c3e2c23d4701d89810c7c1c2",
+          "bytes": 2711084,
+          "background": false,
+          "type": "equipment",
+          "metrics": {},
+          "meshCount": 13,
+          "triangles": 66287,
+          "nodeCount": 132,
+          "animationCount": 1,
+          "animationChannels": 246,
+          "textureCount": 3,
+          "bounds": {
+            "min": [
+              -9.449999809265137,
+              0.04500000178813934,
+              -7.300000190734863
+            ],
+            "max": [
+              9.449999809265137,
+              4.327000141143799,
+              8.25160026550293
+            ]
+          }
+        },
+        {
+          "caseId": "water",
+          "id": "aerationB",
+          "label": "B 列缺氧—好氧生化池",
+          "position": [
+            -10,
+            0,
+            12
+          ],
+          "description": "与 A 列并行分担水量；曝气气泡、水面小幅波动、检修桥和布气支管均独立建模。",
+          "filename": "water-aerationB.966ea4b09b83.glb",
+          "sha256": "966ea4b09b8397ec59c466f7abc20b2da3ff74fcaea93b8ac0d084017702d9c5",
+          "bytes": 2729520,
+          "background": false,
+          "type": "equipment",
+          "metrics": {},
+          "meshCount": 13,
+          "triangles": 66479,
+          "nodeCount": 132,
+          "animationCount": 1,
+          "animationChannels": 246,
+          "textureCount": 3,
+          "bounds": {
+            "min": [
+              -9.449999809265137,
+              0.04500000178813934,
+              -7.300000190734863
+            ],
+            "max": [
+              9.449999809265137,
+              4.327000141143799,
+              8.25160026550293
+            ]
+          }
+        },
+        {
+          "caseId": "water",
+          "id": "clarifier",
+          "label": "A 池辐流二沉与出水堰",
+          "position": [
+            13,
+            0,
+            -12
+          ],
+          "description": "中心进水、周边堰出水、低速刮泥桥与底部排泥；水面比曝气池平缓，污泥回到缺氧段。",
+          "animationSpeed": 0.1,
+          "filename": "water-clarifier.d043a3d764b6.glb",
+          "sha256": "d043a3d764b6b27ca42cf188f4706a697adec44bd324e9751fc0baff686e221f",
+          "bytes": 912560,
+          "background": false,
+          "type": "equipment",
+          "metrics": {},
+          "meshCount": 14,
+          "triangles": 13587,
+          "nodeCount": 46,
+          "animationCount": 1,
+          "animationChannels": 13,
+          "textureCount": 3,
+          "bounds": {
+            "min": [
+              -7.650000095367432,
+              -5.9604645663569045e-09,
+              -7.650000095367432
+            ],
+            "max": [
+              8.000038146972656,
+              4.127000000700356,
+              8.710399627685547
+            ]
+          }
+        },
+        {
+          "caseId": "water",
+          "id": "clarifierB",
+          "label": "B 池辐流二沉与污泥分配",
+          "position": [
+            13,
+            0,
+            12
+          ],
+          "description": "第二座辐流沉淀池，与 A 池平行运行；回流污泥和剩余污泥接入不同管线。",
+          "animationSpeed": 0.1,
+          "filename": "water-clarifierB.36aef38c1b2f.glb",
+          "sha256": "36aef38c1b2f734c0b3eb7707616a006ebbaf24c1c8a6fc68cc95b3ff3f682e0",
+          "bytes": 930996,
+          "background": false,
+          "type": "equipment",
+          "metrics": {},
+          "meshCount": 14,
+          "triangles": 13779,
+          "nodeCount": 46,
+          "animationCount": 1,
+          "animationChannels": 13,
+          "textureCount": 3,
+          "bounds": {
+            "min": [
+              -7.650000095367432,
+              -5.9604645663569045e-09,
+              -7.650000095367432
+            ],
+            "max": [
+              8.000038146972656,
+              4.127000000700356,
+              8.710399627685547
+            ]
+          }
+        },
+        {
+          "caseId": "water",
+          "id": "reuse",
+          "label": "过滤、紫外消毒与清水回用",
+          "position": [
+            29,
+            0,
+            0
+          ],
+          "description": "二沉出水经滤池、浸没式紫外渠、清水池和回用泵送至外部用水点。",
+          "filename": "water-reuse.19a4324a3914.glb",
+          "sha256": "19a4324a39142ab46a535dfb5fcd7c0518b8b7b29aa400fb6824588a912af95b",
+          "bytes": 1262368,
+          "background": false,
+          "type": "equipment",
+          "metrics": {},
+          "meshCount": 10,
+          "triangles": 13084,
+          "nodeCount": 14,
+          "animationCount": 1,
+          "animationChannels": 4,
+          "textureCount": 3,
+          "bounds": {
+            "min": [
+              -4.324999809265137,
+              0.09999999403953552,
+              -12.800000190734863
+            ],
+            "max": [
+              6.702499866485596,
+              3.556999921798706,
+              12.800000190734863
+            ]
+          }
+        },
+        {
+          "caseId": "water",
+          "id": "sludge",
+          "label": "回流泵、浓缩与污泥脱水",
+          "position": [
+            7,
+            0,
+            27
+          ],
+          "description": "二沉池回流污泥返回生化段；剩余污泥经浓缩、带式脱水输出泥饼，滤液回前端。",
+          "filename": "water-sludge.c13c119c9e34.glb",
+          "sha256": "c13c119c9e34d8c65dd44e4f9a3fa887dece1986dcfab5b4a78f3a63d9b79190",
+          "bytes": 504288,
+          "background": false,
+          "type": "equipment",
+          "metrics": {},
+          "meshCount": 7,
+          "triangles": 4892,
+          "nodeCount": 8,
+          "animationCount": 1,
+          "animationChannels": 4,
+          "textureCount": 3,
+          "bounds": {
+            "min": [
+              -37.78132629394531,
+              -5.9604645663569045e-09,
+              -19.000017166137695
+            ],
+            "max": [
+              8.199999809265137,
+              3.049999952316284,
+              4.926601409912109
+            ]
+          }
+        },
+        {
+          "caseId": "water",
+          "id": "blower",
+          "label": "鼓风机房、配电与厂务",
+          "position": [
+            -10,
+            0,
+            -27
+          ],
+          "description": "三台鼓风机和供气总管服务两列曝气池；配套值班与配电建筑形成完整厂区。",
+          "filename": "water-blower.3a0a93c93ebc.glb",
+          "sha256": "3a0a93c93ebc1ca7aa02d0c9eb18fc606f613cf33cb8e30bcf8ad21453b90b47",
+          "bytes": 538448,
+          "background": false,
+          "type": "equipment",
+          "metrics": {},
+          "meshCount": 7,
+          "triangles": 4767,
+          "nodeCount": 8,
+          "animationCount": 0,
+          "animationChannels": 0,
+          "textureCount": 3,
+          "bounds": {
+            "min": [
+              -8.5,
+              -5.9604645663569045e-09,
+              -3.5
+            ],
+            "max": [
+              8.752498626708984,
+              4.218482494354248,
+              8.018209457397461
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "cooling",
+      "title": "三塔双回路工业循环水站",
+      "accent": "#bd623f",
+      "theme": "command-gold",
+      "footprint": [
+        58,
+        48
+      ],
+      "flow": "三塔集水 → 四泵供水 → 双换热负载 → 热水回塔 / 旁滤、补水、排污",
+      "summary": "高塔、低位泵列和双层管廊组成公用工程站；一格塔体和换热器局部剖切，供回水与水量损失去向清晰。",
+      "settings": {
+        "backgroundColor": "#d7dcdf",
+        "cameraView": "isometric",
+        "cameraFov": 36,
+        "modelScale": 1.23,
+        "environmentLightIntensity": 0.65,
+        "keyLightIntensity": 2.8,
+        "keyLightColor": "#fff4e0",
+        "environmentLightColor": "#d5e3f1"
+      },
+      "modules": [
+        {
+          "caseId": "cooling",
+          "id": "site",
+          "label": "三塔循环水站与双层管廊",
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "description": "58 × 48 m 公用工程站；三格冷却塔、四泵、双换热器和旁滤补水系统构成闭路。",
+          "background": true,
+          "filename": "cooling-site.0561a4dcc6b4.glb",
+          "sha256": "0561a4dcc6b49f04fcda1440222a66722c0fc8578c9ae0335ab79c91eaddba35",
+          "bytes": 1960808,
+          "type": "equipment",
+          "metrics": {},
+          "meshCount": 11,
+          "triangles": 20899,
+          "nodeCount": 13,
+          "animationCount": 1,
+          "animationChannels": 4,
+          "textureCount": 3,
+          "bounds": {
+            "min": [
+              -29,
+              -0.6299999952316284,
+              -24
+            ],
+            "max": [
+              30.14069175720215,
+              9.982158660888672,
+              24
+            ]
+          }
+        },
+        {
+          "caseId": "cooling",
+          "id": "tower",
+          "label": "1 号逆流冷却塔",
+          "position": [
+            -16,
+            0,
+            -12
+          ],
+          "description": "热水从顶部喷嘴洒向填料，在填料表面成膜并落入共用集水池；风机和下部百叶对应逆流通风。",
+          "filename": "cooling-tower.40a1f0bd0c6a.glb",
+          "sha256": "40a1f0bd0c6a481c3d75089f70c32d3d5ed77ecf7495361b5fbad1637c92b0f0",
+          "bytes": 5344412,
+          "background": false,
+          "type": "equipment",
+          "metrics": {},
+          "meshCount": 16,
+          "triangles": 34512,
+          "nodeCount": 176,
+          "animationCount": 1,
+          "animationChannels": 481,
+          "textureCount": 3,
+          "bounds": {
+            "min": [
+              -4.300000190734863,
+              1.2400000095367432,
+              -4.318921089172363
+            ],
+            "max": [
+              4.300000190734863,
+              12.220000267028809,
+              4.318921089172363
+            ]
+          }
+        },
+        {
+          "caseId": "cooling",
+          "id": "tower2",
+          "label": "2 号逆流冷却塔",
+          "position": [
+            -5,
+            0,
+            -12
+          ],
+          "description": "热水从顶部喷嘴洒向填料，在填料表面成膜并落入共用集水池；风机和下部百叶对应逆流通风。",
+          "filename": "cooling-tower2.5f7be544f6fe.glb",
+          "sha256": "5f7be544f6fe09c89526dfe6cdfece26b9d9d4c99dab2effe94864cf04e2cf8d",
+          "bytes": 5344412,
+          "background": false,
+          "type": "equipment",
+          "metrics": {},
+          "meshCount": 16,
+          "triangles": 34512,
+          "nodeCount": 176,
+          "animationCount": 1,
+          "animationChannels": 481,
+          "textureCount": 3,
+          "bounds": {
+            "min": [
+              -4.300000190734863,
+              1.2400000095367432,
+              -4.318921089172363
+            ],
+            "max": [
+              4.300000190734863,
+              12.220000267028809,
+              4.318921089172363
+            ]
+          }
+        },
+        {
+          "caseId": "cooling",
+          "id": "tower3",
+          "label": "3 号逆流冷却塔 · 剖面",
+          "position": [
+            6,
+            0,
+            -12
+          ],
+          "description": "热水从顶部喷嘴洒向填料，在填料表面成膜并落入共用集水池；风机和下部百叶对应逆流通风。",
+          "filename": "cooling-tower3.985d9e964ff0.glb",
+          "sha256": "985d9e964ff01cd064276b16895891d4ddad7fdf08c8e7fdf9abd905d11f4121",
+          "bytes": 5830360,
+          "background": false,
+          "type": "equipment",
+          "metrics": {},
+          "meshCount": 22,
+          "triangles": 40572,
+          "nodeCount": 182,
+          "animationCount": 1,
+          "animationChannels": 505,
+          "textureCount": 3,
+          "bounds": {
+            "min": [
+              -4.300000190734863,
+              1.2400000095367432,
+              -4.318921089172363
+            ],
+            "max": [
+              4.300000190734863,
+              12.220000267028809,
+              4.318921089172363
+            ]
+          }
+        },
+        {
+          "caseId": "cooling",
+          "id": "pumps",
+          "label": "四泵并联供水机组",
+          "position": [
+            -20,
+            0,
+            6
+          ],
+          "description": "四台循环泵的吸水支管连接共用冷水池，止回及隔离阀接入供水总管；示例运行策略为三用一备。",
+          "filename": "cooling-pumps.d5bb6cccccda.glb",
+          "sha256": "d5bb6cccccdaad3014dd9098c4c09604a71260735c3e173f82785474c301cc54",
+          "bytes": 4477656,
+          "background": false,
+          "type": "equipment",
+          "metrics": {},
+          "meshCount": 9,
+          "triangles": 45768,
+          "nodeCount": 22,
+          "animationCount": 0,
+          "animationChannels": 0,
+          "textureCount": 3,
+          "bounds": {
+            "min": [
+              -4.5,
+              0.02500000037252903,
+              -9.5026273727417
+            ],
+            "max": [
+              4.5,
+              3.544705629348755,
+              8.160630226135254
+            ]
+          }
+        },
+        {
+          "caseId": "cooling",
+          "id": "exchanger",
+          "label": "A 线管壳式换热单元",
+          "position": [
+            1,
+            0,
+            8
+          ],
+          "description": "管程冷却水与壳程工艺流体由管壁隔开；壳体局部剖开显示管束、折流板和流向。",
+          "filename": "cooling-exchanger.162b8d6faf59.glb",
+          "sha256": "162b8d6faf599008ee0249426e1cd0c3a0e8a73723a1797fc9402cff60c57fcb",
+          "bytes": 1113144,
+          "background": false,
+          "type": "equipment",
+          "metrics": {},
+          "meshCount": 7,
+          "triangles": 11243,
+          "nodeCount": 19,
+          "animationCount": 1,
+          "animationChannels": 36,
+          "textureCount": 3,
+          "bounds": {
+            "min": [
+              -5,
+              0.02500000223517418,
+              -3
+            ],
+            "max": [
+              5,
+              4.414112091064453,
+              5.000011444091797
+            ]
+          }
+        },
+        {
+          "caseId": "cooling",
+          "id": "exchangerB",
+          "label": "B 线管壳式换热单元",
+          "position": [
+            14,
+            0,
+            8
+          ],
+          "description": "第二组独立负载，与 A 线共享循环供回水总管；两个回路通过金属换热面交换热量。",
+          "filename": "cooling-exchangerB.9a989800513e.glb",
+          "sha256": "9a989800513e10651df72b520f658e05677ee889333aeb8e36553990fde60487",
+          "bytes": 1145244,
+          "background": false,
+          "type": "equipment",
+          "metrics": {},
+          "meshCount": 7,
+          "triangles": 11577,
+          "nodeCount": 19,
+          "animationCount": 1,
+          "animationChannels": 36,
+          "textureCount": 3,
+          "bounds": {
+            "min": [
+              -5,
+              0.02500000223517418,
+              -3
+            ],
+            "max": [
+              5,
+              4.414112091064453,
+              5.000011444091797
+            ]
+          }
+        },
+        {
+          "caseId": "cooling",
+          "id": "makeup",
+          "label": "补水箱、加药及计量",
+          "position": [
+            22,
+            0,
+            -14
+          ],
+          "description": "补水箱和水表接入塔池，药剂由独立计量泵注入；补水弥补蒸发、排污和少量飘水损失。",
+          "filename": "cooling-makeup.df5fe7648504.glb",
+          "sha256": "df5fe7648504f19f6330d3d73a78123b0b6e662a7554fa9056f4aa66f41048fc",
+          "bytes": 1002744,
+          "background": false,
+          "type": "equipment",
+          "metrics": {},
+          "meshCount": 10,
+          "triangles": 10052,
+          "nodeCount": 12,
+          "animationCount": 1,
+          "animationChannels": 4,
+          "textureCount": 3,
+          "bounds": {
+            "min": [
+              -3.680000066757202,
+              -0.03999999910593033,
+              -2.680000066757202
+            ],
+            "max": [
+              3.049999952316284,
+              5.400000095367432,
+              2.5399999618530273
+            ]
+          }
+        },
+        {
+          "caseId": "cooling",
+          "id": "filter",
+          "label": "旁流过滤、排污与水质控制",
+          "position": [
+            22,
+            0,
+            16
+          ],
+          "description": "旁滤器从循环管取水并回送，电导率控制排污；排污去向为处理管线。",
+          "filename": "cooling-filter.9cf189f2d007.glb",
+          "sha256": "9cf189f2d00738c610697159b25aaed3a25099c5956f3865f572ff2f0b9ff8ea",
+          "bytes": 822572,
+          "background": false,
+          "type": "equipment",
+          "metrics": {},
+          "meshCount": 6,
+          "triangles": 8318,
+          "nodeCount": 8,
+          "animationCount": 0,
+          "animationChannels": 0,
+          "textureCount": 1,
+          "bounds": {
+            "min": [
+              -3.0999999046325684,
+              -1.1920929132713809e-08,
+              -2.048509359359741
+            ],
+            "max": [
+              3.8137028217315674,
+              3.940000057220459,
+              4.745150089263916
+            ]
+          }
+        },
+        {
+          "caseId": "cooling",
+          "id": "process",
+          "label": "双工艺负载与检修区域",
+          "position": [
+            6,
+            0,
+            18
+          ],
+          "description": "两条工艺热负载经独立供回管接入 A、B 换热器，构成热源—换热—冷却塔的完整业务循环。",
+          "filename": "cooling-process.f5ef4039a254.glb",
+          "sha256": "f5ef4039a254cb211a19653ffa1b7740611ec5bbe17932cb8f246149eacb3b5d",
+          "bytes": 400448,
+          "background": false,
+          "type": "equipment",
+          "metrics": {},
+          "meshCount": 7,
+          "triangles": 3328,
+          "nodeCount": 8,
+          "animationCount": 0,
+          "animationChannels": 0,
+          "textureCount": 3,
+          "bounds": {
+            "min": [
+              -9,
+              0.02500000037252903,
+              -5.00001335144043
+            ],
+            "max": [
+              12,
+              4.335000038146973,
+              2.5
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

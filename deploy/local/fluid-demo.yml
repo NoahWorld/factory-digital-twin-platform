@@ -1,0 +1,23 @@
+# Standalone optional demo service. Uses only the Node runtime in this existing image.
+# No Node-RED flows, credentials, database mounts or production endpoints.
+name: factory-fluid-demo
+services:
+  source:
+    image: nodered/node-red:5.0.6-debian
+    entrypoint: [node, /demo/fluid-demo-source.mjs]
+    working_dir: /demo
+    restart: unless-stopped
+    ports: ['127.0.0.1:8790:8790']
+    volumes:
+      - ../../scripts/fluid-demo-source.mjs:/demo/fluid-demo-source.mjs:ro
+      - ../../scripts/fluid-demo-metrics.mjs:/demo/fluid-demo-metrics.mjs:ro
+    read_only: true
+    mem_limit: 128m
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    healthcheck:
+      test: [CMD, node, -e, 'fetch("http://127.0.0.1:8790/health").then(r=>{if(!r.ok)process.exit(1)}).catch(e=>{console.error(e);process.exit(1)})']
+      interval: 15s
+      timeout: 3s
+      retries: 3
+    logging: {driver: json-file, options: {max-size: 5m, max-file: '2'}}

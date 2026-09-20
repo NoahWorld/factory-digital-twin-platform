@@ -1,0 +1,300 @@
+{
+  "models": [
+    {
+      "case": "steel",
+      "module": "site",
+      "meshInstances": 9,
+      "triangles": 24073,
+      "animated": false,
+      "loopVerified": true
+    },
+    {
+      "case": "steel",
+      "module": "ladle",
+      "meshInstances": 16,
+      "triangles": 11084,
+      "animated": true,
+      "loopVerified": true
+    },
+    {
+      "case": "steel",
+      "module": "tundish",
+      "meshInstances": 6,
+      "triangles": 4688,
+      "animated": true,
+      "loopVerified": true
+    },
+    {
+      "case": "steel",
+      "module": "caster",
+      "meshInstances": 80,
+      "triangles": 18273,
+      "animated": true,
+      "loopVerified": true
+    },
+    {
+      "case": "steel",
+      "module": "caster2",
+      "meshInstances": 80,
+      "triangles": 18415,
+      "animated": true,
+      "loopVerified": true
+    },
+    {
+      "case": "steel",
+      "module": "caster3",
+      "meshInstances": 80,
+      "triangles": 18534,
+      "animated": true,
+      "loopVerified": true
+    },
+    {
+      "case": "steel",
+      "module": "caster4",
+      "meshInstances": 80,
+      "triangles": 18259,
+      "animated": true,
+      "loopVerified": true
+    },
+    {
+      "case": "steel",
+      "module": "finishing",
+      "meshInstances": 9,
+      "triangles": 8715,
+      "animated": true,
+      "loopVerified": true
+    },
+    {
+      "case": "steel",
+      "module": "utilities",
+      "meshInstances": 11,
+      "triangles": 9296,
+      "animated": true,
+      "loopVerified": true
+    },
+    {
+      "case": "steel",
+      "module": "refining",
+      "meshInstances": 6,
+      "triangles": 2463,
+      "animated": false,
+      "loopVerified": true
+    },
+    {
+      "case": "water",
+      "module": "site",
+      "meshInstances": 13,
+      "triangles": 37927,
+      "animated": false,
+      "loopVerified": true
+    },
+    {
+      "case": "water",
+      "module": "inlet",
+      "meshInstances": 23,
+      "triangles": 17354,
+      "animated": true,
+      "loopVerified": true
+    },
+    {
+      "case": "water",
+      "module": "aeration",
+      "meshInstances": 128,
+      "triangles": 66287,
+      "animated": true,
+      "loopVerified": true
+    },
+    {
+      "case": "water",
+      "module": "aerationB",
+      "meshInstances": 128,
+      "triangles": 66479,
+      "animated": true,
+      "loopVerified": true
+    },
+    {
+      "case": "water",
+      "module": "clarifier",
+      "meshInstances": 44,
+      "triangles": 13587,
+      "animated": true,
+      "loopVerified": true
+    },
+    {
+      "case": "water",
+      "module": "clarifierB",
+      "meshInstances": 44,
+      "triangles": 13779,
+      "animated": true,
+      "loopVerified": true
+    },
+    {
+      "case": "water",
+      "module": "reuse",
+      "meshInstances": 10,
+      "triangles": 13084,
+      "animated": true,
+      "loopVerified": true
+    },
+    {
+      "case": "water",
+      "module": "sludge",
+      "meshInstances": 7,
+      "triangles": 4892,
+      "animated": true,
+      "loopVerified": true
+    },
+    {
+      "case": "water",
+      "module": "blower",
+      "meshInstances": 7,
+      "triangles": 4767,
+      "animated": false,
+      "loopVerified": true
+    },
+    {
+      "case": "cooling",
+      "module": "site",
+      "meshInstances": 11,
+      "triangles": 20899,
+      "animated": true,
+      "loopVerified": true
+    },
+    {
+      "case": "cooling",
+      "module": "tower",
+      "meshInstances": 174,
+      "triangles": 34512,
+      "animated": true,
+      "loopVerified": true
+    },
+    {
+      "case": "cooling",
+      "module": "tower2",
+      "meshInstances": 174,
+      "triangles": 34512,
+      "animated": true,
+      "loopVerified": true
+    },
+    {
+      "case": "cooling",
+      "module": "tower3",
+      "meshInstances": 180,
+      "triangles": 40572,
+      "animated": true,
+      "loopVerified": true
+    },
+    {
+      "case": "cooling",
+      "module": "pumps",
+      "meshInstances": 9,
+      "triangles": 45768,
+      "animated": false,
+      "loopVerified": true
+    },
+    {
+      "case": "cooling",
+      "module": "exchanger",
+      "meshInstances": 18,
+      "triangles": 11243,
+      "animated": true,
+      "loopVerified": true
+    },
+    {
+      "case": "cooling",
+      "module": "exchangerB",
+      "meshInstances": 18,
+      "triangles": 11577,
+      "animated": true,
+      "loopVerified": true
+    },
+    {
+      "case": "cooling",
+      "module": "makeup",
+      "meshInstances": 10,
+      "triangles": 10052,
+      "animated": true,
+      "loopVerified": true
+    },
+    {
+      "case": "cooling",
+      "module": "filter",
+      "meshInstances": 6,
+      "triangles": 8318,
+      "animated": false,
+      "loopVerified": true
+    },
+    {
+      "case": "cooling",
+      "module": "process",
+      "meshInstances": 7,
+      "triangles": 3328,
+      "animated": false,
+      "loopVerified": true
+    }
+  ],
+  "pages": [
+    {
+      "case": "steel",
+      "mode": "scene",
+      "url": "http://127.0.0.1:5173/#/projects/3fc3b7c3-336a-498f-b8bd-537dc18bc94d/scene-preview",
+      "canvasCount": 1,
+      "errors": [],
+      "animationVisible": true,
+      "bodyText": "返回项目\n独立 3D 项目\n行业案例｜四流方坯连铸生产区｜3D 场景（模拟）\n编辑场景\n2D / 3D 设备联动\n🟢 在线 9 台 · 字段映射与 3D 状态已生效\n2D × 3D DIGITAL TWIN\n车间设备看板\n模拟数据\n\n点击 3D 模型查看设备数据；点击设备列表可反向选中模型。\n\n绑定设备\n9台\n在线\n9台\n异常\n0台\n设备列表\n9 ASSETS\n钢包回转台与保护浇注\nfluid-steel-ladle\n运行\n中间包、挡坝与四路浸入式水口\nfluid-steel-tundish\n运行\n第 1 流结晶、二冷与拉矫\nfluid-steel-caster\n运行\n二冷回水、沉淀与循环泵\nfluid-steel-utilities\n运行\n第 2 流结晶、二冷与拉矫\nfluid-steel-caster2\n运行\n第 3 流结晶、二冷与拉矫\nfluid-steel-caster3\n运行\n第 4 流结晶、二冷与拉矫\nfluid-steel-caster4\n运行\n定尺切割、移钢与冷床\nfluid-steel-finishing\n运行\n钢包准备与精炼工位\nfluid-steel-refining\n运行\n⌖\n选择一台设备\n\n模型高亮与设备数据使用同一个 assetId 关联。\n\n打开完整 2D 看板"
+    },
+    {
+      "case": "steel",
+      "mode": "dashboard",
+      "url": "http://127.0.0.1:5173/#/projects/4525dd2b-0330-48be-af09-99888d9fcffa/preview",
+      "canvasCount": 1,
+      "errors": [],
+      "animationVisible": false,
+      "bodyText": "←\n可视化预览\n行业案例｜四流方坯连铸生产区｜业务看板（模拟）\n1920 × 1080\n自定义\n版本 2\n返回编辑\n四流方坯连铸生产区\nCASTING OPERATIONS / 钢包准备—保护浇注—凝固拉矫—定尺出坯\n▥\n演示生产组织\n示例数据\n4 流连浇\n\n80 t 级炉次 · 参数为模拟工况\n\n四流工况示例\n示例数据\n1# 结晶器\n保护浇注\n2# 结晶器\n二冷喷淋\n3# 结晶器\n拉矫运行\n4# 结晶器\n定尺输出\n⌖\n设备运行数据 · 模拟源\n选择场景设备，查看对应工艺参数\n从钢液到铸坯 · 工艺边界\n示例数据\n生产区域\t关键结构\t观察重点\n高位浇注\t直立钢包 / 底部水口\t长水口局部剖面\n钢流分配\t中间包 / 挡坝 / 浸入式水口\t液面与包沿留出安全余量\n凝固拉矫\t四流铜结晶器 / 弧形辊列\t方形坯壳与细雾二冷\n成品输出\t火切辊道 / 横向冷床\t定尺铸坯与移钢路径\n模拟温度剖面 · °C\n780 °C\n钢包\n中间包\n入冷床\n浇注观察\n钢液走底部水口，不从包沿倾倒。\n\n二冷观察\n喷嘴朝向坯壳，回水进入下方集水沟。\n\n虚构行业案例 · 流体视觉动画"
+    },
+    {
+      "case": "water",
+      "mode": "scene",
+      "url": "http://127.0.0.1:5173/#/projects/53eca60c-e227-4031-9383-cc10da7feac9/scene-preview",
+      "canvasCount": 1,
+      "errors": [],
+      "animationVisible": true,
+      "bodyText": "返回项目\n独立 3D 项目\n行业案例｜双列生化污水处理与再生水厂｜3D 场景（模拟）\n编辑场景\n2D / 3D 设备联动\n🟢 在线 8 台 · 字段映射与 3D 状态已生效\n2D × 3D DIGITAL TWIN\n车间设备看板\n模拟数据\n\n点击 3D 模型查看设备数据；点击设备列表可反向选中模型。\n\n绑定设备\n8台\n在线\n8台\n异常\n0台\n设备列表\n8 ASSETS\n格栅、提升与配水渠\nfluid-water-inlet\n运行\nA 列缺氧—好氧生化池\nfluid-water-aeration\n运行\nA 池辐流二沉与出水堰\nfluid-water-clarifier\n运行\n回流泵、浓缩与污泥脱水\nfluid-water-sludge\n运行\n过滤、紫外消毒与清水回用\nfluid-water-reuse\n运行\nB 列缺氧—好氧生化池\nfluid-water-aerationB\n运行\nB 池辐流二沉与污泥分配\nfluid-water-clarifierB\n运行\n鼓风机房、配电与厂务\nfluid-water-blower\n运行\n⌖\n选择一台设备\n\n模型高亮与设备数据使用同一个 assetId 关联。\n\n打开完整 2D 看板"
+    },
+    {
+      "case": "water",
+      "mode": "dashboard",
+      "url": "http://127.0.0.1:5173/#/projects/ea3afa05-d4a1-4ff9-97ba-3c40369776b1/preview",
+      "canvasCount": 1,
+      "errors": [],
+      "animationVisible": false,
+      "bodyText": "←\n可视化预览\n行业案例｜双列生化污水处理与再生水厂｜业务看板（模拟）\n1920 × 1080\n自定义\n版本 3\n返回编辑\n再生水厂 · 双列处理\nWATER RECLAMATION  /  主水线 · 回流污泥 · 泥线\n≈\n设计演示水量\n示例数据\n8,640\nm³/d\n\n双列分担进水\n\nⅡ\n生化配置\n示例数据\nA / B\n双列\n\n缺氧搅拌 + 好氧曝气\n\n↗\n处理终点\n示例数据\n回用水\n＋泥饼\n\n过滤消毒 + 污泥脱水\n\n模拟 COD 沿程变化 · mg/L\n32 mg/L\n原水\n生化出水\n二沉出水\n回用水\n工况示例曲线 · 设备参数见下方模拟源\n⌖\n设备运行数据 · 模拟源\n选择场景设备，查看对应工艺参数\n01  水线有始有终\n格栅配水 → 双列生化 → 双池沉淀 → 过滤 / UV → 回用。\n池壁、检修桥和液位按不同功能组织。\n02  污泥有独立去向\n回流污泥返回缺氧段；剩余污泥浓缩、脱水，滤液回前端。\n虚构行业案例 · 数据与工况均为模拟。"
+    },
+    {
+      "case": "cooling",
+      "mode": "scene",
+      "url": "http://127.0.0.1:5173/#/projects/1d14ca33-1ddc-4d88-98be-d7771b1399db/scene-preview",
+      "canvasCount": 1,
+      "errors": [],
+      "animationVisible": true,
+      "bodyText": "返回项目\n独立 3D 项目\n行业案例｜三塔双回路工业循环水站｜3D 场景（模拟）\n编辑场景\n2D / 3D 设备联动\n🟢 在线 9 台 · 字段映射与 3D 状态已生效\n2D × 3D DIGITAL TWIN\n车间设备看板\n模拟数据\n\n点击 3D 模型查看设备数据；点击设备列表可反向选中模型。\n\n绑定设备\n9台\n在线\n9台\n异常\n0台\n设备列表\n9 ASSETS\n1 号逆流冷却塔\nfluid-cooling-tower\n运行\n四泵并联供水机组\nfluid-cooling-pumps\n运行\nA 线管壳式换热单元\nfluid-cooling-exchanger\n运行\n补水箱、加药及计量\nfluid-cooling-makeup\n运行\n2 号逆流冷却塔\nfluid-cooling-tower2\n运行\n3 号逆流冷却塔 · 剖面\nfluid-cooling-tower3\n运行\nB 线管壳式换热单元\nfluid-cooling-exchangerB\n运行\n旁流过滤、排污与水质控制\nfluid-cooling-filter\n运行\n双工艺负载与检修区域\nfluid-cooling-process\n运行\n⌖\n选择一台设备\n\n模型高亮与设备数据使用同一个 assetId 关联。\n\n打开完整 2D 看板"
+    },
+    {
+      "case": "cooling",
+      "mode": "dashboard",
+      "url": "http://127.0.0.1:5173/#/projects/cbdf45f0-620c-4345-8bb6-38af57a34697/preview",
+      "canvasCount": 1,
+      "errors": [],
+      "animationVisible": false,
+      "bodyText": "←\n可视化预览\n行业案例｜三塔双回路工业循环水站｜业务看板（模拟）\n1920 × 1080\n自定义\n版本 3\n返回编辑\n循环水公用工程\nUTILITY ISLAND / 三塔 · 四泵 · 双回路\n一格冷却塔打开剖面，显示布水、填料水膜和落水区；两组换热器保留独立工艺回路。\n循环配置 · 三用一备\n示例数据\n3\n台\n\n900 m³/h 循环量 · 模拟基准\n\n水量平衡 · 模拟基准\n示例数据\n去向\t流量 m³/h\n补水 M\t16.45\n蒸发 E\t12.33\n排污 B\t4.07\n飘水 D\t0.045\nM = E + B + D\n补水覆盖蒸发、排污和飘水损失。\n实时模拟值随负载同步变化。\n⌖\n设备运行数据 · 模拟源\n选择场景设备，查看对应工艺参数\n双工艺回路 · 基准热负荷\n示例数据\nA 线工艺换热\n4.6MW\nB 线工艺换热\n3.76MW\n合计排热\n8.36MW\n管线与剖面\n\n蓝色 · 冷却供水\n氧化红 · 热水回塔\n青绿 · 旁滤 / 补水\n\n虚构案例 · 模拟数据\n动画按预设工况循环"
+    }
+  ],
+  "simulationBalances": [
+    {
+      "case": "cooling",
+      "samples": 20,
+      "heatLoad": true,
+      "waterBalance": true
+    }
+  ]
+}

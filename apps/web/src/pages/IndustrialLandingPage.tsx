@@ -1,470 +1,116 @@
-const operatingModules = [
-  {
-    code: "01",
-    label: "2D / DASHBOARD",
-    title: "业务看板",
-    description: "通过有边界的交付画布，编排指标、图表、状态与现场信息。",
-    signal: "LAYOUT",
-  },
-  {
-    code: "02",
-    label: "3D / SCENE",
-    title: "三维场景",
-    description: "导入 GLB 或自包含 GLTF，配置节点、材质、灯光与交付视角。",
-    signal: "MODEL",
-  },
-  {
-    code: "03",
-    label: "ASSET / REGISTER",
-    title: "资产台账",
-    description: "用稳定 assetId 关联模型节点、设备信息和业务指标。",
-    signal: "ASSET",
-  },
-  {
-    code: "04",
-    label: "DATA / CONTRACT",
-    title: "数据契约",
-    description: "统一 REST 轮询与 WebSocket 数据的字段语义和状态边界。",
-    signal: "DATA",
-  },
-] as const;
+import { useEffect, useMemo, useRef, useState } from "react";
+import { BatchModel3DNode } from "../canvas/BatchModel3DNode";
+import { LocalIcon } from "../canvas/LocalIcon";
+import type { ModelCameraView } from "../canvas/types";
+import { PRODUCT_NAME } from "../product-config";
+import { ThemeToggle } from "../theme/ThemeToggle";
+import { demoDevices, getDemoSelection, industrialDemoNode } from "./industrial-demo-scene";
+import "./IndustrialLandingPage.css";
 
-const deliveryStages = [
-  { code: "A-01", title: "模板建项", copy: "选择行业骨架，建立项目交付边界。" },
-  { code: "A-02", title: "模型导入", copy: "检查模型结构，整理节点与场景视角。" },
-  { code: "A-03", title: "资产映射", copy: "以 assetId 连接模型、台账与数据。" },
-  { code: "A-04", title: "看板编排", copy: "组合 2D 组件与 3D 场景。" },
-  { code: "A-05", title: "现场交付", copy: "预览、校验并部署到约定环境。" },
-] as const;
-
-const deploymentFacts = [
-  ["WEB", "配置台与只读运行页"],
-  ["API", "身份、项目与版本接口"],
-  ["DB", "配置、资产与数据契约"],
-  ["S3", "模型与图片对象存储"],
-] as const;
-
-function scrollToIndustrialSection(id: string) {
-  document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+function Arrow({ diagonal = false }: { diagonal?: boolean }) {
+  return <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true"><path d={diagonal ? "M6 18 18 6M6 6h12v12" : "M4 12h16m-6-6 6 6-6 6"} /></svg>;
 }
 
-function IndustrialMark() {
+function Brand() {
+  return <span className="delivery-brand"><span className="delivery-brand-symbol" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none"><path d="m16 3 12 7v13l-12 7-12-7V10L16 3Z" stroke="currentColor" strokeWidth="2" /><path d="m4 10 12 7 12-7M16 17v13M10 6.5l12 7V20" stroke="currentColor" strokeWidth="2" /></svg></span><span>{PRODUCT_NAME}<small>3D 数字孪生交付平台</small></span></span>;
+}
+
+function scrollToSection(id: string) {
+  document.getElementById(id)?.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth", block: "start" });
+}
+
+// The demo links selections to explicitly simulated values, never to customer assets.
+function FactoryDemo() {
+  const sceneRef = useRef<HTMLDivElement>(null);
+  const [modelScale, setModelScale] = useState(industrialDemoNode.props.modelScale);
+  const [selectedId, setSelectedId] = useState<string | null>("robot-0");
+  const [view, setView] = useState<ModelCameraView>("isometric-left");
+  const [animate, setAnimate] = useState(() => !window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+  useEffect(() => {
+    const container = sceneRef.current;
+    if (!container) return;
+    // Keep the complete workshop in frame as the layout narrows, preserving the user's orbit.
+    const observer = new ResizeObserver(([entry]) => {
+      const { width, height } = entry.contentRect;
+      if (width > 0 && height > 0) setModelScale(1.9 * Math.min(1, width / height / 1.8));
+    });
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, []);
+  useEffect(() => {
+    const preference = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const handleChange = () => setAnimate(!preference.matches);
+    preference.addEventListener("change", handleChange);
+    return () => preference.removeEventListener("change", handleChange);
+  }, []);
+  const node = useMemo(() => ({ ...industrialDemoNode, props: { ...industrialDemoNode.props, cameraView: view, playAnimations: animate, modelScale } }), [view, animate, modelScale]);
+  const { instance, device } = getDemoSelection(selectedId);
   return (
-    <span aria-hidden="true" className="industrial-mark">
-      <i />
-      <i />
-      <i />
-    </span>
+    <section className="delivery-demo" id="industrial-demo" aria-label="可交互的智能制造车间演示">
+      <div className="delivery-demo-topbar">
+        <div className="delivery-demo-title"><span className="delivery-demo-dot" /><strong>智能制造车间</strong><span className="delivery-example-label">交付场景示例</span></div>
+        <span className="delivery-demo-guide">拖动旋转 · 滚轮缩放 · 点击设备</span>
+      </div>
+      <div className="delivery-demo-body">
+        <div className="delivery-scene-area">
+          <div className="delivery-scene-caption"><span>EXPLORE YOUR DIGITAL FACTORY</span><strong>让每一台设备，都有数字身份。</strong></div>
+          <div className="delivery-scene" ref={sceneRef} aria-label="3D 车间，可拖动查看；也可用下方设备按钮选择设备">
+            <BatchModel3DNode node={node} projectId="public-landing-demo" editable={false} interactive cameraControlsEnabled runtimeControlsEnabled={false} selectedModelInstanceId={device ? selectedId : null} selectedSceneNodePath={null} onModelInstanceSelect={(_, id) => setSelectedId(id)} onSceneNodeSelect={() => { /* This demo selects whole equipment, not mesh nodes. */ }} />
+          </div>
+          <div className="delivery-scene-controls" aria-label="场景视角和动画">
+            <div className="delivery-view-switch"><button type="button" aria-pressed={view === "isometric-left"} onClick={() => setView("isometric-left")}>立体视角</button><button type="button" aria-pressed={view === "top"} onClick={() => setView("top")}>俯视布局</button></div>
+            <button type="button" className="delivery-motion-button" aria-pressed={!animate} onClick={() => setAnimate((value) => !value)}>{animate ? "Ⅱ 暂停动画" : "▷ 播放动画"}</button>
+          </div>
+        </div>
+        <aside className="delivery-device-panel" aria-live="polite" aria-atomic="true">
+          <div className="delivery-panel-label"><span>设备信息</span><span className="delivery-sample-badge">模拟数据</span></div>
+          <div className="delivery-device-icon"><LocalIcon name={device?.icon ?? "boxes"} size={30} /></div>
+          <span className="delivery-device-category">{device?.category ?? "车间场景 / 模型对象"}</span>
+          <h2>{instance?.label ?? "探索你的数字工厂"}</h2>
+          {device ? <>
+            <div className="delivery-device-status"><i />{device.status}<span>演示状态</span></div>
+            <div className="delivery-device-metrics">{device.metrics.map((metric) => <div key={metric.label}><span>{metric.label}</span><strong>{metric.value}<small>{metric.unit}</small></strong></div>)}</div>
+            <div className="delivery-trend"><span>运行趋势<small>示意曲线</small></span><svg viewBox="0 0 200 46" role="img" aria-label="模拟运行趋势曲线"><polyline points={device.points} fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinejoin="round" /></svg></div>
+            <p className="delivery-device-note">{device.note}</p>
+          </> : <p className="delivery-device-empty">{instance ? "这是车间中的场景对象。选择机械臂、加工设备或 AGV，体验模型与设备信息的联动。" : "点击场景中的设备，或使用下方按钮，查看对应的设备信息。"}</p>}
+          <div className="delivery-binding"><span>3D 模型</span><span aria-hidden="true">↔</span><span>设备资产</span><span aria-hidden="true">↔</span><span>业务数据</span></div>
+        </aside>
+      </div>
+      <div className="delivery-demo-footer"><span><b>试着点一点</b>，从场景找到设备</span><div className="delivery-device-buttons" aria-label="选择演示设备">{demoDevices.map((item) => <button type="button" key={item.id} aria-pressed={device?.kind === item.kind} onClick={() => setSelectedId(item.id)}><LocalIcon name={item.icon} size={17} />{item.shortName}<Arrow /></button>)}</div></div>
+    </section>
   );
 }
 
-function FactoryTelemetryVisual() {
+const advantages = [
+  { icon: "boxes", number: "01", title: "模型进来，场景搭起来", text: "导入模型，拖入设备，调整位置、材质与视角。把分散的 3D 素材，组织成客户看得懂的工业现场。", items: ["内置工业模型，可反复复用", "多模型组合与场景编辑", "灯光、材质与镜头配置"], className: "is-blue" },
+  { icon: "database", number: "02", title: "点中设备，信息跟着来", text: "把模型对象关联到设备资产，再接入业务数据。客户看到的不只是一个模型，还有设备背后的运行信息。", items: ["模型与资产一一关联", "点击设备，联动详情", "REST 数据接入与字段映射"], className: "is-teal" },
+  { icon: "monitor", number: "03", title: "场景和看板，一起呈现", text: "既能展示完整 3D 场景，也能把场景嵌入业务大屏。将图表、指标和设备信息组合成统一的展示界面。", items: ["独立 3D 场景展示", "2D + 3D 组合式大屏", "配置保存与项目预览"], className: "is-violet" },
+] as const;
+
+const steps = [
+  ["准备模型", "导入 GLB / glTF，或选用内置工业模型。", "01"],
+  ["搭建场景", "摆放设备，配置材质、灯光和展示视角。", "02"],
+  ["关联业务", "绑定设备资产，配置数据和看板组件。", "03"],
+  ["预览验证", "检查交互和数据呈现，完善客户展示。", "04"],
+];
+
+export default function IndustrialLandingPage() {
   return (
-    <div aria-label="工厂模型、设备资产与业务数据联动示意" className="industrial-telemetry" role="img">
-      <header>
-        <span>SCENE / PLANT-01</span>
-        <div>
-          <i />
-          <span>数字孪生交付视图</span>
-        </div>
-      </header>
-
-      <div className="industrial-scene">
-        <div className="industrial-grid-floor" />
-        <div className="industrial-rail industrial-rail-a" />
-        <div className="industrial-rail industrial-rail-b" />
-        <div className="industrial-machine industrial-machine-a">
-          <span>M-01</span>
-          <i /><i /><i />
-        </div>
-        <div className="industrial-machine industrial-machine-b">
-          <span>M-02</span>
-          <i /><i />
-        </div>
-        <div className="industrial-machine industrial-machine-c">
-          <span>M-03</span>
-          <i /><i /><i />
-        </div>
-        <div className="industrial-selection">
-          <i /><i /><i /><i />
-          <span>assetId / PUMP-01</span>
-        </div>
-        <div className="industrial-scene-axis">
-          <span>X</span>
-          <span>Y</span>
-          <span>Z</span>
-        </div>
-      </div>
-
-      <aside className="industrial-telemetry-panel">
-        <div className="industrial-panel-heading">
-          <span>设备指标</span>
-          <i />
-        </div>
-        <dl>
-          <div><dt>运行状态</dt><dd>示例数据</dd></div>
-          <div><dt>设备温度</dt><dd>-- °C</dd></div>
-          <div><dt>实时功率</dt><dd>-- kW</dd></div>
-        </dl>
-        <div className="industrial-mini-chart">
-          <i /><i /><i /><i /><i /><i /><i />
-        </div>
-      </aside>
-
-      <footer>
-        <div><span>2D</span><strong>业务信息</strong></div>
-        <i />
-        <div className="industrial-asset-key"><span>KEY</span><strong>assetId</strong></div>
-        <i />
-        <div><span>3D</span><strong>空间对象</strong></div>
-      </footer>
+    <div className="delivery-landing">
+      <a className="delivery-skip" href="#industrial-main" onClick={(event) => { event.preventDefault(); document.getElementById("industrial-main")?.focus(); }}>跳到主要内容</a>
+      <header className="delivery-header"><div className="delivery-header-inner"><a href="#/" aria-label={`${PRODUCT_NAME} 首页`}><Brand /></a><nav aria-label="主导航"><button type="button" onClick={() => scrollToSection("industrial-demo")}>场景体验</button><button type="button" onClick={() => scrollToSection("industrial-value")}>平台优势</button><button type="button" onClick={() => scrollToSection("industrial-workflow")}>交付流程</button></nav><div className="delivery-header-actions"><ThemeToggle /><a className="delivery-nav-cta" href="#/projects">进入平台<Arrow diagonal /></a></div></div></header>
+      <main id="industrial-main" tabIndex={-1}>
+        <section className="delivery-hero delivery-container">
+          <div className="delivery-hero-copy"><div><p className="delivery-eyebrow"><span />面向工业场景的 3D 交付平台</p><h1>把工业现场，<em>交付到客户眼前。</em></h1></div><div className="delivery-hero-intro"><p>从 3D 场景搭建、设备数据关联，到可交互看板。<br className="delivery-wide-break" />让模型有业务，让展示有说服力。</p><div className="delivery-actions"><a href="#/projects" className="delivery-button is-primary">开始搭建项目<Arrow /></a><button type="button" className="delivery-button is-secondary" onClick={() => scrollToSection("industrial-demo")}>体验 3D 场景<span aria-hidden="true">↓</span></button></div><div className="delivery-hero-tags"><span>场景可编辑</span><span>设备可关联</span><span>看板可组合</span></div></div></div>
+          <FactoryDemo />
+          <div className="delivery-capability-strip"><span>从模型到客户展示</span><strong>3D 场景搭建</strong><i>＋</i><strong>设备资产关联</strong><i>＋</i><strong>业务数据呈现</strong><i>＝</i><strong className="delivery-strip-result">有业务价值的 3D 交付</strong></div>
+        </section>
+        <section className="delivery-value delivery-container" id="industrial-value"><div className="delivery-section-heading"><div><p className="delivery-eyebrow">BUILT FOR DELIVERY</p><h2>好看的 3D，更要解决交付里的实际问题。</h2></div><p>把模型、资产、数据和界面放进同一个项目。<br />减少反复拼接，让每一步成果都能继续复用。</p></div><div className="delivery-advantage-grid">{advantages.map((item) => <article className={`delivery-advantage ${item.className}`} key={item.number}><div className="delivery-advantage-top"><span><LocalIcon name={item.icon} size={28} /></span><b>{item.number}</b></div><h3>{item.title}</h3><p>{item.text}</p><ul>{item.items.map((text) => <li key={text}><LocalIcon name="circle-check" size={17} />{text}</li>)}</ul></article>)}</div></section>
+        <section className="delivery-formats delivery-container"><div className="delivery-format-intro"><p className="delivery-eyebrow">ONE PLATFORM. TWO WAYS TO SHOW.</p><h2>客户需要什么，就用什么方式呈现。</h2><p>同一套场景能力，适配不同的展示目标。</p><a href="#/projects">创建你的项目<Arrow /></a></div><article className="delivery-format"><span className="delivery-format-mark">3D</span><span className="delivery-format-tag">空间与设备</span><h3>沉浸式 3D 场景</h3><p>自由查看车间布局、设备结构和空间关系，适合方案沟通与现场展示。</p><div><span>工业制造</span><span>园区设施</span><span>仓储物流</span></div></article><article className="delivery-format is-dashboard"><span className="delivery-format-mark">2D <small>+</small> 3D</span><span className="delivery-format-tag">数据与业务</span><h3>数字孪生业务大屏</h3><p>在场景旁组合图表、指标和资产详情，适合运行监控与业务汇报。</p><div><span>设备运行</span><span>生产概览</span><span>资产管理</span></div></article></section>
+        <section className="delivery-workflow" id="industrial-workflow"><div className="delivery-container"><div className="delivery-section-heading"><div><p className="delivery-eyebrow">A CLEAR PATH TO YOUR PROJECT</p><h2>从一个模型，到一份完整展示。</h2></div><p>让交付过程有章可循，让项目成果持续积累。</p></div><ol className="delivery-steps">{steps.map(([title, text, index]) => <li key={index}><div><span>{index}</span><Arrow /></div><h3>{title}</h3><p>{text}</p></li>)}</ol></div></section>
+        <section className="delivery-final-cta delivery-container"><div><p className="delivery-eyebrow">YOUR NEXT PROJECT STARTS HERE</p><h2>让客户看懂现场，也看见你的交付能力。</h2><p>从一个场景开始，把下一次展示做得更直观。</p></div><a className="delivery-button is-primary" href="#/projects">进入平台，开始搭建<Arrow diagonal /></a><div className="delivery-cta-orbits" aria-hidden="true"><span /><span /><span /></div></section>
+      </main>
+      <footer className="delivery-footer delivery-container"><Brand /><p>模型 · 场景 · 数据 · 展示</p><span>页面场景为虚构演示，指标为模拟数据。</span></footer>
     </div>
   );
 }
-
-function IndustrialLandingPage() {
-  return (
-    <main className="industrial-landing">
-      <div className="industrial-topline">
-        <span>FACTORY TWIN / DIGITAL DELIVERY SYSTEM</span>
-        <span>2D + 3D / CUSTOMER-SITE READY</span>
-      </div>
-
-      <nav aria-label="工业风产品页导航" className="industrial-nav">
-        <a aria-label="Factory Twin 工业风首页" className="industrial-brand" href="#/industrial">
-          <IndustrialMark />
-          <span>
-            <strong>FACTORY TWIN</strong>
-            <small>工业数字孪生交付平台</small>
-          </span>
-        </a>
-        <div className="industrial-nav-links">
-          <button onClick={() => scrollToIndustrialSection("industrial-modules")} type="button">核心模块</button>
-          <button onClick={() => scrollToIndustrialSection("industrial-flow")} type="button">交付工序</button>
-          <button onClick={() => scrollToIndustrialSection("industrial-architecture")} type="button">技术架构</button>
-        </div>
-        <div className="industrial-nav-actions">
-          <a className="industrial-platform-entry" href="#/projects">
-            进入平台
-            <span aria-hidden="true">→</span>
-          </a>
-        </div>
-      </nav>
-
-      <section className="industrial-hero">
-        <div className="industrial-hero-copy">
-          <div className="industrial-location">
-            <span>DELIVERY SYSTEM</span>
-            <i />
-            <span>FOR FACTORY PROJECTS</span>
-          </div>
-          <h1>
-            工业现场，
-            <span>一套系统完成交付。</span>
-          </h1>
-          <p>
-            将 2D 业务看板、3D 工厂模型、资产台账与数据契约组织到同一项目中，
-            为数字孪生项目提供清晰、可追溯的交付工作流。
-          </p>
-          <div className="industrial-hero-actions">
-            <a className="industrial-primary-action" href="#/projects">
-              <span>启动交付配置</span>
-              <i aria-hidden="true">→</i>
-            </a>
-            <button onClick={() => scrollToIndustrialSection("industrial-modules")} type="button">
-              浏览系统结构
-            </button>
-          </div>
-          <ul className="industrial-specs">
-            <li><span>MODEL</span><strong>GLB / GLTF</strong></li>
-            <li><span>LINK</span><strong>assetId</strong></li>
-            <li><span>DEPLOY</span><strong>客户现场 / 受控云</strong></li>
-          </ul>
-        </div>
-
-        <FactoryTelemetryVisual />
-      </section>
-
-      <section className="industrial-signal-strip" aria-label="平台能力概览">
-        <span>01 / 模板建项</span>
-        <i />
-        <span>02 / 模型导入</span>
-        <i />
-        <span>03 / 资产映射</span>
-        <i />
-        <span>04 / 数据绑定</span>
-        <i />
-        <span>05 / 预览交付</span>
-      </section>
-
-      <section className="industrial-section industrial-modules" id="industrial-modules">
-        <header className="industrial-section-heading">
-          <div>
-            <span>SECTION / 01</span>
-            <p>OPERATING MODULES</p>
-          </div>
-          <h2>交付控制面</h2>
-          <p>每个模块职责清晰，围绕同一个项目版本协同，不维护互相漂移的重复配置。</p>
-        </header>
-
-        <div className="industrial-module-grid">
-          {operatingModules.map((module) => (
-            <article key={module.code}>
-              <header>
-                <span>{module.code}</span>
-                <i />
-                <small>{module.signal}</small>
-              </header>
-              <div className={`industrial-module-icon industrial-module-icon-${module.code}`}>
-                <i /><i /><i /><i />
-              </div>
-              <p>{module.label}</p>
-              <h3>{module.title}</h3>
-              <div className="industrial-module-rule" />
-              <span>{module.description}</span>
-            </article>
-          ))}
-        </div>
-      </section>
-
-      <section className="industrial-section industrial-linkage">
-        <header className="industrial-section-heading industrial-heading-dark">
-          <div>
-            <span>SECTION / 02</span>
-            <p>ASSET DATA LINKAGE</p>
-          </div>
-          <h2>一条资产链路贯穿 2D 与 3D</h2>
-          <p>模型节点只描述空间对象，数据契约只描述业务指标，稳定的 assetId 负责将二者准确连接。</p>
-        </header>
-
-        <div className="industrial-linkage-board">
-          <article>
-            <small>INPUT / A</small>
-            <strong>MODEL NODE</strong>
-            <span>模型节点</span>
-            <p>PUMP_BODY_01</p>
-          </article>
-          <div className="industrial-linkage-connector"><i /><span>MAP</span><i /></div>
-          <article className="industrial-linkage-core">
-            <small>UNIFIED KEY</small>
-            <strong>assetId</strong>
-            <span>PUMP-01</span>
-            <div><i /><i /><i /><i /></div>
-          </article>
-          <div className="industrial-linkage-connector"><i /><span>BIND</span><i /></div>
-          <article>
-            <small>INPUT / B</small>
-            <strong>BUSINESS DATA</strong>
-            <span>业务指标</span>
-            <p>status / temp / power</p>
-          </article>
-        </div>
-
-        <div className="industrial-linkage-status">
-          <span><i />模型对象</span>
-          <span><i />资产台账</span>
-          <span><i />指标映射</span>
-          <strong>配置关系可追溯</strong>
-        </div>
-      </section>
-
-      <section className="industrial-section industrial-flow" id="industrial-flow">
-        <header className="industrial-section-heading">
-          <div>
-            <span>SECTION / 03</span>
-            <p>DELIVERY PROCEDURE</p>
-          </div>
-          <h2>标准交付工序</h2>
-          <p>从模板建项到现场部署，每一步都有明确输入、输出与校验位置。</p>
-        </header>
-
-        <ol className="industrial-stage-list">
-          {deliveryStages.map((stage, index) => (
-            <li key={stage.code}>
-              <header>
-                <span>{stage.code}</span>
-                <small>{String(index + 1).padStart(2, "0")} / 05</small>
-              </header>
-              <div className="industrial-stage-progress"><i /></div>
-              <h3>{stage.title}</h3>
-              <p>{stage.copy}</p>
-            </li>
-          ))}
-        </ol>
-      </section>
-
-      <section className="industrial-section industrial-architecture" id="industrial-architecture">
-        <header className="industrial-section-heading">
-          <div>
-            <span>SECTION / 04</span>
-            <p>TECHNICAL ARCHITECTURE</p>
-          </div>
-          <h2>从前端到客户现场</h2>
-          <p>前端保持同一套应用与接口契约，当前云端资源作为开发验证适配器，现场部署时替换运行与存储基础设施。</p>
-        </header>
-
-        <div className="industrial-architecture-grid">
-          <article className="industrial-architecture-card">
-            <header>
-              <div>
-                <span>ARCH / FRONTEND</span>
-                <h3>前端应用架构</h3>
-              </div>
-              <small>REACT APPLICATION</small>
-            </header>
-            <div className="industrial-architecture-diagram industrial-frontend-diagram">
-              <div className="industrial-arch-node industrial-arch-node-primary">
-                <small>CLIENT</small>
-                <strong>浏览器</strong>
-                <span>交付人员配置 / 客户只读查看</span>
-              </div>
-              <div className="industrial-arch-arrow" aria-hidden="true">↓</div>
-              <div className="industrial-arch-module-grid">
-                <div><small>PUBLIC</small><strong>产品介绍</strong></div>
-                <div><small>WORKSPACE</small><strong>项目配置台</strong></div>
-                <div><small>2D</small><strong>看板画布</strong></div>
-                <div><small>3D</small><strong>模型编辑器</strong></div>
-              </div>
-              <div className="industrial-arch-arrow" aria-hidden="true">↓</div>
-              <div className="industrial-arch-layer">
-                <strong>React + TypeScript</strong>
-                <span>组件 Schema · 路由 · 状态 · API Client</span>
-              </div>
-              <div className="industrial-arch-split">
-                <div>
-                  <small>BUILD</small>
-                  <strong>Vite 静态资源</strong>
-                </div>
-                <div>
-                  <small>CONTRACT</small>
-                  <strong>同源 /api</strong>
-                </div>
-              </div>
-            </div>
-            <footer>
-              <span>页面按需加载</span>
-              <span>模型与图片仅保存资源 ID</span>
-              <span>2D / 3D 共享 assetId</span>
-            </footer>
-          </article>
-
-          <article className="industrial-architecture-card industrial-onsite-card">
-            <header>
-              <div>
-                <span>ARCH / ON-PREMISE</span>
-                <h3>客户现场部署架构</h3>
-              </div>
-              <small>DOCKERIZED SERVICES</small>
-            </header>
-            <div className="industrial-architecture-diagram industrial-onsite-diagram">
-              <div className="industrial-arch-node industrial-arch-node-primary">
-                <small>LOCAL CLIENT</small>
-                <strong>客户内网浏览器</strong>
-                <span>无需访问公有云</span>
-              </div>
-              <div className="industrial-arch-arrow" aria-hidden="true">↓</div>
-              <div className="industrial-arch-layer industrial-gateway-layer">
-                <strong>Nginx / Caddy</strong>
-                <span>HTTPS · 静态前端 · /api 反向代理</span>
-              </div>
-              <div className="industrial-arch-branch" aria-hidden="true">
-                <i />
-                <span>↓</span>
-                <span>↓</span>
-              </div>
-              <div className="industrial-arch-split industrial-service-split">
-                <div>
-                  <small>APPLICATION</small>
-                  <strong>Node.js API</strong>
-                  <span>身份 · 项目 · 版本 · 数据网关</span>
-                </div>
-                <div>
-                  <small>FRONTEND</small>
-                  <strong>静态 Web</strong>
-                  <span>同一份 React 构建产物</span>
-                </div>
-              </div>
-              <div className="industrial-arch-arrow" aria-hidden="true">↓</div>
-              <div className="industrial-storage-row">
-                <div><small>DATABASE</small><strong>PostgreSQL</strong><span>配置与权限</span></div>
-                <div><small>OBJECT</small><strong>MinIO</strong><span>模型与图片</span></div>
-                <div><small>CONNECTOR</small><strong>数据网关</strong><span>REST / WebSocket</span></div>
-              </div>
-              <div className="industrial-field-source">
-                <span>客户业务 API</span>
-                <i />
-                <span>MES / ERP / IoT 平台</span>
-              </div>
-            </div>
-            <footer className="industrial-migration-map">
-              <span><small>当前</small> Worker <i>→</i> Node.js API</span>
-              <span><small>当前</small> D1 <i>→</i> PostgreSQL</span>
-              <span><small>当前</small> R2 <i>→</i> MinIO</span>
-            </footer>
-          </article>
-        </div>
-      </section>
-
-      <section className="industrial-section industrial-deployment" id="industrial-deployment">
-        <div className="industrial-deployment-copy">
-          <span>SECTION / 05 — DEPLOYMENT</span>
-          <h2>工具用于交付，<br />系统落在客户需要的位置。</h2>
-          <p>
-            当前可以在受控云环境中快速开发和验证；正式项目可将前端、API、数据库与对象存储适配到客户服务器或内网。
-          </p>
-          <a href="#/projects">进入交付平台 <span aria-hidden="true">→</span></a>
-        </div>
-
-        <div className="industrial-deployment-rack">
-          <header>
-            <span>CUSTOMER SITE / SYSTEM RACK</span>
-            <div><i /><i /><i /></div>
-          </header>
-          <div className="industrial-rack-body">
-            {deploymentFacts.map(([code, copy]) => (
-              <div key={code}>
-                <strong>{code}</strong>
-                <span>{copy}</span>
-                <i />
-              </div>
-            ))}
-          </div>
-          <footer>
-            <span>LOCAL NETWORK</span>
-            <i />
-            <span>CONTROLLED BOUNDARY</span>
-          </footer>
-        </div>
-      </section>
-
-      <section className="industrial-final">
-        <div className="industrial-final-index">
-          <span>READY / WHEN YOU ARE</span>
-          <strong>FT-2026</strong>
-        </div>
-        <div>
-          <p>FACTORY DIGITAL TWIN DELIVERY</p>
-          <h2>让下一次现场交付，<br />从一套清晰的系统开始。</h2>
-        </div>
-        <a href="#/projects">
-          进入平台
-          <span aria-hidden="true">↗</span>
-        </a>
-      </section>
-
-      <footer className="industrial-footer">
-        <a className="industrial-brand" href="#/industrial">
-          <IndustrialMark />
-          <span>
-            <strong>FACTORY TWIN</strong>
-            <small>2D + 3D INDUSTRIAL DELIVERY PLATFORM</small>
-          </span>
-        </a>
-        <p>模型 · 资产 · 数据 · 看板</p>
-        <span>© 2026 / FACTORY TWIN</span>
-      </footer>
-    </main>
-  );
-}
-
-export default IndustrialLandingPage;

@@ -23,6 +23,7 @@ import { findBuiltinModel, latestBuiltinModel } from "../../../../shared/builtin
 import { workshopInstances, workshopSettings } from "../../../../shared/workshop-layout";
 import { projectAssetsPath, type ProjectAsset, type ProjectAssetListResponse } from "../canvas/assets";
 import { Model3DNode } from "../canvas/Model3DNode";
+import { ThemeToggle } from "../theme/ThemeToggle";
 import {
   formatFileSize,
   modelAssetsPath,
@@ -660,6 +661,7 @@ export default function Standalone3DProjectPage({ mode, projectId }: Standalone3
         <header>
           <a className="secondary-button compact-button" href="#/projects">返回项目</a>
           <div><span>独立 3D 项目</span><strong>{projectName}</strong></div>
+          <ThemeToggle />
           <a className="primary-button compact-button" href={standaloneSceneRoutePath(projectId, "edit")}>编辑场景</a>
         </header>
         <section className="standalone-3d-preview-stage">{sceneView}</section>
@@ -695,6 +697,7 @@ export default function Standalone3DProjectPage({ mode, projectId }: Standalone3
           <span>{formatFileSize(scenePerformance.uniqueModelBytes)}/{formatFileSize(limits.maximumUniqueModelBytes)}</span>
           {draftScene.settings.playAnimations ? <span>{scenePerformance.animatedInstances}/{limits.maximumAnimatedInstances} 动画实例</span> : null}
         </div>
+        <ThemeToggle />
         {editable && draftScene.instances.some(instance => instance.modelAssetId.startsWith("builtin:workshop-") && instance.modelAssetId.endsWith("-v1")) ? <button className="secondary-button compact-button" disabled={saving} onClick={() => assembleWorkshop(true)} title="用新版预设替换草稿中的模型、布局和灯光，保存后生效" type="button">替换为新版示例车间</button> : null}
         {editable && draftScene.instances.some(instance => {
           const latest = latestBuiltinModel(instance.modelAssetId);

@@ -1,0 +1,18 @@
+{
+  "verifiedAt": "2026-09-18T05:07:42.402Z",
+  "samplesPerCase": 240,
+  "maxAbsoluteRoundingError": {
+    "steelWater": 0.0020000000000095497,
+    "steelMass": 0.0019187600000005745,
+    "waterSplit": 0.0010000000000331966,
+    "waterAir": 0.0010000000002037268,
+    "waterHydraulicLoading": 0.0004993816728147138,
+    "coolingHeat": 0.0010000000000012221,
+    "coolingWater": 0.0010000000000021797
+  },
+  "liveSource": [
+    "steel",
+    "water",
+    "cooling"
+  ]
+}

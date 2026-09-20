@@ -1,0 +1,87 @@
+/* Application chrome only. Saved canvas themes, media and model materials are independent. */
+:root,
+[data-ui-theme="dark"] {
+  color-scheme: dark;
+  --ui-color-scheme: dark;
+  --ui-bg: #0a1422;
+  --ui-surface: #0d1b2a;
+  --ui-surface-raised: #152a3c;
+  --ui-surface-muted: #0a1725;
+  --ui-input-bg: #0a1725;
+  --ui-hover: #18354b;
+  --ui-text: #bfd1df;
+  --ui-text-strong: #eaf0f8;
+  --ui-text-muted: #91a8bc;
+  --ui-text-subtle: #859db2;
+  --ui-border: #2a4055;
+  --ui-border-strong: #476b83;
+  --ui-accent: #78d8ff;
+  --ui-accent-hover: #a1e8ff;
+  --ui-on-accent: #051019;
+  --ui-accent-soft: #143a50;
+  --ui-accent-border: #34748f;
+  --ui-danger: #ff9ba8;
+  --ui-danger-soft: #421f2b;
+  --ui-danger-border: #954553;
+  --ui-danger-solid: #7b303a;
+  --ui-danger-solid-hover: #963b47;
+  --ui-on-danger: #fff0f1;
+  --ui-success: #7cdeb2;
+  --ui-success-soft: #133c31;
+  --ui-success-border: #357859;
+  --ui-warning: #f1cb7d;
+  --ui-warning-soft: #392f1b;
+  --ui-warning-border: #826737;
+  --ui-info: #78d8ff;
+  --ui-info-soft: #143a50;
+  --ui-info-border: #34748f;
+  --ui-purple: #c4b8ff;
+  --ui-purple-soft: #302752;
+  --ui-purple-border: #7460b5;
+  --ui-backdrop: rgba(3, 11, 22, 0.68);
+  --ui-shadow-rgb: 2, 9, 18;
+  --ui-shadow-strength: 1;
+}
+
+:root[data-ui-theme="light"] {
+  color-scheme: light;
+  --ui-color-scheme: light;
+  --ui-bg: #f3f6fb;
+  --ui-surface: #ffffff;
+  --ui-surface-raised: #eaf0f8;
+  --ui-surface-muted: #f5f8fc;
+  --ui-input-bg: #ffffff;
+  --ui-hover: #e6eefb;
+  --ui-text: #344a65;
+  --ui-text-strong: #172b45;
+  --ui-text-muted: #526680;
+  --ui-text-subtle: #5b6d84;
+  --ui-border: #d5deeb;
+  --ui-border-strong: #98adc6;
+  --ui-accent: #2364d8;
+  --ui-accent-hover: #194faf;
+  --ui-on-accent: #ffffff;
+  --ui-accent-soft: #e8effd;
+  --ui-accent-border: #9cb7eb;
+  --ui-danger: #ad2941;
+  --ui-danger-soft: #fff0f2;
+  --ui-danger-border: #e4a5b1;
+  --ui-danger-solid: #b32d44;
+  --ui-danger-solid-hover: #98263b;
+  --ui-on-danger: #ffffff;
+  --ui-success: #17684b;
+  --ui-success-soft: #eaf7f0;
+  --ui-success-border: #9ccbb5;
+  --ui-warning: #835415;
+  --ui-warning-soft: #fff6e5;
+  --ui-warning-border: #d8bb83;
+  --ui-info: #2364d8;
+  --ui-info-soft: #e8effd;
+  --ui-info-border: #9cb7eb;
+  --ui-purple: #6745ac;
+  --ui-purple-soft: #f1edfb;
+  --ui-purple-border: #b9a5df;
+  --ui-backdrop: rgba(24, 43, 68, 0.36);
+  --ui-shadow-rgb: 38, 58, 86;
+  --ui-shadow-strength: 0.24;
+}
