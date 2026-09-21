@@ -110,7 +110,8 @@ try {
   const db = new DatabaseSync(":memory:");
   db.exec("PRAGMA foreign_keys = ON");
   const migrations = readdirSync(join(root, "apps/api/migrations")).filter((name) => name.endsWith(".sql")).sort();
-  for (const migration of migrations.filter((name) => !name.startsWith("0012_") && !name.startsWith("0013_") && !name.startsWith("0014_"))) db.exec(readFileSync(join(root, "apps/api/migrations", migration), "utf8"));
+  // Match deployment order: later table rebuilds/columns must not precede the migrations under test.
+  for (const migration of migrations.filter((name) => name < "0012_")) db.exec(readFileSync(join(root, "apps/api/migrations", migration), "utf8"));
   db.exec("INSERT INTO projects (id,name,status,created_at,updated_at) VALUES ('test','Test','draft','now','now'); INSERT INTO project_canvases (project_id,updated_at) VALUES ('test','now'); INSERT INTO canvas_nodes (id,project_id,node_type,x,y,width,height,z_index,props_json,updated_at) VALUES ('old','test','section-title',10,20,300,64,1,'{\"preserve\":true}','now');");
   const before = db.prepare("SELECT * FROM canvas_nodes WHERE id='old'").get();
   db.exec(readFileSync(join(root, "apps/api/migrations/0012_card_titles_and_icons.sql"), "utf8"));
@@ -119,6 +120,14 @@ try {
   assert.deepEqual(db.prepare("SELECT * FROM canvas_nodes WHERE id='old'").get(), before);
   db.exec(readFileSync(join(root, "apps/api/migrations/0014_fullscreen_toggle.sql"), "utf8"));
   assert.deepEqual(db.prepare("SELECT * FROM canvas_nodes WHERE id='old'").get(), before);
+  for (const migration of migrations.filter((name) => name > "0014_fullscreen_toggle.sql")) {
+    db.exec(readFileSync(join(root, "apps/api/migrations", migration), "utf8"));
+    const after = db.prepare("SELECT * FROM canvas_nodes WHERE id='old'").get();
+    for (const [column, value] of Object.entries(before)) {
+      assert.deepEqual(after[column], value, `${migration} must preserve the old node's ${column}`);
+    }
+  }
+  assert.equal(db.prepare("SELECT interaction_json FROM canvas_nodes WHERE id='old'").get().interaction_json, null);
   const insert = db.prepare("INSERT INTO canvas_nodes (id,project_id,node_type,x,y,width,height,z_index,props_json,updated_at) VALUES (?,'test',?,?,?,?,?,?,?,'now')");
   for (const node of [smallTitle, smallIcon, ...animatedNodes, smallFullscreen]) {
     insert.run(node.id, node.type, node.x, node.y, node.width, node.height, node.zIndex, JSON.stringify(node.props));
