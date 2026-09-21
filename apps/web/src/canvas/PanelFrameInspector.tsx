@@ -1,3 +1,4 @@
+import { Select } from "../components/Select";
 import { useEffect, useMemo, useState } from "react";
 import {
   componentLabels,
@@ -100,7 +101,7 @@ export function PanelFrameInspector({ editable, node, onNodeChange, onValidation
 
       <section className="inspector-section">
         <div className="inspector-section-title"><strong>标题与结构</strong><span>{Math.round(node.width)} × {Math.round(node.height)}</span></div>
-        <label><span>面板样式</span><select disabled={!editable} onChange={(event) => changeDraft({ ...draft, style: event.target.value as PanelFrameStyle })} value={draft.style}>{Object.entries(styleLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+        <label><span>面板样式</span><Select disabled={!editable} onValueChange={(value) => changeDraft({ ...draft, style: value as PanelFrameStyle })} value={draft.style}>{Object.entries(styleLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</Select></label>
         <label className="inspector-check-row"><input checked={draft.showHeader} disabled={!editable} onChange={(event) => changeDraft({ ...draft, showHeader: event.target.checked })} type="checkbox" /><span>显示标题栏</span></label>
         {draft.showHeader ? <>
           <label><span>标题</span><input disabled={!editable} maxLength={120} onChange={(event) => changeDraft({ ...draft, title: event.target.value })} value={draft.title} /></label>

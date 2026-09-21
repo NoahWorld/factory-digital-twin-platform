@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { readFileSync } from "node:fs";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { CanvasSurface } from "../src/canvas/CanvasSurface";
 import { ComponentInspector } from "../src/canvas/ComponentInspector";
+import { TwinActionEditor } from "../src/twin/TwinActionEditor";
 import { createCanvasNode } from "../src/canvas/types";
 import { canvasViewportScale, isOverlayNode, isRuntimeNodeVisible, projectRuntimeNode, runtimeNodeCapturesPointer } from "../src/canvas/runtime-projection";
 
@@ -68,6 +70,12 @@ test("click actions get keyboard access and href-free buttons retain native butt
   assert.match(render(doc([button])), /<button class="basic-button-link basic-action-button"/);
 });
 
+test("node click capture ignores events bubbled through React from portal dropdowns", () => {
+  const surface = readFileSync("apps/web/src/canvas/CanvasSurface.tsx", "utf8");
+  const captureHandler = surface.slice(surface.indexOf("onClickCapture={"), surface.indexOf("onKeyDown={"));
+  assert.match(captureHandler, /if \(event\.currentTarget\.contains\(event\.target as Node\)\) onNodeActions\?\.\(node\)/);
+});
+
 test("read-only editing still exposes hidden nodes without enabling runtime interactions", () => {
   const text = { ...node("plain-text", "hidden-details"), interaction: { clickActions: [{ type: "message", title: "消息", text: "详情" }], hiddenInPreview: true } };
   const markup = render(doc([text]), { previewMode: false });
@@ -82,4 +90,33 @@ test("3D references direct event editing to the source scene instead of exposing
     assert.match(markup, /模型点击事件请在源 3D 项目中配置/);
     assert.doesNotMatch(markup, /预览时默认隐藏（由联动事件显示）/);
   }
+});
+
+test("authored dropdowns use the shared combobox and preserve selected text and editor locking", () => {
+  const dropdown = node("select", "authored-dropdown");
+  dropdown.props.label = "设备选择";
+  dropdown.props.options = [{ value: "pump", label: "循环水泵" }, { value: "tower", label: "冷却塔" }];
+  dropdown.props.selectedValue = "tower";
+  const preview = render(doc([dropdown]));
+  assert.match(preview, /role="combobox"/);
+  assert.match(preview, /aria-label="设备选择"/);
+  assert.match(preview, /冷却塔/);
+  assert.doesNotMatch(preview, /<select\b|<option\b/);
+  const editing = render(doc([dropdown]), { editable: true });
+  assert.match(editing, /<button[^>]*disabled=""[^>]*role="combobox"|<button[^>]*role="combobox"[^>]*disabled=""/);
+});
+
+test("action target comboboxes keep unavailable references visible and inherit read-only fieldsets", () => {
+  const actions = [
+    { type: "select-asset", assetId: "missing-pump" },
+    { type: "panel", nodeId: "missing-panel", operation: "show" },
+    { type: "focus-model", projectId: "missing-scene", instanceId: "missing-model" },
+  ];
+  const markup = renderToStaticMarkup(createElement(TwinActionEditor, { actions, onChange: ignore, disabled: true }));
+  assert.doesNotMatch(markup, /<select\b|<option\b/);
+  assert.match(markup, /不可用的设备（missing-pump）/);
+  assert.match(markup, /不可用的组件（missing-panel）/);
+  assert.match(markup, /不可用的场景（missing-scene）/);
+  assert.match(markup, /不可用的模型（missing-model）/);
+  assert.equal((markup.match(/<fieldset[^>]*disabled=""/g) ?? []).length, actions.length);
 });

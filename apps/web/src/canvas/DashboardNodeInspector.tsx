@@ -1,3 +1,4 @@
+import { Select } from "../components/Select";
 import { useEffect, useMemo, useState } from "react";
 import {
   componentLabels,
@@ -47,12 +48,12 @@ const ToneSelect = ({
   onChange: (value: string) => void;
   value: string | number;
 }) => (
-  <select aria-label={label} disabled={disabled} onChange={(event) => onChange(event.target.value)} value={value}>
+  <Select aria-label={label} disabled={disabled} onValueChange={(value) => onChange(value)} value={value}>
     <option value="normal">正常</option>
     <option value="warning">预警</option>
     <option value="danger">严重</option>
     <option value="offline">失联</option>
-  </select>
+  </Select>
 );
 
 export function DashboardNodeInspector({
@@ -231,7 +232,7 @@ export function DashboardNodeInspector({
                       <input aria-label={`第 ${index + 1} 项名称`} disabled={!editable} maxLength={80} onChange={(event) => updateItem(index, "label", event.target.value)} value={inputValue(item.label)} />
                       <input aria-label={`第 ${index + 1} 项数值`} disabled={!editable} min={0} onChange={(event) => updateItem(index, "value", event.target.value === "" ? "" : Number(event.target.value))} type="number" value={inputValue(item.value)} />
                       <input aria-label={`第 ${index + 1} 项单位`} disabled={!editable} maxLength={24} onChange={(event) => updateItem(index, "unit", event.target.value)} value={inputValue(item.unit)} />
-                      <select aria-label={`第 ${index + 1} 项趋势`} disabled={!editable} onChange={(event) => updateItem(index, "trend", event.target.value)} value={inputValue(item.trend)}><option value="up">上升</option><option value="flat">持平</option><option value="down">下降</option></select>
+                      <Select aria-label={`第 ${index + 1} 项趋势`} disabled={!editable} onValueChange={(value) => updateItem(index, "trend", value)} value={inputValue(item.trend)}><option value="up">上升</option><option value="flat">持平</option><option value="down">下降</option></Select>
                     </>
                   ) : nodeType === "alarm-list" ? (
                     <>
@@ -269,7 +270,7 @@ export function DashboardNodeInspector({
             ))}
           </div>
           <button className="secondary-button inspector-add-point" disabled={!editable || columns.length >= 8} onClick={addColumn} type="button">＋ 添加一列</button>
-          <label><span>强调列</span><select disabled={!editable} onChange={(event) => setField("highlightColumn", Number(event.target.value))} value={inputValue(draft.highlightColumn)}><option value={-1}>不强调</option>{columns.map((column, index) => <option key={index} value={index}>{inputValue(column)}</option>)}</select></label>
+          <label><span>强调列</span><Select disabled={!editable} onValueChange={(value) => setField("highlightColumn", Number(value))} value={inputValue(draft.highlightColumn)}><option value={-1}>不强调</option>{columns.map((column, index) => <option key={index} value={index}>{inputValue(column)}</option>)}</Select></label>
 
           <div className="inspector-section-title dashboard-table-rows-title"><strong>表格行</strong><span>{rows.length}/20</span></div>
           <div className="dashboard-table-row-editor">

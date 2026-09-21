@@ -1,3 +1,4 @@
+import { Select } from "../components/Select";
 import { useEffect, useState, type FormEvent } from "react";
 import { errorMessage, request } from "../api";
 import {
@@ -285,11 +286,11 @@ export function AssetDataBindingSection({
               </div>
               <label>
                 <span>数据源</span>
-                <select
+                <Select
                   disabled={formDisabled}
-                  onChange={(event) => setDraft((current) => ({
+                  onValueChange={(value) => setDraft((current) => ({
                     ...current,
-                    dataSourceId: event.target.value,
+                    dataSourceId: value,
                   }))}
                   required
                   value={draft.dataSourceId}
@@ -300,7 +301,7 @@ export function AssetDataBindingSection({
                       {source.name} · {sourceTypeLabel(source)}
                     </option>
                   ))}
-                </select>
+                </Select>
               </label>
               <label>
                 <span>指标键 metricKey</span>
@@ -337,18 +338,18 @@ export function AssetDataBindingSection({
               <div className="asset-data-binding-grid">
                 <label>
                   <span>值类型</span>
-                  <select
+                  <Select
                     disabled={formDisabled}
-                    onChange={(event) => setDraft((current) => ({
+                    onValueChange={(value) => setDraft((current) => ({
                       ...current,
-                      valueType: event.target.value as MetricValueType,
+                      valueType: value as MetricValueType,
                     }))}
                     value={draft.valueType}
                   >
                     {Object.entries(valueTypeLabels).map(([value, label]) => (
                       <option key={value} value={value}>{label}</option>
                     ))}
-                  </select>
+                  </Select>
                 </label>
                 <label>
                   <span>单位（可选）</span>

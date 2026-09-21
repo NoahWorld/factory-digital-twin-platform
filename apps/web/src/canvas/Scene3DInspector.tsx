@@ -1,3 +1,4 @@
+import { Select } from "../components/Select";
 import { useEffect, useMemo, useState } from "react";
 import { errorMessage, request } from "../api";
 import { componentLabels, parseScene3DProps, type CanvasNode } from "./types";
@@ -80,17 +81,17 @@ export function Scene3DInspector({
         <div className="inspector-section-title"><strong>场景来源</strong><span>保存项目引用</span></div>
         <label>
           <span>独立 3D 项目</span>
-          <select
+          <Select
             disabled={!editable || loading}
-            onChange={(event) => onNodeChange({
+            onValueChange={(value) => onNodeChange({
               ...node,
-              props: { ...parsed.value, sceneProjectId: event.target.value || null },
+              props: { ...parsed.value, sceneProjectId: value || null },
             })}
             value={parsed.value.sceneProjectId ?? ""}
           >
             <option value="">{loading ? "正在加载…" : "请选择 3D 场景"}</option>
             {sceneProjects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
-          </select>
+          </Select>
         </label>
         {loadError ? <p className="inspector-inline-error" role="alert">{loadError}</p> : null}
         {!loading && !loadError && sceneProjects.length === 0 ? <p className="inspector-help">当前账号还没有可引用的独立 3D 项目。</p> : null}

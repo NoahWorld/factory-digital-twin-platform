@@ -98,7 +98,10 @@ const CanvasNodeView = memo(function CanvasNodeView({ editable, overlay, preview
       className={`canvas-node${isOrnamentNodeType(node.type) ? " is-ornament" : ""}${isShapeNodeType(node.type) ? " is-shape" : ""}${isDecorationNodeType(node.type) ? " is-decoration" : ""}${isPanelFrameNodeType(node.type) ? " is-panel-frame" : ""}${isDashboardNodeType(node.type) ? " is-dashboard" : ""}${isBasicNodeType(node.type) ? " is-basic" : ""}${isModel3DNodeType(node.type) ? " is-model-3d" : ""}${isScene3DNodeType(node.type) ? " is-scene-3d" : ""}${isAssetDetailNodeType(node.type) ? " is-asset-detail" : ""}${selected ? " is-selected" : ""}${editable ? " is-editable" : ""}`}
       data-node-id={node.id}
       data-runtime-interactive={runtimeNodeCapturesPointer(node) || undefined}
-      onClickCapture={actionable ? () => onNodeActions?.(node) : undefined}
+      onClickCapture={actionable ? (event) => {
+        // Portal menus belong to their control, not to the node's click action.
+        if (event.currentTarget.contains(event.target as Node)) onNodeActions?.(node);
+      } : undefined}
       onKeyDown={keyboardAction ? (event) => {
         if (event.target !== event.currentTarget || (event.key !== "Enter" && event.key !== " ")) return;
         event.preventDefault();

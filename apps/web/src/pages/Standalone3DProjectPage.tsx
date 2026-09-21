@@ -20,7 +20,9 @@ import {
 import type { TwinAction } from "../../../../shared/twin-actions";
 import { errorMessage, request } from "../api";
 import { findBuiltinModel, latestBuiltinModel } from "../../../../shared/builtin-models";
-import { workshopInstances, workshopSettings } from "../../../../shared/workshop-layout";
+import { Select } from "../components/Select";
+import { SceneTemplateDialog } from "../scene/SceneTemplateDialog";
+import { getSceneTemplate, instantiateSceneTemplate, measureScenePerformance, sceneBudgetViolation, type SceneTemplateId } from "../scene/scene-templates";
 import { projectAssetsPath, type ProjectAsset, type ProjectAssetListResponse } from "../canvas/assets";
 import { Model3DNode } from "../canvas/Model3DNode";
 import { CanvasSurface } from "../canvas/CanvasSurface";
@@ -81,6 +83,7 @@ type ScenePatch = {
 };
 
 type Standalone3DProjectPageProps = {
+  initialTemplateId?: SceneTemplateId;
   mode: "edit" | "preview";
   projectId: string;
 };
@@ -103,53 +106,7 @@ const modelSourceText = (source: ModelAsset["source"]): string =>
 const sameJson = (left: unknown, right: unknown): boolean =>
   JSON.stringify(left) === JSON.stringify(right);
 
-type ScenePerformanceCost = {
-  animatedInstances: number;
-  estimatedMeshInstances: number;
-  uniqueModelBytes: number;
-  uniqueModelFiles: number;
-};
-
-const measureScenePerformance = (
-  instances: StandaloneSceneInstance[],
-  models: ModelAsset[],
-): ScenePerformanceCost => {
-  const modelById = new Map(models.map((model) => [model.id, model]));
-  const uniqueModelIds = new Set(instances.map((instance) => instance.modelAssetId));
-  return {
-    animatedInstances: instances.filter((instance) =>
-      instance.animation?.enabled !== false
-      &&
-      (modelById.get(instance.modelAssetId)?.inspection.animationCount ?? 0) > 0).length,
-    estimatedMeshInstances: instances.reduce((total, instance) =>
-      total + (modelById.get(instance.modelAssetId)?.inspection.meshCount ?? 0), 0),
-    uniqueModelBytes: [...uniqueModelIds].reduce((total, modelId) =>
-      total + (modelById.get(modelId)?.byteSize ?? 0), 0),
-    uniqueModelFiles: uniqueModelIds.size,
-  };
-};
-
-const sceneBudgetViolation = (
-  cost: ScenePerformanceCost,
-  limits: typeof STANDALONE_3D_LIMITS,
-  playAnimations: boolean,
-): string | null => {
-  if (cost.uniqueModelFiles > limits.maximumUniqueModelAssets) {
-    return `场景最多引用 ${limits.maximumUniqueModelAssets} 个不同模型文件。`;
-  }
-  if (cost.uniqueModelBytes > limits.maximumUniqueModelBytes) {
-    return `模型资源总量将超过 ${formatFileSize(limits.maximumUniqueModelBytes)}。`;
-  }
-  if (cost.estimatedMeshInstances > limits.maximumEstimatedMeshInstances) {
-    return `预计网格实例将达到 ${cost.estimatedMeshInstances}，超过当前 ${limits.maximumEstimatedMeshInstances} 的实时渲染预算。`;
-  }
-  if (playAnimations && cost.animatedInstances > limits.maximumAnimatedInstances) {
-    return `可播放动画的模型实例将达到 ${cost.animatedInstances}，超过当前 ${limits.maximumAnimatedInstances} 个的动画预算。`;
-  }
-  return null;
-};
-
-export default function Standalone3DProjectPage({ mode, projectId }: Standalone3DProjectPageProps) {
+export default function Standalone3DProjectPage({ initialTemplateId, mode, projectId }: Standalone3DProjectPageProps) {
   const [projectName, setProjectName] = useState("");
   const [savedScene, setSavedScene] = useState<StandaloneSceneDocument | null>(null);
   const [draftScene, setDraftScene] = useState<StandaloneSceneDocument | null>(null);
@@ -157,6 +114,9 @@ export default function Standalone3DProjectPage({ mode, projectId }: Standalone3
   const [limits, setLimits] = useState<typeof STANDALONE_3D_LIMITS>(STANDALONE_3D_LIMITS);
   const [models, setModels] = useState<ModelAsset[]>([]);
   const [previewModel, setPreviewModel] = useState<ModelAsset | null>(null);
+  const [showTemplates, setShowTemplates] = useState(false);
+  const [templateError, setTemplateError] = useState<string | null>(null);
+  const initialTemplateApplied = useRef(false);
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [linkedAssets, setLinkedAssets] = useState<ProjectAsset[]>([]);
   const [linkedAssetsLoading, setLinkedAssetsLoading] = useState(false);
@@ -273,17 +233,17 @@ export default function Standalone3DProjectPage({ mode, projectId }: Standalone3
   }, [libraryView, mode, selectedInstanceId]);
 
   useEffect(() => {
-    if (mode !== "edit" || previewModel) return;
+    if (mode !== "edit" || previewModel || showTemplates) return;
     const handleShortcut = (event: KeyboardEvent) => {
-      if (event.altKey || event.ctrlKey || event.metaKey) return;
+      if (event.defaultPrevented || event.isComposing || event.altKey || event.ctrlKey || event.metaKey) return;
       const target = event.target;
-      if (target instanceof HTMLInputElement || target instanceof HTMLSelectElement || target instanceof HTMLTextAreaElement || (target instanceof HTMLElement && target.isContentEditable)) return;
+      if (target instanceof HTMLInputElement || target instanceof HTMLSelectElement || target instanceof HTMLTextAreaElement || (target instanceof HTMLElement && (target.isContentEditable || target.closest('[role="combobox"]')))) return;
       if (event.key.toLowerCase() === "w") setInstanceTransformMode("translate");
       if (event.key.toLowerCase() === "r") setInstanceTransformMode("scale");
     };
     window.addEventListener("keydown", handleShortcut);
     return () => window.removeEventListener("keydown", handleShortcut);
-  }, [mode, previewModel]);
+  }, [mode, previewModel, showTemplates]);
 
   const dirty = savedScene !== null && draftScene !== null && !sameJson(savedScene, draftScene);
   const selectedInstance = draftScene?.instances.find((item) => item.id === selectedInstanceId) ?? null;
@@ -508,32 +468,38 @@ export default function Standalone3DProjectPage({ mode, projectId }: Standalone3
     setNotice(`已把“${modelName(asset)}”加入场景，保存后生效。`);
   };
 
-  const assembleWorkshop = (replaceExisting = false) => {
+  const applySceneTemplate = useCallback((templateId: SceneTemplateId, requireNewProject = false) => {
     const currentScene = draftSceneRef.current;
-    if (!editable || !currentScene || !savedScene || (!replaceExisting && (currentScene.instances.length || savedScene.instances.length))) {
-      setError("示例车间只能搭建到可编辑的全新空场景中。");
+    if (!currentScene || !savedScene) {
+      setTemplateError("场景尚未加载完成，不能套用模板。");
       return;
     }
-    const missing = [...new Set(workshopInstances.map((instance) => instance.modelAssetId))]
-      .filter((id) => !models.some((model) => model.id === id));
-    if (missing.length) {
-      setError(`车间模型未全部就绪：${missing.join("、")}。请刷新资源库后重试。`);
-      return;
+    try {
+      const next = instantiateSceneTemplate({ templateId, currentScene, savedScene, models, limits, editable: editable && mode === "edit", requireNewProject });
+      draftSceneRef.current = next;
+      setDraftScene(next);
+      setSelectedInstanceId(null);
+      setLibraryView("layers");
+      setInspectorView("scene");
+      setTemplateError(null);
+      setError(null);
+      setShowTemplates(false);
+      setNotice(`“${getSceneTemplate(templateId).name}”已载入草稿，保存场景后生效。模型动画为虚构演示，未绑定现场业务资产。`);
+    } catch (reason) {
+      console.error("Scene template application failed", { projectId, templateId, requireNewProject, reason });
+      const message = errorMessage(reason);
+      setTemplateError(message);
+      setError(message);
     }
-    const violation = sceneBudgetViolation(measureScenePerformance(workshopInstances, models), limits, workshopSettings.playAnimations);
-    const presetIds = new Set(workshopInstances.map(instance => instance.id));
-    const deletions = savedScene.instances.filter(instance => !presetIds.has(instance.id)).length;
-    if (violation || workshopInstances.length > limits.maximumInstances || workshopInstances.length + deletions > limits.maximumPatchInstances) {
-      setError(violation ?? "示例车间超过当前实例或单次保存预算。");
-      return;
-    }
-    setDraftScene({ ...currentScene, settings: { ...workshopSettings }, instances: structuredClone(workshopInstances) });
-    setSelectedInstanceId(null);
-    setLibraryView("layers");
-    setInspectorView("scene");
-    setError(null);
-    setNotice("新版示例车间已载入草稿，包含新的模型、布局和灯光；保存场景后生效。设备动画为演示，尚未绑定现场数据。");
-  };
+  }, [editable, limits, mode, models, projectId, savedScene]);
+
+  useEffect(() => {
+    if (!initialTemplateId || loading || !savedScene || initialTemplateApplied.current) return;
+    initialTemplateApplied.current = true;
+    applySceneTemplate(initialTemplateId, true);
+    // A template is a one-time editing intent, not a persistent scene source.
+    window.history.replaceState(null, "", standaloneSceneRoutePath(projectId, "edit"));
+  }, [applySceneTemplate, initialTemplateId, loading, projectId, savedScene]);
 
   const updateBuiltinModels = () => {
     const current = draftSceneRef.current;
@@ -729,7 +695,7 @@ export default function Standalone3DProjectPage({ mode, projectId }: Standalone3
           {draftScene.settings.playAnimations ? <span>{scenePerformance.animatedInstances}/{limits.maximumAnimatedInstances} 动画实例</span> : null}
         </div>
         <ThemeToggle />
-        {editable && draftScene.instances.some(instance => instance.modelAssetId.startsWith("builtin:workshop-") && instance.modelAssetId.endsWith("-v1")) ? <button className="secondary-button compact-button" disabled={saving} onClick={() => assembleWorkshop(true)} title="用新版预设替换草稿中的模型、布局和灯光，保存后生效" type="button">替换为新版示例车间</button> : null}
+        {editable ? <button className="secondary-button compact-button" disabled={saving} onClick={() => { setTemplateError(null); setShowTemplates(true); }} type="button">模板</button> : null}
         {editable && draftScene.instances.some(instance => {
           const latest = latestBuiltinModel(instance.modelAssetId);
           return latest && latest.id !== instance.modelAssetId;
@@ -891,8 +857,8 @@ export default function Standalone3DProjectPage({ mode, projectId }: Standalone3
             <section className="standalone-property-group">
               <header><span aria-hidden="true">01</span><div><h3>基础信息</h3><small>名称、用途与业务关联</small></div></header>
               <label><span>图层名称</span><input disabled={!editable} maxLength={80} onChange={(event) => updateInstance(selectedInstance.id, { label: event.target.value })} value={selectedInstance.label} /></label>
-              <label><span>模型用途</span><select disabled={!editable} onChange={(event) => updateInstance(selectedInstance.id, { renderMode: event.target.value as StandaloneSceneInstance["renderMode"] })} value={selectedInstance.renderMode}><option value="background">静态背景</option><option value="interactive">交互设备</option></select></label>
-              <label><span>绑定业务资产</span><select disabled={!editable || !draftScene.linked2dProjectId || selectedInstance.renderMode === "background"} onChange={(event) => updateInstance(selectedInstance.id, { assetId: event.target.value || null })} value={selectedInstance.assetId ?? ""}><option value="">不绑定</option>{linkedAssets.map((asset) => <option key={asset.id} value={asset.assetId}>{asset.name} · {asset.assetId}</option>)}</select></label>
+              <label><span>模型用途</span><Select disabled={!editable} onValueChange={(value) => updateInstance(selectedInstance.id, { renderMode: value as StandaloneSceneInstance["renderMode"] })} value={selectedInstance.renderMode}><option value="background">静态背景</option><option value="interactive">交互设备</option></Select></label>
+              <label><span>绑定业务资产</span><Select disabled={!editable || !draftScene.linked2dProjectId || selectedInstance.renderMode === "background"} onValueChange={(value) => updateInstance(selectedInstance.id, { assetId: value || null })} value={selectedInstance.assetId ?? ""}><option value="">不绑定</option>{linkedAssets.map((asset) => <option key={asset.id} value={asset.assetId}>{asset.name} · {asset.assetId}</option>)}</Select></label>
               <label className="standalone-checkbox"><input checked={selectedInstance.visible} disabled={!editable} onChange={(event) => updateInstance(selectedInstance.id, { visible: event.target.checked })} type="checkbox" /> 在场景中显示</label>
             </section>
 
@@ -955,7 +921,7 @@ export default function Standalone3DProjectPage({ mode, projectId }: Standalone3
 
             <section className="standalone-property-group">
               <header><span aria-hidden="true">01</span><div><h3>项目关联</h3><small>连接 2D 数据看板</small></div></header>
-              <label><span>关联 2D 项目</span><select disabled={!editable} onChange={(event) => setDraftScene({ ...draftScene, linked2dProjectId: event.target.value || null })} value={draftScene.linked2dProjectId ?? ""}><option value="">暂不关联</option>{projects.filter((project) => project.projectType === "2d").map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select></label>
+              <label><span>关联 2D 项目</span><Select disabled={!editable} onValueChange={(value) => setDraftScene({ ...draftScene, linked2dProjectId: value || null })} value={draftScene.linked2dProjectId ?? ""}><option value="">暂不关联</option>{projects.filter((project) => project.projectType === "2d").map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</Select></label>
               {draftScene.linked2dProjectId ? <><p className="standalone-property-note">预览会透明叠加该项目已保存的 2D 组件，保留按钮与面板交互；不重复加载其中的 3D 视窗。两边分别保存。</p><a className="secondary-button compact-button" href={canvasRoutePath(draftScene.linked2dProjectId, "canvas")} target="_blank" rel="noreferrer">编辑关联 2D 面板 ↗</a></> : null}
               {linkedCanvasError ?? linkedAssetLoadError ? <p className="error-text" role="alert">{linkedCanvasError ?? linkedAssetLoadError}</p> : null}
             </section>
@@ -981,7 +947,7 @@ export default function Standalone3DProjectPage({ mode, projectId }: Standalone3
               <header><span aria-hidden="true">04</span><div><h3>相机</h3><small>初始观察方向与视野</small></div></header>
               <label className="standalone-checkbox"><input checked={draftScene.settings.preventBottomView} disabled={!editable} onChange={(event) => updateSettings("preventBottomView", event.target.checked)} type="checkbox" /> 禁止从底部查看</label>
               <p className="standalone-property-note">限制向下旋转，避免看到建筑或模型底部；取消勾选可自由查看。</p>
-              <label><span>初始视角</span><select disabled={!editable} onChange={(event) => updateSettings("cameraView", event.target.value as StandaloneSceneSettings["cameraView"])} value={draftScene.settings.cameraView}><option value="isometric">右前等轴</option><option value="isometric-left">左前等轴</option><option value="front">正视</option><option value="top">俯视</option></select></label>
+              <label><span>初始视角</span><Select disabled={!editable} onValueChange={(value) => updateSettings("cameraView", value as StandaloneSceneSettings["cameraView"])} value={draftScene.settings.cameraView}><option value="isometric">右前等轴</option><option value="isometric-left">左前等轴</option><option value="front">正视</option><option value="top">俯视</option></Select></label>
               <label><span>视野角度 <output>{draftScene.settings.cameraFov.toFixed(0)}°</output></span><input disabled={!editable} max="90" min="15" onChange={(event) => updateSettings("cameraFov", Number(event.target.value))} step="1" type="range" value={draftScene.settings.cameraFov} /></label>
               <label><span>初始镜头比例 <output>{draftScene.settings.modelScale.toFixed(2)}×</output></span><input disabled={!editable} max="4" min="0.25" onChange={(event) => updateSettings("modelScale", Number(event.target.value))} step="0.05" type="range" value={draftScene.settings.modelScale} /></label>
             </section>
@@ -997,6 +963,7 @@ export default function Standalone3DProjectPage({ mode, projectId }: Standalone3
         )}
       </aside>
       {previewModel ? <ModelAssetPreviewDialog asset={previewModel} key={previewModel.id} name={modelName(previewModel)} onClose={() => setPreviewModel(null)} projectId={projectId} /> : null}
+      {showTemplates ? <SceneTemplateDialog editable={editable && !saving} error={templateError} onApply={applySceneTemplate} onClose={() => setShowTemplates(false)} /> : null}
     </main>
   );
 }

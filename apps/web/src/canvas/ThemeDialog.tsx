@@ -1,3 +1,4 @@
+import { Select } from "../components/Select";
 import { useEffect, useState, type CSSProperties } from "react";
 import {
   asCustomCanvasTheme,
@@ -142,15 +143,15 @@ export function ThemeDialog({ currentTheme, editable, onApply, onClose }: ThemeD
           <div className="theme-advanced-grid">
             <label>
               <span>背景纹理</span>
-              <select disabled={!editable} onChange={(event) => updateCustomTheme({ backgroundPattern: event.target.value as CanvasBackgroundPattern })} value={customTheme.backgroundPattern}>
+              <Select disabled={!editable} onValueChange={(value) => updateCustomTheme({ backgroundPattern: value as CanvasBackgroundPattern })} value={customTheme.backgroundPattern}>
                 {Object.entries(patternLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-              </select>
+              </Select>
             </label>
             <label>
               <span>字体风格</span>
-              <select disabled={!editable} onChange={(event) => updateCustomTheme({ fontFamily: event.target.value as CanvasFontFamily })} value={customTheme.fontFamily}>
+              <Select disabled={!editable} onValueChange={(value) => updateCustomTheme({ fontFamily: value as CanvasFontFamily })} value={customTheme.fontFamily}>
                 {Object.entries(fontLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-              </select>
+              </Select>
             </label>
             <label>
               <span>辉光强度 <em>{Math.round(customTheme.glowIntensity * 100)}%</em></span>

@@ -114,7 +114,7 @@ export function SceneBackgroundWizard({ onClose, onCreate, projectName }: SceneB
 
   useEffect(() => {
     const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !importing) onClose();
+      if (!event.defaultPrevented && event.key === "Escape" && !importing) onClose();
     };
     window.addEventListener("keydown", closeOnEscape);
     return () => window.removeEventListener("keydown", closeOnEscape);

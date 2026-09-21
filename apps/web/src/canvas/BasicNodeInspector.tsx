@@ -1,3 +1,4 @@
+import { Select } from "../components/Select";
 import { useEffect, useMemo, useState, type ChangeEvent } from "react";
 import { errorMessage, request } from "../api";
 import { imageAssetsPath, type ImageAsset } from "./image-assets";
@@ -210,11 +211,11 @@ export function BasicNodeInspector({
           <label><span>替代文字</span><input disabled={!editable} maxLength={160} onChange={(event) => changeDraft({ alt: event.target.value })} value={asText(draft.alt)} /></label>
         ) : null}
         {type === "image" || type === "carousel" ? (
-          <label><span>图片填充</span><select disabled={!editable} onChange={(event) => changeDraft({ fit: event.target.value })} value={asText(draft.fit)}><option value="cover">覆盖容器</option><option value="contain">完整显示</option><option value="fill">拉伸填满</option></select></label>
+          <label><span>图片填充</span><Select disabled={!editable} onValueChange={(value) => changeDraft({ fit: value })} value={asText(draft.fit)}><option value="cover">覆盖容器</option><option value="contain">完整显示</option><option value="fill">拉伸填满</option></Select></label>
         ) : null}
         {type === "plain-text" ? (
           <>
-            <label><span>滚动方式</span><select disabled={!editable} onChange={(event) => changeDraft({ scrollMode: event.target.value })} value={asText(draft.scrollMode)}><option value="none">不滚动</option><option value="horizontal">水平滚动</option><option value="vertical">垂直滚动</option></select></label>
+            <label><span>滚动方式</span><Select disabled={!editable} onValueChange={(value) => changeDraft({ scrollMode: value })} value={asText(draft.scrollMode)}><option value="none">不滚动</option><option value="horizontal">水平滚动</option><option value="vertical">垂直滚动</option></Select></label>
             <label><span>滚动一周时长（秒）</span><input disabled={!editable} max={120} min={3} onChange={(event) => changeDraft({ scrollDuration: Number(event.target.value) })} type="number" value={asNumber(draft.scrollDuration)} /></label>
           </>
         ) : null}
@@ -261,7 +262,7 @@ export function BasicNodeInspector({
               })}
             </div>
           ) : (
-            <label><span>默认选项</span><select disabled={!editable} onChange={(event) => changeDraft({ selectedValue: event.target.value })} value={asText(draft.selectedValue)}><option value="">不预选</option>{options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
+            <label><span>默认选项</span><Select disabled={!editable} onValueChange={(value) => changeDraft({ selectedValue: value })} value={asText(draft.selectedValue)}><option value="">不预选</option>{options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</Select></label>
           )}
           {type !== "select" ? <label><span>每行列数</span><input disabled={!editable} max={4} min={1} onChange={(event) => changeDraft({ columns: Number(event.target.value) })} type="number" value={asNumber(draft.columns)} /></label> : null}
         </section>
@@ -271,10 +272,10 @@ export function BasicNodeInspector({
         <section className="inspector-section">
           <div className="inspector-section-title"><strong>图片资源</strong><span>{type === "image" ? "单张" : `${node.resourceRefs.length}/${MAX_CAROUSEL_IMAGES}`}</span></div>
           {type === "image" ? (
-            <select disabled={!editable || loadingAssets || uploading} onChange={(event) => setImageBinding(event.target.value)} value={node.resourceRefs[0] ?? ""}>
+            <Select aria-label="图片资源" disabled={!editable || loadingAssets || uploading} onValueChange={(value) => setImageBinding(value)} value={node.resourceRefs[0] ?? ""}>
               <option value="">{loadingAssets ? "正在读取图片…" : "请选择图片"}</option>
               {imageAssets.map((asset) => <option key={asset.id} value={asset.id}>{asset.originalFilename} · {formatFileSize(asset.byteSize)}</option>)}
-            </select>
+            </Select>
           ) : (
             <div className="basic-image-asset-list">
               {imageAssets.length === 0 && !loadingAssets ? <p>项目中还没有图片资源。</p> : null}
@@ -296,10 +297,10 @@ export function BasicNodeInspector({
         {showsFont ? (
           <div className="inspector-inline-fields">
             <label><span>字号</span><input disabled={!editable} max={120} min={10} onChange={(event) => changeDraft({ fontSize: Number(event.target.value) })} type="number" value={asNumber(draft.fontSize)} /></label>
-            <label><span>字重</span><select disabled={!editable} onChange={(event) => changeDraft({ fontWeight: Number(event.target.value) })} value={asNumber(draft.fontWeight)}><option value={400}>常规</option><option value={500}>中等</option><option value={600}>半粗</option><option value={700}>粗体</option><option value={800}>特粗</option></select></label>
+            <label><span>字重</span><Select disabled={!editable} onValueChange={(value) => changeDraft({ fontWeight: Number(value) })} value={asNumber(draft.fontWeight)}><option value={400}>常规</option><option value={500}>中等</option><option value={600}>半粗</option><option value={700}>粗体</option><option value={800}>特粗</option></Select></label>
           </div>
         ) : null}
-        {type === "plain-text" || type === "text-link" ? <label><span>对齐</span><select disabled={!editable} onChange={(event) => changeDraft({ align: event.target.value })} value={asText(draft.align)}><option value="left">左对齐</option><option value="center">居中</option><option value="right">右对齐</option></select></label> : null}
+        {type === "plain-text" || type === "text-link" ? <label><span>对齐</span><Select disabled={!editable} onValueChange={(value) => changeDraft({ align: value })} value={asText(draft.align)}><option value="left">左对齐</option><option value="center">居中</option><option value="right">右对齐</option></Select></label> : null}
         <div className="inspector-decoration-colors">
           {showsAppearance ? <label><span>文字颜色</span><input className="inspector-color-input" disabled={!editable} onChange={(event) => changeDraft({ textColor: event.target.value })} type="color" value={asText(draft.textColor)} /></label> : null}
           {showsAppearance ? <label><span>强调颜色</span><input className="inspector-color-input" disabled={!editable} onChange={(event) => changeDraft({ accentColor: event.target.value })} type="color" value={asText(draft.accentColor)} /></label> : null}

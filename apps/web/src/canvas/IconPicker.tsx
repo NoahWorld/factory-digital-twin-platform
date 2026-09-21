@@ -1,3 +1,4 @@
+import { Select } from "../components/Select";
 import { useState } from "react";
 import { iconCatalog, type IconId } from "../../../../shared/icon-catalog";
 import { LocalIcon } from "./LocalIcon";
@@ -12,7 +13,7 @@ export function IconPicker({ value, onChange, disabled, allowNone = false }: {
   return <div className="icon-picker">
     <div className="icon-picker-search">
       <input type="search" aria-label="搜索图标" placeholder="搜索图标，如设备、告警" value={search} onChange={(event) => setSearch(event.target.value)} />
-      <select aria-label="图标分类" value={category} onChange={(event) => setCategory(event.target.value)}>{categories.map((item) => <option key={item}>{item}</option>)}</select>
+      <Select aria-label="图标分类" value={category} onValueChange={(value) => setCategory(value)}>{categories.map((item) => <option key={item}>{item}</option>)}</Select>
     </div>
     {allowNone ? <button type="button" className="icon-picker-none" disabled={disabled} aria-pressed={value === "none"} onClick={() => onChange("none")}>不显示图标</button> : null}
     <div className="icon-picker-grid" role="group" aria-label="本地图标库">

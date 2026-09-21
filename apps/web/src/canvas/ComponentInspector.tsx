@@ -1,3 +1,4 @@
+import { Select } from "../components/Select";
 import { useEffect, useMemo, useState } from "react";
 import { BasicNodeInspector } from "./BasicNodeInspector";
 import { AssetDetailInspector } from "./AssetDetailInspector";
@@ -448,18 +449,18 @@ function ValidDecorationInspector({
         {showsAlign ? (
           <label>
             <span>内容对齐</span>
-            <select
+            <Select
               disabled={!editable}
-              onChange={(event) => changeDraft({
+              onValueChange={(value) => changeDraft({
                 ...draft,
-                align: event.target.value as DecorationProps["align"],
+                align: value as DecorationProps["align"],
               })}
               value={draft.align}
             >
               <option value="left">左对齐</option>
               <option value="center">居中</option>
               <option value="right">右对齐</option>
-            </select>
+            </Select>
           </label>
         ) : null}
         {nodeType === "datetime" ? (

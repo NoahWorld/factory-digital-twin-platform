@@ -1,3 +1,4 @@
+import { Select } from "../components/Select";
 import { useEffect, useMemo, useState } from "react";
 import { isOrnamentNodeType, parseOrnamentProps, titleFonts, titleVariants } from "../../../../shared/canvas-ornaments";
 import { componentLabels, type CanvasNode } from "./types";
@@ -32,10 +33,10 @@ export function OrnamentInspector({ editable, node, onNodeChange, onValidationCh
       </section>
       <section className="inspector-section">
         <div className="inspector-section-title"><strong>文字排版</strong></div>
-        <label><span>字体</span><select disabled={!editable} value={String(draft.fontFamily)} onChange={(event) => change("fontFamily", event.target.value)}>{Object.entries(titleFonts).map(([key, font]) => <option key={key} value={key}>{font.label}</option>)}</select></label>
+        <label><span>字体</span><Select disabled={!editable} value={String(draft.fontFamily)} onValueChange={(value) => change("fontFamily", value)}>{Object.entries(titleFonts).map(([key, font]) => <option key={key} value={key}>{font.label}</option>)}</Select></label>
         <div className="inspector-number-grid">{numberField("fontSize", "文字大小 (px)", 10, 96)}{numberField("letterSpacing", "字间距 (px)", 0, 12, 0.5)}</div>
-        <label><span>字重</span><select disabled={!editable} value={String(draft.fontWeight)} onChange={(event) => change("fontWeight", Number(event.target.value))}>{[[300, "纤细"], [400, "常规"], [500, "中等"], [600, "半粗"], [700, "粗体"], [800, "特粗"], [900, "黑体"]].map(([value, label]) => <option key={value} value={value}>{label} · {value}</option>)}</select></label>
-        <label><span>对齐方式</span><select disabled={!editable} value={String(draft.align)} onChange={(event) => change("align", event.target.value)}><option value="left">左对齐</option><option value="center">居中</option><option value="right">右对齐</option></select></label>
+        <label><span>字重</span><Select disabled={!editable} value={String(draft.fontWeight)} onValueChange={(value) => change("fontWeight", Number(value))}>{[[300, "纤细"], [400, "常规"], [500, "中等"], [600, "半粗"], [700, "粗体"], [800, "特粗"], [900, "黑体"]].map(([value, label]) => <option key={value} value={value}>{label} · {value}</option>)}</Select></label>
+        <label><span>对齐方式</span><Select disabled={!editable} value={String(draft.align)} onValueChange={(value) => change("align", value)}><option value="left">左对齐</option><option value="center">居中</option><option value="right">右对齐</option></Select></label>
         <div className="inspector-number-grid">{checkField("italic", "斜体")}{checkField("underline", "文字下划线")}</div>
         {colorField("textColor", "标题文字颜色")}
       </section>

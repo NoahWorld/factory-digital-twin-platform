@@ -1,3 +1,4 @@
+import { Select } from "./components/Select";
 import { useEffect, useState, type FormEvent } from "react";
 import { errorMessage, request } from "./api";
 import {
@@ -323,18 +324,18 @@ export function DataSourcePanel({
               </label>
               <label>
                 <span>连接类型</span>
-                <select
+                <Select
                   disabled={formDisabled}
-                  onChange={(event) => setDraft((current) => ({
+                  onValueChange={(value) => setDraft((current) => ({
                     ...current,
-                    sourceType: event.target.value as DataSourceType,
+                    sourceType: value as DataSourceType,
                     url: "",
                   }))}
                   value={draft.sourceType}
                 >
                   <option value="rest_polling">REST 轮询</option>
                   <option value="websocket">WebSocket</option>
-                </select>
+                </Select>
               </label>
               <label className="is-wide">
                 <span>{draft.sourceType === "rest_polling" ? "HTTP(S) 地址" : "WS(S) 地址"}</span>

@@ -1,3 +1,4 @@
+import { Select } from "../components/Select";
 import { builtinModels, findBuiltinModel } from "../../../../shared/builtin-models";
 import { ModelPresentationPanel } from "./ModelPresentationPanel";
 import {
@@ -661,10 +662,10 @@ export function Model3DInspector({
 
       <div className="inspector-section">
         <label className="inspector-label" htmlFor={`model-asset-${node.id}`}>主模型资源</label>
-        <select
+        <Select
           disabled={!editable || uploading || loadingAssets}
           id={`model-asset-${node.id}`}
-          onChange={(event) => chooseAsset(event.target.value)}
+          onValueChange={(value) => chooseAsset(value)}
           value={selectedAssetId}
         >
           <option value="">{loadingAssets ? "正在读取模型…" : "请选择模型"}</option>
@@ -673,7 +674,7 @@ export function Model3DInspector({
               {findBuiltinModel(asset.id)?.name ?? asset.originalFilename} · {formatFileSize(asset.byteSize)}
             </option>
           ))}
-        </select>
+        </Select>
         <input
           accept=".glb,.gltf,model/gltf-binary,model/gltf+json"
           className="model-file-input"
@@ -700,10 +701,10 @@ export function Model3DInspector({
           <span>{modelInstances.length}/{MAX_MODEL_INSTANCES} 个实例 · {node.resourceRefs.length} 种资源</span>
         </div>
         <label className="inspector-label" htmlFor={`model-instance-add-${node.id}`}>添加模型实例</label>
-        <select
+        <Select
           disabled={!editable || uploading || loadingAssets || modelInstances.length >= MAX_MODEL_INSTANCES}
           id={`model-instance-add-${node.id}`}
-          onChange={(event) => addModelInstance(event.target.value)}
+          onValueChange={(value) => addModelInstance(value)}
           value=""
         >
           <option value="">{loadingAssets ? "正在读取模型…" : "+ 从资源库添加模型"}</option>
@@ -712,7 +713,7 @@ export function Model3DInspector({
               {findBuiltinModel(asset.id)?.name ?? asset.originalFilename} · {formatFileSize(asset.byteSize)}
             </option>
           ))}
-        </select>
+        </Select>
         <p className="inspector-help">相同资源可重复添加，渲染时只解析一次；第一个实例是主模型，节点树与外观设置作用于它。</p>
         <div className="model-instance-list">
           {modelInstances.map((instance, instanceIndex) => (
@@ -927,9 +928,9 @@ export function Model3DInspector({
               ) : (
                 <label>
                   <span>资产来源</span>
-                  <select
+                  <Select
                     disabled={!editable || savingAssetBinding}
-                    onChange={(event) => chooseAssetBinding(event.target.value)}
+                    onValueChange={(value) => chooseAssetBinding(value)}
                     value={assetBindingChoice}
                   >
                     <option value="new">新建资产并绑定</option>
@@ -938,7 +939,7 @@ export function Model3DInspector({
                         绑定已有资产 · {asset.assetId} · {asset.name}
                       </option>
                     ))}
-                  </select>
+                  </Select>
                 </label>
               )}
               <label>
@@ -1264,17 +1265,17 @@ export function Model3DInspector({
         <div className="inspector-grid-two">
           <label>
             <span>初始视角</span>
-            <select
+            <Select
               disabled={!editable}
-              onChange={(event) =>
-                updateProps({ cameraView: event.target.value as Model3DProps["cameraView"] })}
+              onValueChange={(value) =>
+                updateProps({ cameraView: value as Model3DProps["cameraView"] })}
               value={parsed.value.cameraView}
             >
               <option value="isometric">右前视角</option>
               <option value="isometric-left">左前视角</option>
               <option value="front">正面视角</option>
               <option value="top">顶部视角</option>
-            </select>
+            </Select>
           </label>
           <label>
             <span>视野角度 FOV</span>

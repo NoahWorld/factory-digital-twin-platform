@@ -1,3 +1,4 @@
+import { Select } from "../components/Select";
 import { memo, useEffect, useState, useSyncExternalStore, type CSSProperties, type MouseEvent } from "react";
 import { imageAssetContentUrl } from "./image-assets";
 import {
@@ -402,10 +403,10 @@ function SelectNode({ editable, node, props }: { editable: boolean; node: Canvas
   return (
     <label className="basic-select-node" style={baseStyle(props)}>
       {props.label ? <span>{props.label}</span> : null}
-      <select disabled={editable} onChange={(event) => setSelectedValue(event.target.value)} value={selectedValue}>
+      <Select aria-label={props.label || props.placeholder || "下拉菜单"} disabled={editable} onValueChange={(value) => setSelectedValue(value)} value={selectedValue}>
         <option value="">{props.placeholder}</option>
         {props.options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-      </select>
+      </Select>
     </label>
   );
 }

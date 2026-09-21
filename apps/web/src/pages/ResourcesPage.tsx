@@ -1,3 +1,4 @@
+import { Select } from "../components/Select";
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { findBuiltinModel } from "../../../../shared/builtin-models";
 import { ApiRequestError, errorMessage, request } from "../api";
@@ -500,15 +501,15 @@ export function ResourcesPage({
         {projects.length > 0 ? (
           <label className="resource-project-select">
             <span>资源所属项目</span>
-            <select value={selectedProjectId} onChange={(event) => {
-              setSelectedProjectId(event.target.value);
+            <Select value={selectedProjectId} onValueChange={(value) => {
+              setSelectedProjectId(value);
               setPreviewItem(null);
               setDeleteItem(null);
               setBackgroundWizardOpen(false);
               setNotice(null);
             }}>
               {projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
-            </select>
+            </Select>
           </label>
         ) : null}
       </div>

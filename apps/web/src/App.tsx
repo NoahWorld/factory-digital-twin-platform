@@ -3,7 +3,8 @@ import { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH } from "../../../shared/auth-c
 import { standaloneSceneRoutePath, type ProjectType } from "../../../shared/standalone-3d";
 import { apiUrl, ApiRequestError, errorMessage, request } from "./api";
 import { LoginShowcase } from "./auth/LoginShowcase";
-import { canvasRoutePath, projectTemplateCanvasPath } from "./canvas/routes";
+import { canvasRoutePath, projectTemplateCanvasPath, projectTemplateScenePath } from "./canvas/routes";
+import { getSceneTemplate, isSceneTemplateId, type SceneTemplateId, type ProjectTemplate } from "./scene/scene-templates";
 import {
   getCanvasTemplate,
   isCanvasTemplateId,
@@ -367,8 +368,8 @@ function AuthPage({ setupRequired, onSuccess }: AuthPageProps) {
 type CreateProjectDialogProps = {
   initialProjectType: ProjectType;
   onClose: () => void;
-  onCreated: (project: Project, templateId: CanvasTemplateId | null) => void;
-  templateId: CanvasTemplateId | null;
+  onCreated: (project: Project, template: ProjectTemplate | null) => void;
+  templateId: ProjectTemplate | null;
 };
 
 function CreateProjectDialog({
@@ -377,7 +378,7 @@ function CreateProjectDialog({
   onCreated,
   templateId,
 }: CreateProjectDialogProps) {
-  const template = templateId ? getCanvasTemplate(templateId) : null;
+  const template = templateId ? templateId.projectType === "2d" ? getCanvasTemplate(templateId.id) : getSceneTemplate(templateId.id) : null;
   const [name, setName] = useState(() => template ? `${template.name}项目` : "");
   const [projectType, setProjectType] = useState<ProjectType>(initialProjectType);
   const [error, setError] = useState<string | null>(null);
@@ -391,7 +392,7 @@ function CreateProjectDialog({
     try {
       const result = await request<ProjectResponse>("/api/v1/projects", {
         method: "POST",
-        body: JSON.stringify({ name, projectType: template ? "2d" : projectType }),
+        body: JSON.stringify({ name, projectType: templateId?.projectType ?? projectType }),
       });
       onCreated(result.project, templateId);
     } catch (reason) {
@@ -411,7 +412,7 @@ function CreateProjectDialog({
         <h2>{template ? "使用模板创建项目" : "创建空白项目"}</h2>
         <p>
           {template
-            ? `将创建一个新项目，并在画布中载入“${template.name}”模板；项目会立即显示默认封面，保存画布后自动更新。`
+            ? `将创建一个新 ${templateId?.projectType === "3d" ? "3D 场景" : "2D 看板"}项目，并载入“${template.name}”模板。确认效果后请显式保存，封面会根据已保存内容生成。`
             : "新项目默认处于草稿状态，创建人自动成为项目负责人。"}
         </p>
         {!template ? (
@@ -448,7 +449,7 @@ function CreateProjectDialog({
             取消
           </button>
           <button className="primary-button" disabled={submitting} type="submit">
-            {submitting ? "正在创建…" : template ? "创建并进入画布" : "创建草稿项目"}
+            {submitting ? "正在创建…" : template ? "创建并进入编辑器" : "创建草稿项目"}
           </button>
         </div>
       </form>
@@ -584,7 +585,7 @@ type WorkspaceRoute =
   | { kind: "templates" }
   | { kind: "resources" }
   | { kind: "canvas"; projectId: string; mode: "edit" | "preview"; templateId?: CanvasTemplateId; initialAssetId?: string }
-  | { kind: "standalone-scene"; projectId: string; mode: "edit" | "preview" }
+  | { kind: "standalone-scene"; projectId: string; mode: "edit" | "preview"; templateId?: SceneTemplateId }
   | { kind: "model-editor"; projectId: string; nodeId: string }
   | { kind: "invalid"; message: string };
 
@@ -595,12 +596,16 @@ const currentWorkspaceRoute = (): WorkspaceRoute => {
   if (window.location.hash === "#/resources") {
     return { kind: "resources" };
   }
-  const standaloneSceneMatch = window.location.hash.match(/^#\/projects\/([^/]+)\/(scene|scene-preview)$/);
+  const standaloneSceneMatch = window.location.hash.match(/^#\/projects\/([^/]+)\/(scene|scene-preview)(?:\?([^#]*))?$/);
   if (standaloneSceneMatch) {
+    const templateValue = new URLSearchParams(standaloneSceneMatch[3] ?? "").get("template");
+    if (templateValue && !isSceneTemplateId(templateValue)) return { kind: "invalid", message: `未知的 3D 场景模板：${templateValue}` };
+    if (templateValue && standaloneSceneMatch[2] === "scene-preview") return { kind: "invalid", message: "预览模式不能套用场景模板。" };
     return {
       kind: "standalone-scene",
       projectId: decodeURIComponent(standaloneSceneMatch[1]),
       mode: standaloneSceneMatch[2] === "scene-preview" ? "preview" : "edit",
+      templateId: templateValue && isSceneTemplateId(templateValue) ? templateValue : undefined,
     };
   }
   const modelEditorMatch = window.location.hash.match(/^#\/projects\/([^/]+)\/3d-editor\/([^/]+)$/);
@@ -638,7 +643,7 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
   const [loadingProjects, setLoadingProjects] = useState(true);
   const [projectError, setProjectError] = useState<string | null>(null);
   const [showCreateProject, setShowCreateProject] = useState(false);
-  const [createProjectTemplateId, setCreateProjectTemplateId] = useState<CanvasTemplateId | null>(null);
+  const [createProjectTemplateId, setCreateProjectTemplateId] = useState<ProjectTemplate | null>(null);
   const [renamingProject, setRenamingProject] = useState<Project | null>(null);
   const [deletingProject, setDeletingProject] = useState<Project | null>(null);
   const [projectNotice, setProjectNotice] = useState<string | null>(null);
@@ -688,13 +693,13 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
     }
   };
 
-  const createProject = (project: Project, templateId: CanvasTemplateId | null) => {
+  const createProject = (project: Project, templateId: ProjectTemplate | null) => {
     setProjects((current) => [project, ...current]);
     setProjectTypeFilter(project.projectType);
     setShowCreateProject(false);
     setCreateProjectTemplateId(null);
     if (templateId) {
-      window.location.hash = projectTemplateCanvasPath(project.id, templateId).slice(1);
+      window.location.hash = (templateId.projectType === "2d" ? projectTemplateCanvasPath(project.id, templateId.id) : projectTemplateScenePath(project.id, templateId.id)).slice(1);
     } else if (project.projectType === "3d") {
       window.location.hash = standaloneSceneRoutePath(project.id, "edit").slice(1);
     }
@@ -705,7 +710,7 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
     setShowCreateProject(true);
   };
 
-  const openTemplateProjectDialog = (templateId: CanvasTemplateId) => {
+  const openTemplateProjectDialog = (templateId: ProjectTemplate) => {
     setCreateProjectTemplateId(templateId);
     setShowCreateProject(true);
   };
@@ -763,7 +768,7 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
   if (route.kind === "standalone-scene") {
     return (
       <Suspense fallback={<main className="canvas-page-state"><p className="eyebrow">3D workspace</p><h1>正在准备独立 3D 编辑器…</h1></main>}>
-        <Standalone3DProjectPage key={`${route.projectId}:${route.mode}`} mode={route.mode} projectId={route.projectId} />
+        <Standalone3DProjectPage initialTemplateId={route.templateId} key={`${route.projectId}:${route.mode}:${route.templateId ?? "saved"}`} mode={route.mode} projectId={route.projectId} />
       </Suspense>
     );
   }
@@ -1056,7 +1061,7 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
 
       {showCreateProject ? (
         <CreateProjectDialog
-          initialProjectType={createProjectTemplateId ? "2d" : projectTypeFilter}
+          initialProjectType={createProjectTemplateId?.projectType ?? projectTypeFilter}
           onClose={() => setShowCreateProject(false)}
           onCreated={createProject}
           templateId={createProjectTemplateId}

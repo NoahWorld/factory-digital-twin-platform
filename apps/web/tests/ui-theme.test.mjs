@@ -233,7 +233,8 @@ check("primary buttons and semantic status surfaces meet WCAG AA text contrast",
   }
 });
 
-const standaloneInspectorSource = (await readFile(join(sourceRoot, "pages/Standalone3DProjectPage.tsx"), "utf8"))
+const standalonePageSource = await readFile(join(sourceRoot, "pages/Standalone3DProjectPage.tsx"), "utf8");
+const standaloneInspectorSource = standalonePageSource
   .split('<aside className="standalone-3d-inspector">')[1]?.split("</aside>")[0];
 const twinActionEditorSource = await readFile(join(sourceRoot, "twin/TwinActionEditor.tsx"), "utf8");
 
@@ -274,17 +275,30 @@ check("property section headings are static headings and transform modes expose 
   }
 });
 
-async function cssFiles(directory) {
+async function sourceFiles(directory, extensions = [".css"]) {
   const result = [];
   for (const entry of await readdir(directory, { withFileTypes: true })) {
     const path = join(directory, entry.name);
-    if (entry.isDirectory()) result.push(...await cssFiles(path));
-    else if (entry.isFile() && entry.name.endsWith(".css")) result.push(path);
+    if (entry.isDirectory()) result.push(...await sourceFiles(path, extensions));
+    else if (entry.isFile() && extensions.some((extension) => entry.name.endsWith(extension))) result.push(path);
   }
   return result;
 }
 
-const cssSources = await Promise.all((await cssFiles(sourceRoot)).map(async path => ({ path, css: withoutComments(await readFile(path, "utf8")) })));
+const componentSources = await Promise.all((await sourceFiles(sourceRoot, [".tsx", ".jsx", ".html"])).map(async path => ({ path, source: await readFile(path, "utf8") })));
+check("all dropdowns use the shared themed component instead of native OS menus", () => {
+  let consumers = 0;
+  for (const { path, source } of componentSources) {
+    assert.doesNotMatch(source, /<select\b/, `${relative(sourceRoot, path)} must use the shared Select component`);
+    consumers += [...source.matchAll(/<Select\b/g)].length;
+  }
+  assert.ok(consumers >= 40, `Expected all existing dropdowns to be migrated, found ${consumers}`);
+  const shortcut = standalonePageSource.match(/const handleShortcut = \(event: KeyboardEvent\) => \{([\s\S]*?)\n    \};/)?.[1];
+  assert.ok(shortcut?.includes("event.defaultPrevented"), "Scene shortcuts must respect handled dropdown keys");
+  assert.ok(shortcut?.includes('[role="combobox"]'), "Custom comboboxes must suppress scene transform shortcuts");
+});
+
+const cssSources = await Promise.all((await sourceFiles(sourceRoot)).map(async path => ({ path, css: withoutComments(await readFile(path, "utf8")) })));
 check("every application CSS --ui-* reference is supplied by both theme palettes", () => {
   let references = 0;
   for (const { path, css } of cssSources) {
