@@ -2,6 +2,7 @@
 import assert from 'node:assert/strict';
 import {createServer} from 'node:http';
 import {websocket} from './backend-websocket-client.mjs';
+import {createCoverPng} from './backend-cover-smoke.mjs';
 import {readFileSync,mkdtempSync,rmSync} from 'node:fs';
 import {execFileSync} from 'node:child_process';
 import {createRequire} from 'node:module';
@@ -32,16 +33,24 @@ try{
  const id=await project(),scene=await project('3d');
  const initialProjects=(await call('/projects')).value.projects;
  const initial2d=initialProjects.find(project=>project.id===id),initial3d=initialProjects.find(project=>project.id===scene);
- assert.match(initial2d.coverUrl,/\/cover\.svg\?revision=\d+$/);assert.match(initial3d.coverUrl,/\/cover\.svg\?revision=\d+$/);
- const initial2dCover=await call(initial2d.coverUrl.replace('/api/v1',''));const initial3dCover=await call(initial3d.coverUrl.replace('/api/v1',''));
- assert.match(initial2dCover.r.headers.get('content-type'),/^image\/svg\+xml/);assert.match(initial2dCover.value,/2D CANVAS/);assert.match(initial3dCover.value,/3D SCENE/);
- const initial2dEtag=initial2dCover.r.headers.get('etag'),initial3dEtag=initial3dCover.r.headers.get('etag');ok('2D and 3D projects have protected default covers');
+ const coverPng=createCoverPng();
+ for(const project of [initial2d,initial3d]){
+   assert.equal(project.coverStatus,'pending');assert.equal(project.coverUrl,null);
+   assert.equal((await call(`/projects/${project.id}/cover.png`,{status:404})).value.error,'project_cover_pending');
+   const uploaded=(await call(`/projects/${project.id}/cover?sourceRevision=${project.documentRevision}&expectedCoverRevision=${project.coverRevision}`,{method:'PUT',body:coverPng,raw:true,headers:{'Content-Type':'image/png'}})).value.project;
+   assert.equal(uploaded.coverStatus,'ready');assert.equal(uploaded.coverSourceRevision,project.documentRevision);assert.match(uploaded.coverUrl,/\/cover\.png\?revision=\d+$/);
+   const ready=await call(uploaded.coverUrl.replace('/api/v1',''));assert.match(ready.r.headers.get('content-type'),/^image\/png/);assert.ok(ready.r.headers.get('etag'));
+ }
+ ok('2D and 3D covers remain pending until a revision-bound PNG is uploaded');
  const page=(await call('/projects?limit=1')).value;assert.equal(page.projects.length,1);assert.equal(page.nextOffset,1);const next=(await call('/projects?limit=1&offset=1')).value;assert.notEqual(next.projects[0].id,page.projects[0].id);await call('/projects?limit=0',{status:400});ok('bounded explicit list pagination');
  execFileSync(process.execPath,[join(root,'apps/web/node_modules/typescript/bin/tsc'),'--target','ES2022','--module','commonjs','--moduleResolution','node','--strict','--skipLibCheck','--rootDir',root,'--outDir',temp,join(root,'apps/web/src/canvas/templates.ts')],{stdio:'inherit'});
  const {canvasTemplates,instantiateCanvasTemplate}=require(join(temp,'apps/web/src/canvas/templates.js'));
  let revision=0,old=[];
  for(const t of canvasTemplates){const nodes=instantiateCanvasTemplate(t.id,[]);const result=await call(`/projects/${id}/canvas`,{method:'PATCH',body:{expectedRevision:revision,theme:t.canvasTheme,upsertNodes:nodes,deleteNodeIds:old}});revision=result.value.canvas.revision;assert.equal(result.value.canvas.nodes.length,nodes.length);old=nodes.map(n=>n.id);}
- const saved2dCover=await call(`/projects/${id}/cover.svg`);assert.notEqual(saved2dCover.r.headers.get('etag'),initial2dEtag);assert.match(saved2dCover.value,/2D CANVAS/);ok('2D cover revision updates with saved canvas');
+ const saved2dProject=(await call(`/projects/${id}`)).value.project;assert.equal(saved2dProject.coverStatus,'pending');assert.equal(saved2dProject.documentRevision,revision);
+ assert.match(saved2dProject.coverUrl,/\/cover\.png\?revision=\d+$/);
+ assert.match((await call(saved2dProject.coverUrl.replace('/api/v1',''))).r.headers.get('content-type'),/^image\/png/);
+ ok('2D content saves mark the previous screenshot pending');
  ok('all '+canvasTemplates.length+' actual frontend templates save and round trip');
  const {createCanvasNode,parseModel3DProps}=require(join(temp,'apps/web/src/canvas/types.js'));
  const legacy=createCanvasNode('model-3d',0,0,100);
@@ -68,10 +77,25 @@ try{
  const patch={expectedRevision:revision,upsertNodes:[],deleteNodeIds:[],theme:(await call(`/projects/${id}/canvas`)).value.canvas.theme};
  const writes=await Promise.all([fetch(base+`/api/v1/projects/${id}/canvas`,{method:'PATCH',headers:{Origin:base,Cookie:cookie,'Content-Type':'application/json'},body:JSON.stringify(patch)}),fetch(base+`/api/v1/projects/${id}/canvas`,{method:'PATCH',headers:{Origin:base,Cookie:cookie,'Content-Type':'application/json'},body:JSON.stringify(patch)})]);assert.deepEqual(writes.map(r=>r.status).sort(),[200,409]);revision++;ok('concurrent document revision conflict');
  const manifest=(await call(`/projects/${id}/manifest`)).value;assert.equal(manifest.revision,revision);assert.ok(manifest.settings.backgroundColor);const chunk=(await call(`/projects/${id}/document-items?revision=${revision}&limit=2`)).value;assert.equal(chunk.items.length,2);await call(`/projects/${id}/document-items?revision=0`,{status:409});ok('manifest and revision-bound document chunks');
+ let cameraScene=(await call(`/projects/${scene}/scene`)).value.scene;
+ assert.equal(cameraScene.settings.preventBottomView,true);
+ for(const enabled of [false,true]){
+   cameraScene=(await call(`/projects/${scene}/scene`,{method:'PATCH',body:{expectedRevision:cameraScene.revision,settings:{...cameraScene.settings,preventBottomView:enabled},upsertInstances:[],deleteInstanceIds:[]}})).value.scene;
+   assert.equal((await call(`/projects/${scene}/scene`)).value.scene.settings.preventBottomView,enabled);
+   assert.equal((await call(`/projects/${scene}/manifest`)).value.settings.preventBottomView,enabled);
+ }
+ for(const invalid of [null,'false',0,{}]){
+   await call(`/projects/${scene}/scene`,{method:'PATCH',status:400,body:{expectedRevision:cameraScene.revision,settings:{...cameraScene.settings,preventBottomView:invalid},upsertInstances:[],deleteInstanceIds:[]}});
+   assert.equal((await call(`/projects/${scene}/scene`)).value.scene.revision,cameraScene.revision);
+ }
+ ok('camera bottom-view restriction defaults on, round-trips both values and rejects malformed settings');
  const models=(await call(`/projects/${scene}/model-assets`)).value.modelAssets;assert.ok(models.length>0);
  const instance={id:'test-instance',assetId:null,label:'Integration model',modelAssetId:models[0].id,renderMode:'interactive',sortOrder:0,transform:{position:[0,0,0],rotation:[0,0,0],scale:[1,1,1]},visible:true};
- const sr=await call(`/projects/${scene}/scene`,{method:'PATCH',body:{expectedRevision:0,upsertInstances:[instance],deleteInstanceIds:[],linked2dProjectId:id}});assert.equal(sr.value.scene.instances[0].modelAssetId,models[0].id);ok('3D instance, built-in catalog and 2D link');
- const saved3dCover=await call(`/projects/${scene}/cover.svg`);assert.notEqual(saved3dCover.r.headers.get('etag'),initial3dEtag);assert.match(saved3dCover.value,/3D SCENE/);ok('3D cover revision updates with saved scene');
+ const sr=await call(`/projects/${scene}/scene`,{method:'PATCH',body:{expectedRevision:cameraScene.revision,upsertInstances:[instance],deleteInstanceIds:[],linked2dProjectId:id}});assert.equal(sr.value.scene.instances[0].modelAssetId,models[0].id);ok('3D instance, built-in catalog and 2D link');
+ const saved3dProject=(await call(`/projects/${scene}`)).value.project;assert.equal(saved3dProject.coverStatus,'pending');assert.equal(saved3dProject.documentRevision,sr.value.scene.revision);
+ assert.match(saved3dProject.coverUrl,/\/cover\.png\?revision=\d+$/);
+ assert.match((await call(saved3dProject.coverUrl.replace('/api/v1',''))).r.headers.get('content-type'),/^image\/png/);
+ ok('3D content saves mark the previous screenshot pending');
  const asset=(await call(`/projects/${id}/assets`,{method:'POST',status:201,body:{assetId:'motor-01',name:'Test motor',assetType:'motor',modelNode:null,metadata:{}}})).value.asset;
  const source=(await call(`/projects/${id}/data-sources`,{method:'POST',status:201,body:{name:'Integration source',sourceType:'rest_polling',config:{url:'http://host.docker.internal:8790/metrics',intervalSeconds:1,timeoutMs:2000,timestampPath:'$.timestamp',credentialRef:null}}})).value.dataSource;
  await call(`/projects/${id}/assets/${asset.id}/data-bindings`,{method:'POST',status:201,body:{dataSourceId:source.id,metricKey:'temperature',sourcePath:'$.temperature',valueType:'number',unit:'C',staleAfterSeconds:3}});

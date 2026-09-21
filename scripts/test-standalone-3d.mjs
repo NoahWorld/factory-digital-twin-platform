@@ -99,6 +99,15 @@ try {
   assert.deepEqual(valid.upsertInstances[0].animation, { enabled: false, speed: 1.4 });
   assert.deepEqual(valid.upsertInstances[0].appearance, { color: "#3aa8c8", opacity: 0.72 });
   assert.equal(valid.settings.cameraView, "isometric");
+  assert.equal(valid.settings.preventBottomView, true, "Old scenes default to preventing bottom views");
+  for (const enabled of [true, false]) {
+    const result = validateStandaloneScenePatch({ expectedRevision: 0, settings: { ...settings, preventBottomView: enabled } });
+    assert.equal(result.settings.preventBottomView, enabled);
+  }
+  for (const invalid of [null, "false", 0, {}, undefined]) {
+    assert.throws(() => validateStandaloneScenePatch({ expectedRevision: 0, settings: { ...settings, preventBottomView: invalid } }),
+      (error) => error.code === "invalid_scene_boolean");
+  }
   const defaults = validateStandaloneScenePatch({
     deleteInstanceIds: [], expectedRevision: 0, upsertInstances: [instance()],
   });
@@ -162,6 +171,11 @@ try {
   database.prepare(
     "INSERT INTO standalone_3d_scenes (project_id, linked_2d_project_id, updated_by_user_id, updated_at) VALUES (?, ?, ?, ?)",
   ).run("project-3d", "project-2d", "user-1", "now");
+  database.exec(readFileSync(join(root, "apps/api/migrations/0021_scene_bottom_view.sql"), "utf8"));
+  assert.equal(database.prepare("SELECT prevent_bottom_view FROM standalone_3d_scenes WHERE project_id = 'project-3d'").get().prevent_bottom_view, 1);
+  database.prepare("UPDATE standalone_3d_scenes SET prevent_bottom_view = 0 WHERE project_id = 'project-3d'").run();
+  assert.equal(database.prepare("SELECT prevent_bottom_view FROM standalone_3d_scenes WHERE project_id = 'project-3d'").get().prevent_bottom_view, 0);
+  assert.throws(() => database.prepare("UPDATE standalone_3d_scenes SET prevent_bottom_view = 2").run(), /CHECK constraint failed/i);
   database.prepare(`
     INSERT INTO standalone_3d_instances (
       id, project_id, model_asset_id, business_asset_key, label, render_mode, sort_order, updated_at

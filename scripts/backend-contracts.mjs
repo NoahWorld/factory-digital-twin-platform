@@ -63,7 +63,7 @@ const fingerprints=Object.fromEntries(program.getSourceFiles().filter(s=>s.fileN
 function write(name,value){const contents=JSON.stringify(value,null,2)+'\n';const path=join(output,name);if(process.argv.includes('--check')){if(readFileSync(path,'utf8')!==contents)throw new Error('Contract drift: '+name+'; run pnpm backend:contracts');}else writeFileSync(path,contents);}
 const temp=mkdtempSync(join(tmpdir(),'twin-contracts-'));
 try{
- execFileSync(process.execPath,[require.resolve('typescript/bin/tsc'),'--target','ES2022','--module','commonjs','--moduleResolution','node','--strict','--skipLibCheck','--rootDir',root,'--outDir',temp,join(root,'shared/builtin-models.ts'),join(root,'shared/standalone-3d.ts'),join(root,'apps/api/src/canvas.ts')],{stdio:'inherit'});
+ execFileSync(process.execPath,[require.resolve('typescript/bin/tsc'),'--target','ES2022','--module','commonjs','--moduleResolution','node','--strict','--skipLibCheck','--rootDir',root,'--outDir',temp,join(root,'shared/builtin-models.ts'),join(root,'shared/standalone-3d.ts'),join(root,'apps/api/src/canvas.ts'),join(root,'apps/api/src/standalone-scenes.ts')],{stdio:'inherit'});
  // Derive only documented missing-field migrations from the existing TS validator.
  // Do not make all required fields optional or default invalid/null values.
  const {validateCanvasPatch}=require(join(temp,'apps/api/src/canvas.js'));
@@ -71,6 +71,16 @@ try{
  const legacyNode={id:'legacy-model',type:'model-3d',x:0,y:0,width:600,height:400,zIndex:0,props:legacyProps,resourceRefs:[],dataBindingRefs:[]};
  const normalized=validateCanvasPatch({expectedRevision:0,upsertNodes:[legacyNode],deleteNodeIds:[]}).upsertNodes[0].props;
  for(const [key,value] of Object.entries(normalized))if(!(key in legacyProps))definitions.Model3DProps.properties[key].default=value;
+ const {validateStandaloneScenePatch}=require(join(temp,'apps/api/src/standalone-scenes.js'));
+ const {TWIN_ACTION_LIMITS,TWIN_ACTION_ID_PATTERN,TWIN_ACTION_ASSET_ID_PATTERN,TWIN_ACTION_TEXT_PATTERN}=require(join(temp,'shared/twin-actions.js'));
+ // The shared parser's declarative limits also constrain Java's generated schema.
+ const constrain=(entry,limits)=>{if(entry.anyOf)entry.anyOf.forEach(value=>constrain(value,limits));else Object.assign(entry,limits);};
+ constrain(definitions.CanvasNodeInteraction.properties.clickActions,{maxItems:TWIN_ACTION_LIMITS.maximumActions});
+ constrain(definitions.StandaloneSceneInstance.properties.clickActions,{maxItems:TWIN_ACTION_LIMITS.maximumActions});
+ for(const [name,fields] of Object.entries({TwinMessageAction:{title:{minLength:0,maxLength:TWIN_ACTION_LIMITS.maximumTitleLength,pattern:TWIN_ACTION_TEXT_PATTERN},text:{minLength:1,maxLength:TWIN_ACTION_LIMITS.maximumTextLength,pattern:TWIN_ACTION_TEXT_PATTERN}},TwinSelectAssetAction:{assetId:{pattern:TWIN_ACTION_ASSET_ID_PATTERN}},TwinPanelAction:{nodeId:{pattern:TWIN_ACTION_ID_PATTERN}},TwinFocusModelAction:{projectId:{pattern:TWIN_ACTION_ID_PATTERN},instanceId:{pattern:TWIN_ACTION_ID_PATTERN}},TwinSetTextAction:{nodeId:{pattern:TWIN_ACTION_ID_PATTERN},text:{minLength:0,maxLength:TWIN_ACTION_LIMITS.maximumTextLength,pattern:TWIN_ACTION_TEXT_PATTERN}}}))for(const [field,limits] of Object.entries(fields))constrain(definitions[name].properties[field],limits);
+ const legacySettings=Object.fromEntries(Object.keys(definitions.StandaloneSceneSettings.properties).filter(key=>key!=='preventBottomView').map(key=>[key,normalized[key]]));
+ const normalizedSettings=validateStandaloneScenePatch({expectedRevision:0,settings:legacySettings}).settings;
+ for(const [key,value] of Object.entries(normalizedSettings))if(!(key in legacySettings))definitions.StandaloneSceneSettings.properties[key].default=value;
  write('configuration.schema.json',{$schema:'http://json-schema.org/draft-07/schema#',definitions});write('sources.json',fingerprints);
  const builtins=createRequire(import.meta.url)(join(temp,'shared/builtin-models.js')).builtinModels;
  write('builtin-models.json',builtins);

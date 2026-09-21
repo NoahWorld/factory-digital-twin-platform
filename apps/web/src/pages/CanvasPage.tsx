@@ -3,6 +3,7 @@ import { errorMessage, request } from "../api";
 import { ComponentPalette } from "../canvas/ComponentPalette";
 import { ComponentInspector } from "../canvas/ComponentInspector";
 import { CanvasSurface } from "../canvas/CanvasSurface";
+import { isRuntimeNodeVisible } from "../canvas/runtime-projection";
 import { projectAssetsPath, type ProjectAsset, type ProjectAssetListResponse } from "../canvas/assets";
 import type { EmbeddedSceneRuntimeSelection } from "../canvas/EmbeddedSceneNode";
 import { findModelSceneNode, type ModelSceneSnapshot } from "../canvas/model-scene";
@@ -11,7 +12,7 @@ import { TemplateDialog } from "../canvas/TemplateDialog";
 import { getCanvasTemplate, instantiateCanvasTemplate, type CanvasTemplateId } from "../canvas/templates";
 import { ThemeDialog } from "../canvas/ThemeDialog";
 import { applyCanvasThemeToNode, applyCanvasThemeToNodes, canvasThemePresetLabels } from "../canvas/themes";
-import { CANVAS_DRAG_TYPE, componentLabels, createCanvasNode, isAssetDetailNodeType, isBackgroundNodeType, isModel3DNodeType, isScene3DNodeType, type CanvasDocument, type CanvasNode, type CanvasNodeType, type CanvasPatchResponse, type CanvasResponse, type CanvasTheme, type ModelNodeAppearance } from "../canvas/types";
+import { CANVAS_DRAG_TYPE, componentLabels, createCanvasNode, isAssetDetailNodeType, isBackgroundNodeType, isModel3DNodeType, isScene3DNodeType, parseScene3DProps, type CanvasDocument, type CanvasNode, type CanvasNodeType, type CanvasPatchResponse, type CanvasResponse, type CanvasTheme, type ModelNodeAppearance } from "../canvas/types";
 import { DataSourcePanel } from "../DataSourcePanel";
 import { ThemeToggle } from "../theme/ThemeToggle";
 import { deviceVisualStatus, type DeviceVisualStatus } from "../runtime-state";
@@ -19,6 +20,11 @@ import { AssetRuntimeDetailPanel } from "../twin/AssetRuntimeDetailPanel";
 import { AssetRuntimeStatusBanner } from "../twin/AssetRuntimeStatusBanner";
 import { useAssetRuntimeConnections } from "../twin/useAssetRuntimeConnections";
 import type { TwinInteractionEvent } from "../../../../shared/standalone-3d";
+import { parseCanvasNodeInteraction, type TwinAction } from "../../../../shared/twin-actions";
+import { useTwinActions } from "../twin/useTwinActions";
+import { useLinkedTwinScenes } from "../twin/useLinkedTwinScenes";
+import { TwinActionFeedback } from "../twin/TwinActionFeedback";
+import { publishTwinActions, subscribeTwinActions } from "../twin/action-events";
 
 type CanvasPageProps = {
   initialAssetId?: string;
@@ -61,6 +67,64 @@ export function CanvasPage({ initialAssetId, initialTemplateId, mode, projectId 
   const [embeddedProjectAssets, setEmbeddedProjectAssets] = useState<ProjectAsset[]>([]);
   const [embeddedAssetLoadError, setEmbeddedAssetLoadError] = useState<string | null>(null);
   const [embeddedAssetListLoading, setEmbeddedAssetListLoading] = useState(false);
+  const [modelFocusRequest, setModelFocusRequest] = useState<{ projectId: string; instanceId: string; requestId: string } | null>(null);
+  const actionCatalog = useLinkedTwinScenes(projectId, document);
+  const embeddedSceneProjectIds = useMemo(() => [...new Set(document?.nodes.flatMap((node) => {
+    if (!isScene3DNodeType(node.type)) return [];
+    const parsed = parseScene3DProps(node.props);
+    return parsed.ok && parsed.value.sceneProjectId && actionCatalog.scenes.some((scene) => scene.projectId === parsed.value.sceneProjectId)
+      ? [parsed.value.sceneProjectId]
+      : [];
+  }) ?? [])], [actionCatalog.scenes, document?.nodes]);
+  const selectActionAsset = useCallback((assetId: string) => {
+    const asset = projectAssets.find((candidate) => candidate.assetId === assetId);
+    if (!asset) throw new Error(`业务设备 ${assetId} 不存在于当前 2D 项目。`);
+    setEmbeddedSceneSelection(null);
+    setSelectedRuntimeAssetId(asset.id);
+    setRuntimeSelectionMessage(null);
+  }, [projectAssets]);
+  const focusActionModel = useCallback((sceneProjectId: string, instanceId: string) => {
+    setModelFocusRequest({ projectId: sceneProjectId, instanceId, requestId: crypto.randomUUID() });
+  }, []);
+  const actionRuntime = useTwinActions({ canvasDocument: document, assets: projectAssets, scenes: actionCatalog.scenes, contextKey: `${projectId}:${mode}`, onSelectAsset: selectActionAsset, onFocusModel: focusActionModel });
+  const executeActions = useCallback((actions: readonly TwinAction[], source: string, originProjectId = projectId) => {
+    if (mode !== "preview" || !actionRuntime.execute(actions, source)) return;
+    try {
+      const canvasActions = actions.filter((action) => action.type !== "focus-model");
+      if (canvasActions.length) publishTwinActions({ originProjectId, targetProjectId: projectId, actions: canvasActions });
+      const targetProjects = new Set(actions.flatMap((action) => action.type === "focus-model" ? [action.projectId] : []));
+      for (const targetProjectId of targetProjects) {
+        publishTwinActions({ originProjectId, targetProjectId, actions: actions.filter((action) => action.type === "focus-model" && action.projectId === targetProjectId) });
+      }
+    } catch (reason) {
+      console.error("[twin-actions] Failed to publish canvas actions.", { projectId, originProjectId, reason });
+      setRuntimeSelectionMessage(`跨页面联动发送失败：${errorMessage(reason)}`);
+    }
+  }, [actionRuntime.execute, mode, projectId]);
+  const executeNodeActions = useCallback((node: CanvasNode) => executeActions(node.interaction?.clickActions ?? [], `组件 ${node.id}`), [executeActions]);
+  const executeEmbeddedActions = useCallback((selection: EmbeddedSceneRuntimeSelection, actions: TwinAction[]) => {
+    if (selection.linked2dProjectId && selection.linked2dProjectId !== projectId && actions.some((action) => action.type !== "focus-model" && action.type !== "message")) {
+      setRuntimeSelectionMessage(`模型事件属于另一个 2D 项目 ${selection.linked2dProjectId}。请在源 3D 项目中关联当前看板后使用组件联动。`);
+      return;
+    }
+    executeActions(actions, `模型 ${selection.label}`, selection.sceneProjectId);
+  }, [executeActions, projectId]);
+
+  useEffect(() => {
+    if (mode !== "preview") return;
+    return subscribeTwinActions({
+      targetProjectIds: [projectId, ...embeddedSceneProjectIds],
+      allowedOriginProjectIds: [projectId, ...actionCatalog.scenes.map((scene) => scene.projectId)],
+      onActions: (event) => {
+        // A 3D-targeted event projects only its focus into an embedded view. Its 2D effects arrive separately.
+        const actions = event.actions.filter((action) => event.targetProjectId === projectId
+          ? action.type !== "focus-model" || embeddedSceneProjectIds.includes(action.projectId)
+          : action.type === "focus-model" && action.projectId === event.targetProjectId);
+        if (actions.length) actionRuntime.execute(actions, `来自项目 ${event.originProjectId} 的联动`);
+      },
+      onError: (reason) => setRuntimeSelectionMessage(reason.message),
+    });
+  }, [actionCatalog.scenes, actionRuntime.execute, embeddedSceneProjectIds, mode, projectId]);
   const dirtyNodeIdsRef = useRef(new Set<string>());
   const deletedNodeIdsRef = useRef(new Set<string>());
   const initialTemplateAppliedRef = useRef(false);
@@ -89,23 +153,17 @@ export function CanvasPage({ initialAssetId, initialTemplateId, mode, projectId 
   }, [projectId]);
 
   const selectEmbeddedSceneAsset = useCallback((selection: EmbeddedSceneRuntimeSelection | null) => {
+    setModelFocusRequest(null);
     setEmbeddedSceneSelection(selection);
-    if (!selection) {
-      setRuntimeSelectionMessage(null);
-      return;
-    }
-    if (!selection.linked2dProjectId) {
-      setRuntimeSelectionMessage(`设备“${selection.label}”所在的 3D 场景尚未关联 2D 资产项目。`);
-      return;
-    }
-    if (!selection.assetId) {
-      setRuntimeSelectionMessage(`模型“${selection.label}”尚未绑定业务资产，无法读取设备数据。`);
-      return;
-    }
+    if (selection) setSelectedRuntimeAssetId(null);
     setRuntimeSelectionMessage(null);
   }, []);
 
-  const embeddedRuntimeProjectId = embeddedSceneSelection?.linked2dProjectId ?? null;
+  useEffect(() => { setModelFocusRequest(null); }, [mode, projectId]);
+
+  const embeddedRuntimeProjectId = embeddedSceneSelection?.assetId
+    ? embeddedSceneSelection.linked2dProjectId
+    : null;
 
   useEffect(() => {
     let active = true;
@@ -137,11 +195,6 @@ export function CanvasPage({ initialAssetId, initialTemplateId, mode, projectId 
     setModelScenes({});
     setSelectedRuntimeAssetId(null);
     setRuntimeSelectionMessage(null);
-    if (mode !== "preview") {
-      setAssetListLoading(false);
-      return () => { active = false; };
-    }
-
     setAssetListLoading(true);
     void request<ProjectAssetListResponse>(projectAssetsPath(projectId))
       .then((result) => {
@@ -172,10 +225,22 @@ export function CanvasPage({ initialAssetId, initialTemplateId, mode, projectId 
     if (mode !== "preview") return;
     const selectAsset = (event: TwinInteractionEvent) => {
       if (event.type !== "asset-selected" || event.targetProjectId !== projectId) return;
+      if (event.originProjectId !== projectId && !actionCatalog.scenes.some((scene) => scene.projectId === event.originProjectId)) {
+        setRuntimeSelectionMessage(`拒绝来自未关联项目 ${String(event.originProjectId)} 的旧版设备联动。`);
+        return;
+      }
+      if (typeof event.assetId !== "string" || !event.assetId) {
+        setRuntimeSelectionMessage("旧版设备联动缺少有效的业务设备 ID。");
+        return;
+      }
       const asset = projectAssets.find((item) => item.assetId === event.assetId);
-      if (!asset) return;
+      if (!asset) {
+        setRuntimeSelectionMessage(`联动请求中的业务资产 ${event.assetId} 不存在或当前账号无权访问。`);
+        return;
+      }
+      setEmbeddedSceneSelection(null);
       setSelectedRuntimeAssetId(asset.id);
-      setRuntimeSelectionMessage(`已响应 3D 项目发出的资产联动：${event.assetId}`);
+      setRuntimeSelectionMessage(null);
     };
     const handleWindowEvent = (event: Event) => {
       const detail = (event as CustomEvent<unknown>).detail;
@@ -191,12 +256,13 @@ export function CanvasPage({ initialAssetId, initialTemplateId, mode, projectId 
       };
     } catch (reason) {
       console.error("Failed to subscribe to cross-tab twin interactions.", { projectId, reason });
+      setRuntimeSelectionMessage(`旧版跨页面设备联动订阅失败：${errorMessage(reason)}`);
     }
     return () => {
       window.removeEventListener("factory-twin:interaction", handleWindowEvent);
       channel?.close();
     };
-  }, [mode, projectAssets, projectId]);
+  }, [actionCatalog.scenes, mode, projectAssets, projectId]);
 
   const model3DNodeCount = useMemo(
     () => document?.nodes.filter((node) => isModel3DNodeType(node.type)).length ?? 0,
@@ -214,10 +280,10 @@ export function CanvasPage({ initialAssetId, initialTemplateId, mode, projectId 
     ? projectAssets.find((asset) => asset.id === selectedRuntimeAssetId) ?? null
     : null;
   const runtimeAssets = useMemo(() => {
-    if (model3DNodeCount > 0) return mappedRuntimeAssets;
     const selected = selectedRuntimeAssetId
       ? projectAssets.find((asset) => asset.id === selectedRuntimeAssetId)
       : undefined;
+    if (model3DNodeCount > 0) return selected && !mappedRuntimeAssets.some((asset) => asset.id === selected.id) ? [...mappedRuntimeAssets, selected] : mappedRuntimeAssets;
     return selected ? [selected] : [];
   }, [mappedRuntimeAssets, model3DNodeCount, projectAssets, selectedRuntimeAssetId]);
   const runtimeSetupError = useMemo(() => {
@@ -229,17 +295,16 @@ export function CanvasPage({ initialAssetId, initialTemplateId, mode, projectId 
       }
       return null;
     }
+    // Model-only displays do not opt into business-device polling.
+    if (mappedRuntimeAssets.length === 0) return null;
     if (model3DNodeCount !== 1) {
       return `本地纵向测试要求画布中恰好有 1 个 3D 场景组件，当前为 ${model3DNodeCount} 个。`;
     }
-    if (mappedRuntimeAssets.length === 0) {
-      return "没有绑定模型节点的资产，请先在 3D 编辑器中完成设备与模型节点绑定。";
-    }
-    if (mappedRuntimeAssets.length > 50) {
-      return `当前有 ${mappedRuntimeAssets.length} 个模型资产；本地直连轮询上限为 50，请使用服务端批量采集器。`;
+    if (runtimeAssets.length > 50) {
+      return `当前有 ${runtimeAssets.length} 个联动资产；本地直连轮询上限为 50，请使用服务端批量采集器。`;
     }
     return null;
-  }, [assetListLoading, assetLoadError, initialAssetId, mappedRuntimeAssets.length, mode, model3DNodeCount, selectedRuntimeAsset]);
+  }, [assetListLoading, assetLoadError, initialAssetId, mappedRuntimeAssets.length, mode, model3DNodeCount, runtimeAssets.length, selectedRuntimeAsset]);
 
   const runtimeConnections = useAssetRuntimeConnections({
     assets: runtimeAssets,
@@ -269,9 +334,7 @@ export function CanvasPage({ initialAssetId, initialTemplateId, mode, projectId 
       : null;
   }, [embeddedProjectAssets, embeddedSceneSelection?.assetId]);
   const embeddedRuntimeError = useMemo(() => {
-    if (!embeddedSceneSelection) return null;
-    if (!embeddedSceneSelection.linked2dProjectId) return "当前 3D 场景没有关联 2D 资产项目。";
-    if (!embeddedSceneSelection.assetId) return `模型“${embeddedSceneSelection.label}”没有绑定业务资产。`;
+    if (!embeddedSceneSelection?.linked2dProjectId || !embeddedSceneSelection.assetId) return null;
     if (embeddedAssetLoadError) return `资产台账加载失败：${embeddedAssetLoadError}`;
     if (!embeddedAssetListLoading && !selectedEmbeddedAsset) {
       return `业务资产 ${embeddedSceneSelection.assetId} 不存在或当前账号无权访问。`;
@@ -335,7 +398,7 @@ export function CanvasPage({ initialAssetId, initialTemplateId, mode, projectId 
       }
     }
     setSelectedRuntimeAssetId(null);
-    setRuntimeSelectionMessage("所点模型对象及其父节点尚未绑定资产，无法打开设备详情。");
+    setRuntimeSelectionMessage(null);
   }, [mode, modelScenes, projectAssets]);
 
   const handleModelSceneChange = useCallback((
@@ -351,9 +414,10 @@ export function CanvasPage({ initialAssetId, initialTemplateId, mode, projectId 
   }, []);
 
   const updateNode = useCallback((node: CanvasNode) => {
+    if (mode !== "edit" || !canEdit || saving) return;
     setDocument((current) => current ? { ...current, nodes: current.nodes.map((item) => item.id === node.id ? node : item) } : current);
     markNodeDirty(node.id);
-  }, [markNodeDirty]);
+  }, [canEdit, markNodeDirty, mode, saving]);
 
   const createNode = useCallback((type: CanvasNodeType, x: number, y: number) => {
     if (!document) return;
@@ -383,6 +447,14 @@ export function CanvasPage({ initialAssetId, initialTemplateId, mode, projectId 
       return false;
     }
     if (!document || !dirty || saving || !canEdit) return !dirty;
+    for (const node of document.nodes) {
+      if (node.interaction === undefined) continue;
+      const parsed = parseCanvasNodeInteraction(node.interaction);
+      if (!parsed.ok) {
+        setSaveError(`组件 ${node.id} 的交互配置无效：${parsed.message}`);
+        return false;
+      }
+    }
     setSaving(true);
     setSaveError(null);
     const dirtyNodeIds = new Set(dirtyNodeIdsRef.current);
@@ -516,25 +588,34 @@ export function CanvasPage({ initialAssetId, initialTemplateId, mode, projectId 
         <CanvasSurface
           document={document}
           editable={editable}
+          previewMode={mode === "preview"}
+          runtimeControlsEnabled={mode === "preview"}
           embeddedSceneSelection={embeddedSceneSelection}
           modelInteractionEnabled={mode === "preview"}
           onCreateNode={createNode}
           onEmbeddedSceneSelectionChange={selectEmbeddedSceneAsset}
+          onEmbeddedSceneActions={executeEmbeddedActions}
+          onNodeActions={executeNodeActions}
+          modelFocusRequest={modelFocusRequest}
           onModelSceneChange={mode === "preview" ? handleModelSceneChange : undefined}
           onModelSceneNodeSelect={selectModelSceneNode}
           onNodeChange={updateNode}
           onSelectNode={selectCanvasNode}
           runtimeAppearanceOverrides={runtimeAppearanceOverrides}
-          runtimeAsset={selectedEmbeddedAsset}
-          runtimeAssetConnection={embeddedRuntimeConnection}
-          runtimeAssetError={embeddedRuntimeError}
-          runtimeAssetLoading={embeddedAssetListLoading}
+          runtimeAsset={embeddedSceneSelection?.assetId ? selectedEmbeddedAsset : selectedRuntimeAsset}
+          runtimeAssetConnection={embeddedSceneSelection?.assetId ? embeddedRuntimeConnection : selectedRuntimeConnection}
+          runtimeAssetError={embeddedSceneSelection?.assetId ? embeddedRuntimeError : runtimeSetupError}
+          runtimeAssetLoading={embeddedSceneSelection?.assetId ? embeddedAssetListLoading : assetListLoading}
+          runtimeNodeVisibility={actionRuntime.nodeVisibility}
+          runtimeTextOverrides={actionRuntime.textOverrides}
           selectedModelSceneNodePath={selectedModelSceneNodePath}
           selectedNodeId={selectedNodeId}
-        />
+        >
         {mode === "preview" ? (
           <>
-            {!hasComposableRuntime && (model3DNodeCount > 0 || selectedRuntimeAsset || runtimeSetupError) ? (
+            <TwinActionFeedback messages={actionRuntime.messages} error={actionRuntime.error} onDismissMessage={actionRuntime.dismissMessage} onDismissError={actionRuntime.dismissError} />
+            {actionCatalog.error ? <div className="runtime-selection-message" role="alert">{actionCatalog.error}</div> : null}
+            {!hasComposableRuntime && (runtimeAssets.length > 0 || runtimeSetupError) ? (
               <AssetRuntimeStatusBanner
                 connections={runtimeConnections}
                 loading={assetListLoading}
@@ -547,16 +628,17 @@ export function CanvasPage({ initialAssetId, initialTemplateId, mode, projectId 
                 <button aria-label="关闭提示" onClick={() => setRuntimeSelectionMessage(null)} type="button">×</button>
               </div>
             ) : null}
-            {!hasComposableRuntime && selectedRuntimeAsset ? (
+            {!document.nodes.some((node) => isAssetDetailNodeType(node.type) && isRuntimeNodeVisible(node, actionRuntime.nodeVisibility)) && (selectedEmbeddedAsset || selectedRuntimeAsset) ? (
               <AssetRuntimeDetailPanel
-                asset={selectedRuntimeAsset}
-                connection={selectedRuntimeConnection}
-                onClose={() => setSelectedRuntimeAssetId(null)}
+                asset={(selectedEmbeddedAsset || selectedRuntimeAsset)!}
+                connection={selectedEmbeddedAsset ? embeddedRuntimeConnection : selectedRuntimeConnection}
+                onClose={() => { setSelectedRuntimeAssetId(null); setEmbeddedSceneSelection(null); }}
               />
             ) : null}
           </>
         ) : null}
-        {mode === "edit" ? <ComponentInspector editable={editable} node={selectedNode} onModelEditorOpen={(nodeId) => void openModelEditor(nodeId)} onNodeChange={updateNode} onValidationChange={setConfigurationError} projectId={projectId} /> : null}
+        </CanvasSurface>
+        {mode === "edit" ? <ComponentInspector actionAssets={projectAssets} actionScenes={actionCatalog.scenes} actionLoading={actionCatalog.loading || assetListLoading} actionError={actionCatalog.error ?? assetLoadError} canvasDocument={document} editable={editable} node={selectedNode} onModelEditorOpen={(nodeId) => void openModelEditor(nodeId)} onNodeChange={updateNode} onValidationChange={setConfigurationError} projectId={projectId} /> : null}
       </div>
       {showDataSources ? (
         <DataSourcePanel

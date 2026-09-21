@@ -37,6 +37,8 @@ try {
   console.log("Test page ready");
   await page.evaluate(async () => {
     const { createSceneRuntime } = await import('/src/scene/scene-runtime.ts');
+    const { captureCoverSurface } = await import('/src/covers/render-surfaces.ts');
+    window.captureCoverSurface = captureCoverSurface;
     const { createCanvasNode, parseModel3DProps } = await import('/src/canvas/types.ts');
     const settings = parseModel3DProps(createCanvasNode('model-3d', 0, 0, 1).props).value;
     settings.autoRotate = false; settings.cameraView = 'front'; settings.presentation.lighting = 'standard';
@@ -44,11 +46,30 @@ try {
     window.input = { settings, instances: [instance('a')], appearanceOverrides: {}, selectedPath: null, selectedInstanceId: null, controlsEnabled: true, instanceTransformMode: null };
     window.instance = instance;
     window.runtime = createSceneRuntime({ container: document.querySelector('#scene'), projectId: 'test', canvasNodeId: 'fixture', initial: window.input, onStatus: (status) => { window.statusResult = status; }, onSnapshot: (snapshot) => { window.snapshot = snapshot; } });
+    try { captureCoverSurface(document.querySelector('canvas')); window.loadingCaptureError = null; }
+    catch (error) { window.loadingCaptureError = error.message; }
     await window.runtime.update(window.input);
     window.firstCanvas = document.querySelector('canvas');
   });
   console.log('Runtime status', await page.evaluate(() => window.statusResult));
   assert.equal(await page.evaluate(() => window.statusResult.status), 'ready');
+  assert.match(await page.evaluate(() => window.loadingCaptureError), /尚未就绪/);
+  const capturedFrame = await page.evaluate(async () => {
+    const canvas = document.querySelector('canvas');
+    const imageUrl = window.captureCoverSurface(canvas);
+    const duplicateUrl = window.captureCoverSurface(canvas);
+    const image = new Image(); image.src = imageUrl; await image.decode();
+    const readable = document.createElement('canvas'); readable.width = image.width; readable.height = image.height;
+    const context = readable.getContext('2d'); context.drawImage(image, 0, 0);
+    const pixels = context.getImageData(0, 0, image.width, image.height).data;
+    const colors = new Set();
+    for (let index = 0; index < pixels.length; index += 4) colors.add(`${pixels[index]},${pixels[index + 1]},${pixels[index + 2]},${pixels[index + 3]}`);
+    return { width: image.width, height: image.height, colors: colors.size, identicalPose: imageUrl === duplicateUrl, preserveDrawingBuffer: canvas.getContext('webgl2').getContextAttributes().preserveDrawingBuffer };
+  });
+  assert.ok(capturedFrame.width > 0 && capturedFrame.height > 0);
+  assert.ok(capturedFrame.colors > 10, `Capture must contain rendered geometry, not a cleared buffer: ${JSON.stringify(capturedFrame)}`);
+  assert.equal(capturedFrame.identicalPose, true);
+  assert.equal(capturedFrame.preserveDrawingBuffer, false);
   await page.waitForFunction(() => window.runtime.diagnostics()?.drawCalls > 0);
   assert.equal(await page.evaluate(() => window.runtime.pickSceneTarget(400, 300)?.instanceId), 'a');
   await page.mouse.move(400, 300); await page.mouse.wheel(0, -150);
@@ -64,6 +85,10 @@ try {
   assert.deepEqual(await page.evaluate(() => window.runtime.diagnostics().cameraPosition), pose);
   await page.evaluate(async () => { await window.runtime.update({ ...window.input, instances: [window.instance('bad', 'broken')] }); });
   assert.equal(await page.evaluate(() => window.statusResult.status), 'error');
+  assert.match(await page.evaluate(() => {
+    try { window.captureCoverSurface(document.querySelector('canvas')); return ''; }
+    catch (error) { return error.message; }
+  }), /尚未就绪/);
   await page.evaluate(async () => { await window.runtime.update(window.input); });
   console.log('Runtime status', await page.evaluate(() => window.statusResult));
   assert.equal(await page.evaluate(() => window.statusResult.status), 'ready');
@@ -121,6 +146,8 @@ try {
   assert.ok(decoderChecks.every((item) => item.mime === 'application/wasm' && item.valid));
   await page.evaluate(async () => { await window.runtime.update({ ...window.input, instances: [], selectedPath: null, selectedInstanceId: null }); });
   assert.equal(await page.evaluate(() => window.statusResult.status), 'empty');
+  assert.match(await page.evaluate(() => window.captureCoverSurface(document.querySelector('canvas'))), /^data:image\/png;base64,/);
+  assert.equal(await page.evaluate(() => window.statusResult.status), 'empty', 'Capturing an empty scene must not mark it ready');
   await page.evaluate(async () => { await window.runtime.update(window.input); });
   assert.equal(await page.evaluate(() => window.runtime.enterWalk(window.walkConfig)), true);
   await page.keyboard.down('w');
@@ -128,6 +155,10 @@ try {
   await page.keyboard.up('w');
   await page.evaluate(() => window.dispatchEvent(new Event('blur')));
   assert.equal(await page.locator('canvas').count(), 0);
+  assert.match(await page.evaluate(() => {
+    try { window.captureCoverSurface(window.firstCanvas); return ''; }
+    catch (error) { return error.message; }
+  }), /未注册或已释放/);
   assert.deepEqual(errors, []);
-  console.log('Browser scene runtime tests passed: real WebGL, shared fetch/canvas, BVH click, camera preservation on add/resize/settings, visible failure/recovery, local decoder WASM and disposal.');
+  console.log('Browser scene runtime tests passed: real WebGL, same-frame cover pixels without preserved buffers, empty/failure/disposed captures, shared fetch/canvas, BVH click, camera preservation on add/resize/settings, visible failure/recovery, local decoder WASM and disposal.');
 } finally { await browser?.close(); await server.close(); await rm(cacheDir, { recursive: true, force: true }); }

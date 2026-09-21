@@ -394,6 +394,7 @@ const model = (box: Box, existingModel: CanvasNode | undefined) => {
     keyLightIntensity: 2.4,
     cameraFov: 42,
     cameraView: "isometric",
+    preventBottomView: true,
     modelScale: 1,
     autoRotate: true,
     rotationSpeed: 0.28,

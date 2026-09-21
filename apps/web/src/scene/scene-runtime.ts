@@ -1,5 +1,9 @@
 import * as THREE from "three";
 import { sceneCameraClipping } from "./camera-clipping";
+import { applyOrbitViewLimits } from "./orbit-view-limits";
+import { focusSceneObject } from "./focus-model";
+import { EMPTY_SCENE_GRID_SIZE, fitEmptySceneCamera } from "./empty-scene-view";
+import { registerCoverSurface } from "../covers/render-surfaces";
 import type { Material, Object3D } from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { TransformControls } from "three/examples/jsm/controls/TransformControls.js";
@@ -32,6 +36,7 @@ export type SceneInput = {
   selectionStyle: SceneSelectionStyle;
   controlsEnabled: boolean;
   instanceTransformMode: InstanceTransformMode | null;
+  modelFocusRequest?: { instanceId: string; requestId: string } | null;
 };
 export type SceneDiagnostics = {
   activeLoads: number; queuedLoads: number; resources: number; instanceCount: number;
@@ -80,7 +85,7 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
     warmLight.position.set(-6, 3, 0);
     scene.add(environmentLight, keyLight, keyLight.target, rimLight, warmLight);
 
-    const grid = new THREE.GridHelper(10, 20, 0x2a7590, 0x163d50);
+    const grid = new THREE.GridHelper(EMPTY_SCENE_GRID_SIZE, 20, 0x2a7590, 0x163d50);
     constructionCleanup.push(() => { grid.geometry.dispose(); (Array.isArray(grid.material) ? grid.material : [grid.material]).forEach((m) => m.dispose()); });
     scene.add(grid);
     const rotationPivot = new THREE.Group();
@@ -126,8 +131,12 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
     let revision = 0;
     let appliedGraph = "";
     let appliedInput: SceneInput | null = null;
+    let appliedFocusRequestId: string | null = null;
     let contextLost = false;
+    let status: SceneStatus = { status: "loading" };
+    const notifyStatus = (next: SceneStatus) => { status = next; onStatus(next); };
     let cameraInitialized = false;
+    let emptyCameraInitialized = false;
     let previousView = initial.settings.cameraView;
     const sceneCenter = new THREE.Vector3();
     const clippingCenter = new THREE.Vector3();
@@ -149,6 +158,7 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
     let visible = true;
     let lastFrame = performance.now();
     let disposed = false;
+    let unregisterCoverSurface: (() => void) | null = null;
     let resizeObserver: ResizeObserver | null = null;
     let intersectionObserver: IntersectionObserver | null = null;
 
@@ -222,7 +232,7 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
         instanceCount: records.length,
         uniqueAssetCount: new Set(records.map((instance) => instance.assetId)).size,
       });
-      onStatus({ status: "error", message: "3D 图形上下文已丢失，请减少模型复杂度后重新打开场景。" });
+      notifyStatus({ status: "error", message: "3D 图形上下文已丢失，请减少模型复杂度后重新打开场景。" });
     };
 
     const clearSelection = () => {
@@ -272,7 +282,7 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
         instanceId: transformRecord?.id ?? null,
         reason,
       });
-      onStatus({ status: "error", message: `模型拖拽失败：${reason instanceof Error ? reason.message : String(reason)}` });
+      notifyStatus({ status: "error", message: `模型拖拽失败：${reason instanceof Error ? reason.message : String(reason)}` });
     };
 
     transformControls.addEventListener("objectChange", () => {
@@ -306,6 +316,8 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
     const disposeRuntime = () => {
       if (disposed) return;
       disposed = true;
+      unregisterCoverSurface?.();
+      unregisterCoverSurface = null;
       exitWalk();
       renderer.setAnimationLoop(null);
       resizeObserver?.disconnect();
@@ -332,7 +344,12 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
     renderer.domElement.addEventListener("webglcontextlost", handleContextLost);
 
     const fitCameraToScene = () => {
-      if (modelRadius === null) return;
+      if (modelRadius === null) {
+        fitEmptySceneCamera(camera, controls.target, desired.settings.cameraView);
+        controls.update();
+        emptyCameraInitialized = true;
+        return;
+      }
       const settings = desired.settings;
       if (!settings) throw new Error("当前批量 3D 场景配置不可用");
       const verticalHalfFov = THREE.MathUtils.degToRad(camera.fov / 2);
@@ -342,11 +359,11 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
       const direction = settings.cameraView === "front"
         ? new THREE.Vector3(0, 0.12, 1)
         : settings.cameraView === "top"
-          ? new THREE.Vector3(0.001, 1, 0)
+          ? new THREE.Vector3(0, 1, 0.001)
           : settings.cameraView === "isometric-left"
             ? new THREE.Vector3(-1.35, 0.78, 1.78)
             : new THREE.Vector3(1.35, 0.9, 1.65);
-      camera.up.set(0, settings.cameraView === "top" ? 0 : 1, settings.cameraView === "top" ? -1 : 0);
+      camera.up.set(0, 1, 0);
       camera.position.copy(direction.normalize().multiplyScalar(distance).add(sceneCenter));
       controls.target.copy(sceneCenter);
       cameraInitialized = true;
@@ -369,7 +386,11 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
       }
       if (!hasVisibleGeometry) {
         rotationPivot.rotation.y = priorRotation;
+        if (modelRadius !== null) emptyCameraInitialized = false;
+        if (records.length === 0) cameraInitialized = false;
         modelRadius = null;
+        grid.position.set(0, 0, 0);
+        grid.scale.setScalar(1);
         return;
       }
       const center = box.getCenter(new THREE.Vector3());
@@ -417,6 +438,8 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
       rimLight.visible = studio;
       warmLight.visible = studio;
       grid.visible = settings.showGrid;
+      applyOrbitViewLimits(controls, settings.preventBottomView);
+      if (navigation.mode === "orbit") controls.update();
       camera.fov = settings.cameraFov;
       camera.zoom = settings.modelScale;
       camera.updateProjectionMatrix();
@@ -640,6 +663,31 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
     resizeObserver = new ResizeObserver(resize);
     resizeObserver.observe(container);
     resize();
+    const renderSceneFrame = () => {
+      if (!walk) {
+        camera.updateMatrixWorld();
+        const centerDepth = -clippingCenter.copy(modelRadius === null ? grid.position : sceneCenter).applyMatrix4(camera.matrixWorldInverse).z;
+        const clipping = sceneCameraClipping(centerDepth, modelRadius ?? EMPTY_SCENE_GRID_SIZE / Math.sqrt(2));
+        if (camera.near !== clipping.near || camera.far !== clipping.far) {
+          camera.near = clipping.near;
+          camera.far = clipping.far;
+          camera.updateProjectionMatrix();
+        }
+      }
+      renderer.render(scene, camera);
+    };
+    unregisterCoverSurface = registerCoverSurface(renderer.domElement, () => {
+      if (disposed || contextLost || renderer.getContext().isContextLost()) {
+        throw new Error(`3D 场景已释放或 WebGL 上下文丢失，不能生成封面（项目 ${projectId}，节点 ${canvasNodeId}）`);
+      }
+      if ((status.status !== "ready" && status.status !== "empty") || appliedInput !== desired) {
+        throw new Error(`3D 场景尚未就绪，不能生成封面（项目 ${projectId}，节点 ${canvasNodeId}，状态 ${status.status}）`);
+      }
+      // Do not advance animation, re-fit the camera or rely on a retained drawing buffer.
+      renderSceneFrame();
+      if (renderer.getContext().isContextLost()) throw new Error("3D 场景截图时 WebGL 上下文丢失");
+      return renderer.domElement.toDataURL("image/png");
+    });
     const animate = (now: number) => {
       const frameMs = now - lastFrame;
       const deltaSeconds = Math.min(frameMs / 1000, 0.1);
@@ -658,17 +706,7 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
         try { walk.controls.update(Math.max(0, frameMs / 1000)); }
         catch (reason) { navigationError(reason); }
       } else controls.update();
-      if (!walk && modelRadius !== null) {
-        camera.updateMatrixWorld();
-        const centerDepth = -clippingCenter.copy(sceneCenter).applyMatrix4(camera.matrixWorldInverse).z;
-        const clipping = sceneCameraClipping(centerDepth, modelRadius);
-        if (camera.near !== clipping.near || camera.far !== clipping.far) {
-          camera.near = clipping.near;
-          camera.far = clipping.far;
-          camera.updateProjectionMatrix();
-        }
-      }
-      renderer.render(scene, camera);
+      renderSceneFrame();
       frameCount++;
       frameTotal += frameMs;
       if (now - sampleAt >= 2000) {
@@ -714,8 +752,9 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
         const graphChanged = graph !== appliedGraph;
         if (graphChanged) {
           detachTransformControl();
-          onStatus({ status: "loading" });
+          notifyStatus({ status: "loading" });
           if (!await manager.reconcile(next.instances) || disposed || version !== revision) return;
+          if (contextLost || renderer.getContext().isContextLost()) throw new Error("模型加载期间 WebGL 上下文已丢失，请重新打开场景");
           records = manager.records;
           records.forEach(record => record.model.traverse(object => {
             if (object instanceof THREE.Mesh) {
@@ -755,14 +794,21 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
           applySelection(next.selectedPath, next.selectedInstanceId, next.selectionStyle);
         }
         syncTransformControl(next);
-        if (!cameraInitialized) fitCameraToScene();
+        if (modelRadius === null ? !emptyCameraInitialized : !cameraInitialized) fitCameraToScene();
+        if (next.modelFocusRequest && next.modelFocusRequest.requestId !== appliedFocusRequestId) {
+          const record = records.find((candidate) => candidate.id === next.modelFocusRequest!.instanceId);
+          if (!record?.wrapper.visible) throw new Error(`聚焦目标模型不存在或已隐藏：${next.modelFocusRequest.instanceId}`);
+          if (walk || navigation.mode === "loading") exitWalk("已切换到模型聚焦视角");
+          focusSceneObject(camera, controls, record.wrapper, next.settings.preventBottomView);
+          appliedFocusRequestId = next.modelFocusRequest.requestId;
+        }
         appliedInput = next;
-        onStatus({ status: records.length ? "ready" : "empty" });
+        notifyStatus({ status: records.length ? "ready" : "empty" });
       } catch (reason) {
         if (disposed || version !== revision) return;
         appliedInput = null;
         console.error("Failed to update 3D scene runtime.", { projectId, canvasNodeId, revision: version, graph, reason });
-        onStatus({ status: "error", message: `3D 场景更新失败：${reason instanceof Error ? reason.message : String(reason)}` });
+        notifyStatus({ status: "error", message: `3D 场景更新失败：${reason instanceof Error ? reason.message : String(reason)}` });
       }
     };
     return { update, pickSceneTarget, enterWalk, exitWalk, navigationStatus: () => navigation, dispose: disposeRuntime, diagnostics: () => lastDiagnostics };

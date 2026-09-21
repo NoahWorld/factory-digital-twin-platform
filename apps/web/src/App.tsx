@@ -14,6 +14,9 @@ import { ResourcesPage } from "./pages/ResourcesPage";
 import { TemplatesPage } from "./pages/TemplatesPage";
 import { PRODUCT_NAME } from "./product-config";
 import { ThemeToggle } from "./theme/ThemeToggle";
+import type { CoverProject } from "./covers/ProjectCoverQueue";
+
+const ProjectCoverQueue = lazy(() => import("./covers/ProjectCoverQueue"));
 
 const Model3DEditorPage = lazy(() => import("./pages/Model3DEditorPage"));
 const IndustrialLandingPage = lazy(() => import("./pages/IndustrialLandingPage"));
@@ -38,7 +41,7 @@ type CurrentUser = {
   capabilities: Capability;
 };
 
-type Project = {
+type Project = CoverProject & {
   id: string;
   name: string;
   status: "draft" | "published" | "archived";
@@ -892,6 +895,11 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
           </div>
         ) : null}
 
+        {!loadingProjects && !projectError ? <Suspense fallback={null}>
+          <ProjectCoverQueue projects={projects} isAdmin={isPlatformAdmin}
+            onComplete={(updated) => setProjects((current) => current.map((project) => project.id === updated.id ? { ...project, ...updated } : project))} />
+        </Suspense> : null}
+
         {projectError ? (
           <section
             aria-labelledby={`project-type-tab-${projectTypeFilter}`}
@@ -989,7 +997,7 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
                     ) : (
                       <span className="project-card-cover-empty">
                         <i aria-hidden="true">{project.projectType === "3d" ? "⬡" : "◇"}</i>
-                        <strong>{project.projectType === "3d" ? "3D 场景封面" : "2D 画布封面"}</strong>
+                        <strong>尚未生成项目截图</strong>
                       </span>
                     )}
                   </a>

@@ -16,13 +16,18 @@ import {
   type StandaloneSceneDocument,
   type StandaloneSceneInstance,
   type StandaloneSceneSettings,
-  type TwinInteractionEvent,
 } from "../../../../shared/standalone-3d";
+import type { TwinAction } from "../../../../shared/twin-actions";
 import { errorMessage, request } from "../api";
 import { findBuiltinModel, latestBuiltinModel } from "../../../../shared/builtin-models";
 import { workshopInstances, workshopSettings } from "../../../../shared/workshop-layout";
 import { projectAssetsPath, type ProjectAsset, type ProjectAssetListResponse } from "../canvas/assets";
 import { Model3DNode } from "../canvas/Model3DNode";
+import { CanvasSurface } from "../canvas/CanvasSurface";
+import { canvasRoutePath, projectCanvasPath } from "../canvas/routes";
+import { ModelAssetThumbnail } from "../canvas/ModelAssetThumbnail";
+import { ModelAssetPreviewDialog } from "../canvas/ModelAssetPreviewDialog";
+import { standaloneRendererNode } from "../canvas/standalone-renderer-node";
 import { ThemeToggle } from "../theme/ThemeToggle";
 import {
   formatFileSize,
@@ -32,16 +37,20 @@ import {
   type ModelAssetUploadResponse,
 } from "../canvas/model-assets";
 import {
-  createCanvasNode,
-  type CanvasNode,
-  type Model3DProps,
-  type ModelAssetInstance,
   type ModelNodeTransform,
   type Vector3Tuple,
+  type CanvasDocument,
+  type CanvasNode,
+  type CanvasResponse,
 } from "../canvas/types";
 import type { InstanceTransformMode } from "../scene/instance-transform";
 import { AssetRuntimeStatusBanner } from "../twin/AssetRuntimeStatusBanner";
-import { TwinDashboardPanel } from "../twin/TwinDashboardPanel";
+import { AssetRuntimeDetailPanel } from "../twin/AssetRuntimeDetailPanel";
+import { TwinActionEditor } from "../twin/TwinActionEditor";
+import { TwinActionFeedback } from "../twin/TwinActionFeedback";
+import { useTwinActions } from "../twin/useTwinActions";
+import { useLinkedTwinScenes } from "../twin/useLinkedTwinScenes";
+import { publishTwinActions, subscribeTwinActions } from "../twin/action-events";
 import { useAssetRuntimeConnections } from "../twin/useAssetRuntimeConnections";
 
 type ProjectSummary = {
@@ -90,29 +99,6 @@ const modelName = (asset: ModelAsset): string => {
 
 const modelSourceText = (source: ModelAsset["source"]): string =>
   source === "system" ? "系统模型" : source === "scene-background" ? "背景模型" : "上传模型";
-
-const publishTwinInteraction = (projectId: string, targetProjectId: string, assetId: string) => {
-  const event: TwinInteractionEvent = {
-    assetId,
-    correlationId: crypto.randomUUID(),
-    originProjectId: projectId,
-    targetProjectId,
-    timestamp: new Date().toISOString(),
-    type: "asset-selected",
-  };
-  window.dispatchEvent(new CustomEvent("factory-twin:interaction", { detail: event }));
-  try {
-    const channel = new BroadcastChannel("factory-twin:interaction");
-    channel.postMessage(event);
-    channel.close();
-  } catch (reason) {
-    console.error("Failed to broadcast the 3D asset selection to another tab.", {
-      assetId,
-      projectId,
-      reason,
-    });
-  }
-};
 
 const sameJson = (left: unknown, right: unknown): boolean =>
   JSON.stringify(left) === JSON.stringify(right);
@@ -164,24 +150,23 @@ const sceneBudgetViolation = (
 };
 
 export default function Standalone3DProjectPage({ mode, projectId }: Standalone3DProjectPageProps) {
-  const baseNodeRef = useRef<CanvasNode | null>(null);
-  if (baseNodeRef.current === null) {
-    baseNodeRef.current = {
-      ...createCanvasNode("model-3d", 0, 0, 0),
-      id: "standalone-3d-scene-root",
-    };
-  }
-
   const [projectName, setProjectName] = useState("");
   const [savedScene, setSavedScene] = useState<StandaloneSceneDocument | null>(null);
   const [draftScene, setDraftScene] = useState<StandaloneSceneDocument | null>(null);
   const [editable, setEditable] = useState(false);
   const [limits, setLimits] = useState<typeof STANDALONE_3D_LIMITS>(STANDALONE_3D_LIMITS);
   const [models, setModels] = useState<ModelAsset[]>([]);
+  const [previewModel, setPreviewModel] = useState<ModelAsset | null>(null);
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [linkedAssets, setLinkedAssets] = useState<ProjectAsset[]>([]);
   const [linkedAssetsLoading, setLinkedAssetsLoading] = useState(false);
   const [linkedAssetLoadError, setLinkedAssetLoadError] = useState<string | null>(null);
+  const [linkedCanvas, setLinkedCanvas] = useState<CanvasDocument | null>(null);
+  const [linkedCanvasLoading, setLinkedCanvasLoading] = useState(false);
+  const [linkedCanvasError, setLinkedCanvasError] = useState<string | null>(null);
+  const [selectedRuntimeAssetId, setSelectedRuntimeAssetId] = useState<string | null>(null);
+  const [modelFocusRequest, setModelFocusRequest] = useState<{ instanceId: string; requestId: string } | null>(null);
+  const [interactionTransportError, setInteractionTransportError] = useState<string | null>(null);
   const [selectedInstanceId, setSelectedInstanceId] = useState<string | null>(null);
   const [libraryView, setLibraryView] = useState<LibraryView>("layers");
   const [inspectorView, setInspectorView] = useState<InspectorView>("scene");
@@ -201,6 +186,7 @@ export default function Standalone3DProjectPage({ mode, projectId }: Standalone3
   useEffect(() => {
     let active = true;
     setLoading(true);
+    setPreviewModel(null);
     setError(null);
     void Promise.all([
       request<SceneResponse>(standaloneScenePath(projectId)),
@@ -249,7 +235,28 @@ export default function Standalone3DProjectPage({ mode, projectId }: Standalone3
   }, [draftScene?.linked2dProjectId]);
 
   useEffect(() => {
+    let active = true;
+    setLinkedCanvas(null);
+    setLinkedCanvasError(null);
+    setSelectedRuntimeAssetId(null);
+    const linkedProjectId = draftScene?.linked2dProjectId;
+    setLinkedCanvasLoading(Boolean(linkedProjectId));
+    if (!linkedProjectId) return () => { active = false; };
+    void request<CanvasResponse>(projectCanvasPath(linkedProjectId)).then((result) => {
+      if (active) setLinkedCanvas(result.canvas);
+    }).catch((reason) => {
+      console.error("Failed to load linked 2D overlay", { projectId, linkedProjectId, reason });
+      if (active) setLinkedCanvasError(`关联 2D 画布加载失败：${errorMessage(reason)}`);
+    }).finally(() => { if (active) setLinkedCanvasLoading(false); });
+    return () => { active = false; };
+  }, [projectId, draftScene?.linked2dProjectId, mode]);
+
+  useEffect(() => {
     setSelectedInstanceId(null);
+    setSelectedRuntimeAssetId(null);
+    setModelFocusRequest(null);
+    setInteractionTransportError(null);
+    setPreviewModel(null);
     setInspectorView("scene");
     setNotice(null);
   }, [mode]);
@@ -266,7 +273,7 @@ export default function Standalone3DProjectPage({ mode, projectId }: Standalone3
   }, [libraryView, mode, selectedInstanceId]);
 
   useEffect(() => {
-    if (mode !== "edit") return;
+    if (mode !== "edit" || previewModel) return;
     const handleShortcut = (event: KeyboardEvent) => {
       if (event.altKey || event.ctrlKey || event.metaKey) return;
       const target = event.target;
@@ -276,7 +283,7 @@ export default function Standalone3DProjectPage({ mode, projectId }: Standalone3
     };
     window.addEventListener("keydown", handleShortcut);
     return () => window.removeEventListener("keydown", handleShortcut);
-  }, [mode]);
+  }, [mode, previewModel]);
 
   const dirty = savedScene !== null && draftScene !== null && !sameJson(savedScene, draftScene);
   const selectedInstance = draftScene?.instances.find((item) => item.id === selectedInstanceId) ?? null;
@@ -285,25 +292,31 @@ export default function Standalone3DProjectPage({ mode, projectId }: Standalone3
     : null;
   const selectedAnimation = selectedInstance?.animation ?? defaultStandaloneSceneInstanceAnimation();
   const selectedAppearance = selectedInstance?.appearance ?? defaultStandaloneSceneInstanceAppearance();
-  const selectedAsset = selectedInstance?.assetId
-    ? linkedAssets.find((asset) => asset.assetId === selectedInstance.assetId) ?? null
+  const selectedAsset = selectedRuntimeAssetId
+    ? linkedAssets.find((asset) => asset.assetId === selectedRuntimeAssetId) ?? null
     : null;
   const boundRuntimeAssets = useMemo(() => {
     const boundAssetIds = new Set(
       draftScene?.instances.flatMap((instance) => instance.assetId ? [instance.assetId] : []) ?? [],
     );
+    if (selectedRuntimeAssetId) boundAssetIds.add(selectedRuntimeAssetId);
     return linkedAssets.filter((asset) => boundAssetIds.has(asset.assetId));
-  }, [draftScene?.instances, linkedAssets]);
+  }, [draftScene?.instances, linkedAssets, selectedRuntimeAssetId]);
   const runtimeSetupError = useMemo(() => {
     if (mode !== "preview" || linkedAssetsLoading) return null;
-    if (!draftScene?.linked2dProjectId) return "当前 3D 场景尚未关联 2D 项目。";
     if (linkedAssetLoadError) return `资产台账加载失败：${linkedAssetLoadError}`;
-    if (boundRuntimeAssets.length === 0) return "场景模型尚未绑定关联 2D 项目的业务资产。";
+    if (draftScene?.linked2dProjectId) {
+      const availableAssetIds = new Set(linkedAssets.map((asset) => asset.assetId));
+      const missingAssetIds = [...new Set(draftScene.instances.flatMap((instance) => (
+        instance.assetId && !availableAssetIds.has(instance.assetId) ? [instance.assetId] : []
+      )))];
+      if (missingAssetIds.length > 0) return `场景绑定的业务资产不存在或当前账号无权访问：${missingAssetIds.join("、")}。`;
+    }
     if (boundRuntimeAssets.length > 50) {
       return `当前绑定 ${boundRuntimeAssets.length} 台设备；本地直连轮询上限为 50，请使用服务端批量采集器。`;
     }
     return null;
-  }, [boundRuntimeAssets.length, draftScene?.linked2dProjectId, linkedAssetLoadError, linkedAssetsLoading, mode]);
+  }, [boundRuntimeAssets.length, draftScene, linkedAssetLoadError, linkedAssets, linkedAssetsLoading, mode]);
   const runtimeConnections = useAssetRuntimeConnections({
     assets: boundRuntimeAssets,
     blockedReason: runtimeSetupError,
@@ -315,31 +328,62 @@ export default function Standalone3DProjectPage({ mode, projectId }: Standalone3
     [draftScene?.instances, models],
   );
 
-  const rendererNode = useMemo((): CanvasNode | null => {
-    if (!draftScene || !baseNodeRef.current) return null;
-    const baseProps = baseNodeRef.current.props as Model3DProps;
-    const instances: ModelAssetInstance[] = draftScene.instances.map((instance) => ({
-      animation: instance.animation ?? defaultStandaloneSceneInstanceAnimation(),
-      appearance: instance.appearance ?? defaultStandaloneSceneInstanceAppearance(),
-      assetId: instance.modelAssetId,
-      id: instance.id,
-      label: instance.label,
-      transform: instance.transform,
-      visible: instance.visible,
-    }));
-    return {
-      ...baseNodeRef.current,
-      props: {
-        ...baseProps,
-        ...draftScene.settings,
-        autoRotate: draftScene.settings.autoRotate,
-        modelInstances: instances,
-        presentation: { ...baseProps.presentation, lighting: "studio" },
-        showControlPanel: false,
-      } satisfies Model3DProps,
-      resourceRefs: [...new Set(instances.map((instance) => instance.assetId))],
-    };
-  }, [draftScene]);
+  const rendererNode = useMemo(
+    () => draftScene ? standaloneRendererNode(draftScene) : null,
+    [draftScene],
+  );
+
+  const linkedSceneCatalog = useLinkedTwinScenes(draftScene?.linked2dProjectId ?? "", linkedCanvas);
+  const actionScenes = useMemo(() => draftScene ? [
+    { projectId, name: projectName, instances: draftScene.instances },
+    ...linkedSceneCatalog.scenes.filter((scene) => scene.projectId !== projectId),
+  ] : linkedSceneCatalog.scenes, [draftScene, projectId, projectName, linkedSceneCatalog.scenes]);
+  const focusActionModel = useCallback((targetProjectId: string, instanceId: string) => {
+    if (targetProjectId !== projectId) return; // The validated remote target is dispatched through the project-scoped bus.
+    setSelectedInstanceId(instanceId);
+    setModelFocusRequest({ instanceId, requestId: crypto.randomUUID() });
+  }, [projectId]);
+  const selectActionAsset = useCallback((assetId: string) => {
+    setSelectedRuntimeAssetId(assetId);
+    const instance = draftScene?.instances.find((candidate) => candidate.assetId === assetId && candidate.visible);
+    if (instance) setSelectedInstanceId((current) => draftScene?.instances.some((candidate) => candidate.id === current && candidate.assetId === assetId && candidate.visible) ? current : instance.id);
+  }, [draftScene?.instances]);
+  const interactions = useTwinActions({
+    canvasDocument: linkedCanvas, assets: linkedAssets, scenes: actionScenes,
+    contextKey: `${projectId}:${draftScene?.linked2dProjectId ?? ""}:${mode}:${linkedCanvas?.revision ?? ""}:${draftScene?.revision ?? ""}`,
+    onSelectAsset: selectActionAsset, onFocusModel: focusActionModel,
+  });
+  const executeAndPublish = useCallback((actions: readonly TwinAction[], source: string, originProjectId = projectId) => {
+    if (!interactions.execute(actions, source)) return;
+    setInteractionTransportError(null);
+    try {
+      const canvasActions = actions.filter((action) => action.type !== "focus-model");
+      if (canvasActions.length && draftScene?.linked2dProjectId) {
+        publishTwinActions({ actions: canvasActions, originProjectId, targetProjectId: draftScene.linked2dProjectId });
+      }
+      const focusProjects = new Set(actions.flatMap((action) => action.type === "focus-model" ? [action.projectId] : []));
+      for (const targetProjectId of focusProjects) {
+        publishTwinActions({ originProjectId, targetProjectId, actions: actions.filter((action) => action.type === "focus-model" && action.projectId === targetProjectId) });
+      }
+    } catch (reason) {
+      console.error("Failed to synchronize linked project actions", { projectId, originProjectId, source, reason });
+      setInteractionTransportError(`当前页面已执行交互，但跨页面同步失败：${errorMessage(reason)}`);
+    }
+  }, [interactions.execute, draftScene?.linked2dProjectId, projectId]);
+  const overlayNodeActions = useCallback((node: CanvasNode) => {
+    if (node.interaction && draftScene?.linked2dProjectId) executeAndPublish(node.interaction.clickActions, `2D 组件 ${node.id}`, draftScene.linked2dProjectId);
+  }, [draftScene?.linked2dProjectId, executeAndPublish]);
+  useEffect(() => {
+    if (mode !== "preview" || !draftScene?.linked2dProjectId || !linkedCanvas || linkedAssetsLoading) return;
+    return subscribeTwinActions({
+      targetProjectIds: [projectId, draftScene.linked2dProjectId],
+      allowedOriginProjectIds: [projectId, draftScene.linked2dProjectId, ...linkedSceneCatalog.scenes.map((scene) => scene.projectId)],
+      onActions: (event) => {
+        interactions.execute(event.actions, `来自项目 ${event.originProjectId} 的交互`);
+      },
+      onError: (reason) => setInteractionTransportError(`跨页面联动不可用：${errorMessage(reason)}`),
+    });
+  }, [mode, projectId, draftScene?.linked2dProjectId, linkedCanvas, linkedAssetsLoading, linkedSceneCatalog.scenes, interactions.execute]);
 
   const updateSettings = <K extends keyof StandaloneSceneSettings>(
     key: K,
@@ -598,6 +642,7 @@ export default function Standalone3DProjectPage({ mode, projectId }: Standalone3
 
   const selectModelInstance = useCallback((_nodeId: string, instanceId: string | null) => {
     setSelectedInstanceId(instanceId);
+    setNotice(null);
     if (mode === "edit") {
       setLibraryView("layers");
       setInspectorView(instanceId ? "model" : "scene");
@@ -605,28 +650,10 @@ export default function Standalone3DProjectPage({ mode, projectId }: Standalone3
     }
     if (!instanceId) return;
     const instance = draftScene?.instances.find((item) => item.id === instanceId);
-    if (!instance?.assetId || !draftScene?.linked2dProjectId) {
-      setNotice(`模型“${instance?.label ?? instanceId}”（${instanceId}）尚未绑定关联 2D 项目的业务资产。`);
-      return;
-    }
-    publishTwinInteraction(projectId, draftScene.linked2dProjectId, instance.assetId);
-    setNotice(`已在 2D 看板中打开资产 ${instance.assetId}。`);
-  }, [draftScene?.instances, draftScene?.linked2dProjectId, mode, projectId]);
-
-  const selectDashboardAsset = useCallback((asset: ProjectAsset) => {
-    const instance = draftScene?.instances.find(
-      (candidate) => candidate.assetId === asset.assetId && candidate.visible,
-    );
-    if (!instance) {
-      setNotice(`资产 ${asset.assetId} 已绑定，但当前没有可见的 3D 模型实例。`);
-      return;
-    }
-    setSelectedInstanceId(instance.id);
-    if (draftScene?.linked2dProjectId) {
-      publishTwinInteraction(projectId, draftScene.linked2dProjectId, asset.assetId);
-    }
-    setNotice(`已从设备看板选中模型：${instance.label}`);
-  }, [draftScene?.instances, draftScene?.linked2dProjectId, projectId]);
+    if (!instance || instance.renderMode === "background") return;
+    const actions: TwinAction[] = instance.clickActions ?? (instance.assetId && draftScene?.linked2dProjectId ? [{ type: "select-asset", assetId: instance.assetId }] : []);
+    if (actions.length) executeAndPublish(actions, `模型 ${instance.label}`);
+  }, [draftScene?.instances, draftScene?.linked2dProjectId, mode, executeAndPublish]);
 
   if (loading) {
     return <main className="canvas-page-state"><p className="eyebrow">3D workspace</p><h1>正在加载独立 3D 场景…</h1></main>;
@@ -643,6 +670,7 @@ export default function Standalone3DProjectPage({ mode, projectId }: Standalone3
       interactive
       instanceTransformMode={mode === "edit" && editable ? instanceTransformMode : null}
       maximumModelInstances={limits.maximumInstances}
+      modelFocusRequest={mode === "preview" ? modelFocusRequest : null}
       node={rendererNode}
       onModelInstanceSelect={selectModelInstance}
       onModelInstanceTransform={commitInstanceTransform}
@@ -664,24 +692,27 @@ export default function Standalone3DProjectPage({ mode, projectId }: Standalone3
           <ThemeToggle />
           <a className="primary-button compact-button" href={standaloneSceneRoutePath(projectId, "edit")}>编辑场景</a>
         </header>
-        <section className="standalone-3d-preview-stage">{sceneView}</section>
-        <AssetRuntimeStatusBanner
-          connections={runtimeConnections}
-          label="2D / 3D 设备联动"
-          loading={linkedAssetsLoading}
-          setupError={runtimeSetupError}
-        />
-        {notice ? <div className="standalone-3d-toast" role="status">{notice}</div> : null}
-        {draftScene.linked2dProjectId ? (
-          <TwinDashboardPanel
-            assets={boundRuntimeAssets}
-            connections={runtimeConnections}
-            linkedProjectId={draftScene.linked2dProjectId}
-            onSelectAsset={selectDashboardAsset}
-            selectedAsset={selectedAsset}
-            setupError={runtimeSetupError}
-          />
-        ) : null}
+        <section className="standalone-3d-preview-stage" data-canvas-fullscreen-root>
+          {sceneView}
+          {linkedCanvas ? <CanvasSurface
+            document={linkedCanvas} editable={false} presentation="overlay"
+            selectedNodeId={null} selectedModelSceneNodePath={null}
+            onCreateNode={ignoreSceneNodeSelection} onModelSceneNodeSelect={ignoreSceneNodeSelection}
+            onNodeChange={ignoreSceneNodeSelection} onSelectNode={ignoreSceneNodeSelection}
+            onNodeActions={overlayNodeActions}
+            runtimeNodeVisibility={interactions.nodeVisibility} runtimeTextOverrides={interactions.textOverrides}
+            runtimeAsset={selectedAsset} runtimeAssetConnection={selectedAsset ? runtimeConnections[selectedAsset.id] : undefined}
+            runtimeAssetLoading={linkedAssetsLoading} runtimeAssetError={runtimeSetupError}
+          /> : null}
+          {linkedCanvasLoading ? <div className="linked-canvas-status" role="status">正在加载 2D 画布…</div> : null}
+          {linkedCanvasError ? <div className="linked-canvas-status is-error" role="alert">{linkedCanvasError}</div> : null}
+          <AssetRuntimeStatusBanner connections={runtimeConnections} label="2D / 3D 设备联动" loading={linkedAssetsLoading} setupError={runtimeSetupError} />
+          {selectedAsset && !linkedCanvas?.nodes.some((node) => node.type === "asset-detail" && (interactions.nodeVisibility[node.id] ?? !node.interaction?.hiddenInPreview)) ? <AssetRuntimeDetailPanel
+            asset={selectedAsset} connection={runtimeConnections[selectedAsset.id]} onClose={() => setSelectedRuntimeAssetId(null)}
+          /> : null}
+          <TwinActionFeedback messages={interactions.messages} error={interactions.error ?? interactionTransportError}
+            onDismissMessage={interactions.dismissMessage} onDismissError={() => { interactions.dismissError(); setInteractionTransportError(null); }} />
+        </section>
       </main>
     );
   }
@@ -776,12 +807,13 @@ export default function Standalone3DProjectPage({ mode, projectId }: Standalone3
                 <input accept=".glb,.gltf,model/gltf-binary,model/gltf+json" disabled={uploading || !editable} onChange={(event) => void upload(event)} type="file" />
               </label>
             </div>
-            <p className="standalone-panel-copy">同一个资源可以复用多次；渲染器只下载和解析一份。</p>
+            <p className="standalone-panel-copy">点击缩略图查看模型，点击 ＋ 加入场景。</p>
             <div className="standalone-model-list">
               {models.map((asset) => (
                 <article key={asset.id}>
-                  <div><strong>{modelName(asset)}</strong><span>{modelSourceText(asset.source)} · {formatFileSize(asset.byteSize)}</span></div>
-                  <button className="icon-button" disabled={!editable || draftScene.instances.length >= limits.maximumInstances} onClick={() => addModel(asset)} title="加入场景" type="button">＋</button>
+                  <ModelAssetThumbnail asset={asset} name={modelName(asset)} onPreview={() => setPreviewModel(asset)} />
+                  <div><strong title={modelName(asset)}>{modelName(asset)}</strong><span>{modelSourceText(asset.source)} · {formatFileSize(asset.byteSize)}</span></div>
+                  <button aria-label={`加入场景 ${modelName(asset)}`} className="icon-button" disabled={!editable || draftScene.instances.length >= limits.maximumInstances} onClick={() => addModel(asset)} title="加入场景" type="button">＋</button>
                 </article>
               ))}
             </div>
@@ -825,7 +857,6 @@ export default function Standalone3DProjectPage({ mode, projectId }: Standalone3
             <span className="standalone-axis-legend" aria-hidden="true"><i className="is-x" />X <i className="is-y" />Y <i className="is-z" />Z</span>
           </div>
         ) : null}
-        {draftScene.instances.length === 0 ? <div className="standalone-3d-empty"><strong>从左侧加入第一个模型</strong><span>模型会自动排列，随后可在右侧精确调整。</span>{editable && savedScene?.instances.length === 0 ? <button className="primary-button compact-button" style={{ pointerEvents: "auto", marginTop: 12 }} onClick={() => assembleWorkshop()} type="button">搭建示例车间</button> : null}</div> : null}
         {notice ? <div className="standalone-3d-toast" role="status">{notice}</div> : null}
         {error ? <div className="standalone-3d-toast is-error" role="alert">{error}</div> : null}
       </section>
@@ -854,11 +885,11 @@ export default function Standalone3DProjectPage({ mode, projectId }: Standalone3
           <>
             <div className="standalone-inspector-title">
               <div><span>SELECTED MODEL</span><strong>{selectedInstance.label}</strong><small>{selectedModelAsset ? modelName(selectedModelAsset) : selectedInstance.modelAssetId}</small></div>
-              <button className="text-button danger-text" disabled={!editable} onClick={removeSelected} type="button">移除</button>
+              <button className="inspector-action-button is-danger" disabled={!editable} onClick={removeSelected} type="button">移除</button>
             </div>
 
             <section className="standalone-property-group">
-              <header><span>01</span><div><strong>基础信息</strong><small>名称、用途与业务关联</small></div></header>
+              <header><span aria-hidden="true">01</span><div><h3>基础信息</h3><small>名称、用途与业务关联</small></div></header>
               <label><span>图层名称</span><input disabled={!editable} maxLength={80} onChange={(event) => updateInstance(selectedInstance.id, { label: event.target.value })} value={selectedInstance.label} /></label>
               <label><span>模型用途</span><select disabled={!editable} onChange={(event) => updateInstance(selectedInstance.id, { renderMode: event.target.value as StandaloneSceneInstance["renderMode"] })} value={selectedInstance.renderMode}><option value="background">静态背景</option><option value="interactive">交互设备</option></select></label>
               <label><span>绑定业务资产</span><select disabled={!editable || !draftScene.linked2dProjectId || selectedInstance.renderMode === "background"} onChange={(event) => updateInstance(selectedInstance.id, { assetId: event.target.value || null })} value={selectedInstance.assetId ?? ""}><option value="">不绑定</option>{linkedAssets.map((asset) => <option key={asset.id} value={asset.assetId}>{asset.name} · {asset.assetId}</option>)}</select></label>
@@ -866,32 +897,36 @@ export default function Standalone3DProjectPage({ mode, projectId }: Standalone3
             </section>
 
             <section className="standalone-property-group">
-              <header><span>02</span><div><strong>变换</strong><small>移动、旋转与三轴尺寸</small></div></header>
+              <header><span aria-hidden="true">02</span><div><h3>变换</h3><small>移动、旋转与三轴尺寸</small></div></header>
               <div className="standalone-property-actions">
                 <div className="standalone-segmented-control">
-                  <button className={instanceTransformMode === "translate" ? "is-active" : ""} onClick={() => setInstanceTransformMode("translate")} type="button">移动 W</button>
-                  <button className={instanceTransformMode === "scale" ? "is-active" : ""} onClick={() => setInstanceTransformMode("scale")} type="button">缩放 R</button>
+                  <button aria-pressed={instanceTransformMode === "translate"} className={instanceTransformMode === "translate" ? "is-active" : ""} disabled={!editable} onClick={() => setInstanceTransformMode("translate")} type="button">移动 W</button>
+                  <button aria-pressed={instanceTransformMode === "scale"} className={instanceTransformMode === "scale" ? "is-active" : ""} disabled={!editable} onClick={() => setInstanceTransformMode("scale")} type="button">缩放 R</button>
                 </div>
-                <button className="text-button" disabled={!editable} onClick={() => updateInstance(selectedInstance.id, { transform: { position: [0, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1] } })} type="button">重置</button>
+                <button className="inspector-action-button" disabled={!editable} onClick={() => updateInstance(selectedInstance.id, { transform: { position: [0, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1] } })} type="button">重置</button>
               </div>
               {(["position", "rotation", "scale"] as const).map((field) => (
                 <fieldset key={field}>
                   <legend>{field === "position" ? "位置" : field === "rotation" ? "旋转（度）" : "尺寸比例"}</legend>
-                  <div className="standalone-vector-inputs">{axisLabels.map((axis, index) => <label key={axis}><span>{axis}</span><input disabled={!editable} min={field === "scale" ? 0.001 : undefined} onChange={(event) => updateVector(selectedInstance, field, index as 0 | 1 | 2, Number(event.target.value))} step={field === "rotation" ? 1 : 0.1} type="number" value={selectedInstance.transform[field][index]} /></label>)}</div>
+                  <div className="standalone-vector-inputs">{axisLabels.map((axis, index) => <label key={axis}><span>{axis}</span><input aria-label={`${field === "position" ? "位置" : field === "rotation" ? "旋转（度）" : "尺寸比例"} ${axis}`} disabled={!editable} min={field === "scale" ? 0.001 : undefined} onChange={(event) => updateVector(selectedInstance, field, index as 0 | 1 | 2, Number(event.target.value))} step={field === "rotation" ? 1 : 0.1} type="number" value={selectedInstance.transform[field][index]} /></label>)}</div>
                 </fieldset>
               ))}
             </section>
 
             <section className="standalone-property-group">
-              <header><span>03</span><div><strong>外观</strong><small>实例颜色与透明度</small></div></header>
+              <header><span aria-hidden="true">03</span><div><h3>外观</h3><small>实例颜色与透明度</small></div></header>
               <label className="standalone-checkbox"><input checked={selectedAppearance.color !== null} disabled={!editable} onChange={(event) => updateInstance(selectedInstance.id, { appearance: { ...selectedAppearance, color: event.target.checked ? "#3aa8c8" : null } })} type="checkbox" /> 使用自定义颜色</label>
-              <label><span>模型颜色</span><span className="standalone-color-input"><input disabled={!editable || selectedAppearance.color === null} onChange={(event) => updateInstance(selectedInstance.id, { appearance: { ...selectedAppearance, color: event.target.value } })} type="color" value={selectedAppearance.color ?? "#3aa8c8"} /><code>{selectedAppearance.color?.toUpperCase() ?? "原始材质"}</code></span></label>
+              {selectedAppearance.color === null ? (
+                <div className="standalone-readonly-field"><span>模型颜色</span><span className="inspector-readonly-value">原始材质</span></div>
+              ) : (
+                <label><span>模型颜色</span><span className="standalone-color-input"><input disabled={!editable} onChange={(event) => updateInstance(selectedInstance.id, { appearance: { ...selectedAppearance, color: event.target.value } })} type="color" value={selectedAppearance.color} /><code>{selectedAppearance.color.toUpperCase()}</code></span></label>
+              )}
               <label><span>透明度 <output>{Math.round(selectedAppearance.opacity * 100)}%</output></span><input disabled={!editable} max="1" min="0" onChange={(event) => updateInstance(selectedInstance.id, { appearance: { ...selectedAppearance, opacity: Number(event.target.value) } })} step="0.01" type="range" value={selectedAppearance.opacity} /></label>
               <button className="secondary-button compact-button standalone-reset-button" disabled={!editable || (selectedAppearance.color === null && selectedAppearance.opacity === 1)} onClick={() => updateInstance(selectedInstance.id, { appearance: defaultStandaloneSceneInstanceAppearance() })} type="button">恢复原始外观</button>
             </section>
 
             <section className="standalone-property-group">
-              <header><span>04</span><div><strong>动画</strong><small>单模型播放状态与速度</small></div></header>
+              <header><span aria-hidden="true">04</span><div><h3>动画</h3><small>单模型播放状态与速度</small></div></header>
               {(selectedModelAsset?.inspection.animationCount ?? 0) > 0 ? (
                 <>
                   <label className="standalone-checkbox"><input checked={selectedAnimation.enabled} disabled={!editable} onChange={(event) => updateInstanceAnimation(selectedInstance, { enabled: event.target.checked })} type="checkbox" /> 播放该模型动画</label>
@@ -899,6 +934,17 @@ export default function Standalone3DProjectPage({ mode, projectId }: Standalone3
                   {!draftScene.settings.playAnimations ? <p className="standalone-property-note">场景总动画当前已关闭；可在“场景属性 → 动态”中开启。</p> : null}
                 </>
               ) : <p className="standalone-property-note">这个模型资源没有内嵌动画轨道。</p>}
+            </section>
+            <section className="standalone-property-group">
+              <header><span aria-hidden="true">05</span><div><h3>交互事件</h3><small>在预览中点击模型时执行</small></div></header>
+              {selectedInstance.renderMode === "background" ? <p className="standalone-property-note">将“模型用途”设为“交互设备”后可配置点击动作。</p> : null}
+              {selectedInstance.clickActions === undefined && selectedInstance.assetId ? <p className="standalone-property-note">尚未自定义动作，点击时默认显示绑定设备。添加动作后以此处配置为准。</p> : null}
+              <TwinActionEditor actions={selectedInstance.clickActions ?? []} onChange={(clickActions) => updateInstance(selectedInstance.id, { clickActions })}
+                disabled={!editable || selectedInstance.renderMode === "background"} canvasDocument={linkedCanvas} assets={linkedAssets}
+                scenes={[{ projectId, name: projectName, instances: draftScene.instances }]}
+                loading={linkedAssetsLoading || linkedCanvasLoading} error={linkedCanvasError ?? linkedAssetLoadError} />
+              {selectedInstance.clickActions === undefined && selectedInstance.assetId ? <button className="inspector-action-button" disabled={!editable} onClick={() => updateInstance(selectedInstance.id, { clickActions: [] })} type="button">关闭默认点击动作</button> : null}
+              {draftScene.linked2dProjectId ? <a className="secondary-button compact-button" href={canvasRoutePath(draftScene.linked2dProjectId, "canvas")} target="_blank" rel="noreferrer">编辑关联 2D 面板 ↗</a> : null}
             </section>
           </>
         ) : (
@@ -908,19 +954,21 @@ export default function Standalone3DProjectPage({ mode, projectId }: Standalone3
             </div>
 
             <section className="standalone-property-group">
-              <header><span>01</span><div><strong>项目关联</strong><small>连接 2D 数据看板</small></div></header>
+              <header><span aria-hidden="true">01</span><div><h3>项目关联</h3><small>连接 2D 数据看板</small></div></header>
               <label><span>关联 2D 项目</span><select disabled={!editable} onChange={(event) => setDraftScene({ ...draftScene, linked2dProjectId: event.target.value || null })} value={draftScene.linked2dProjectId ?? ""}><option value="">暂不关联</option>{projects.filter((project) => project.projectType === "2d").map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select></label>
+              {draftScene.linked2dProjectId ? <><p className="standalone-property-note">预览会透明叠加该项目已保存的 2D 组件，保留按钮与面板交互；不重复加载其中的 3D 视窗。两边分别保存。</p><a className="secondary-button compact-button" href={canvasRoutePath(draftScene.linked2dProjectId, "canvas")} target="_blank" rel="noreferrer">编辑关联 2D 面板 ↗</a></> : null}
+              {linkedCanvasError ?? linkedAssetLoadError ? <p className="error-text" role="alert">{linkedCanvasError ?? linkedAssetLoadError}</p> : null}
             </section>
 
             <section className="standalone-property-group">
-              <header><span>02</span><div><strong>背景</strong><small>画布底色与地面辅助线</small></div></header>
+              <header><span aria-hidden="true">02</span><div><h3>背景</h3><small>画布底色与地面辅助线</small></div></header>
               <label><span>背景颜色</span><span className="standalone-color-input"><input disabled={!editable} onChange={(event) => updateSettings("backgroundColor", event.target.value)} type="color" value={draftScene.settings.backgroundColor} /><code>{draftScene.settings.backgroundColor.toUpperCase()}</code></span></label>
               <label><span>背景不透明度 <output>{Math.round(draftScene.settings.backgroundOpacity * 100)}%</output></span><input disabled={!editable} max="1" min="0" onChange={(event) => updateSettings("backgroundOpacity", Number(event.target.value))} step="0.01" type="range" value={draftScene.settings.backgroundOpacity} /></label>
               <label className="standalone-checkbox"><input checked={draftScene.settings.showGrid} disabled={!editable} onChange={(event) => updateSettings("showGrid", event.target.checked)} type="checkbox" /> 显示地面网格</label>
             </section>
 
             <section className="standalone-property-group">
-              <header><span>03</span><div><strong>灯光</strong><small>环境补光与主方向光</small></div></header>
+              <header><span aria-hidden="true">03</span><div><h3>灯光</h3><small>环境补光与主方向光</small></div></header>
               <div className="standalone-two-column-fields">
                 <label><span>环境光颜色</span><span className="standalone-color-input"><input disabled={!editable} onChange={(event) => updateSettings("environmentLightColor", event.target.value)} type="color" value={draftScene.settings.environmentLightColor} /><code>{draftScene.settings.environmentLightColor.toUpperCase()}</code></span></label>
                 <label><span>主光颜色</span><span className="standalone-color-input"><input disabled={!editable} onChange={(event) => updateSettings("keyLightColor", event.target.value)} type="color" value={draftScene.settings.keyLightColor} /><code>{draftScene.settings.keyLightColor.toUpperCase()}</code></span></label>
@@ -930,14 +978,16 @@ export default function Standalone3DProjectPage({ mode, projectId }: Standalone3
             </section>
 
             <section className="standalone-property-group">
-              <header><span>04</span><div><strong>相机</strong><small>初始观察方向与视野</small></div></header>
+              <header><span aria-hidden="true">04</span><div><h3>相机</h3><small>初始观察方向与视野</small></div></header>
+              <label className="standalone-checkbox"><input checked={draftScene.settings.preventBottomView} disabled={!editable} onChange={(event) => updateSettings("preventBottomView", event.target.checked)} type="checkbox" /> 禁止从底部查看</label>
+              <p className="standalone-property-note">限制向下旋转，避免看到建筑或模型底部；取消勾选可自由查看。</p>
               <label><span>初始视角</span><select disabled={!editable} onChange={(event) => updateSettings("cameraView", event.target.value as StandaloneSceneSettings["cameraView"])} value={draftScene.settings.cameraView}><option value="isometric">右前等轴</option><option value="isometric-left">左前等轴</option><option value="front">正视</option><option value="top">俯视</option></select></label>
               <label><span>视野角度 <output>{draftScene.settings.cameraFov.toFixed(0)}°</output></span><input disabled={!editable} max="90" min="15" onChange={(event) => updateSettings("cameraFov", Number(event.target.value))} step="1" type="range" value={draftScene.settings.cameraFov} /></label>
               <label><span>初始镜头比例 <output>{draftScene.settings.modelScale.toFixed(2)}×</output></span><input disabled={!editable} max="4" min="0.25" onChange={(event) => updateSettings("modelScale", Number(event.target.value))} step="0.05" type="range" value={draftScene.settings.modelScale} /></label>
             </section>
 
             <section className="standalone-property-group">
-              <header><span>05</span><div><strong>动态</strong><small>整场动画与自动旋转</small></div></header>
+              <header><span aria-hidden="true">05</span><div><h3>动态</h3><small>整场动画与自动旋转</small></div></header>
               <label className="standalone-checkbox"><input checked={draftScene.settings.playAnimations} disabled={!editable} onChange={(event) => updateSettings("playAnimations", event.target.checked)} type="checkbox" /> 播放已启用的模型动画</label>
               <label><span>全局动画速度 <output>{draftScene.settings.animationSpeed.toFixed(2)}×</output></span><input disabled={!editable || !draftScene.settings.playAnimations} max="3" min="0.1" onChange={(event) => updateSettings("animationSpeed", Number(event.target.value))} step="0.05" type="range" value={draftScene.settings.animationSpeed} /></label>
               <label className="standalone-checkbox"><input checked={draftScene.settings.autoRotate} disabled={!editable} onChange={(event) => updateSettings("autoRotate", event.target.checked)} type="checkbox" /> 自动旋转整个场景</label>
@@ -946,6 +996,7 @@ export default function Standalone3DProjectPage({ mode, projectId }: Standalone3
           </>
         )}
       </aside>
+      {previewModel ? <ModelAssetPreviewDialog asset={previewModel} key={previewModel.id} name={modelName(previewModel)} onClose={() => setPreviewModel(null)} projectId={projectId} /> : null}
     </main>
   );
 }

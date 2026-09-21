@@ -1,4 +1,6 @@
 import { findBuiltinModel } from "../../../shared/builtin-models";
+import { parseTwinActions, type TwinAction } from "../../../shared/twin-actions";
+import { validateTwinActionReferences } from "./twin-action-references";
 import {
   STANDALONE_3D_LIMITS,
   type StandaloneSceneDocument,
@@ -32,10 +34,12 @@ type SceneRow = {
   revision: number;
   rotation_speed: number;
   show_grid: number;
+  prevent_bottom_view: number;
   updated_at: string;
 };
 
 type InstanceRow = {
+  click_actions_json: string | null;
   animation_enabled: number;
   animation_speed: number;
   business_asset_key: string | null;
@@ -116,11 +120,12 @@ const validateSettings = (value: unknown): StandaloneSceneSettings => {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new AppError(400, "invalid_scene_settings", "Scene settings must be an object.");
   }
-  const settings = value as JsonObject;
+  // Explicit compatibility migration: only an absent field gets the new default.
+  const settings: JsonObject = { preventBottomView: true, ...value as JsonObject };
   const expected = new Set([
     "animationSpeed", "autoRotate", "backgroundColor", "backgroundOpacity", "cameraFov",
     "cameraView", "environmentLightColor", "environmentLightIntensity", "keyLightColor",
-    "keyLightIntensity", "modelScale", "playAnimations", "rotationSpeed", "showGrid",
+    "keyLightIntensity", "modelScale", "playAnimations", "rotationSpeed", "showGrid", "preventBottomView",
   ]);
   const unknown = Object.keys(settings).find((field) => !expected.has(field));
   if (unknown) {
@@ -148,6 +153,7 @@ const validateSettings = (value: unknown): StandaloneSceneSettings => {
     typeof settings.autoRotate !== "boolean"
     || typeof settings.playAnimations !== "boolean"
     || typeof settings.showGrid !== "boolean"
+    || typeof settings.preventBottomView !== "boolean"
   ) {
     throw new AppError(400, "invalid_scene_boolean", "Scene toggles must be booleans.");
   }
@@ -166,6 +172,7 @@ const validateSettings = (value: unknown): StandaloneSceneSettings => {
     playAnimations: settings.playAnimations,
     rotationSpeed: validateNumber(settings.rotationSpeed, "rotationSpeed", 0, 5),
     showGrid: settings.showGrid,
+    preventBottomView: settings.preventBottomView,
   };
 };
 
@@ -176,7 +183,7 @@ const validateInstance = (value: unknown, index: number): StandaloneSceneInstanc
   const instance = value as JsonObject;
   const expected = new Set([
     "animation", "appearance", "assetId", "id", "label", "modelAssetId",
-    "renderMode", "sortOrder", "transform", "visible",
+    "renderMode", "sortOrder", "transform", "visible", "clickActions",
   ]);
   const unknown = Object.keys(instance).find((field) => !expected.has(field));
   if (unknown) {
@@ -233,7 +240,14 @@ const validateInstance = (value: unknown, index: number): StandaloneSceneInstanc
   if (!Number.isInteger(sortOrder)) {
     throw new AppError(400, "invalid_scene_sort_order", `upsertInstances[${index}].sortOrder must be an integer.`);
   }
+  let clickActions: TwinAction[] | undefined;
+  if (Object.hasOwn(instance, "clickActions")) {
+    const parsed = parseTwinActions(instance.clickActions);
+    if (!parsed.ok) throw new AppError(400, "invalid_scene_click_actions", `Instance ${id}: ${parsed.message}`);
+    clickActions = parsed.value;
+  }
   return {
+    ...(clickActions === undefined ? {} : { clickActions }),
     animation: {
       enabled: animation.enabled,
       speed: validateNumber(animation.speed, `upsertInstances[${index}].animation.speed`, 0.1, 3),
@@ -309,12 +323,12 @@ const sceneColumns = `
   project_id, revision, linked_2d_project_id, background_color, background_opacity,
   environment_light_color, environment_light_intensity, key_light_color,
   key_light_intensity, camera_fov, camera_view, model_scale, auto_rotate,
-  rotation_speed, play_animations, animation_speed, show_grid, updated_at
+  rotation_speed, play_animations, animation_speed, show_grid, prevent_bottom_view, updated_at
 `;
 
 const instanceColumns = `
   id, model_asset_id, business_asset_key, label, render_mode, visible,
-  animation_enabled, animation_speed, color_override, opacity,
+  animation_enabled, animation_speed, color_override, opacity, click_actions_json,
   position_x, position_y, position_z, rotation_x, rotation_y, rotation_z,
   scale_x, scale_y, scale_z, sort_order
 `;
@@ -334,9 +348,21 @@ const presentSettings = (row: SceneRow): StandaloneSceneSettings => ({
   playAnimations: row.play_animations === 1,
   rotationSpeed: row.rotation_speed,
   showGrid: row.show_grid === 1,
+  preventBottomView: row.prevent_bottom_view === 1,
 });
 
+const storedClickActions = (row: InstanceRow): { clickActions?: TwinAction[] } => {
+  if (row.click_actions_json === null) return {};
+  let value: unknown;
+  try { value = JSON.parse(row.click_actions_json); }
+  catch (error) { throw new AppError(500, "invalid_scene_storage", `Instance ${row.id} has invalid click actions JSON: ${String(error)}`); }
+  const parsed = parseTwinActions(value);
+  if (!parsed.ok) throw new AppError(500, "invalid_scene_storage", `Instance ${row.id}: ${parsed.message}`);
+  return { clickActions: parsed.value };
+};
+
 const presentInstance = (row: InstanceRow): StandaloneSceneInstance => ({
+  ...storedClickActions(row),
   animation: {
     enabled: row.animation_enabled === 1,
     speed: row.animation_speed,
@@ -532,6 +558,7 @@ export const applyStandaloneScenePatch = async (
   }
   const settings = patch.settings ?? current.settings;
   await validateModelBudget(env, projectId, nextInstances, settings.playAnimations);
+  await validateTwinActionReferences(env, user.id, { kind: "scene", projectId, linked2dProjectId, instances: nextInstances });
   const now = new Date().toISOString();
   const nextRevision = current.revision + 1;
   const guard = "EXISTS (SELECT 1 FROM standalone_3d_scenes WHERE project_id = ? AND revision = ? AND updated_by_user_id = ? AND updated_at = ?)";
@@ -542,7 +569,7 @@ export const applyStandaloneScenePatch = async (
         background_opacity = ?, environment_light_color = ?, environment_light_intensity = ?,
         key_light_color = ?, key_light_intensity = ?, camera_fov = ?, camera_view = ?,
         model_scale = ?, auto_rotate = ?, rotation_speed = ?, play_animations = ?,
-        animation_speed = ?, show_grid = ?, updated_by_user_id = ?, updated_at = ?
+        animation_speed = ?, show_grid = ?, prevent_bottom_view = ?, updated_by_user_id = ?, updated_at = ?
        WHERE project_id = ? AND revision = ?`,
     ).bind(
       linked2dProjectId,
@@ -560,6 +587,7 @@ export const applyStandaloneScenePatch = async (
       settings.playAnimations ? 1 : 0,
       settings.animationSpeed,
       settings.showGrid ? 1 : 0,
+      settings.preventBottomView ? 1 : 0,
       user.id,
       now,
       projectId,
@@ -571,10 +599,10 @@ export const applyStandaloneScenePatch = async (
     ...patch.upsertInstances.map((instance) => env.DB.prepare(
       `INSERT INTO standalone_3d_instances (
         id, project_id, model_asset_id, business_asset_key, label, render_mode, visible,
-        animation_enabled, animation_speed, color_override, opacity,
+        animation_enabled, animation_speed, color_override, opacity, click_actions_json,
         position_x, position_y, position_z, rotation_x, rotation_y, rotation_z,
         scale_x, scale_y, scale_z, sort_order, updated_at
-      ) SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+      ) SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
         WHERE ${guard}
       ON CONFLICT(project_id, id) DO UPDATE SET
         model_asset_id = excluded.model_asset_id,
@@ -586,6 +614,7 @@ export const applyStandaloneScenePatch = async (
         animation_speed = excluded.animation_speed,
         color_override = excluded.color_override,
         opacity = excluded.opacity,
+        click_actions_json = excluded.click_actions_json,
         position_x = excluded.position_x,
         position_y = excluded.position_y,
         position_z = excluded.position_z,
@@ -609,6 +638,7 @@ export const applyStandaloneScenePatch = async (
       instance.animation?.speed ?? 1,
       instance.appearance?.color ?? null,
       instance.appearance?.opacity ?? 1,
+      instance.clickActions === undefined ? null : JSON.stringify(instance.clickActions),
       ...instance.transform.position,
       ...instance.transform.rotation,
       ...instance.transform.scale,

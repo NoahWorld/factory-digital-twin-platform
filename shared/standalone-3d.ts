@@ -1,3 +1,5 @@
+import type { TwinAction } from "./twin-actions";
+
 export type ProjectType = "2d" | "3d";
 
 export const STANDALONE_3D_LIMITS = {
@@ -28,6 +30,7 @@ export type StandaloneSceneSettings = {
   backgroundOpacity: number;
   cameraFov: number;
   cameraView: "isometric" | "isometric-left" | "front" | "top";
+  preventBottomView: boolean;
   environmentLightColor: string;
   environmentLightIntensity: number;
   keyLightColor: string;
@@ -39,6 +42,7 @@ export type StandaloneSceneSettings = {
 };
 
 export type StandaloneSceneInstance = {
+  clickActions?: TwinAction[];
   animation?: StandaloneSceneInstanceAnimation;
   appearance?: StandaloneSceneInstanceAppearance;
   assetId: string | null;

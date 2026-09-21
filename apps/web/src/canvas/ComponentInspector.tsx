@@ -6,6 +6,8 @@ import { PanelFrameInspector } from "./PanelFrameInspector";
 import { Scene3DInspector } from "./Scene3DInspector";
 import { OrnamentInspector } from "./OrnamentInspector";
 import { isOrnamentNodeType } from "../../../../shared/canvas-ornaments";
+import { TwinActionEditor, type TwinActionScene } from "../twin/TwinActionEditor";
+import type { ProjectAsset } from "./assets";
 import {
   componentLabels,
   isAnimatedDecorationNodeType,
@@ -23,6 +25,7 @@ import {
   parseModel3DProps,
   parseShapeProps,
   type CanvasNode,
+  type CanvasDocument,
   type ChartProps,
   type DecorationNodeType,
   type DecorationProps,
@@ -30,6 +33,11 @@ import {
 } from "./types";
 
 type ComponentInspectorProps = {
+  canvasDocument?: CanvasDocument | null;
+  actionAssets?: readonly ProjectAsset[];
+  actionScenes?: readonly TwinActionScene[];
+  actionLoading?: boolean;
+  actionError?: string | null;
   editable: boolean;
   node: CanvasNode | null;
   onModelEditorOpen?: (nodeId: string) => void;
@@ -503,7 +511,7 @@ function ValidDecorationInspector({
   );
 }
 
-export function ComponentInspector({
+function ComponentConfigurationInspector({
   editable,
   node,
   onModelEditorOpen,
@@ -619,6 +627,37 @@ export function ComponentInspector({
   }
 
   return <ValidChartInspector editable={editable} node={node} onNodeChange={onNodeChange} onValidationChange={onValidationChange} projectId={projectId} props={parsed.value} />;
+}
+
+export function ComponentInspector(props: ComponentInspectorProps) {
+  const { node, editable, onNodeChange } = props;
+  if (!node) return <ComponentConfigurationInspector {...props} />;
+  return (
+    <div className="component-inspector-stack">
+      <ComponentConfigurationInspector {...props} />
+      <section className="inspector-section canvas-interaction-inspector">
+        <div className="inspector-section-title"><strong>联动事件</strong><span>预览态生效</span></div>
+        {node.type === "model-3d" || node.type === "scene-3d" ? (
+          <p className="inspector-help">模型点击事件请在源 3D 项目中配置。3D 透明叠加层仅展示 2D 组件，不会重复加载这里的 3D 内容。</p>
+        ) : <>
+        <label className="inspector-check-row">
+          <input checked={node.interaction?.hiddenInPreview ?? false} disabled={!editable} type="checkbox" onChange={(event) => onNodeChange({ ...node, interaction: { clickActions: node.interaction?.clickActions ?? [], hiddenInPreview: event.target.checked } })} />
+          <span>预览时默认隐藏（由联动事件显示）</span>
+        </label>
+        <TwinActionEditor
+          actions={node.interaction?.clickActions ?? []}
+          assets={props.actionAssets}
+          canvasDocument={props.canvasDocument}
+          disabled={!editable}
+          error={props.actionError}
+          loading={props.actionLoading}
+          onChange={(clickActions) => onNodeChange({ ...node, interaction: { clickActions, hiddenInPreview: node.interaction?.hiddenInPreview ?? false } })}
+          scenes={props.actionScenes}
+        />
+        </>}
+      </section>
+    </div>
+  );
 }
 
 function InvalidComponentInspector({ message, onValidationChange }: { message: string; onValidationChange: (message: string | null) => void }) {

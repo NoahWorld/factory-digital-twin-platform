@@ -175,7 +175,7 @@ const palettes = { light: palette("light"), dark: palette("dark") };
 check("both palettes define the same complete application-chrome token contract", () => {
   assert.deepEqual([...palettes.light.keys()].sort(), [...palettes.dark.keys()].sort());
   const required = [
-    "bg", "surface", "surface-raised", "surface-muted", "input-bg", "hover",
+    "bg", "surface", "surface-raised", "surface-muted", "input-bg", "readonly-bg", "hover",
     "text", "text-strong", "text-muted", "text-subtle", "border", "border-strong",
     "accent", "accent-hover", "on-accent", "accent-soft", "accent-border",
     "danger", "danger-soft", "success", "success-soft", "warning", "warning-soft",
@@ -208,10 +208,16 @@ function assertContrast(theme, foreground, background) {
 check("regular and subdued application text meet WCAG AA contrast in both themes", () => {
   for (const theme of ["light", "dark"]) {
     for (const text of ["text", "text-strong", "text-muted", "text-subtle"]) {
-      for (const surface of ["bg", "surface", "surface-raised", "surface-muted", "input-bg"]) {
+      for (const surface of ["bg", "surface", "surface-raised", "surface-muted", "input-bg", "readonly-bg"]) {
         assertContrast(theme, text, surface);
       }
     }
+  }
+});
+
+check("read-only surfaces are distinct from editable fields in both themes", () => {
+  for (const [theme, values] of Object.entries(palettes)) {
+    assert.notEqual(values.get("--ui-readonly-bg"), values.get("--ui-input-bg"), `${theme} read-only values must not look like editable fields`);
   }
 });
 
@@ -224,6 +230,47 @@ check("primary buttons and semantic status surfaces meet WCAG AA text contrast",
     for (const status of ["accent", "danger", "success", "warning", "info", "purple"]) {
       assertContrast(theme, status, `${status}-soft`);
     }
+  }
+});
+
+const standaloneInspectorSource = (await readFile(join(sourceRoot, "pages/Standalone3DProjectPage.tsx"), "utf8"))
+  .split('<aside className="standalone-3d-inspector">')[1]?.split("</aside>")[0];
+const twinActionEditorSource = await readFile(join(sourceRoot, "twin/TwinActionEditor.tsx"), "utf8");
+
+check("inspector actions remain native buttons with visible button affordance", () => {
+  assert.ok(standaloneInspectorSource, "The standalone model inspector must be present");
+  const actionButtons = [...standaloneInspectorSource.matchAll(/<button\b[\s\S]*?<\/button>/g)].map(([button]) => button);
+  for (const label of ["移除", "重置", "关闭默认点击动作"]) {
+    const button = actionButtons.find((candidate) => new RegExp(`>\\s*${label}\\s*</button>$`).test(candidate));
+    assert.ok(button, `${label} must remain a native button`);
+    assert.match(button, /type="button"/, `${label} must not submit an enclosing form`);
+    assert.match(button, /className="[^"]*\binspector-action-button\b/, `${label} must have a visible action boundary`);
+    assert.doesNotMatch(button, /className="[^"]*\btext-button\b/, `${label} must not be styled as plain explanatory text`);
+    assert.match(button, /disabled=\{[^}]*!editable/, `${label} must retain the project permission guard`);
+    if (label === "移除") assert.match(button, /className="[^"]*\bis-danger\b/, "The destructive action must retain its distinct intent");
+  }
+  const removeActionButton = [...twinActionEditorSource.matchAll(/<button\b[\s\S]*?<\/button>/g)].map(([button]) => button)
+    .find((button) => />\s*移除\s*<\/button>$/.test(button));
+  assert.ok(removeActionButton, "Removing a configured interaction must remain a native button");
+  assert.match(removeActionButton, /className="[^"]*\binspector-action-button\b/, "Removing an interaction must use the same visible action boundary");
+  assert.match(removeActionButton, /type="button"/);
+});
+
+check("property section headings are static headings and transform modes expose their state", () => {
+  const headers = [...standaloneInspectorSource.matchAll(/<section className="standalone-property-group">\s*(<header\b[^>]*>[\s\S]*?<\/header>)/g)].map(([, header]) => header);
+  assert.ok(headers.length > 0, "The inspector must retain structured property groups");
+  for (const header of headers) {
+    assert.match(header, /<h3\b[^>]*>[^<]+<\/h3>/, "Each property group needs a semantic heading");
+    assert.doesNotMatch(header, /<(?:button|input|select|textarea)\b|tabIndex=|onClick=/, "Static section headers must not behave like controls");
+  }
+  const modes = standaloneInspectorSource.match(/<div className="standalone-segmented-control">([\s\S]*?)<\/div>/)?.[1];
+  assert.ok(modes, "Transform mode controls must remain available");
+  for (const mode of ["translate", "scale"]) {
+    const button = [...modes.matchAll(/<button\b[\s\S]*?<\/button>/g)].map(([value]) => value)
+      .find((candidate) => candidate.includes(`setInstanceTransformMode("${mode}")`));
+    assert.ok(button, `${mode} must be a native mode button`);
+    assert.ok(button.includes(`aria-pressed={instanceTransformMode === "${mode}"}`), `${mode} must communicate its selected state without relying on color`);
+    assert.match(button, /disabled=\{[^}]*!editable/, `${mode} must be unavailable without edit permission`);
   }
 });
 

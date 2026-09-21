@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { errorMessage, request } from "../api";
 import { componentLabels, parseScene3DProps, type CanvasNode } from "./types";
+import { standaloneSceneRoutePath } from "../../../../shared/standalone-3d";
 
 type ProjectSummary = {
   id: string;
@@ -94,6 +95,7 @@ export function Scene3DInspector({
         {loadError ? <p className="inspector-inline-error" role="alert">{loadError}</p> : null}
         {!loading && !loadError && sceneProjects.length === 0 ? <p className="inspector-help">当前账号还没有可引用的独立 3D 项目。</p> : null}
         <p className="inspector-help">画布只保存项目 ID。模型、灯光、镜头和设备绑定继续由原 3D 场景统一维护。</p>
+        {parsed.value.sceneProjectId ? <a className="secondary-button" href={standaloneSceneRoutePath(parsed.value.sceneProjectId, "edit")} target="_blank" rel="noopener noreferrer">打开源 3D 项目配置模型事件 ↗</a> : null}
       </section>
       <section className="inspector-section">
         <div className="inspector-section-title"><strong>运行交互</strong><span>预览态</span></div>
@@ -109,7 +111,7 @@ export function Scene3DInspector({
           />
           <span>允许旋转镜头并点击设备</span>
         </label>
-        <p className="inspector-help">编辑画布时拖动整个组件；预览时模型点击会选中业务设备并更新“设备数据”组件。</p>
+        <p className="inspector-help">编辑画布时拖动整个组件；模型点击事件在源 3D 项目中配置。预览时可联动设备、文字提示和当前画布组件。作为 3D 的透明叠加层时不重复展示此 3D 节点。</p>
       </section>
     </aside>
   );

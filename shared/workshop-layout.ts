@@ -7,6 +7,7 @@ export const workshopSettings = {
   "backgroundOpacity": 1,
   "cameraFov": 38,
   "cameraView": "isometric",
+  "preventBottomView": true,
   "environmentLightColor": "#e0ecf5",
   "environmentLightIntensity": 0.62,
   "keyLightColor": "#fff2db",

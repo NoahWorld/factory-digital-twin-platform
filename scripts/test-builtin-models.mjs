@@ -24,6 +24,10 @@ try {
   assert.equal(latestBuiltinModel('builtin:missing'), undefined);
   const patch = (node) => validateCanvasPatch({ expectedRevision: 0, upsertNodes: [node], deleteNodeIds: [] });
   for (const model of builtinModels) {
+    const thumbnail = readFileSync(join(root, 'apps/web/public', model.thumbnailPath));
+    assert.ok(thumbnail.length > 0, `${model.id}: model-library thumbnail must be packaged`);
+    if (model.thumbnailPath.endsWith('.svg')) assert.match(thumbnail.toString(), /<svg\b/);
+    else assert.equal(thumbnail.readUInt16BE(0), 0xffd8, `${model.id}: thumbnail must be a valid JPEG header`);
     const bytes = readFileSync(join(root, 'apps/web/public', model.contentPath));
     assert.equal(bytes.length, model.byteSize);
     assert.equal(createHash('sha256').update(bytes).digest('hex'), model.sha256);

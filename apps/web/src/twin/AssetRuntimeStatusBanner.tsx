@@ -36,6 +36,8 @@ export function AssetRuntimeStatusBanner({
   setupError,
 }: AssetRuntimeStatusBannerProps) {
   const summary = runtimeConnectionSummary(connections);
+  // No binding is a normal model-only display, not a pending connection or error.
+  if (!loading && !setupError && Object.keys(connections).length === 0) return null;
   const offlineSummary = summary.staleCount > 0 && summary.disconnectedCount > 0
     ? `数据异常 ${summary.offlineCount} 台（陈旧 ${summary.staleCount} / 失联 ${summary.disconnectedCount}）`
     : summary.staleCount > 0

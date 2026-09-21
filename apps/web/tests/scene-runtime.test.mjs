@@ -1,14 +1,117 @@
 import './walk-physics.test.mjs';
 import { sceneCameraClipping } from '../src/scene/camera-clipping';
 import assert from 'node:assert/strict';
-import { BoxGeometry, Group, Mesh, MeshBasicMaterial, PerspectiveCamera, InstancedMesh, Matrix4 } from 'three';
+import { BoxGeometry, Group, Mesh, MeshBasicMaterial, PerspectiveCamera, InstancedMesh, Matrix4, Vector3 } from 'three';
 import { MeshBVH } from 'three-mesh-bvh';
 import { ResourceManager } from '../src/scene/resource-manager';
 import { InstanceManager } from '../src/scene/instance-manager';
 import { createPickingService } from '../src/scene/picking-service';
 import { constrainEditableInstanceScale, readEditableInstanceTransform } from '../src/scene/instance-transform';
+import { captureCoverSurface, registerCoverSurface } from '../src/covers/render-surfaces';
+import { EMPTY_SCENE_GRID_SIZE, fitEmptySceneCamera } from '../src/scene/empty-scene-view';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { applyOrbitViewLimits } from '../src/scene/orbit-view-limits';
+import { focusSceneObject } from '../src/scene/focus-model';
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
 const deferred = () => { let resolve; const promise = new Promise((yes) => { resolve = yes; }); return { promise, resolve }; };
+
+// Configured focus uses transformed model bounds and the current camera, without new resources.
+for (const aspect of [0.5, 1, 16 / 9]) for (const zoom of [0.5, 1, 3]) {
+  const camera = new PerspectiveCamera(45, aspect, 0.01, 10000);
+  camera.zoom = zoom; camera.updateProjectionMatrix(); camera.position.set(10, -10, 10);
+  const controls = new OrbitControls(camera); controls.enableDamping = true;
+  const model = new Mesh(new BoxGeometry(8, 4, 2), new MeshBasicMaterial());
+  model.position.set(25, 3, -10); model.rotation.y = 0.4;
+  focusSceneObject(camera, controls, model, true);
+  assert.ok(controls.target.distanceTo(model.position) < 1e-8);
+  assert.ok(camera.position.y > controls.target.y, 'Focus respects the bottom-view restriction');
+  assert.equal(controls.enableDamping, true);
+  for (const x of [-4, 4]) for (const y of [-2, 2]) for (const z of [-1, 1]) {
+    const point = new Vector3(x, y, z).applyMatrix4(model.matrixWorld).project(camera);
+    assert.ok(Math.abs(point.x) < 1 && Math.abs(point.y) < 1, 'The complete model fits after focus');
+  }
+  model.position.x += 10;
+  focusSceneObject(camera, controls, model, true);
+  assert.ok(controls.target.distanceTo(model.position) < 1e-8, 'Repeated requests reframe the latest world transform');
+  assert.throws(() => focusSceneObject(camera, controls, new Group(), true), /无效/);
+  assert.equal(controls.enableDamping, true);
+  camera.position.set(NaN, 0, 0);
+  assert.throws(() => focusSceneObject(camera, controls, model, true), /无效/);
+  assert.equal(controls.enableDamping, true, 'An invalid focus never leaves controls in a different damping mode');
+  model.geometry.dispose(); model.material.dispose(); // DOM-less OrbitControls never attaches input listeners.
+}
+
+// Empty scenes frame their real grid without requiring model bounds or an overlay.
+for (const view of ['isometric', 'isometric-left', 'front', 'top']) {
+  for (const aspect of [0.5, 1, 16 / 9, 3]) {
+    for (const fov of [15, 45, 90]) {
+      const camera = new PerspectiveCamera(fov, aspect, 0.01, 1000);
+      fitEmptySceneCamera(camera, new Vector3(), view);
+      assert.ok(Number.isFinite(camera.position.length()) && camera.position.length() > 0);
+      for (const x of [-EMPTY_SCENE_GRID_SIZE / 2, EMPTY_SCENE_GRID_SIZE / 2]) {
+        for (const z of [-EMPTY_SCENE_GRID_SIZE / 2, EMPTY_SCENE_GRID_SIZE / 2]) {
+          const corner = new Vector3(x, 0, z).project(camera);
+          assert.ok(Math.abs(corner.x) <= 0.920001 && Math.abs(corner.y) <= 0.920001, `${view}/${aspect}/${fov}: grid must fit`);
+          assert.ok(corner.z > -1 && corner.z < 1);
+        }
+      }
+      if (view !== 'top') assert.ok(new Vector3().project(camera).y < 0, 'The empty ground sits below the viewport center');
+    }
+  }
+}
+assert.throws(() => fitEmptySceneCamera(new PerspectiveCamera(45, 0), new Vector3(), 'front'), /无效/);
+
+// Test actual OrbitControls, including top-view Y-up, re-enabling below the model,
+// all azimuths, panned target elevations, damping and unrestricted viewing.
+for (const view of ['isometric', 'isometric-left', 'front', 'top']) {
+  const camera = new PerspectiveCamera(45, 1, 0.01, 1000);
+  const controls = new OrbitControls(camera);
+  fitEmptySceneCamera(camera, controls.target, view);
+  assert.deepEqual(camera.up.toArray(), [0, 1, 0]);
+  controls.enableDamping = true;
+  for (const targetY of [0, 2, 50]) for (let azimuth = 0; azimuth < 8; azimuth++) {
+    controls.target.set(10, targetY, -20);
+    camera.position.set(10 + Math.cos(azimuth) * 8, targetY - 6, -20 + Math.sin(azimuth) * 8);
+    applyOrbitViewLimits(controls, false);
+    controls.update();
+    assert.ok(camera.position.y < targetY - 5.9, 'Opt-out allows bottom inspection');
+    assert.equal(controls.screenSpacePanning, true);
+    const distance = camera.position.distanceTo(controls.target);
+    const target = controls.target.clone();
+    applyOrbitViewLimits(controls, true);
+    for (let frame = 0; frame < 20; frame++) controls.update();
+    assert.ok(camera.position.y >= targetY - 1e-8, `${view}: cannot orbit below the horizon`);
+    assert.ok(controls.getPolarAngle() <= Math.PI / 2 + 1e-8);
+    assert.equal(controls.screenSpacePanning, false);
+    assert.ok(Math.abs(camera.position.distanceTo(target) - distance) < 1e-8, 'Toggle preserves zoom');
+    assert.ok(controls.target.equals(target), 'Toggle preserves target');
+  }
+}
+
+// Captures are renderer-owned synchronous operations, never reads from stale canvases.
+{
+  const canvas = {};
+  const frame = [];
+  const image = 'data:image/png;base64,cGl4ZWxz';
+  assert.throws(() => captureCoverSurface(canvas), /未注册或已释放/);
+  const unregister = registerCoverSurface(canvas, () => { frame.push('render', 'read'); return image; });
+  assert.throws(() => registerCoverSurface(canvas, () => image), /重复绑定/);
+  assert.equal(captureCoverSurface(canvas), image);
+  assert.deepEqual(frame, ['render', 'read']);
+  unregister(); unregister();
+  assert.throws(() => captureCoverSurface(canvas), /未注册或已释放/);
+  const releaseNewOwner = registerCoverSurface(canvas, () => image);
+  unregister(); // An old disposer cannot remove a later renderer registration.
+  assert.equal(captureCoverSurface(canvas), image);
+  releaseNewOwner();
+  const unbindInvalid = registerCoverSurface(canvas, () => 'data:,');
+  assert.throws(() => captureCoverSurface(canvas), /有效的 PNG/);
+  unbindInvalid();
+  const lostContext = new Error('WebGL context lost');
+  const unbindLost = registerCoverSurface(canvas, () => { throw lostContext; });
+  assert.throws(() => captureCoverSurface(canvas), (error) => error === lostContext);
+  unbindLost();
+}
 
 // Coalescing and final-reference ownership, including one caller cancelling a shared request.
 {

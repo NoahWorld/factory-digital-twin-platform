@@ -1,19 +1,16 @@
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { errorMessage, request } from "../api";
+import type { TwinAction } from "../../../../shared/twin-actions";
 import {
   STANDALONE_3D_LIMITS,
-  defaultStandaloneSceneInstanceAnimation,
-  defaultStandaloneSceneInstanceAppearance,
   standaloneScenePath,
   type StandaloneSceneDocument,
 } from "../../../../shared/standalone-3d";
 import { Model3DNode } from "./Model3DNode";
+import { standaloneRendererNode } from "./standalone-renderer-node";
 import {
-  createCanvasNode,
   parseScene3DProps,
   type CanvasNode,
-  type Model3DProps,
-  type ModelAssetInstance,
 } from "./types";
 
 type EmbeddedSceneResponse = {
@@ -36,6 +33,8 @@ type EmbeddedSceneNodeProps = {
   interactive: boolean;
   node: CanvasNode;
   onSelectionChange: (selection: EmbeddedSceneRuntimeSelection | null) => void;
+  onActions?: (selection: EmbeddedSceneRuntimeSelection, actions: TwinAction[]) => void;
+  modelFocusRequest?: { projectId: string; instanceId: string; requestId: string } | null;
   selectedInstanceId: string | null;
 };
 
@@ -46,6 +45,8 @@ export const EmbeddedSceneNode = memo(function EmbeddedSceneNode({
   interactive,
   node,
   onSelectionChange,
+  onActions,
+  modelFocusRequest,
   selectedInstanceId,
 }: EmbeddedSceneNodeProps) {
   const parsed = parseScene3DProps(node.props);
@@ -75,33 +76,11 @@ export const EmbeddedSceneNode = memo(function EmbeddedSceneNode({
         if (active) setLoading(false);
       });
     return () => { active = false; };
-  }, [onSelectionChange, sceneProjectId]);
+  }, [editable, onSelectionChange, sceneProjectId]);
 
   const rendererNode = useMemo((): CanvasNode | null => {
     if (!response) return null;
-    const base = createCanvasNode("model-3d", 0, 0, 0);
-    const baseProps = base.props as Model3DProps;
-    const instances: ModelAssetInstance[] = response.scene.instances.map((instance) => ({
-      animation: instance.animation ?? defaultStandaloneSceneInstanceAnimation(),
-      appearance: instance.appearance ?? defaultStandaloneSceneInstanceAppearance(),
-      assetId: instance.modelAssetId,
-      id: instance.id,
-      label: instance.label,
-      transform: instance.transform,
-      visible: instance.visible,
-    }));
-    return {
-      ...base,
-      id: `${node.id}:embedded-scene`,
-      props: {
-        ...baseProps,
-        ...response.scene.settings,
-        modelInstances: instances,
-        presentation: { ...baseProps.presentation, lighting: "studio" },
-        showControlPanel: false,
-      } satisfies Model3DProps,
-      resourceRefs: [...new Set(instances.map((instance) => instance.assetId))],
-    };
+    return standaloneRendererNode(response.scene, `${node.id}:embedded-scene`);
   }, [node.id, response]);
 
   const selectInstance = useCallback((_rendererNodeId: string, instanceId: string | null) => {
@@ -114,43 +93,47 @@ export const EmbeddedSceneNode = memo(function EmbeddedSceneNode({
       onSelectionChange(null);
       return;
     }
-    onSelectionChange({
+    const selection: EmbeddedSceneRuntimeSelection = {
       canvasNodeId: node.id,
       sceneProjectId: response.scene.projectId,
       linked2dProjectId: response.scene.linked2dProjectId,
       instanceId: instance.id,
-      assetId: instance.assetId,
+      // Missing actions preserve legacy device selection; an explicit list (including []) owns all effects.
+      assetId: instance.clickActions === undefined ? instance.assetId : null,
       label: instance.label,
-    });
-  }, [node.id, onSelectionChange, response]);
+    };
+    onSelectionChange(selection);
+    if (instance.clickActions?.length) onActions?.(selection, instance.clickActions);
+  }, [node.id, onActions, onSelectionChange, response]);
 
   if (!parsed.ok) {
-    return <div className="embedded-scene-state is-error" role="alert"><strong>3D 场景配置无效</strong><span>{parsed.message}</span></div>;
+    return <div className="embedded-scene-state is-error" data-cover-state="error" data-cover-error={parsed.message} role="alert"><strong>3D 场景配置无效</strong><span>{parsed.message}</span></div>;
   }
   if (!sceneProjectId) {
-    return <div className="embedded-scene-state"><strong>选择一个 3D 场景</strong><span>在右侧属性栏绑定已搭建的独立 3D 项目。</span></div>;
+    return <div className="embedded-scene-state" data-cover-state="empty"><strong>选择一个 3D 场景</strong><span>在右侧属性栏绑定已搭建的独立 3D 项目。</span></div>;
   }
   if (loadError) {
-    return <div className="embedded-scene-state is-error" role="alert"><strong>3D 场景加载失败</strong><span>{loadError}</span></div>;
+    return <div className="embedded-scene-state is-error" data-cover-state="error" data-cover-error={loadError} role="alert"><strong>3D 场景加载失败</strong><span>{loadError}</span></div>;
   }
-  if (loading || !rendererNode || !response) {
-    return <div className="embedded-scene-state"><span className="model-loading-spinner" /><strong>正在加载 3D 场景</strong></div>;
+  if (loading || !rendererNode || !response || response.scene.projectId !== sceneProjectId) {
+    return <div className="embedded-scene-state" data-cover-state="loading"><span className="model-loading-spinner" /><strong>正在加载 3D 场景</strong></div>;
   }
 
   return (
-    <div className="embedded-scene-node">
+    <div className="embedded-scene-node" data-cover-state="ready">
       <Model3DNode
         cameraControlsEnabled={!editable}
         editable={false}
         interactive={interactive && parsed.value.interactionEnabled}
         maximumModelInstances={STANDALONE_3D_LIMITS.maximumInstances}
+        modelFocusRequest={modelFocusRequest?.projectId === sceneProjectId ? modelFocusRequest : null}
         node={rendererNode}
         onModelInstanceSelect={selectInstance}
         onSceneNodeSelect={ignoreSceneNodeSelection}
         projectId={sceneProjectId}
         runtimeControlsEnabled={false}
         selectionStyle={editable ? "none" : "runtime"}
-        selectedModelInstanceId={selectedInstanceId}
+        selectedModelInstanceId={modelFocusRequest?.projectId === sceneProjectId ? modelFocusRequest.instanceId : selectedInstanceId}
         selectedSceneNodePath={null}
       />
       {editable ? <div className="embedded-scene-reference">引用场景 · {response.project.name}</div> : null}

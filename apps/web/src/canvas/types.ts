@@ -1,6 +1,7 @@
 import { defaultModelPresentation, parseModelPresentation, type ModelPresentation } from "../../../../shared/model-presentation";
 import { isOrnamentNodeType, ornamentDefaults, ornamentDefaultSizes, ornamentMinimumSizes, type OrnamentNodeType } from "../../../../shared/canvas-ornaments";
 import type { StandaloneSceneInstanceAnimation, StandaloneSceneInstanceAppearance } from "../../../../shared/standalone-3d";
+import type { CanvasNodeInteraction } from "../../../../shared/twin-actions";
 export const CANVAS_DRAG_TYPE = "application/x-factory-twin-component";
 
 export type ChartNodeType =
@@ -396,6 +397,7 @@ export type Model3DProps = {
   keyLightIntensity: number;
   cameraFov: number;
   cameraView: ModelCameraView;
+  preventBottomView: boolean;
   modelScale: number;
   autoRotate: boolean;
   rotationSpeed: number;
@@ -425,6 +427,7 @@ export type AssetDetailProps = {
 };
 
 export type CanvasNode = {
+  interaction?: CanvasNodeInteraction;
   id: string;
   type: CanvasNodeType;
   x: number;
@@ -703,6 +706,7 @@ const model3DDefaults: Record<Model3DNodeType, Model3DProps> = {
     keyLightIntensity: 2.4,
     cameraFov: 42,
     cameraView: "isometric",
+    preventBottomView: true,
     modelScale: 1,
     autoRotate: true,
     rotationSpeed: 0.35,
@@ -2499,6 +2503,10 @@ export const parseModel3DProps = (
     return { ok: false, message: "cameraView 必须是 isometric、isometric-left、front 或 top" };
   }
   const modelScale = props.modelScale === undefined ? 1 : props.modelScale;
+  const preventBottomView = props.preventBottomView === undefined ? true : props.preventBottomView;
+  if (typeof preventBottomView !== "boolean") {
+    return { ok: false, message: "preventBottomView 必须是布尔值" };
+  }
   if (
     typeof modelScale !== "number"
     || !Number.isFinite(modelScale)
@@ -2554,6 +2562,7 @@ export const parseModel3DProps = (
       keyLightIntensity,
       cameraFov,
       cameraView,
+      preventBottomView,
       modelScale,
       autoRotate: props.autoRotate,
       rotationSpeed: props.rotationSpeed,

@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useRef, useState, type CSSProperties, type DragEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { memo, useCallback, useEffect, useRef, useState, type CSSProperties, type DragEvent, type ReactNode, type PointerEvent as ReactPointerEvent } from "react";
 import { BasicNode } from "./BasicNode";
 import { ChartNode } from "./ChartNode";
 import { DashboardNode } from "./DashboardNode";
@@ -14,6 +14,8 @@ import { OrnamentNode } from "./OrnamentNode";
 import { isOrnamentNodeType } from "../../../../shared/canvas-ornaments";
 import type { RuntimeAssetConnection } from "../runtime-state";
 import type { ProjectAsset } from "./assets";
+import type { TwinAction } from "../../../../shared/twin-actions";
+import { canvasViewportScale, isOverlayNode, isRuntimeNodeVisible, projectRuntimeNode, runtimeControlNodeTypes, runtimeNodeCapturesPointer } from "./runtime-projection";
 import { CANVAS_DRAG_TYPE, defaultNodeSizes, isAssetDetailNodeType, isBasicNodeType, isCanvasNodeType, isDashboardNodeType, isDecorationNodeType, isModel3DNodeType, isPanelFrameNodeType, isScene3DNodeType, isShapeNodeType, type CanvasDocument, type CanvasNode, type CanvasNodeType, type ModelNodeAppearance } from "./types";
 
 type ActiveDrag = {
@@ -45,11 +47,17 @@ type ActiveResize = {
 type ActiveInteraction = ActiveDrag | ActiveResize;
 
 type CanvasNodeViewProps = {
+  previewMode: boolean;
+  overlay: boolean;
   editable: boolean;
+  runtimeControlsEnabled: boolean;
   embeddedSceneSelection: EmbeddedSceneRuntimeSelection | null;
   modelInteractionEnabled: boolean;
   node: CanvasNode;
   onEmbeddedSceneSelectionChange: (selection: EmbeddedSceneRuntimeSelection | null) => void;
+  onEmbeddedSceneActions?: (selection: EmbeddedSceneRuntimeSelection, actions: TwinAction[]) => void;
+  onNodeActions?: (node: CanvasNode) => void;
+  modelFocusRequest?: { projectId: string; instanceId: string; requestId: string } | null;
   onModelSceneChange?: (canvasNodeId: string, snapshot: ModelSceneSnapshot | null) => void;
   onModelSceneNodeSelect: (canvasNodeId: string, sceneNodePath: string | null) => void;
   projectId: string;
@@ -81,15 +89,25 @@ const hasGeometryChanged = (previous: CanvasNode, next: CanvasNode) => (
 
 const ignoreEmbeddedSceneSelection = () => undefined;
 
-const CanvasNodeView = memo(function CanvasNodeView({ editable, embeddedSceneSelection, modelInteractionEnabled, node, onEmbeddedSceneSelectionChange, onModelSceneChange, onModelSceneNodeSelect, projectId, renderZIndex, runtimeAppearanceOverrides, runtimeAsset, runtimeAssetConnection, runtimeAssetError, runtimeAssetLoading, selected, selectedModelSceneNodePath, onPointerDown, onResizePointerDown }: CanvasNodeViewProps) {
+const CanvasNodeView = memo(function CanvasNodeView({ editable, overlay, previewMode, runtimeControlsEnabled, embeddedSceneSelection, modelInteractionEnabled, node, onEmbeddedSceneSelectionChange, onEmbeddedSceneActions, onNodeActions, modelFocusRequest, onModelSceneChange, onModelSceneNodeSelect, projectId, renderZIndex, runtimeAppearanceOverrides, runtimeAsset, runtimeAssetConnection, runtimeAssetError, runtimeAssetLoading, selected, selectedModelSceneNodePath, onPointerDown, onResizePointerDown }: CanvasNodeViewProps) {
+  const actionable = previewMode && runtimeControlsEnabled && !editable && (node.interaction?.clickActions.length ?? 0) > 0 && node.props.disabled !== true;
+  const keyboardAction = actionable && !runtimeControlNodeTypes.has(node.type);
   return (
     <div
       aria-label={`${node.type} 组件`}
       className={`canvas-node${isOrnamentNodeType(node.type) ? " is-ornament" : ""}${isShapeNodeType(node.type) ? " is-shape" : ""}${isDecorationNodeType(node.type) ? " is-decoration" : ""}${isPanelFrameNodeType(node.type) ? " is-panel-frame" : ""}${isDashboardNodeType(node.type) ? " is-dashboard" : ""}${isBasicNodeType(node.type) ? " is-basic" : ""}${isModel3DNodeType(node.type) ? " is-model-3d" : ""}${isScene3DNodeType(node.type) ? " is-scene-3d" : ""}${isAssetDetailNodeType(node.type) ? " is-asset-detail" : ""}${selected ? " is-selected" : ""}${editable ? " is-editable" : ""}`}
       data-node-id={node.id}
+      data-runtime-interactive={runtimeNodeCapturesPointer(node) || undefined}
+      onClickCapture={actionable ? () => onNodeActions?.(node) : undefined}
+      onKeyDown={keyboardAction ? (event) => {
+        if (event.target !== event.currentTarget || (event.key !== "Enter" && event.key !== " ")) return;
+        event.preventDefault();
+        onNodeActions?.(node);
+      } : undefined}
       onPointerDown={editable ? (event) => onPointerDown(event, node) : undefined}
-      role="group"
-      style={{ height: node.height, transform: `translate3d(${node.x}px, ${node.y}px, 0)`, width: node.width, zIndex: renderZIndex }}
+      role={keyboardAction ? "button" : "group"}
+      tabIndex={keyboardAction ? 0 : undefined}
+      style={{ height: node.height, transform: `translate3d(${node.x}px, ${node.y}px, 0)`, width: node.width, zIndex: renderZIndex, pointerEvents: overlay ? runtimeNodeCapturesPointer(node) ? "auto" : "none" : undefined, cursor: actionable ? "pointer" : undefined }}
     >
       {isOrnamentNodeType(node.type) ? <OrnamentNode node={node} /> : isShapeNodeType(node.type)
         ? <ShapeNode node={node} />
@@ -100,7 +118,7 @@ const CanvasNodeView = memo(function CanvasNodeView({ editable, embeddedSceneSel
           : isDashboardNodeType(node.type)
             ? <DashboardNode node={node} />
           : isBasicNodeType(node.type)
-            ? <BasicNode editable={editable} node={node} projectId={projectId} />
+            ? <BasicNode editable={editable || !previewMode || !runtimeControlsEnabled} node={node} projectId={projectId} />
           : isScene3DNodeType(node.type)
             ? (
                 <EmbeddedSceneNode
@@ -108,6 +126,8 @@ const CanvasNodeView = memo(function CanvasNodeView({ editable, embeddedSceneSel
                   interactive={modelInteractionEnabled}
                   node={node}
                   onSelectionChange={onEmbeddedSceneSelectionChange}
+                  onActions={onEmbeddedSceneActions}
+                  modelFocusRequest={modelFocusRequest}
                   selectedInstanceId={embeddedSceneSelection?.canvasNodeId === node.id ? embeddedSceneSelection.instanceId : null}
                 />
               )
@@ -126,6 +146,7 @@ const CanvasNodeView = memo(function CanvasNodeView({ editable, embeddedSceneSel
             ? (
                 <Model3DNode
                   editable={editable}
+                  runtimeControlsEnabled={runtimeControlsEnabled}
                   interactive={modelInteractionEnabled}
                   node={node}
                   onSceneChange={onModelSceneChange}
@@ -151,13 +172,20 @@ const CanvasNodeView = memo(function CanvasNodeView({ editable, embeddedSceneSel
 });
 
 type CanvasSurfaceProps = {
+  previewMode?: boolean;
+  children?: ReactNode;
+  presentation?: "canvas" | "overlay";
   document: CanvasDocument;
   editable: boolean;
+  runtimeControlsEnabled?: boolean;
   embeddedSceneSelection?: EmbeddedSceneRuntimeSelection | null;
   modelInteractionEnabled?: boolean;
   selectedNodeId: string | null;
   onCreateNode: (type: CanvasNodeType, x: number, y: number) => void;
   onEmbeddedSceneSelectionChange?: (selection: EmbeddedSceneRuntimeSelection | null) => void;
+  onEmbeddedSceneActions?: (selection: EmbeddedSceneRuntimeSelection, actions: TwinAction[]) => void;
+  onNodeActions?: (node: CanvasNode) => void;
+  modelFocusRequest?: { projectId: string; instanceId: string; requestId: string } | null;
   onModelSceneChange?: (canvasNodeId: string, snapshot: ModelSceneSnapshot | null) => void;
   onModelSceneNodeSelect: (canvasNodeId: string, sceneNodePath: string | null) => void;
   onNodeChange: (node: CanvasNode) => void;
@@ -167,6 +195,8 @@ type CanvasSurfaceProps = {
   runtimeAssetError?: string | null;
   runtimeAssetLoading?: boolean;
   runtimeAppearanceOverrides?: Record<string, ModelNodeAppearance>;
+  runtimeNodeVisibility?: Record<string, boolean>;
+  runtimeTextOverrides?: Record<string, string>;
   selectedModelSceneNodePath: string | null;
 };
 
@@ -178,7 +208,8 @@ const isCanvasBackdropNode = (node: CanvasNode, document: CanvasDocument) => (
   && node.height >= document.height
 );
 
-export function CanvasSurface({ document, editable, embeddedSceneSelection = null, modelInteractionEnabled = false, selectedNodeId, selectedModelSceneNodePath, onCreateNode, onEmbeddedSceneSelectionChange = ignoreEmbeddedSceneSelection, onModelSceneChange, onModelSceneNodeSelect, onNodeChange, onSelectNode, runtimeAppearanceOverrides = {}, runtimeAsset = null, runtimeAssetConnection, runtimeAssetError = null, runtimeAssetLoading = false }: CanvasSurfaceProps) {
+export function CanvasSurface({ children, document, editable, previewMode = !editable, presentation = "canvas", runtimeControlsEnabled = true, embeddedSceneSelection = null, modelInteractionEnabled = false, selectedNodeId, selectedModelSceneNodePath, onCreateNode, onEmbeddedSceneSelectionChange = ignoreEmbeddedSceneSelection, onEmbeddedSceneActions, onNodeActions, modelFocusRequest, onModelSceneChange, onModelSceneNodeSelect, onNodeChange, onSelectNode, runtimeAppearanceOverrides = {}, runtimeNodeVisibility = {}, runtimeTextOverrides = {}, runtimeAsset = null, runtimeAssetConnection, runtimeAssetError = null, runtimeAssetLoading = false }: CanvasSurfaceProps) {
+  const overlay = presentation === "overlay";
   const viewportRef = useRef<HTMLDivElement>(null);
   const surfaceRef = useRef<HTMLDivElement>(null);
   const verticalGuideRef = useRef<HTMLDivElement>(null);
@@ -195,7 +226,8 @@ export function CanvasSurface({ document, editable, embeddedSceneSelection = nul
     "--canvas-theme-panel-radius": `${document.theme.panelRadius}px`,
     "--canvas-theme-surface": document.theme.surfaceColor,
     "--canvas-theme-text": document.theme.textColor,
-    backgroundColor: document.theme.backgroundColor,
+    backgroundColor: overlay ? "transparent" : document.theme.backgroundColor,
+    pointerEvents: overlay ? "none" : undefined,
     height: document.height,
     transform: `scale(${scale})`,
     width: document.width,
@@ -206,15 +238,9 @@ export function CanvasSurface({ document, editable, embeddedSceneSelection = nul
     if (!viewport) return;
 
     const updateScale = () => {
-      const isFullscreen = globalThis.document.fullscreenElement === viewport;
-      const viewportInset = isFullscreen ? 0 : 48;
-      const availableWidth = Math.max(viewport.clientWidth - viewportInset, 1);
-      const availableHeight = Math.max(viewport.clientHeight - viewportInset, 1);
-      const widthScale = availableWidth / document.width;
-      const heightScale = availableHeight / document.height;
-      const nextScale = isFullscreen
-        ? Math.max(widthScale, heightScale)
-        : Math.min(widthScale, heightScale, 1);
+      const fullscreenElement = globalThis.document.fullscreenElement;
+      const isFullscreen = fullscreenElement === viewport || (overlay && fullscreenElement !== null && fullscreenElement.contains(viewport));
+      const nextScale = canvasViewportScale(viewport.clientWidth, viewport.clientHeight, document.width, document.height, overlay, isFullscreen);
       scaleRef.current = nextScale;
       setScale(nextScale);
     };
@@ -227,7 +253,7 @@ export function CanvasSurface({ document, editable, embeddedSceneSelection = nul
       observer.disconnect();
       globalThis.document.removeEventListener("fullscreenchange", updateScale);
     };
-  }, [document.height, document.width]);
+  }, [document.height, document.width, overlay]);
 
   const hideGuides = useCallback(() => {
     if (verticalGuideRef.current) verticalGuideRef.current.style.display = "none";
@@ -372,7 +398,7 @@ export function CanvasSurface({ document, editable, embeddedSceneSelection = nul
   };
 
   return (
-    <div className="canvas-viewport" data-canvas-fullscreen-root ref={viewportRef}>
+    <div className={`canvas-viewport${overlay ? " is-overlay" : ""}`} data-canvas-fullscreen-root={overlay ? undefined : true} ref={viewportRef} style={overlay ? { background: "transparent", pointerEvents: "none" } : undefined}>
       <div className="canvas-scale-frame" style={{ height: document.height * scale, width: document.width * scale }}>
         <div
           className={`canvas-surface${editable ? " is-editable" : " is-preview"}`}
@@ -385,15 +411,23 @@ export function CanvasSurface({ document, editable, embeddedSceneSelection = nul
           ref={surfaceRef}
           style={surfaceStyle}
         >
-          <div aria-hidden="true" className="canvas-theme-pattern" />
-          {document.nodes.map((node) => (
+          {!overlay ? <div aria-hidden="true" className="canvas-theme-pattern" /> : null}
+          {document.nodes.filter((node) => (!overlay || isOverlayNode(node)) && (!previewMode || isRuntimeNodeVisible(node, runtimeNodeVisibility))).map((sourceNode) => {
+            const node = previewMode ? projectRuntimeNode(sourceNode, runtimeTextOverrides) : sourceNode;
+            return (
             <CanvasNodeView
               editable={editable}
+              previewMode={previewMode}
+              overlay={overlay}
+              runtimeControlsEnabled={runtimeControlsEnabled}
               embeddedSceneSelection={embeddedSceneSelection}
               key={node.id}
               modelInteractionEnabled={modelInteractionEnabled}
               node={node}
               onEmbeddedSceneSelectionChange={onEmbeddedSceneSelectionChange}
+              onEmbeddedSceneActions={onEmbeddedSceneActions}
+              onNodeActions={onNodeActions}
+              modelFocusRequest={modelFocusRequest}
               onModelSceneChange={onModelSceneChange}
               onModelSceneNodeSelect={onModelSceneNodeSelect}
               onPointerDown={startPointerDrag}
@@ -410,12 +444,13 @@ export function CanvasSurface({ document, editable, embeddedSceneSelection = nul
                 node.id === selectedNodeId ? selectedModelSceneNodePath : null
               }
             />
-          ))}
+          ); })}
           {editable && document.nodes.length === 0 ? <div className="canvas-empty-hint"><span>↘</span><strong>从左侧拖入组件</strong><p>组件落入后可继续拖动，靠近画布或其他组件边缘时会自动吸附。</p></div> : null}
           <div className="canvas-guide canvas-guide-vertical" ref={verticalGuideRef} />
           <div className="canvas-guide canvas-guide-horizontal" ref={horizontalGuideRef} />
         </div>
       </div>
+      {children}
     </div>
   );
 }

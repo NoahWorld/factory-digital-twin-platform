@@ -1,4 +1,6 @@
 import { findBuiltinModel } from "../../../shared/builtin-models";
+import { parseCanvasNodeInteraction, type CanvasNodeInteraction } from "../../../shared/twin-actions";
+import { validateTwinActionReferences } from "./twin-action-references";
 import { parseModelPresentation, type ModelPresentation } from "../../../shared/model-presentation";
 import { AppError, type AppEnv, type DatabaseResult } from "./auth";
 import { isOrnamentNodeType, ornamentMinimumSizes, parseOrnamentProps, type OrnamentNodeType, type OrnamentProps } from "../../../shared/canvas-ornaments";
@@ -368,6 +370,7 @@ export type Model3DProps = {
   playAnimations: boolean;
   animationSpeed: number;
   showGrid: boolean;
+  preventBottomView: boolean;
   modelInstances: ModelAssetInstance[];
   appearanceOverrides: Record<string, ModelNodeAppearance>;
   transformOverrides: Record<string, ModelNodeTransform>;
@@ -390,6 +393,7 @@ export type AssetDetailProps = {
 };
 
 export type CanvasNode = {
+  interaction?: CanvasNodeInteraction;
   id: string;
   type: CanvasNodeType;
   x: number;
@@ -439,6 +443,7 @@ type CanvasRow = {
 };
 
 type CanvasNodeRow = {
+  interaction_json: string | null;
   id: string;
   node_type: CanvasNodeType;
   x: number;
@@ -1410,6 +1415,9 @@ const validateNode = (value: unknown): CanvasNode => {
         ? 1
         : requireNumber(props.animationSpeed, "props.animationSpeed", 0.1, 3),
       showGrid: requireBoolean(props.showGrid, "props.showGrid"),
+      preventBottomView: props.preventBottomView === undefined
+        ? true
+        : requireBoolean(props.preventBottomView, "props.preventBottomView"),
       modelInstances: requireModelInstances(props.modelInstances),
       appearanceOverrides: requireModelNodeAppearances(props.appearanceOverrides),
       transformOverrides: requireModelNodeTransforms(props.transformOverrides),
@@ -1496,6 +1504,12 @@ const validateNode = (value: unknown): CanvasNode => {
     resourceRefs,
     dataBindingRefs,
   };
+  if (Object.hasOwn(node, "interaction")) {
+    if (type === "scene-3d" || type === "model-3d") invalid("invalid_canvas_interaction", "3D components cannot define 2D click interactions.");
+    const interaction = parseCanvasNodeInteraction(node.interaction);
+    if (!interaction.ok) invalid("invalid_canvas_interaction", `Node ${validated.id}: ${interaction.message}`);
+    if (interaction.ok) validated.interaction = interaction.value;
+  }
 
   if (!Number.isInteger(validated.zIndex)) {
     invalid("invalid_canvas_node", "node.zIndex must be an integer.");
@@ -1546,8 +1560,10 @@ const parseStoredArray = (json: string, label: string): unknown[] => {
 
 const presentStoredNode = (row: CanvasNodeRow): CanvasNode => {
   let props: unknown;
+  let interaction: unknown;
   try {
     props = JSON.parse(row.props_json);
+    if (row.interaction_json !== null) interaction = JSON.parse(row.interaction_json);
   } catch (error) {
     throw new AppError(500, "invalid_canvas_storage", `Node ${row.id} has invalid props JSON: ${error instanceof Error ? error.message : String(error)}`);
   }
@@ -1556,6 +1572,7 @@ const presentStoredNode = (row: CanvasNodeRow): CanvasNode => {
       id: row.id, type: row.node_type, x: row.x, y: row.y, width: row.width, height: row.height,
       zIndex: row.z_index, props, resourceRefs: parseStoredArray(row.resource_refs_json, `Node ${row.id} resource refs`),
       dataBindingRefs: parseStoredArray(row.data_binding_refs_json, `Node ${row.id} data binding refs`),
+      ...(row.interaction_json === null ? {} : { interaction }),
     });
   } catch (error) {
     if (error instanceof AppError && error.status === 400) {
@@ -1576,7 +1593,7 @@ export const getCanvas = async (env: AppEnv, projectId: string): Promise<CanvasD
     return { projectId, width: DEFAULT_WIDTH, height: DEFAULT_HEIGHT, theme: { ...DEFAULT_THEME }, revision: 0, updatedAt: null, nodes: [] };
   }
   const rows = await env.DB.prepare(
-    `SELECT id, node_type, x, y, width, height, z_index, props_json, resource_refs_json, data_binding_refs_json
+    `SELECT id, node_type, x, y, width, height, z_index, props_json, resource_refs_json, data_binding_refs_json, interaction_json
      FROM canvas_nodes WHERE project_id = ? ORDER BY z_index ASC, id ASC`,
   ).bind(projectId).all<CanvasNodeRow>();
   return {
@@ -1741,6 +1758,12 @@ export const applyCanvasPatch = async (
     }
   }
 
+  const current = await getCanvas(env, projectId);
+  if (current.revision !== patch.expectedRevision) throw new AppError(409, "canvas_revision_conflict", "The canvas changed since it was loaded. Reload it before saving again.");
+  const nextNodes = new Map(current.nodes.map((node) => [node.id, node]));
+  patch.upsertNodes.forEach((node) => nextNodes.set(node.id, node));
+  patch.deleteNodeIds.forEach((id) => nextNodes.delete(id));
+  await validateTwinActionReferences(env, userId, { kind: "canvas", projectId, nodes: [...nextNodes.values()] });
   const now = new Date().toISOString();
   const statements = [
     env.DB.prepare(
@@ -1773,17 +1796,17 @@ export const applyCanvasPatch = async (
   for (const node of patch.upsertNodes) {
     statements.push(env.DB.prepare(
       `INSERT INTO canvas_nodes
-       (id, project_id, node_type, x, y, width, height, z_index, props_json, resource_refs_json, data_binding_refs_json, updated_at)
-       SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+       (id, project_id, node_type, x, y, width, height, z_index, props_json, resource_refs_json, data_binding_refs_json, interaction_json, updated_at)
+       SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
        WHERE EXISTS (SELECT 1 FROM project_canvases WHERE project_id = ? AND revision = ?)
        ON CONFLICT(project_id, id) DO UPDATE SET
          node_type = excluded.node_type, x = excluded.x, y = excluded.y,
          width = excluded.width, height = excluded.height, z_index = excluded.z_index,
          props_json = excluded.props_json, resource_refs_json = excluded.resource_refs_json,
-         data_binding_refs_json = excluded.data_binding_refs_json, updated_at = excluded.updated_at`,
+         data_binding_refs_json = excluded.data_binding_refs_json, interaction_json = excluded.interaction_json, updated_at = excluded.updated_at`,
     ).bind(
       node.id, projectId, node.type, node.x, node.y, node.width, node.height, node.zIndex,
-      JSON.stringify(node.props), JSON.stringify(node.resourceRefs), JSON.stringify(node.dataBindingRefs), now,
+      JSON.stringify(node.props), JSON.stringify(node.resourceRefs), JSON.stringify(node.dataBindingRefs), node.interaction === undefined ? null : JSON.stringify(node.interaction), now,
       projectId, patch.expectedRevision,
     ));
   }

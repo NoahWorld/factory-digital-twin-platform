@@ -8,6 +8,7 @@
   --ui-surface-raised: #152a3c;
   --ui-surface-muted: #0a1725;
   --ui-input-bg: #0a1725;
+  --ui-readonly-bg: #202832;
   --ui-hover: #18354b;
   --ui-text: #bfd1df;
   --ui-text-strong: #eaf0f8;
@@ -51,6 +52,7 @@
   --ui-surface-raised: #eaf0f8;
   --ui-surface-muted: #f5f8fc;
   --ui-input-bg: #ffffff;
+  --ui-readonly-bg: #eef0f3;
   --ui-hover: #e6eefb;
   --ui-text: #344a65;
   --ui-text-strong: #172b45;

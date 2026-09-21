@@ -1320,6 +1320,10 @@ export function Model3DInspector({
 
       <div className="inspector-section inspector-switches">
         <label>
+          <input checked={parsed.value.preventBottomView} disabled={!editable} onChange={(event) => updateProps({ preventBottomView: event.target.checked })} type="checkbox" />
+          <span>禁止从底部查看</span>
+        </label>
+        <label>
           <input
             checked={parsed.value.autoRotate}
             disabled={!editable}

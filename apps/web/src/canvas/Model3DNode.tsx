@@ -1,5 +1,6 @@
 import {
   memo,
+  useCallback,
   useEffect,
   useRef,
   useState,
@@ -28,7 +29,9 @@ import { modelAssetContentUrl } from "./model-assets";
 import { buildModelSceneTree, type ModelSceneSnapshot } from "./model-scene";
 import type { WalkSceneConfig } from "../scene/walk-physics";
 import type { InstanceTransformMode } from "../scene/instance-transform";
+import { applyOrbitViewLimits } from "../scene/orbit-view-limits";
 import type { SceneSelectionStyle } from "../scene/scene-runtime";
+import { registerCoverSurface } from "../covers/render-surfaces";
 
 export type Model3DNodeProps = {
   walkScene?: WalkSceneConfig;
@@ -39,6 +42,7 @@ export type Model3DNodeProps = {
   maximumModelInstances?: number;
   node: CanvasNode;
   instanceTransformMode?: InstanceTransformMode | null;
+  modelFocusRequest?: { instanceId: string; requestId: string } | null;
   onModelInstanceSelect?: (canvasNodeId: string, instanceId: string | null) => void;
   onModelInstanceTransform?: (canvasNodeId: string, instanceId: string, transform: ModelNodeTransform) => void;
   onSceneChange?: (canvasNodeId: string, snapshot: ModelSceneSnapshot | null) => void;
@@ -132,9 +136,15 @@ const SingleModel3DNode = memo(function SingleModel3DNode({
     playAnimations: true,
     animationSpeed: 1,
   });
-  const [loadState, setLoadState] = useState<LoadState>(
+  const [loadState, updateLoadState] = useState<LoadState>(
     node.resourceRefs[0] ? { status: "loading" } : { status: "empty" },
   );
+  const loadStateRef = useRef(loadState);
+  const setLoadState = useCallback((next: LoadState) => {
+    // Screenshot guards must see errors immediately, before React commits the DOM.
+    loadStateRef.current = next;
+    updateLoadState(next);
+  }, []);
   const saved = parseModel3DProps(node.props);
   const runtimePanelEnabled = !editable && runtimeControlsEnabled && saved.ok && saved.value.showControlPanel;
   // Scope temporary view changes to this component, asset and saved configuration.
@@ -164,6 +174,7 @@ const SingleModel3DNode = memo(function SingleModel3DNode({
         parsed.value.cameraView,
         parsed.value.modelScale,
         parsed.value.showGrid,
+        parsed.value.preventBottomView,
         parsed.value.presentation.lighting,
       ])
     : "";
@@ -285,6 +296,10 @@ const SingleModel3DNode = memo(function SingleModel3DNode({
     }
 
     let cancelled = false;
+    let disposed = false;
+    let contextLost = false;
+    let modelReady = false;
+    let unregisterCoverSurface: (() => void) | null = null;
     let dispose: (() => void) | null = null;
     let runtimeController: ModelRuntime | null = null;
     let restoreRuntimeAppearanceState: (() => void) | null = null;
@@ -404,20 +419,17 @@ const SingleModel3DNode = memo(function SingleModel3DNode({
         const viewDirection = settings.cameraView === "front"
           ? new THREE.Vector3(0, 0.12, 1)
           : settings.cameraView === "top"
-            ? new THREE.Vector3(0.001, 1, 0)
+            ? new THREE.Vector3(0, 1, 0.001)
             : settings.cameraView === "isometric-left"
               ? new THREE.Vector3(-1.35, 0.78, 1.78)
               : new THREE.Vector3(1.35, 0.9, 1.65);
-        camera.up.set(
-          0,
-          settings.cameraView === "top" ? 0 : 1,
-          settings.cameraView === "top" ? -1 : 0,
-        );
+        camera.up.set(0, 1, 0);
         camera.position.copy(viewDirection.normalize().multiplyScalar(distance));
         controls.target.set(0, 0, 0);
         controls.update();
       };
 
+      let previousCameraSettings = "";
       const applySceneSettings = (settings: Model3DProps) => {
         const studio = settings.presentation.lighting === "studio";
         if (studio) ensureStudio();
@@ -435,10 +447,14 @@ const SingleModel3DNode = memo(function SingleModel3DNode({
         keyLight.color.set(settings.keyLightColor);
         keyLight.intensity = settings.keyLightIntensity;
         grid.visible = settings.showGrid;
+        applyOrbitViewLimits(controls, settings.preventBottomView);
         camera.fov = settings.cameraFov;
         camera.zoom = settings.modelScale;
         camera.updateProjectionMatrix();
-        fitCameraToModel();
+        const cameraSettings = JSON.stringify([settings.cameraView, settings.cameraFov, settings.modelScale]);
+        if (cameraSettings !== previousCameraSettings) fitCameraToModel();
+        else controls.update();
+        previousCameraSettings = cameraSettings;
       };
 
       const initialSettings = modelPropsRef.current;
@@ -465,6 +481,14 @@ const SingleModel3DNode = memo(function SingleModel3DNode({
       });
       intersectionObserver.observe(container);
 
+      const renderSceneFrame = () => {
+        // Keep the same render passes as the live view, including studio bloom/output.
+        // Transparent models retain the existing compositing path without opaque bloom.
+        const currentSettings = modelPropsRef.current;
+        if (!currentSettings) throw new Error("当前 3D 场景配置不可用");
+        if (composer && currentSettings.presentation.lighting === "studio" && currentSettings.backgroundOpacity === 1) composer.render();
+        else renderer.render(scene, camera);
+      };
       renderer.setAnimationLoop((now) => {
         if (!visible || document.hidden) {
           lastFrame = now;
@@ -499,10 +523,7 @@ const SingleModel3DNode = memo(function SingleModel3DNode({
           }
         }
         controls.update();
-        // Bloom writes opaque pixels; preserve 2D compositing for transparent canvases.
-        const currentSettings = modelPropsRef.current;
-        if (composer && currentSettings?.presentation.lighting === "studio" && currentSettings.backgroundOpacity === 1) composer.render();
-        else renderer.render(scene, camera);
+        renderSceneFrame();
       });
 
       const decoders = createModelLoader(renderer);
@@ -512,7 +533,7 @@ const SingleModel3DNode = memo(function SingleModel3DNode({
         modelAssetContentUrl(projectId, assetId),
         (gltf) => {
           modelLoadSettled = true;
-          if (cancelled) {
+          if (cancelled || contextLost) {
             decoders.dispose();
             disposeSceneResources(gltf.scene);
             return;
@@ -889,6 +910,7 @@ const SingleModel3DNode = memo(function SingleModel3DNode({
             pickScenePath,
           };
           runtimeRef.current = runtimeController;
+          modelReady = true;
           setLoadedScene({ scene: { assetId, ...sceneTree }, animationCount: gltf.animations.length });
           onSceneChange?.(node.id, { assetId, ...sceneTree });
           setLoadState({ status: "ready" });
@@ -904,7 +926,24 @@ const SingleModel3DNode = memo(function SingleModel3DNode({
         },
       );
 
+      const handleContextLost = (event: Event) => {
+        event.preventDefault();
+        contextLost = true;
+        modelReady = false;
+        renderer.setAnimationLoop(null);
+        // Prevent later property effects from reporting readiness for this lost renderer.
+        if (runtimeRef.current === runtimeController) runtimeRef.current = null;
+        console.error("Single 3D model lost its WebGL context.", { projectId, assetId, canvasNodeId: node.id });
+        onSceneChange?.(node.id, null);
+        setLoadState({ status: "error", message: "3D 图形上下文已丢失，请减少模型复杂度后重新打开场景。" });
+      };
       dispose = () => {
+        if (disposed) return;
+        disposed = true;
+        modelReady = false;
+        unregisterCoverSurface?.();
+        unregisterCoverSurface = null;
+        renderer.domElement.removeEventListener("webglcontextlost", handleContextLost);
         renderer.setAnimationLoop(null);
         resizeObserver.disconnect();
         intersectionObserver.disconnect();
@@ -932,7 +971,22 @@ const SingleModel3DNode = memo(function SingleModel3DNode({
         if (runtimeRef.current === runtimeController) runtimeRef.current = null;
         if (container.contains(renderer.domElement)) container.replaceChildren();
       };
+      renderer.domElement.addEventListener("webglcontextlost", handleContextLost);
+      unregisterCoverSurface = registerCoverSurface(renderer.domElement, () => {
+        if (cancelled || disposed || contextLost || renderer.getContext().isContextLost()) {
+          throw new Error(`3D 模型已释放或 WebGL 上下文丢失，不能生成封面（项目 ${projectId}，节点 ${node.id}）`);
+        }
+        if (!modelReady || loadStateRef.current.status !== "ready" || runtimeRef.current !== runtimeController) {
+          throw new Error(`3D 模型尚未就绪，不能生成封面（项目 ${projectId}，节点 ${node.id}）`);
+        }
+        // Same synchronous frame: retain current camera and animation pose without
+        // paying the continuous performance cost of preserveDrawingBuffer.
+        renderSceneFrame();
+        if (renderer.getContext().isContextLost()) throw new Error("3D 模型截图时 WebGL 上下文丢失");
+        return renderer.domElement.toDataURL("image/png");
+      });
     }).catch((reason) => {
+      dispose?.();
       if (!cancelled) {
         onSceneChange?.(node.id, null);
         setLoadState({ status: "error", message: `3D 引擎加载失败：${errorText(reason)}` });
@@ -984,11 +1038,11 @@ const SingleModel3DNode = memo(function SingleModel3DNode({
   };
 
   if (!parsed.ok) {
-    return <div className="model-3d-message is-error" role="alert"><strong>{componentLabels[node.type]}配置错误</strong><span>{parsed.message}</span></div>;
+    return <div className="model-3d-message is-error" data-cover-state="error" data-cover-error={parsed.message} role="alert"><strong>{componentLabels[node.type]}配置错误</strong><span>{parsed.message}</span></div>;
   }
 
   return (
-    <div className="model-3d-node">
+    <div className="model-3d-node" data-cover-state={loadState.status} data-cover-error={loadState.status === "error" ? loadState.message : undefined}>
       <div
         className="model-3d-renderer"
         onPointerCancel={() => {

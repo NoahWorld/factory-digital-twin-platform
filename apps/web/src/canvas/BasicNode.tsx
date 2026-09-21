@@ -217,7 +217,11 @@ function ButtonNode({ editable, node, props }: { editable: boolean; node: Canvas
       {props.text}
     </span>
   );
-  if (!props.href || props.disabled) return content;
+  if (!props.href || props.disabled) return (
+    <button className="basic-button-link basic-action-button" disabled={props.disabled} tabIndex={editable ? -1 : 0} type="button">
+      {content}
+    </button>
+  );
   return (
     <a
       className="basic-button-link"

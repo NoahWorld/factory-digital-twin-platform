@@ -16,6 +16,7 @@ export const BatchModel3DNode = memo(function BatchModel3DNode({
   editable,
   interactive = false,
   instanceTransformMode = null,
+  modelFocusRequest = null,
   maximumModelInstances,
   node,
   onModelInstanceSelect,
@@ -60,6 +61,7 @@ export const BatchModel3DNode = memo(function BatchModel3DNode({
     selectionStyle,
     controlsEnabled: cameraControlsEnabled ?? !editable,
     instanceTransformMode,
+    modelFocusRequest,
   } : null;
   const inputRef = useRef(input);
   inputRef.current = input;
@@ -146,11 +148,11 @@ export const BatchModel3DNode = memo(function BatchModel3DNode({
   };
 
   if (!parsed.ok) {
-    return <div className="model-3d-message is-error" role="alert"><strong>{componentLabels[node.type]}配置错误</strong><span>{parsed.message}</span></div>;
+    return <div className="model-3d-message is-error" data-cover-state="error" data-cover-error={parsed.message} role="alert"><strong>{componentLabels[node.type]}配置错误</strong><span>{parsed.message}</span></div>;
   }
 
   return (
-    <div className="model-3d-node">
+    <div className="model-3d-node" data-cover-state={loadState.status} data-cover-error={loadState.status === "error" ? loadState.message : undefined}>
       <div
         className="model-3d-renderer"
         onPointerCancel={() => {
@@ -187,7 +189,6 @@ export const BatchModel3DNode = memo(function BatchModel3DNode({
         </details>
       ) : null}
       {loadState.status === "loading" ? <div className="model-3d-message"><span className="model-loading-spinner" /><strong>正在加载 {instances.length} 个 3D 模型实例</strong></div> : null}
-      {loadState.status === "empty" ? <div className="model-3d-message"><strong>当前场景没有模型实例</strong></div> : null}
       {loadState.status === "error" ? <div className="model-3d-message is-error" role="alert"><strong>批量 3D 场景不可用</strong><span>{loadState.message}</span></div> : null}
     </div>
   );
