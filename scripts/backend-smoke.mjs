@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {createServer} from 'node:http';
 import {websocket} from './backend-websocket-client.mjs';
 import {createCoverPng} from './backend-cover-smoke.mjs';
+import {checkFluidDocument,checkFluidViewer} from './backend-fluid-smoke.mjs';
 import {readFileSync,mkdtempSync,rmSync} from 'node:fs';
 import {execFileSync} from 'node:child_process';
 import {createRequire} from 'node:module';
@@ -79,6 +80,7 @@ try{
  const manifest=(await call(`/projects/${id}/manifest`)).value;assert.equal(manifest.revision,revision);assert.ok(manifest.settings.backgroundColor);const chunk=(await call(`/projects/${id}/document-items?revision=${revision}&limit=2`)).value;assert.equal(chunk.items.length,2);await call(`/projects/${id}/document-items?revision=0`,{status:409});ok('manifest and revision-bound document chunks');
  let cameraScene=(await call(`/projects/${scene}/scene`)).value.scene;
  assert.equal(cameraScene.settings.preventBottomView,true);
+ assert.deepEqual(cameraScene.fluids,[]);
  for(const enabled of [false,true]){
    cameraScene=(await call(`/projects/${scene}/scene`,{method:'PATCH',body:{expectedRevision:cameraScene.revision,settings:{...cameraScene.settings,preventBottomView:enabled},upsertInstances:[],deleteInstanceIds:[]}})).value.scene;
    assert.equal((await call(`/projects/${scene}/scene`)).value.scene.settings.preventBottomView,enabled);
@@ -96,6 +98,7 @@ try{
  assert.match(saved3dProject.coverUrl,/\/cover\.png\?revision=\d+$/);
  assert.match((await call(saved3dProject.coverUrl.replace('/api/v1',''))).r.headers.get('content-type'),/^image\/png/);
  ok('3D content saves mark the previous screenshot pending');
+ const {snapshot:fluidSnapshot}=await checkFluidDocument(call,scene,ok);
  const asset=(await call(`/projects/${id}/assets`,{method:'POST',status:201,body:{assetId:'motor-01',name:'Test motor',assetType:'motor',modelNode:null,metadata:{}}})).value.asset;
  const source=(await call(`/projects/${id}/data-sources`,{method:'POST',status:201,body:{name:'Integration source',sourceType:'rest_polling',config:{url:'http://host.docker.internal:8790/metrics',intervalSeconds:1,timeoutMs:2000,timestampPath:'$.timestamp',credentialRef:null}}})).value.dataSource;
  await call(`/projects/${id}/assets/${asset.id}/data-bindings`,{method:'POST',status:201,body:{dataSourceId:source.id,metricKey:'temperature',sourcePath:'$.temperature',valueType:'number',unit:'C',staleAfterSeconds:3}});
@@ -119,6 +122,8 @@ try{
  const username='smoke'+Date.now();const user=(await call('/users',{method:'POST',status:201,body:{loginName:username,email:username+'@local.test',displayName:'Integration viewer',password:admin.password,role:'viewer'}})).value.user;users.push(user.id);
  const other=await call('/auth/login',{method:'POST',body:{identifier:username,password:admin.password}});const viewer=other.r.headers.get('set-cookie').split(';')[0];await call(`/projects/${id}`,{as:viewer,status:404});
  await call(`/projects/${id}/members/${user.id}`,{method:'PUT',body:{role:'viewer'}});await call(`/projects/${id}/canvas`,{as:viewer});await call(`/projects/${id}`,{method:'PATCH',as:viewer,body:{name:'denied'},status:403});await call(`/projects/${scene}`,{as:viewer,status:404});ok('project membership and viewer write isolation');
+ await call(`/projects/${scene}/members/${user.id}`,{method:'PUT',body:{role:'viewer'}});
+ await checkFluidViewer(call,scene,viewer,fluidSnapshot,ok);
  await call(`/users/${user.id}/revoke-sessions`,{method:'POST'});await call('/auth/me',{as:viewer,status:401});ok('session revocation');
  const tenant='isolation-'+Date.now(),tenantUser='tenant-user-'+Date.now();tenants.push(tenant);users.push(tenantUser);
  sql(`INSERT INTO tenants(id,name) VALUES('${tenant}','Isolation check'); INSERT INTO users(id,tenant_id,email,login_name,display_name,password_hash,role) SELECT '${tenantUser}','${tenant}','admin@isolation.test','admin','Isolated admin',password_hash,'platform_admin' FROM users WHERE tenant_id='local' AND login_name='admin';`);

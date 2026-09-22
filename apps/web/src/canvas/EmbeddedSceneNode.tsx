@@ -122,6 +122,7 @@ export const EmbeddedSceneNode = memo(function EmbeddedSceneNode({
   return (
     <div className="embedded-scene-node" data-cover-state="ready">
       <Model3DNode
+        fluids={response.scene.fluids ?? []}
         cameraControlsEnabled={!editable}
         editable={false}
         interactive={interactive && parsed.value.interactionEnabled}

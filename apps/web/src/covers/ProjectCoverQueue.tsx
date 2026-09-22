@@ -16,7 +16,7 @@ export type CoverProject = {
   documentRevision: number; coverSourceRevision: number | null; coverRevision: number;
 };
 type CaptureDocument = { type: "2d"; canvas: CanvasDocument; revision: number }
-  | { type: "3d"; node: CanvasNode; revision: number };
+  | { type: "3d"; fluids: import("../../../../shared/fluids").FluidDefinition[]; node: CanvasNode; revision: number };
 const ignore = () => undefined;
 const taskKey = (project: CoverProject) => `${project.id}:${project.documentRevision}:${project.coverRevision}`;
 
@@ -47,7 +47,7 @@ function CoverCapture({ project, onComplete, onError }: {
     void (async () => {
       if (project.projectType === "3d") {
         const result = await request<{ scene: StandaloneSceneDocument }>(standaloneScenePath(project.id), { signal: controller.signal });
-        if (active) setContent({ type: "3d", node: standaloneRendererNode(result.scene), revision: result.scene.revision });
+        if (active) setContent({ type: "3d", fluids: result.scene.fluids ?? [], node: standaloneRendererNode(result.scene), revision: result.scene.revision });
       } else {
         const result = await request<CanvasResponse>(projectCanvasPath(project.id), { signal: controller.signal });
         if (active) setContent({ type: "2d", canvas: result.canvas, revision: result.canvas.revision });
@@ -81,7 +81,7 @@ function CoverCapture({ project, onComplete, onError }: {
       {content?.type === "2d" ? <CanvasSurface document={content.canvas} editable={false} runtimeControlsEnabled={false}
         selectedNodeId={null} selectedModelSceneNodePath={null} onCreateNode={ignore}
         onModelSceneNodeSelect={ignore} onNodeChange={ignore} onSelectNode={ignore} /> : null}
-      {content?.type === "3d" ? <Model3DNode node={content.node} projectId={project.id}
+      {content?.type === "3d" ? <Model3DNode node={content.node} fluids={content.fluids} projectId={project.id}
         editable={false} cameraControlsEnabled={false} runtimeControlsEnabled={false}
         maximumModelInstances={STANDALONE_3D_LIMITS.maximumInstances} selectionStyle="none"
         selectedSceneNodePath={null} onSceneNodeSelect={ignore} /> : null}

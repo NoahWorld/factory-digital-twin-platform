@@ -73,8 +73,19 @@ try{
  for(const [key,value] of Object.entries(normalized))if(!(key in legacyProps))definitions.Model3DProps.properties[key].default=value;
  const {validateStandaloneScenePatch}=require(join(temp,'apps/api/src/standalone-scenes.js'));
  const {TWIN_ACTION_LIMITS,TWIN_ACTION_ID_PATTERN,TWIN_ACTION_ASSET_ID_PATTERN,TWIN_ACTION_TEXT_PATTERN}=require(join(temp,'shared/twin-actions.js'));
+ const {FLUID_LIMITS,FLUID_ID_PATTERN,FLUID_COLOR_PATTERN,FLUID_LABEL_PATTERN}=require(join(temp,'shared/fluids.js'));
  // The shared parser's declarative limits also constrain Java's generated schema.
  const constrain=(entry,limits)=>{if(entry.anyOf)entry.anyOf.forEach(value=>constrain(value,limits));else Object.assign(entry,limits);};
+ constrain(definitions.StandaloneScenePatch.properties.fluids,{maxItems:FLUID_LIMITS.maximumFluids});
+ for(const [field,limits] of Object.entries({
+   id:{pattern:FLUID_ID_PATTERN},label:{minLength:1,maxLength:FLUID_LIMITS.maximumLabelLength,pattern:FLUID_LABEL_PATTERN},
+   color:{pattern:FLUID_COLOR_PATTERN},points:{minItems:FLUID_LIMITS.minimumPoints,maxItems:FLUID_LIMITS.maximumPoints},
+   radius:{minimum:FLUID_LIMITS.minimumRadius,maximum:FLUID_LIMITS.maximumRadius},
+   speed:{minimum:FLUID_LIMITS.minimumSpeed,maximum:FLUID_LIMITS.maximumSpeed},
+   spread:{minimum:FLUID_LIMITS.minimumSpread,maximum:FLUID_LIMITS.maximumSpread},
+   opacity:{minimum:FLUID_LIMITS.minimumOpacity,maximum:FLUID_LIMITS.maximumOpacity},
+ }))constrain(definitions.FluidDefinition.properties[field],limits);
+ definitions.FluidPoint.items.forEach(item=>Object.assign(item,{minimum:-FLUID_LIMITS.maximumCoordinate,maximum:FLUID_LIMITS.maximumCoordinate}));
  constrain(definitions.CanvasNodeInteraction.properties.clickActions,{maxItems:TWIN_ACTION_LIMITS.maximumActions});
  constrain(definitions.StandaloneSceneInstance.properties.clickActions,{maxItems:TWIN_ACTION_LIMITS.maximumActions});
  for(const [name,fields] of Object.entries({TwinMessageAction:{title:{minLength:0,maxLength:TWIN_ACTION_LIMITS.maximumTitleLength,pattern:TWIN_ACTION_TEXT_PATTERN},text:{minLength:1,maxLength:TWIN_ACTION_LIMITS.maximumTextLength,pattern:TWIN_ACTION_TEXT_PATTERN}},TwinSelectAssetAction:{assetId:{pattern:TWIN_ACTION_ASSET_ID_PATTERN}},TwinPanelAction:{nodeId:{pattern:TWIN_ACTION_ID_PATTERN}},TwinFocusModelAction:{projectId:{pattern:TWIN_ACTION_ID_PATTERN},instanceId:{pattern:TWIN_ACTION_ID_PATTERN}},TwinSetTextAction:{nodeId:{pattern:TWIN_ACTION_ID_PATTERN},text:{minLength:0,maxLength:TWIN_ACTION_LIMITS.maximumTextLength,pattern:TWIN_ACTION_TEXT_PATTERN}}}))for(const [field,limits] of Object.entries(fields))constrain(definitions[name].properties[field],limits);

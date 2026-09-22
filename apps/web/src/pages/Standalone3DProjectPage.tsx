@@ -18,6 +18,8 @@ import {
   type StandaloneSceneSettings,
 } from "../../../../shared/standalone-3d";
 import type { TwinAction } from "../../../../shared/twin-actions";
+import { parseFluids, type FluidDefinition, type FluidKind } from "../../../../shared/fluids";
+import { FluidEditor, FluidLayers, useFluidEditor } from "../scene/FluidEditor";
 import { errorMessage, request } from "../api";
 import { findBuiltinModel, latestBuiltinModel } from "../../../../shared/builtin-models";
 import { Select } from "../components/Select";
@@ -79,6 +81,7 @@ type ScenePatch = {
   expectedRevision: number;
   linked2dProjectId?: string | null;
   settings?: StandaloneSceneSettings;
+  fluids?: FluidDefinition[];
   upsertInstances: StandaloneSceneInstance[];
 };
 
@@ -89,7 +92,7 @@ type Standalone3DProjectPageProps = {
 };
 
 type LibraryView = "layers" | "models";
-type InspectorView = "model" | "scene";
+type InspectorView = "model" | "scene" | "fluid";
 
 const MAX_MODEL_BYTES = 25 * 1024 * 1024;
 const axisLabels = ["X", "Y", "Z"] as const;
@@ -136,8 +139,14 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const updateFluids = useCallback((fluids: FluidDefinition[]) => {
+    setDraftScene((current) => current ? { ...current, fluids } : current);
+    setError(null); setNotice(null);
+  }, []);
+  const fluidEditor = useFluidEditor({ fluids: draftScene?.fluids, onChange: updateFluids, enabled: editable && mode === "edit" && !saving });
   const draftSceneRef = useRef<StandaloneSceneDocument | null>(null);
   const layerTreeRef = useRef<HTMLDivElement | null>(null);
+  const fluidLayerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     draftSceneRef.current = draftScene;
@@ -162,6 +171,7 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
       setModels(modelResult.modelAssets);
       setProjects(projectResult.projects);
       setSelectedInstanceId(null);
+      fluidEditor.reset();
       setInspectorView("scene");
     }).catch((reason) => {
       if (active) setError(errorMessage(reason));
@@ -169,7 +179,7 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
       if (active) setLoading(false);
     });
     return () => { active = false; };
-  }, [projectId]);
+  }, [projectId, fluidEditor.reset]);
 
   useEffect(() => {
     let active = true;
@@ -217,9 +227,10 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
     setModelFocusRequest(null);
     setInteractionTransportError(null);
     setPreviewModel(null);
+    fluidEditor.reset();
     setInspectorView("scene");
     setNotice(null);
-  }, [mode]);
+  }, [mode, fluidEditor.reset]);
 
   useEffect(() => {
     if (mode !== "edit" || libraryView !== "layers") return;
@@ -233,7 +244,14 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
   }, [libraryView, mode, selectedInstanceId]);
 
   useEffect(() => {
-    if (mode !== "edit" || previewModel || showTemplates) return;
+    if (mode !== "edit" || libraryView !== "layers" || !fluidEditor.selectedId) return;
+    const layer = Array.from(fluidLayerRef.current?.querySelectorAll<HTMLElement>("[data-fluid-id]") ?? [])
+      .find((element) => element.dataset.fluidId === fluidEditor.selectedId);
+    layer?.scrollIntoView({ block: "nearest" });
+  }, [mode, libraryView, fluidEditor.selectedId]);
+
+  useEffect(() => {
+    if (mode !== "edit" || previewModel || showTemplates || fluidEditor.selectedId || fluidEditor.session) return;
     const handleShortcut = (event: KeyboardEvent) => {
       if (event.defaultPrevented || event.isComposing || event.altKey || event.ctrlKey || event.metaKey) return;
       const target = event.target;
@@ -243,9 +261,30 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
     };
     window.addEventListener("keydown", handleShortcut);
     return () => window.removeEventListener("keydown", handleShortcut);
-  }, [mode, previewModel, showTemplates]);
+  }, [mode, previewModel, showTemplates, fluidEditor.selectedId, fluidEditor.session]);
 
-  const dirty = savedScene !== null && draftScene !== null && !sameJson(savedScene, draftScene);
+  const dirty = !!fluidEditor.session || (savedScene !== null && draftScene !== null && !sameJson(savedScene, draftScene));
+  useEffect(() => {
+    if (!dirty || mode !== "edit") return;
+    const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ""; };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dirty, mode]);
+  const selectFluid = useCallback((id: string | null) => {
+    if (mode !== "edit" || !fluidEditor.select(id)) return;
+    setSelectedInstanceId(null);
+    setLibraryView("layers");
+    setInspectorView(id ? "fluid" : "scene");
+    setNotice(null);
+  }, [mode, fluidEditor.select]);
+  const startFluid = (kind: FluidKind) => {
+    if (!fluidEditor.start(kind)) return;
+    setSelectedInstanceId(null); setLibraryView("layers"); setInspectorView("fluid"); setError(null); setNotice(null);
+  };
+  const selectScene = () => {
+    if (!fluidEditor.select(null)) { setInspectorView("fluid"); return; }
+    setSelectedInstanceId(null); setInspectorView("scene");
+  };
   const selectedInstance = draftScene?.instances.find((item) => item.id === selectedInstanceId) ?? null;
   const selectedModelAsset = selectedInstance
     ? models.find((model) => model.id === selectedInstance.modelAssetId) ?? null
@@ -460,6 +499,7 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
       setError(violation);
       return;
     }
+    if (!fluidEditor.select(null)) { setInspectorView("fluid"); return; }
     setDraftScene({ ...currentScene, instances: nextInstances });
     setSelectedInstanceId(instance.id);
     setLibraryView("layers");
@@ -470,6 +510,7 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
 
   const applySceneTemplate = useCallback((templateId: SceneTemplateId, requireNewProject = false) => {
     const currentScene = draftSceneRef.current;
+    if (fluidEditor.session) { setTemplateError("请先应用或取消流体路径，再套用场景模板。"); return; }
     if (!currentScene || !savedScene) {
       setTemplateError("场景尚未加载完成，不能套用模板。");
       return;
@@ -478,20 +519,21 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
       const next = instantiateSceneTemplate({ templateId, currentScene, savedScene, models, limits, editable: editable && mode === "edit", requireNewProject });
       draftSceneRef.current = next;
       setDraftScene(next);
+      fluidEditor.reset();
       setSelectedInstanceId(null);
       setLibraryView("layers");
       setInspectorView("scene");
       setTemplateError(null);
       setError(null);
       setShowTemplates(false);
-      setNotice(`“${getSceneTemplate(templateId).name}”已载入草稿，保存场景后生效。模型动画为虚构演示，未绑定现场业务资产。`);
+      setNotice(`“${getSceneTemplate(templateId).name}”已载入草稿，保存场景后生效。模型动画为虚构演示，未绑定现场业务资产。${(next.fluids?.length ?? 0) > 0 ? "现有流体配置及路径已保留。" : ""}`);
     } catch (reason) {
       console.error("Scene template application failed", { projectId, templateId, requireNewProject, reason });
       const message = errorMessage(reason);
       setTemplateError(message);
       setError(message);
     }
-  }, [editable, limits, mode, models, projectId, savedScene]);
+  }, [editable, limits, mode, models, projectId, savedScene, fluidEditor.session, fluidEditor.reset]);
 
   useEffect(() => {
     if (!initialTemplateId || loading || !savedScene || initialTemplateApplied.current) return;
@@ -532,6 +574,8 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
   };
 
   const save = async () => {
+    if (fluidEditor.hasInvalidFields) { setError("请修正流体属性中标红的参数后再保存。"); setInspectorView("fluid"); return; }
+    if (fluidEditor.session) { setError("当前流体路径尚未应用。请在流体属性中点击“应用流体”或“取消路径修改”，再保存场景。"); setInspectorView("fluid"); return; }
     if (!savedScene || !draftScene || !dirty) return;
     const savedById = new Map(savedScene.instances.map((instance) => [instance.id, instance]));
     const draftIds = new Set(draftScene.instances.map((instance) => instance.id));
@@ -549,6 +593,11 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
       expectedRevision: savedScene.revision,
       upsertInstances,
     };
+    if (!sameJson(savedScene.fluids ?? [], draftScene.fluids ?? [])) {
+      const parsed = parseFluids(draftScene.fluids ?? []);
+      if (!parsed.ok) { setError(`流体无法保存：${parsed.message}`); return; }
+      patch.fluids = parsed.value;
+    }
     if (!sameJson(savedScene.settings, draftScene.settings)) patch.settings = draftScene.settings;
     if (savedScene.linked2dProjectId !== draftScene.linked2dProjectId) {
       patch.linked2dProjectId = draftScene.linked2dProjectId;
@@ -607,6 +656,7 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
   };
 
   const selectModelInstance = useCallback((_nodeId: string, instanceId: string | null) => {
+    if (mode === "edit" && !fluidEditor.select(null)) { setInspectorView("fluid"); return; }
     setSelectedInstanceId(instanceId);
     setNotice(null);
     if (mode === "edit") {
@@ -619,7 +669,7 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
     if (!instance || instance.renderMode === "background") return;
     const actions: TwinAction[] = instance.clickActions ?? (instance.assetId && draftScene?.linked2dProjectId ? [{ type: "select-asset", assetId: instance.assetId }] : []);
     if (actions.length) executeAndPublish(actions, `模型 ${instance.label}`);
-  }, [draftScene?.instances, draftScene?.linked2dProjectId, mode, executeAndPublish]);
+  }, [draftScene?.instances, draftScene?.linked2dProjectId, mode, executeAndPublish, fluidEditor.select]);
 
   if (loading) {
     return <main className="canvas-page-state"><p className="eyebrow">3D workspace</p><h1>正在加载独立 3D 场景…</h1></main>;
@@ -634,7 +684,12 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
       cameraControlsEnabled
       editable={false}
       interactive
-      instanceTransformMode={mode === "edit" && editable ? instanceTransformMode : null}
+      instanceTransformMode={mode === "edit" && editable && !fluidEditor.selectedId && !fluidEditor.session ? instanceTransformMode : null}
+      fluids={mode === "edit" ? fluidEditor.previewFluids : draftScene.fluids}
+      selectedFluidId={mode === "edit" ? fluidEditor.selectedId : null}
+      fluidEditor={mode === "edit" ? fluidEditor.rendererEditor : null}
+      onFluidPoint={mode === "edit" ? fluidEditor.onPoint : undefined}
+      onFluidSelect={mode === "edit" ? selectFluid : undefined}
       maximumModelInstances={limits.maximumInstances}
       modelFocusRequest={mode === "preview" ? modelFocusRequest : null}
       node={rendererNode}
@@ -686,7 +741,7 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
   return (
     <main className="standalone-3d-editor">
       <header className="standalone-3d-toolbar">
-        <a className="secondary-button compact-button" href="#/projects">返回项目</a>
+        <a className="secondary-button compact-button" href="#/projects" onClick={(event) => { if (fluidEditor.session) { event.preventDefault(); setError("请先应用并保存或取消当前流体路径，再离开编辑器。"); setInspectorView("fluid"); } }}>返回项目</a>
         <div className="standalone-3d-title"><span>3D SCENE BUILDER</span><strong>{projectName}</strong></div>
         <div className="standalone-3d-budget" title="通过明确预算阻止浏览器无上限加载">
           <span>{draftScene.instances.length}/{limits.maximumInstances} 实例</span>
@@ -695,12 +750,12 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
           {draftScene.settings.playAnimations ? <span>{scenePerformance.animatedInstances}/{limits.maximumAnimatedInstances} 动画实例</span> : null}
         </div>
         <ThemeToggle />
-        {editable ? <button className="secondary-button compact-button" disabled={saving} onClick={() => { setTemplateError(null); setShowTemplates(true); }} type="button">模板</button> : null}
+        {editable ? <button className="secondary-button compact-button" disabled={saving || !!fluidEditor.session} title="替换模型与场景设置，保留现有流体路径" onClick={() => { setTemplateError(null); setShowTemplates(true); }} type="button">模板</button> : null}
         {editable && draftScene.instances.some(instance => {
           const latest = latestBuiltinModel(instance.modelAssetId);
           return latest && latest.id !== instance.modelAssetId;
         }) ? <button className="secondary-button compact-button" disabled={saving} onClick={updateBuiltinModels} title="仅更新内置模型资源版本，保留当前布局与设置，保存后生效" type="button">更新内置模型</button> : null}
-        <a className="secondary-button compact-button" href={standaloneSceneRoutePath(projectId, "preview")}>预览</a>
+        <a className="secondary-button compact-button" href={standaloneSceneRoutePath(projectId, "preview")} onClick={(event) => { if (dirty) { event.preventDefault(); setError(fluidEditor.session ? "请先应用流体路径并保存场景，再进入预览。" : "请先保存场景，再预览已保存的配置。"); if (fluidEditor.session) setInspectorView("fluid"); } }}>预览</a>
         <button className="primary-button compact-button" disabled={!dirty || saving || !editable} onClick={() => void save()} type="button">
           {saving ? "保存中…" : dirty ? "保存场景" : "已保存"}
         </button>
@@ -708,7 +763,7 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
 
       <aside className="standalone-3d-library">
         <nav aria-label="场景内容" className="standalone-panel-tabs">
-          <button aria-pressed={libraryView === "layers"} className={libraryView === "layers" ? "is-active" : ""} onClick={() => setLibraryView("layers")} type="button">图层 <span>{draftScene.instances.length}</span></button>
+          <button aria-pressed={libraryView === "layers"} className={libraryView === "layers" ? "is-active" : ""} onClick={() => setLibraryView("layers")} type="button">图层 <span>{draftScene.instances.length + (draftScene.fluids?.length ?? 0)}</span></button>
           <button aria-pressed={libraryView === "models"} className={libraryView === "models" ? "is-active" : ""} onClick={() => setLibraryView("models")} type="button">模型库 <span>{models.length}</span></button>
         </nav>
         {libraryView === "layers" ? (
@@ -722,10 +777,7 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
               <article className={inspectorView === "scene" && selectedInstanceId === null ? "is-selected is-scene" : "is-scene"} data-scene-root>
                 <button
                   className="standalone-layer-main"
-                  onClick={() => {
-                    setSelectedInstanceId(null);
-                    setInspectorView("scene");
-                  }}
+                  onClick={selectScene}
                   type="button"
                 >
                   <span className="standalone-layer-icon">◇</span>
@@ -740,10 +792,7 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
                     <span className="standalone-layer-branch" aria-hidden="true">└</span>
                     <button
                       className="standalone-layer-main"
-                      onClick={() => {
-                        setSelectedInstanceId(instance.id);
-                        setInspectorView("model");
-                      }}
+                      onClick={() => selectModelInstance(rendererNode.id, instance.id)}
                       type="button"
                     >
                       <span className="standalone-layer-icon">▧</span>
@@ -762,7 +811,8 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
                 );
               })}
             </div>
-            {draftScene.instances.length === 0 ? <p className="standalone-layer-empty">画布中还没有模型。打开“模型库”加入第一个模型。</p> : null}
+            {draftScene.instances.length === 0 ? <p className="standalone-layer-empty">打开“模型库”添加模型，或在下方添加可沿路径流动的流体。</p> : null}
+            <div ref={fluidLayerRef}><FluidLayers editor={fluidEditor} onSelect={selectFluid} onAdd={startFluid} /></div>
           </>
         ) : (
           <>
@@ -770,7 +820,7 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
               <div><span>MODEL LIBRARY</span><strong>模型积木</strong></div>
               <label className={`secondary-button compact-button${uploading ? " is-disabled" : ""}`}>
                 {uploading ? "上传中…" : "上传模型"}
-                <input accept=".glb,.gltf,model/gltf-binary,model/gltf+json" disabled={uploading || !editable} onChange={(event) => void upload(event)} type="file" />
+                <input accept=".glb,.gltf,model/gltf-binary,model/gltf+json" disabled={uploading || !editable || !!fluidEditor.session} onChange={(event) => void upload(event)} type="file" />
               </label>
             </div>
             <p className="standalone-panel-copy">点击缩略图查看模型，点击 ＋ 加入场景。</p>
@@ -779,7 +829,7 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
                 <article key={asset.id}>
                   <ModelAssetThumbnail asset={asset} name={modelName(asset)} onPreview={() => setPreviewModel(asset)} />
                   <div><strong title={modelName(asset)}>{modelName(asset)}</strong><span>{modelSourceText(asset.source)} · {formatFileSize(asset.byteSize)}</span></div>
-                  <button aria-label={`加入场景 ${modelName(asset)}`} className="icon-button" disabled={!editable || draftScene.instances.length >= limits.maximumInstances} onClick={() => addModel(asset)} title="加入场景" type="button">＋</button>
+                  <button aria-label={`加入场景 ${modelName(asset)}`} className="icon-button" disabled={!editable || !!fluidEditor.session || draftScene.instances.length >= limits.maximumInstances} onClick={() => addModel(asset)} title="加入场景" type="button">＋</button>
                 </article>
               ))}
             </div>
@@ -789,7 +839,11 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
 
       <section className="standalone-3d-stage">
         {sceneView}
-        {editable ? (
+        {editable && fluidEditor.session ? <div className="standalone-transform-tools standalone-fluid-drawing-hint" role="status">
+          <strong>{fluidEditor.session.active ? "正在绘制流体" : "流体拾取已暂停"}</strong>
+          <span>{fluidEditor.session.selectedPointIndex === null ? "左键单击添加点" : `左键单击移动第 ${fluidEditor.session.selectedPointIndex + 1} 点`} · 拖动旋转 · 滚轮缩放 · {fluidEditor.session.fluid.points.length} 个点</span>
+          <button className="inspector-action-button" type="button" onClick={() => setInspectorView("fluid")}>路径属性</button>
+        </div> : editable && !fluidEditor.selectedId ? (
           <div
             aria-label="模型变换工具"
             className="standalone-transform-tools"
@@ -828,7 +882,7 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
       </section>
 
       <aside className="standalone-3d-inspector">
-        <nav aria-label="属性对象" className="standalone-panel-tabs standalone-inspector-tabs">
+        <nav aria-label="属性对象" className="standalone-panel-tabs standalone-inspector-tabs has-fluid">
           <button
             aria-pressed={inspectorView === "model"}
             className={inspectorView === "model" ? "is-active" : ""}
@@ -839,15 +893,14 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
           <button
             aria-pressed={inspectorView === "scene"}
             className={inspectorView === "scene" ? "is-active" : ""}
-            onClick={() => {
-              setSelectedInstanceId(null);
-              setInspectorView("scene");
-            }}
+            onClick={selectScene}
             type="button"
           >场景属性</button>
+          <button aria-pressed={inspectorView === "fluid"} className={inspectorView === "fluid" ? "is-active" : ""} disabled={!fluidEditor.selected}
+            onClick={() => setInspectorView("fluid")} type="button">流体属性</button>
         </nav>
 
-        {inspectorView === "model" && selectedInstance ? (
+        {inspectorView === "fluid" ? <FluidEditor editor={fluidEditor} sceneAnimationsEnabled={draftScene.settings.playAnimations} sceneAnimationSpeed={draftScene.settings.animationSpeed} /> : inspectorView === "model" && selectedInstance ? (
           <>
             <div className="standalone-inspector-title">
               <div><span>SELECTED MODEL</span><strong>{selectedInstance.label}</strong><small>{selectedModelAsset ? modelName(selectedModelAsset) : selectedInstance.modelAssetId}</small></div>
@@ -954,7 +1007,7 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
 
             <section className="standalone-property-group">
               <header><span aria-hidden="true">05</span><div><h3>动态</h3><small>整场动画与自动旋转</small></div></header>
-              <label className="standalone-checkbox"><input checked={draftScene.settings.playAnimations} disabled={!editable} onChange={(event) => updateSettings("playAnimations", event.target.checked)} type="checkbox" /> 播放已启用的模型动画</label>
+              <label className="standalone-checkbox"><input checked={draftScene.settings.playAnimations} disabled={!editable} onChange={(event) => updateSettings("playAnimations", event.target.checked)} type="checkbox" /> 播放已启用的模型与流体动画</label>
               <label><span>全局动画速度 <output>{draftScene.settings.animationSpeed.toFixed(2)}×</output></span><input disabled={!editable || !draftScene.settings.playAnimations} max="3" min="0.1" onChange={(event) => updateSettings("animationSpeed", Number(event.target.value))} step="0.05" type="range" value={draftScene.settings.animationSpeed} /></label>
               <label className="standalone-checkbox"><input checked={draftScene.settings.autoRotate} disabled={!editable} onChange={(event) => updateSettings("autoRotate", event.target.checked)} type="checkbox" /> 自动旋转整个场景</label>
               <label><span>旋转速度 <output>{draftScene.settings.rotationSpeed.toFixed(2)}</output></span><input disabled={!editable || !draftScene.settings.autoRotate} max="5" min="0" onChange={(event) => updateSettings("rotationSpeed", Number(event.target.value))} step="0.05" type="range" value={draftScene.settings.rotationSpeed} /></label>

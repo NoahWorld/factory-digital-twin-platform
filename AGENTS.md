@@ -120,6 +120,8 @@
 - 独立 3D 项目的数量上限不能替代复杂度预算；服务端保存前必须根据模型检查元数据计算唯一资源字节、网格实例和动画实例。当前实现尚不等于城市级流式场景：区域分包、视锥/距离加载、LOD、同构静态网格 GPU Instancing 和离屏降频仍需在真实客户模型压测后逐项接入，宣传不得提前声称已完成。
 - 首期性能目标待首个真实项目压测后固化；在此之前不得把模型体积、首屏时间或帧率写成无依据的承诺。
 
+- 独立 3D 的公共流体组件使用 `shared/fluids.ts` 的同级 `scene.fluids` 契约：气体／液体／熔融体都支持连续与扩散形态、颜色、鼠标路径、方向及播放设置。未完成路径只存在编辑会话；应用后通过场景 revision 事务保存，预览、嵌入场景和封面共享运行层。最多 32 条、每条 64 点、256 粒子；禁止每条流体建立 renderer/时钟或逐帧重建几何，禁止项目固定路径分支。Java 在既有 settings JSONB 内部存储并在 API 拆出同级字段，settings 更新必须保留流体；历史 Worker 依赖 `0023_scene_fluids.sql`。修改后执行 `pnpm test:fluids`、`pnpm test:fluids-browser`、`pnpm test:fluids-scene-browser`、`pnpm backend:smoke:fluids`、scene-runtime 回归、前端 check/build 与 Java 契约/后端验证。说明和操作见 [可配置流体组件](./docs/configurable-fluids.md)；当前为视觉流动，不宣称物理流场或 GLB 导出。
+
 ## 开发与质量要求
 
 - 当前技术栈：pnpm workspace；`apps/web` 为 React + Vite + TypeScript；`apps/api` 为既有 TypeScript Cloudflare Worker + D1；`apps/backend` 为 Java 21 + Spring Boot 独立部署后端，`deploy/local` 为 Docker Compose。启动和验证命令以根目录 `README.md` 与各应用 `package.json` 为准。
@@ -199,6 +201,7 @@
 
 - 厂房场景评估与技术选择见 [评估记录](./docs/厂房场景架构评估与技术选型.md)，实施边界与验证见 [前端场景运行架构](./docs/frontend-scene-runtime.md)。本轮先落实前端，后端迁移、采集与模型优化服务暂缓。
 - 多实例视窗由 `apps/web/src/scene/scene-runtime.ts` 拥有 renderer、相机和循环；React 只提交配置和接收事件。资源图变化通过 InstanceManager 增量协调，不能销毁仍在使用的 renderer 或源资源。替代此前“资源结构变化时整体释放”的规则；完整释放仅用于卸载或运行层销毁。
+- 共享动画时钟只使用 renderer 回调时间戳计算帧差；首次启动、离屏或标签隐藏后的恢复以首个回调建立基线，首帧增量为零，禁止用 `performance.now()` 初始化后再减 RAF 时间戳。非法或倒退时间必须明确报错，模型、流体和镜头复用同一帧增量；回归并入 `pnpm test:scene-runtime`。
 - ResourceManager 默认最多 3 个加载任务；同资源共享源对象、每实例持有租约，最后引用释放才销毁几何/纹理。取消必须区分失败，真实失败保留上下文并显示错误，不能返回假成功。
 - Meshopt/KTX2/Draco 解码器本地分发；静态几何用 three-mesh-bvh，骨骼/morph 几何不得使用静态 BVH。拾取保留建筑遮挡。普通配置、实例增删及 resize 不复位相机。
 - 修改运行层后执行 `pnpm test:scene-runtime` 和前端 check/build；浏览器验证脚本、诊断字段与范围见架构文档。LOD、区域卸载、GPU Instancing 和独立场景实时浮层仍是后续事项，不得宣称已完成。

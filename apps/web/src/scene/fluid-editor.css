@@ -1,0 +1,33 @@
+.fluid-layers { margin-top: 22px; padding-top: 14px; border-top: 1px solid var(--ui-border); }
+.fluid-add-actions, .fluid-path-actions, .fluid-apply-actions { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 12px; }
+.fluid-add-actions > button { flex: 1 1 64px; }
+.fluid-layers small { color: var(--ui-text-subtle); font-size: 0.65rem; }
+.fluid-layer-swatch { width: 13px; height: 13px; flex: 0 0 13px; border: 1px solid var(--ui-border-strong); border-radius: 50%; }
+.fluid-layer-draft { border-style: dashed !important; }
+.fluid-editor { min-width: 0; }
+.fluid-editor .standalone-property-group { min-width: 0; }
+.fluid-fields-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.fluid-number-field { min-width: 0; }
+.fluid-number-field input { font-variant-numeric: tabular-nums; }
+.fluid-editor input[aria-invalid="true"] { border-color: var(--ui-danger); }
+.fluid-error, .fluid-field-error { display: block; color: var(--ui-danger); overflow-wrap: anywhere; font-size: 0.67rem; line-height: 1.6; }
+.fluid-error { margin: 10px 0; padding: 10px; border: 1px solid var(--ui-danger); border-radius: 8px; background: var(--ui-readonly-bg); }
+.fluid-point-list { max-height: 210px; overflow: auto; display: grid; gap: 5px; margin: 12px 0 0; padding: 0; list-style: none; }
+.fluid-point-list button { display: flex; justify-content: space-between; gap: 8px; width: 100%; padding: 8px; border: 1px solid var(--ui-border); border-radius: 6px; color: var(--ui-text); background: var(--ui-input-bg); text-align: left; cursor: pointer; }
+.fluid-point-list button:hover:not(:disabled) { background: var(--ui-hover); border-color: var(--ui-border-strong); }
+.fluid-point-list button.is-selected { background: var(--ui-accent-soft); border-color: var(--ui-accent); }
+.fluid-point-list strong { flex-shrink: 0; font-size: 0.65rem; }
+.fluid-point-list span { overflow-wrap: anywhere; font: 0.65rem/1.5 ui-monospace, monospace; }
+.fluid-point-editor { margin-top: 12px; padding: 10px; border: 1px solid var(--ui-border); border-radius: 8px; }
+.fluid-point-editor > strong { color: var(--ui-text-muted); font-size: 0.67rem; }
+.fluid-coordinate-fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.fluid-coordinate-fields input { padding-inline: 5px !important; }
+.fluid-apply-actions { padding-top: 12px; border-top: 1px solid var(--ui-border); }
+.standalone-fluid-drawing-hint { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.standalone-fluid-drawing-hint > strong { color: var(--ui-accent); }
+.standalone-fluid-drawing-hint > span { flex: 1 1 220px; font-size: 0.65rem; line-height: 1.5; }
+.standalone-inspector-tabs.has-fluid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.fluid-editor :is(button, input):focus-visible, .fluid-layers button:focus-visible { outline: 2px solid var(--ui-accent); outline-offset: 2px; }
+.fluid-editor button:active:not(:disabled), .fluid-layers button:active:not(:disabled) { transform: translateY(1px); }
+.fluid-editor :is(button, input):disabled, .fluid-layers button:disabled { color: var(--ui-text-subtle); background: var(--ui-readonly-bg); border-color: var(--ui-border); cursor: not-allowed; }
+@media (max-width: 760px) { .fluid-point-list { max-height: 180px; } .fluid-apply-actions > button { flex: 1; } }
