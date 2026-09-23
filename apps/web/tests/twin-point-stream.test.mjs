@@ -64,7 +64,7 @@ try {
   const sent = socket.sent.at(-1);
   assert.equal(sent.operation, 'reset');
   socket.message({ type: 'command_ack', commandId: sent.commandId, sequence: 2 }); await command;
-  await assert.rejects(source.command({ expectedRevision: 2, operation: 'reset' }), /版本/);
+  await assert.rejects(source.command({ expectedRevision: 2, operation: 'reset' }), /配置已变化/);
   const rejected = source.command({ expectedRevision: 1, operation: 'move', values: [{ pointId: 'x', value: 3 }] });
   socket.message({ type: 'error', commandId: socket.sent.at(-1).commandId, error: 'bad_point', message: 'Unknown point' });
   await assert.rejects(rejected, /bad_point/);

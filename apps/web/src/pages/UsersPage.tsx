@@ -229,7 +229,6 @@ export function UsersPage({ currentUserId }: { currentUserId: string }) {
       <div>
         <p className="eyebrow">Access control</p>
         <h1>用户管理</h1>
-        <p>创建账号、编辑资料与角色、授予 2D／3D 权限，并管理账号登录状态。</p>
       </div>
       <button className="primary-button" disabled={busy} onClick={startCreate} type="button">新建用户</button>
     </div>

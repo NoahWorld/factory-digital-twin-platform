@@ -76,7 +76,14 @@ public class Projects {
   }
 
   public ObjectNode access(Auth.User u, String id, boolean write) {
-    var rows = db.queryForList(SELECT + " AND p.id=?", u.id(), u.tenant(), u.admin(), id);
+    if (u.publicProjectId() != null) {
+      if (!u.publicProjectId().equals(id))
+        throw new ApiException(404, "project_not_found", "Project is not in this publication.");
+      if (write)
+        throw new ApiException(403, "publication_read_only", "Published access is read-only.");
+    }
+    var rows = db.queryForList(SELECT + " AND p.id=?", u.id(), u.tenant(),
+        u.admin() || u.publicProjectId() != null, id);
     if (rows.isEmpty())
       throw new ApiException(404, "project_not_found", "Project not found or inaccessible.");
     var row = rows.getFirst();

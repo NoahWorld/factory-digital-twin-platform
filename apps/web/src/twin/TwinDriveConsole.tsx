@@ -44,7 +44,7 @@ export function TwinDriveConsole({ document, loading, error, source, stream, dia
   return <aside className={`twin-drive-console${open ? " is-open" : ""}`} aria-label="已保存点位接入测试">
     <button className="twin-console-toggle" type="button" aria-expanded={open} onClick={() => setOpen(!open)}><strong>已保存点位接入测试</strong><span>{loading ? "正在加载配置…" : connectedLabel}</span><span aria-hidden="true">{open ? "▾" : "▸"}</span></button>
     {open ? <div className="twin-console-content">
-      <div className="twin-row"><span className="twin-source-label">模拟点位 · WebSocket{document ? ` · v${document.revision}` : ""}</span>{onConfigure ? <button className="secondary-button compact-button" type="button" onClick={onConfigure} disabled={!document}>点位配置</button> : null}</div>
+      <div className="twin-row"><span className="twin-source-label">模拟点位 · WebSocket</span>{onConfigure ? <button className="secondary-button compact-button" type="button" onClick={onConfigure} disabled={!document}>点位配置</button> : null}</div>
       {config?.description ? <details className="twin-config-description"><summary>配置说明 / 标定范围</summary><p>{config.description}</p></details> : null}
       {error ? <div className="twin-error" role="alert">{error}<button className="secondary-button compact-button" type="button" onClick={onReload}>重新加载配置</button></div> : null}
       {stream.error ? <div className="twin-error" role="alert">{stream.error}<button className="secondary-button compact-button" type="button" onClick={onReconnect}>重新连接</button></div> : null}

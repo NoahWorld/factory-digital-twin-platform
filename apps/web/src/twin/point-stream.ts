@@ -106,7 +106,7 @@ export class TwinPointStream implements TwinDriveLiveSource {
       try {
         const message = JSON.parse(String(event.data)) as Record<string, unknown>;
         if (message.type === "hello") {
-          if (this.revision === null) throw new Error("订阅前尚未加载配置版本。");
+          if (this.revision === null) throw new Error("订阅前尚未加载点位配置。");
           if (!this.subscriptionRequested) {
             socket.send(JSON.stringify({ type: "subscribe", expectedRevision: this.revision, topics: [...this.topics.values()] }));
             this.subscriptionRequested = true;
@@ -120,7 +120,7 @@ export class TwinPointStream implements TwinDriveLiveSource {
           if (!this.subscriptionRequested || message.revision !== this.revision || !Array.isArray(topics)
             || topics.length !== this.topics.size || new Set(topics).size !== topics.length
             || topics.some((topic) => typeof topic !== "string" || ![...this.topics.values()].includes(topic))) {
-            throw new Error("服务端确认的 topic 或配置版本与本次订阅不一致。");
+            throw new Error("服务端确认的 topic 或配置与本次订阅不一致。");
           }
           this.subscriptionReady = true;
           if (this.subscriptionTimeout) clearTimeout(this.subscriptionTimeout);
@@ -129,8 +129,13 @@ export class TwinPointStream implements TwinDriveLiveSource {
           if (this.topics.size && !this.subscriptionReady) throw new Error("服务端在 topic 订阅确认前发送了数据，已拒绝该快照。");
           const snapshot = readTwinSnapshot(message, this.projectId, this.topics);
           if (snapshot.revision !== this.revision) {
+            console.error("Twin point snapshot configuration mismatch", {
+              projectId: this.projectId,
+              snapshotRevision: snapshot.revision,
+              loadedRevision: this.revision,
+            });
             this.close();
-            this.update({ phase: "error", error: `快照版本 v${snapshot.revision} 与已加载配置 v${this.revision} 不一致，正在重新加载配置。` });
+            this.update({ phase: "error", error: "点位快照与已加载配置不一致，正在重新加载配置。" });
             this.onConfigChanged();
             return;
           }
@@ -158,7 +163,7 @@ export class TwinPointStream implements TwinDriveLiveSource {
           this.update({ error: detail });
         } else if (message.type === "config_changed") {
           this.close();
-          this.update({ error: "配置版本已经变化，正在重新加载；未确认命令不会自动重发。" });
+          this.update({ error: "点位配置已变化，正在重新加载；未确认命令不会自动重发。" });
           this.onConfigChanged();
         } else if (!["heartbeat", "pong"].includes(String(message.type))) {
           throw new Error(`未知点位消息类型：${String(message.type)}`);
@@ -204,7 +209,7 @@ export class TwinPointStream implements TwinDriveLiveSource {
   reconnect = () => { this.close(); this.connect(); };
   command = (input: TwinCommandInput): Promise<void> => {
     if (!this.state.connected || this.socket?.readyState !== WebSocket.OPEN) return Promise.reject(new Error("点位连接尚未就绪，命令未发送。"));
-    if (input.expectedRevision !== this.state.snapshot?.revision) return Promise.reject(new Error("点位配置版本不一致，请重新加载配置后操作。"));
+    if (input.expectedRevision !== this.state.snapshot?.revision) return Promise.reject(new Error("点位配置已变化，请重新加载配置后操作。"));
     const socket = this.socket;
     const commandId = crypto.randomUUID();
     return new Promise((resolve, reject) => {

@@ -21,6 +21,7 @@ import org.springframework.web.socket.server.HandshakeInterceptor;
 public class TwinDriveWebSocket extends TextWebSocketHandler implements WebSocketConfigurer {
   final Auth auth;
   final Projects projects;
+  final Publications publications;
   final RequestFilter origins;
   final TwinDriveRuntime runtime;
   final Logger log = LoggerFactory.getLogger(TwinDriveWebSocket.class);
@@ -28,7 +29,7 @@ public class TwinDriveWebSocket extends TextWebSocketHandler implements WebSocke
 
   static class Connection {
     final WebSocketSession socket;
-    final String token, project, origin;
+    final String token, share, project, origin;
     long revision = -1, sequence = -1, lastMessageAt = System.currentTimeMillis();
     long subscribedRevision = -1;
     Set<String> topics = Set.of();
@@ -37,13 +38,16 @@ public class TwinDriveWebSocket extends TextWebSocketHandler implements WebSocke
     Connection(WebSocketSession socket) {
       this.socket = new ConcurrentWebSocketSessionDecorator(socket, 5000, 512 * 1024);
       token = (String) socket.getAttributes().get("token");
+      share = (String) socket.getAttributes().get("share");
       project = (String) socket.getAttributes().get("project");
       origin = (String) socket.getAttributes().get("origin");
     }
   }
 
-  public TwinDriveWebSocket(Auth auth, Projects projects, RequestFilter origins, TwinDriveRuntime runtime) {
-    this.auth = auth; this.projects = projects; this.origins = origins; this.runtime = runtime;
+  public TwinDriveWebSocket(Auth auth, Projects projects, Publications publications,
+      RequestFilter origins, TwinDriveRuntime runtime) {
+    this.auth = auth; this.projects = projects; this.publications = publications;
+    this.origins = origins; this.runtime = runtime;
   }
 
   @Override public void registerWebSocketHandlers(WebSocketHandlerRegistry registry) {
@@ -59,10 +63,12 @@ public class TwinDriveWebSocket extends TextWebSocketHandler implements WebSocke
               String project = servlet.getServletRequest().getParameter("projectId");
               Json.require(project != null && project.length() <= 120, "A projectId is required.");
               Contracts.identifier(project);
-              String token = auth.token(servlet.getServletRequest());
-              Auth.User user = auth.fromToken(token);
+              String share = servlet.getServletRequest().getParameter("share");
+              String token = share == null ? auth.token(servlet.getServletRequest()) : null;
+              Auth.User user = share == null ? auth.fromToken(token) : publications.reader(share, project);
               Json.require(projects.access(user, project, false).path("projectType").asText().equals("3d"), "A 3D project is required.");
-              attributes.put("token", token); attributes.put("project", project); attributes.put("origin", origin);
+              attributes.put("token", token); attributes.put("share", share);
+              attributes.put("project", project); attributes.put("origin", origin);
               return true;
             } catch (ApiException error) {
               response.setStatusCode(HttpStatus.valueOf(error.status));
@@ -76,7 +82,8 @@ public class TwinDriveWebSocket extends TextWebSocketHandler implements WebSocke
 
   Auth.User authorize(Connection connection) {
     if (!origins.allows(connection.origin)) throw new ApiException(403, "origin_denied", "WebSocket Origin is no longer allowed.");
-    Auth.User user = auth.fromToken(connection.token);
+    Auth.User user = connection.share == null ? auth.fromToken(connection.token)
+        : publications.reader(connection.share, connection.project);
     projects.access(user, connection.project, false);
     return user;
   }
@@ -119,11 +126,15 @@ public class TwinDriveWebSocket extends TextWebSocketHandler implements WebSocke
           connection.sequence = -1; // A reconnect/resubscription receives the currently sampled values.
           send(connection, ack); return;
         }
+        if (connection.share != null)
+          throw new ApiException(403, "publication_read_only", "Publications cannot issue point commands.");
         send(connection, runtime.command(user, connection.project, (ObjectNode) payload));
       } catch (ApiException error) {
         sendError(connection, commandId, error.code, error.getMessage());
         log.warn("twin_command_rejected project={} connection={} command={} error={}", connection.project, socket.getId(), commandId, error.code);
-        if (error.status == 401 || error.status == 403) close(connection, CloseStatus.POLICY_VIOLATION);
+        if (error.status == 401 || error.status == 403
+            || (connection.share != null && error.status == 404))
+          close(connection, CloseStatus.POLICY_VIOLATION);
       } catch (JsonProcessingException error) {
         sendError(connection, null, "invalid_json", "Invalid WebSocket JSON.");
       } catch (Exception error) {
@@ -191,7 +202,9 @@ public class TwinDriveWebSocket extends TextWebSocketHandler implements WebSocke
         // Lock contention is a bounded scheduling outcome, not a successful sample. Clients retain
         // their last timestamp and therefore detect staleness if contention persists.
         if (error.code.equals("twin_runtime_busy")) continue;
-        failConnection(connection, error, error.status == 401 || error.status == 403 ? CloseStatus.POLICY_VIOLATION : CloseStatus.SERVER_ERROR);
+        failConnection(connection, error, error.status == 401 || error.status == 403
+            || (connection.share != null && error.status == 404)
+            ? CloseStatus.POLICY_VIOLATION : CloseStatus.SERVER_ERROR);
       } catch (Exception error) { failConnection(connection, error, CloseStatus.SERVER_ERROR); }
     }
   }

@@ -13,9 +13,10 @@ import org.springframework.web.socket.*;
 class TwinDriveWebSocketTest {
   final Auth auth = mock(Auth.class);
   final Projects projects = mock(Projects.class);
+  final Publications publications = mock(Publications.class);
   final TwinDriveRuntime runtime = mock(TwinDriveRuntime.class);
   final RequestFilter origins = new RequestFilter("http://127.0.0.1:5174", "api");
-  final TwinDriveWebSocket endpoint = new TwinDriveWebSocket(auth, projects, origins, runtime);
+  final TwinDriveWebSocket endpoint = new TwinDriveWebSocket(auth, projects, publications, origins, runtime);
   final Auth.User user = new Auth.User("viewer", "tenant", "viewer@example.invalid", "viewer", "Viewer", "viewer", true, true);
   final WebSocketSession socket = mock(WebSocketSession.class);
 
@@ -40,6 +41,40 @@ class TwinDriveWebSocketTest {
     when(auth.fromToken("private-token")).thenThrow(new ApiException(401, "unauthenticated", "Session revoked"));
     endpoint.push();
     verifyNoInteractions(runtime); assertTrue(endpoint.connections.isEmpty());
+  }
+
+  @Test void publicViewerCanSubscribeButCannotIssueCommandsAndRevocationStopsSnapshots() throws Exception {
+    endpoint.connections.clear();
+    WebSocketSession publicSocket = mock(WebSocketSession.class);
+    var publicUser = Auth.User.publicationReader("tenant", "scene");
+    when(publicSocket.getId()).thenReturn("public-connection");
+    when(publicSocket.isOpen()).thenReturn(true);
+    when(publicSocket.getAttributes()).thenReturn(Map.of("share", "public-link", "project", "scene",
+        "origin", "http://127.0.0.1:5174"));
+    when(publications.reader("public-link", "scene")).thenReturn(publicUser);
+    when(projects.access(publicUser, "scene", false)).thenReturn(Json.obj("projectType", "3d"));
+    endpoint.afterConnectionEstablished(publicSocket);
+    var topics = List.of("plant/arm/angle");
+    var subscribe = Json.obj("type", "subscribe", "expectedRevision", 1, "topics", topics);
+    when(runtime.subscribe(publicUser, "scene", subscribe)).thenReturn(
+        Json.obj("type", "subscribed", "revision", 1, "topics", topics));
+    endpoint.handleTextMessage(publicSocket, new TextMessage(subscribe.toString()));
+    verify(runtime).subscribe(publicUser, "scene", subscribe);
+
+    endpoint.handleTextMessage(publicSocket,
+        new TextMessage(TwinDriveEngineTest.command("reset").toString()));
+    verify(runtime, never()).command(any(), anyString(), any());
+    verify(publicSocket).close(CloseStatus.POLICY_VIOLATION);
+    assertFalse(endpoint.connections.containsKey("public-connection"));
+
+    clearInvocations(publicSocket);
+    endpoint.afterConnectionEstablished(publicSocket);
+    when(publications.reader("public-link", "scene")).thenThrow(
+        new ApiException(404, "publication_not_found", "Revoked"));
+    endpoint.push();
+    verify(publicSocket).close(CloseStatus.POLICY_VIOLATION);
+    assertFalse(endpoint.connections.containsKey("public-connection"));
+    verify(runtime, never()).frame(publicUser, "scene");
   }
 
   @Test void snapshotConfigRevisionChangeNotifiesClientAndBusyDoesNotInventSample() throws Exception {

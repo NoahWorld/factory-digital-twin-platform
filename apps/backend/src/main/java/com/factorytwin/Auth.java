@@ -21,7 +21,15 @@ public class Auth {
 
   public record User(
       String id, String tenant, String email, String loginName, String displayName, String role,
-      boolean access2d, boolean access3d) {
+      boolean access2d, boolean access3d, String publicProjectId) {
+    public User(String id, String tenant, String email, String loginName, String displayName,
+        String role, boolean access2d, boolean access3d) {
+      this(id, tenant, email, loginName, displayName, role, access2d, access3d, null);
+    }
+
+    public static User publicationReader(String tenant, String projectId) {
+      return new User("publication", tenant, "", "", "", "viewer", true, true, projectId);
+    }
     public boolean admin() {
       return role.equals("platform_admin");
     }

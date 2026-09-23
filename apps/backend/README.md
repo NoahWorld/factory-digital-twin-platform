@@ -91,6 +91,14 @@ ws.onmessage = event => {
 
 本机为了集成测试已允许 `http://host.docker.internal:8790`，测试脚本只在测试期间启动明确的模拟数据源。它不是客户数据连接。删除此允许项并重建应用容器即可关闭该入口。
 
+## 项目公开发布
+
+Java 后端支持项目编辑者和管理员发布 2D 或 3D 项目。项目卡片的发布按钮生成 `#/share/{shareToken}` 链接；访问者打开链接无需登录，只能查看当前已保存的项目。本地 `127.0.0.1` 链接仅本机可用；要分享给其他人，须将前端和 Java API 部署到他们可访问的同站点地址。发布时检查发布者对根项目及所有关联项目的编辑权限、模型/图片/媒体引用资源是否 `ready`，并限制关联项目不超过 32 个。关联范围在发布时确定；新增跨项目引用后要重新发布才能加入公开范围，重新发布会生成新链接并立即废止旧链接。
+
+登录会话接口：`GET /api/v1/projects/{id}/publication` 查看状态，`POST` 发布或重新发布，`DELETE` 取消发布。公开读取接口：`GET /api/v1/publications?share={shareToken}`、`GET /api/v1/publications/projects?share=…`、`GET /api/v1/publications/projects/{id}/canvas|scene?share=…`，以及同一路径下的 `assets`、`assets/{asset}/runtime-state`、`model|image|media-assets`、资源 `content`、`cover.png`、`twin-drive`。公开点位连接为 `/api/v1/twin-drive?projectId={id}&share={shareToken}`，仅允许订阅和心跳，控制命令返回 `403 publication_read_only`。公开接口每次重新验证令牌与范围，取消发布后新请求返回 `404 publication_not_found`，现有点位连接在下一次消息或推送时关闭。分享令牌应像访问凭据一样保管；任何拿到链接的人都能看到项目当前保存的内容及关联展示数据。已签出的 S3 下载 URL 在其最多 5 分钟有效期内仍可访问。
+
+公开链接分享与生产交付验收是两个流程；模型映射、数据源连通性、字段阈值、性能和版本等交付检查仍按本仓库 `AGENTS.md` 执行。Cloudflare Worker 验证环境尚未实现公开发布，需使用 Java 后端。
+
 ## 可配置点位驱动（V4）
 
 `shared/twin-drive.ts` 是唯一字段契约。`GET/PUT /api/v1/projects/{id}/twin-drive` 使用独立 `twin_drive_documents` 版本，不混入场景设置或封面。保存提交 `{expectedRevision,config}`，读取返回 `{projectId,revision,config,editable}`；版本冲突返回 `409 twin_revision_conflict`。配置包含工程点位、业务资产/指标、模型实例/资源/节点名、位移/旋转/姿态/显示绑定、碰撞盒/配对和顺控步骤。可选 `description`（最多 4000 字符）用于公开案例能力与未实现事项。节点存在性和唯一性由加载真实 GLB 的浏览器验证，后端验证项目、资产、实例、资源、绑定层级和数值范围。驱动实例不能同时播放原生动画；改场景/资源或重命名被引用资产 ID 需要先修改绑定。

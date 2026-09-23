@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { twinDrivePath, type TwinDriveDocument } from "../../../../shared/twin-drive";
-import { apiUrl, errorMessage, request } from "../api";
+import { apiUrl, errorMessage, publicShareToken, request } from "../api";
 import { TwinPointStream, type TwinStreamState } from "./point-stream";
 
 export function useTwinDrive(projectId: string, { live = true }: { live?: boolean } = {}) {
@@ -19,6 +19,8 @@ export function useTwinDrive(projectId: string, { live = true }: { live?: boolea
     const url = new URL(apiUrl("/api/v1/twin-drive"), window.location.href);
     url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
     url.searchParams.set("projectId", projectId);
+    const share = publicShareToken();
+    if (share) url.searchParams.set("share", share);
     return new TwinPointStream(url.toString(), projectId, reload);
   }, [projectId, reload, connectionEpoch, documentRevision]);
   const [stream, setStream] = useState<TwinStreamState>(() => source.getState());

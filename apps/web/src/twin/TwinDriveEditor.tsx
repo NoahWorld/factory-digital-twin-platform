@@ -175,7 +175,7 @@ export function TwinDriveEditor({ document, scene, catalog, projectName, onSaved
     try {
       const result = await request<TwinDriveDocument>(twinDrivePath(document.projectId), { method: "PUT", body: JSON.stringify({ expectedRevision: baseRevision, config }) });
       setConfig(structuredClone(result.config)); setBaseRevision(result.revision); setBaseline(JSON.stringify(result.config)); setConfirmLeave(false); onSaved(result);
-      setNotice(`已保存 v${result.revision}${result.config.simulation?.enabled ? "，自动模拟已启用。" : "。"}`);
+      setNotice(`已保存${result.config.simulation?.enabled ? "，自动模拟已启用。" : "。"}`);
     } catch (reason) { setError(errorMessage(reason)); }
     finally { setSaving(false); }
   };
@@ -183,7 +183,7 @@ export function TwinDriveEditor({ document, scene, catalog, projectName, onSaved
     <header className="twin-workspace-header">
       <button className="secondary-button compact-button" type="button" disabled={saving} onClick={() => { if (dirty) setConfirmLeave(true); else onClose(); }}>← 返回模型</button>
       <div className="twin-workspace-title"><span className="eyebrow">{projectName || "模型配置"}</span><h1 ref={heading} tabIndex={-1}>数据与模型配置</h1></div>
-      <div className="twin-workspace-header-actions"><span className="twin-save-state" role="status">{saving ? "正在保存…" : !document.editable ? "只读配置" : dirty ? "有未保存的修改" : `已保存 v${baseRevision}`}</span><ThemeToggle /></div>
+      <div className="twin-workspace-header-actions"><span className="twin-save-state" role="status">{saving ? "正在保存…" : !document.editable ? "只读配置" : dirty ? "有未保存的修改" : "已保存"}</span><ThemeToggle /></div>
     </header>
     <nav ref={navigation} className="twin-workspace-nav" aria-label="配置步骤">
       {primarySteps.map((step, index) => <button key={step.id} className={tab === step.id ? "is-active" : ""} type="button" aria-current={tab === step.id ? "step" : undefined} onClick={() => changeTab(step.id)}><span className="twin-step-number">{index + 1}</span><span><strong>{step.label}</strong><small>{step.hint}</small></span></button>)}
@@ -191,7 +191,7 @@ export function TwinDriveEditor({ document, scene, catalog, projectName, onSaved
     </nav>
     <div ref={content} className="twin-workspace-content"><div className="twin-content-inner">
       <div className="twin-section-heading"><span>{stepIndex >= 0 ? `步骤 ${stepIndex + 1} / 4` : "更多配置"}</span><h2>{section.label}</h2><p>{section.hint}</p></div>
-      {tab === "test" ? <section className="twin-connection-test"><p className={dirty || conflict ? "twin-error" : "twin-readonly"}>{dirty || conflict ? `当前有未保存的修改。这里只测试已保存的配置 v${document.revision}。` : `正在检查已保存的配置 v${document.revision}。退出测试不会停止自动模拟。`}</p>{connectionTest}</section> : null}
+      {tab === "test" ? <section className="twin-connection-test"><p className={dirty || conflict ? "twin-error" : "twin-readonly"}>{dirty || conflict ? "当前有未保存的修改。这里只测试已保存的配置。" : "正在检查已保存的配置。退出测试不会停止自动模拟。"}</p>{connectionTest}</section> : null}
       <fieldset className="twin-editor-body" disabled={!document.editable || saving}>
         {tab === "source" ? <TwinSourceStep config={config} onChange={setConfig} onContinue={() => changeTab("points")} /> : null}
         {tab === "points" ? <>
@@ -249,7 +249,7 @@ export function TwinDriveEditor({ document, scene, catalog, projectName, onSaved
       <div className="twin-workspace-messages">
       {confirmLeave && dirty ? <div className="twin-exit-confirm" role="alert"><span>还有未保存的修改，离开后将丢失。</span><button className="secondary-button compact-button" type="button" onClick={() => setConfirmLeave(false)}>继续编辑</button><button className="secondary-button compact-button twin-danger" type="button" onClick={onClose}>放弃修改并返回</button></div> : null}
       {nativeConflict ? <p role="alert" className="twin-error">模型还在播放自带动画。请返回模型，关闭对应模型动画并保存场景，再启用数据驱动。</p> : null}
-      {conflict ? <div role="alert" className="twin-error">配置已更新为 v{document.revision}，当前修改已保留。请先载入新版本。<button className="secondary-button compact-button" type="button" disabled={saving} onClick={() => { setConfig(structuredClone(document.config)); setBaseRevision(document.revision); setBaseline(JSON.stringify(document.config)); setJsonDirty(false); setJsonGeneration((value) => value + 1); setError(null); setNotice(null); }}>放弃草稿并载入新版本</button></div> : null}
+      {conflict ? <div role="alert" className="twin-error">配置已被其他操作更新，当前修改已保留。请先载入最新配置。<button className="secondary-button compact-button" type="button" disabled={saving} onClick={() => { setConfig(structuredClone(document.config)); setBaseRevision(document.revision); setBaseline(JSON.stringify(document.config)); setJsonDirty(false); setJsonGeneration((value) => value + 1); setError(null); setNotice(null); }}>放弃草稿并载入最新配置</button></div> : null}
       {jsonDirty ? <p className="twin-error">还有未应用的 JSON 修改，请在高级配置中应用或放弃后保存。</p> : null}
       {errors.length ? <details className="twin-validation"><summary>{errors.length} 项配置需要修正</summary><ul>{errors.map((message, index) => <li key={index}>{message}</li>)}</ul></details> : null}
       {error ? <p className="twin-error" role="alert">{error}</p> : null}{notice && !dirty ? <p className="twin-success" role="status">{notice}</p> : null}

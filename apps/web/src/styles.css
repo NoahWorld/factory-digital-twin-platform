@@ -201,26 +201,6 @@ p {
   margin: 20px 0 0;
 }
 
-.security-note {
-  margin-top: 28px;
-  padding-top: 20px;
-  border-top: 1px solid var(--ui-accent-border);
-  color: var(--ui-text-muted);
-}
-
-.security-note span {
-  color: var(--ui-text);
-  font-size: 0.76rem;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-}
-
-.security-note p {
-  margin: 8px 0 0;
-  font-size: 0.8rem;
-  line-height: 1.75;
-}
-
 .auth-card {
   align-self: center;
   min-width: 0;
@@ -311,7 +291,7 @@ input:focus {
   min-height: 68px;
   align-items: center;
   gap: 36px;
-  padding: 0 max(28px, calc((100vw - 1380px) / 2));
+  padding: 0 clamp(24px, 3vw, 64px);
   border-bottom: 1px solid var(--ui-border);
   background: color-mix(in srgb, var(--ui-surface) 95%, transparent);
 }
@@ -334,19 +314,8 @@ input:focus {
   font-size: 1.2rem;
 }
 
-.brand strong,
-.brand small {
-  display: block;
-}
-
 .brand strong {
   font-size: 0.92rem;
-}
-
-.brand small {
-  margin-top: 2px;
-  color: var(--ui-text-subtle);
-  font-size: 0.7rem;
 }
 
 .topbar nav {
@@ -398,9 +367,8 @@ input:focus {
 }
 
 .workspace-content {
-  width: min(1280px, calc(100% - 56px));
-  margin: 0 auto;
-  padding: 68px 0 90px;
+  width: 100%;
+  padding: 68px clamp(24px, 3vw, 64px) 90px;
 }
 
 .page-heading {
@@ -415,6 +383,10 @@ input:focus {
   margin-bottom: 10px;
   font-size: clamp(2.1rem, 4vw, 3.2rem);
   letter-spacing: -0.04em;
+}
+
+.page-heading h1:last-child {
+  margin-bottom: 0;
 }
 
 .page-heading p:not(.eyebrow) {
@@ -443,11 +415,6 @@ input:focus {
 .project-type-tabs-copy strong {
   color: var(--ui-text-strong);
   font-size: 0.78rem;
-}
-
-.project-type-tabs-copy span {
-  color: var(--ui-text-muted);
-  font-size: 0.68rem;
 }
 
 .project-type-tabs {
@@ -629,7 +596,7 @@ input:focus {
 
 .project-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
   gap: 16px;
 }
 
@@ -733,6 +700,7 @@ input:focus {
 
 .project-card footer {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
@@ -824,6 +792,48 @@ input:focus {
 .delete-project-dialog {
   border-color: var(--ui-danger-border);
   box-shadow: 0 30px 90px rgba(var(--ui-shadow-rgb), calc(0.5 * var(--ui-shadow-strength)));
+}
+
+.publication-dialog {
+  width: min(100%, 560px);
+}
+
+.publication-dialog > p:not(.eyebrow),
+.publication-meta,
+.publication-confirm p {
+  color: var(--ui-text-muted);
+  line-height: 1.5;
+}
+
+.publication-link-label {
+  display: block;
+  margin: 18px 0 7px;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.publication-link-input {
+  width: 100%;
+  padding: 11px 12px;
+  border: 1px solid var(--ui-border-strong);
+  border-radius: 8px;
+  color: var(--ui-text-strong);
+  background: var(--ui-surface-raised);
+  font: inherit;
+}
+
+.publication-link-actions,
+.publication-confirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin: 12px 0;
+}
+
+.publication-confirm p {
+  flex: 1 1 100%;
+  margin: 0;
 }
 
 .dialog-close {
@@ -6445,10 +6455,6 @@ input:focus {
   font-size: 0.7rem;
 }
 
-.templates-content {
-  width: min(1380px, calc(100% - 56px));
-}
-
 .template-page-create-note {
   margin-bottom: 18px;
   padding: 18px 20px;
@@ -7290,15 +7296,15 @@ input:focus {
 }
 
 @media (max-width: 580px) {
-  .auth-card,
-  .workspace-content {
+  .auth-card {
     padding-right: 24px;
     padding-left: 24px;
   }
 
   .workspace-content {
-    width: 100%;
     padding-top: 42px;
+    padding-right: 20px;
+    padding-left: 20px;
   }
 
   .topbar {

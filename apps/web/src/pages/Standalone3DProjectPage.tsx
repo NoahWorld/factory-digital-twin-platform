@@ -95,6 +95,7 @@ type Standalone3DProjectPageProps = {
   initialTemplateId?: SceneTemplateId;
   mode: "edit" | "preview";
   projectId: string;
+  publicView?: boolean;
 };
 
 type LibraryView = "layers" | "models";
@@ -115,7 +116,7 @@ const modelSourceText = (source: ModelAsset["source"]): string =>
 const sameJson = (left: unknown, right: unknown): boolean =>
   JSON.stringify(left) === JSON.stringify(right);
 
-export default function Standalone3DProjectPage({ initialTemplateId, mode, projectId }: Standalone3DProjectPageProps) {
+export default function Standalone3DProjectPage({ initialTemplateId, mode, projectId, publicView = false }: Standalone3DProjectPageProps) {
   const [projectName, setProjectName] = useState("");
   const [savedScene, setSavedScene] = useState<StandaloneSceneDocument | null>(null);
   const [draftScene, setDraftScene] = useState<StandaloneSceneDocument | null>(null);
@@ -570,7 +571,7 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
       return latest && latest.id !== instance.modelAssetId ? { ...instance, modelAssetId: latest.id } : instance;
     });
     const missing = instances.filter(instance => !models.some(model => model.id === instance.modelAssetId));
-    if (missing.length) { setError(`新版模型未就绪：${missing.map(instance => instance.label).join("、")}。请刷新后重试。`); return; }
+    if (missing.length) { setError(`更新后的模型未就绪：${missing.map(instance => instance.label).join("、")}。请刷新后重试。`); return; }
     const violation = sceneBudgetViolation(measureScenePerformance(instances, models), limits, current.settings.playAnimations);
     const changes = instances.filter(instance => !savedScene.instances.some(saved => saved.id === instance.id && sameJson(saved, instance))).length
       + savedScene.instances.filter(saved => !instances.some(instance => instance.id === saved.id)).length;
@@ -578,7 +579,7 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
     const count = instances.filter((instance, i) => instance !== current.instances[i]).length;
     setDraftScene({ ...current, instances });
     setError(null);
-    setNotice(`已更新 ${count} 个实例的内置模型版本，请保存场景。位置、缩放、名称和业务绑定保持原值。`);
+    setNotice(`已将 ${count} 个实例切换到最新内置模型资源，请保存场景。位置、缩放、名称和业务绑定保持原值。`);
   };
 
   const removeSelected = () => {
@@ -631,7 +632,7 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
       });
       setSavedScene(result.scene);
       setDraftScene(result.scene);
-      setNotice(`场景已保存为修订版 ${result.scene.revision}。`);
+      setNotice("场景已保存。");
     } catch (reason) {
       setError(errorMessage(reason));
     } finally {
@@ -694,7 +695,7 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
     return <main className="canvas-page-state"><p className="eyebrow">3D workspace</p><h1>正在加载独立 3D 场景…</h1></main>;
   }
   if (error && !draftScene) {
-    return <main className="canvas-page-state error-state"><p className="eyebrow">3D workspace</p><h1>3D 项目加载失败</h1><p>{error}</p><a className="secondary-button" href="#/projects">返回项目</a></main>;
+    return <main className="canvas-page-state error-state"><p className="eyebrow">3D workspace</p><h1>3D 项目加载失败</h1><p>{error}</p>{!publicView ? <a className="secondary-button" href="#/projects">返回项目</a> : null}</main>;
   }
   if (!draftScene || !rendererNode) return null;
 
@@ -735,10 +736,10 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
     return (
       <main className="standalone-3d-preview">
         <header>
-          <a className="secondary-button compact-button" href="#/projects">返回项目</a>
+          {!publicView ? <a className="secondary-button compact-button" href="#/projects">返回项目</a> : null}
           <div><span>独立 3D 项目</span><strong>{projectName}</strong></div>
           <ThemeToggle />
-          <a className="primary-button compact-button" href={standaloneSceneRoutePath(projectId, "edit")}>编辑场景</a>
+          {!publicView ? <a className="primary-button compact-button" href={standaloneSceneRoutePath(projectId, "edit")}>编辑场景</a> : null}
         </header>
         <section className="standalone-3d-preview-stage" data-canvas-fullscreen-root>
           {sceneView}
@@ -788,7 +789,7 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
         {editable && draftScene.instances.some(instance => {
           const latest = latestBuiltinModel(instance.modelAssetId);
           return latest && latest.id !== instance.modelAssetId;
-        }) ? <button className="secondary-button compact-button" disabled={saving} onClick={updateBuiltinModels} title="仅更新内置模型资源版本，保留当前布局与设置，保存后生效" type="button">更新内置模型</button> : null}
+        }) ? <button className="secondary-button compact-button" disabled={saving} onClick={updateBuiltinModels} title="仅更新内置模型资源，保留当前布局与设置，保存后生效" type="button">更新内置模型</button> : null}
         <a className="secondary-button compact-button" href={standaloneSceneRoutePath(projectId, "preview")} onClick={(event) => { if (dirty) { event.preventDefault(); setError(fluidEditor.session ? "请先应用流体路径并保存场景，再进入预览。" : "请先保存场景，再预览已保存的配置。"); if (fluidEditor.session) setInspectorView("fluid"); } }}>预览</a>
         <button className="primary-button compact-button" disabled={!dirty || saving || !editable} onClick={() => void save()} type="button">
           {saving ? "保存中…" : dirty ? "保存场景" : "已保存"}

@@ -31,6 +31,7 @@ type CanvasPageProps = {
   initialTemplateId?: CanvasTemplateId;
   mode: "edit" | "preview";
   projectId: string;
+  publicView?: boolean;
 };
 
 const runtimeAppearances: Partial<Record<DeviceVisualStatus, ModelNodeAppearance>> = {
@@ -41,7 +42,7 @@ const runtimeAppearances: Partial<Record<DeviceVisualStatus, ModelNodeAppearance
   warning: { color: "#f6c344", opacity: 1, visible: true },
 };
 
-export function CanvasPage({ initialAssetId, initialTemplateId, mode, projectId }: CanvasPageProps) {
+export function CanvasPage({ initialAssetId, initialTemplateId, mode, projectId, publicView = false }: CanvasPageProps) {
   const [document, setDocument] = useState<CanvasDocument | null>(null);
   const [projectName, setProjectName] = useState("");
   const [canEdit, setCanEdit] = useState(false);
@@ -551,7 +552,7 @@ export function CanvasPage({ initialAssetId, initialTemplateId, mode, projectId 
 
   if (loading) return <main className="canvas-page-state"><p className="eyebrow">Canvas</p><h1>正在加载画布…</h1></main>;
   if (loadError || !document) {
-    return <main className="canvas-page-state error-state"><p className="eyebrow">Canvas error</p><h1>画布加载失败</h1><p>{loadError ?? "接口没有返回画布文档。"}</p><a className="secondary-button" href="#/projects">返回项目列表</a></main>;
+    return <main className="canvas-page-state error-state"><p className="eyebrow">Canvas error</p><h1>画布加载失败</h1><p>{loadError ?? "接口没有返回画布文档。"}</p>{!publicView ? <a className="secondary-button" href="#/projects">返回项目列表</a> : null}</main>;
   }
 
   const editable = mode === "edit" && canEdit && !saving;
@@ -559,8 +560,8 @@ export function CanvasPage({ initialAssetId, initialTemplateId, mode, projectId 
   return (
     <main className={`canvas-page canvas-page-${mode}`}>
       <header className="canvas-toolbar">
-        <div className="canvas-toolbar-title"><a aria-label="返回项目列表" className="canvas-back-link" href="#/projects">←</a><div><span>{mode === "edit" ? "2D 画布" : "可视化预览"}</span><strong>{projectName}</strong></div></div>
-        <div className="canvas-document-meta"><span>{document.width} × {document.height}</span><span>{canvasThemePresetLabels[document.theme.presetId]}</span><span>版本 {document.revision}</span>{mode === "edit" ? <span className={dirty ? "is-dirty" : "is-saved"}>{dirty ? "有未保存更改" : "已保存"}</span> : null}</div>
+        <div className="canvas-toolbar-title">{!publicView ? <a aria-label="返回项目列表" className="canvas-back-link" href="#/projects">←</a> : null}<div><span>{mode === "edit" ? "2D 画布" : "可视化预览"}</span><strong>{projectName}</strong></div></div>
+        <div className="canvas-document-meta"><span>{document.width} × {document.height}</span><span>{canvasThemePresetLabels[document.theme.presetId]}</span>{mode === "edit" ? <span className={dirty ? "is-dirty" : "is-saved"}>{dirty ? "有未保存更改" : "已保存"}</span> : null}</div>
         <div className="canvas-toolbar-actions">
           <ThemeToggle />
           {mode === "edit" ? <>
@@ -573,7 +574,7 @@ export function CanvasPage({ initialAssetId, initialTemplateId, mode, projectId 
             <button className="secondary-button compact-button" disabled={!selectedNodeId || !canEdit || saving} onClick={deleteSelectedNode} type="button">删除组件</button>
             <button className="secondary-button compact-button" disabled={saving || configurationError !== null} onClick={() => void openPreview()} title={configurationError ?? undefined} type="button">预览</button>
             <button className="primary-button compact-button" disabled={!dirty || saving || !canEdit || configurationError !== null} onClick={() => void save()} title={configurationError ?? undefined} type="button">{saving ? "保存中…" : "保存画布"}</button>
-          </> : <a className="secondary-button compact-button" href={canvasRoutePath(projectId, "canvas")}>返回编辑</a>}
+          </> : !publicView ? <a className="secondary-button compact-button" href={canvasRoutePath(projectId, "canvas")}>返回编辑</a> : null}
         </div>
       </header>
       {saveError || themeNotice || (mode === "edit" && !canEdit) ? (

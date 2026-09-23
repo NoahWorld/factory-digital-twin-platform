@@ -47,7 +47,7 @@ try {
    await page.waitForFunction(n=>JSON.parse(document.querySelector('.model-3d-renderer').dataset.sceneDiagnostics||'null')?.fluids.fluidCount===n,index+1);
  }
  await page.getByRole('button',{name:'保存场景',exact:true}).click();
- await page.getByText(/场景已保存为修订版/).waitFor();
+ await page.getByText('场景已保存。').waitFor();
  const saved=(await api(`/projects/${projectId}/scene`)).value.scene;
  assert.equal(saved.fluids.length,3);assert.deepEqual(saved.fluids.map(f=>f.kind),['liquid','gas','molten']);assert.equal(saved.fluids[2].direction,'reverse');assert.equal(saved.fluids[2].mode,'diffuse');assert.equal(saved.fluids[0].color,'#00aaff');assert.ok(saved.fluids.every(f=>f.points.length===3));
  await page.reload();await page.getByRole('button',{name:/^图层/}).click();

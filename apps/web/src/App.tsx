@@ -1,7 +1,7 @@
 import { FormEvent, lazy, Suspense, useEffect, useState, type KeyboardEvent } from "react";
 import { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH } from "../../../shared/auth-constraints";
 import { standaloneSceneRoutePath, type ProjectType } from "../../../shared/standalone-3d";
-import { apiUrl, ApiRequestError, errorMessage, request } from "./api";
+import { apiUrl, ApiRequestError, errorMessage, publicShareToken, request } from "./api";
 import { LoginShowcase } from "./auth/LoginShowcase";
 import { canvasRoutePath, projectTemplateCanvasPath, projectTemplateScenePath } from "./canvas/routes";
 import { getSceneTemplate, isSceneTemplateId, type SceneTemplateId, type ProjectTemplate } from "./scene/scene-templates";
@@ -86,6 +86,16 @@ type DeleteProjectResponse = {
   requestId: string;
 };
 
+type PublicationResponse = {
+  published: boolean;
+  project: Project;
+  shareToken?: string;
+  publishedAt?: string;
+  publishedRevision?: number;
+  scopeCount?: number;
+  revokedCount?: number;
+};
+
 const projectStatusText: Record<Project["status"], string> = {
   draft: "草稿",
   published: "已发布",
@@ -114,7 +124,7 @@ function FormNotice({ error }: FormNoticeProps) {
 }
 
 type ActionIconProps = {
-  name: "add" | "delete" | "edit" | "view";
+  name: "add" | "delete" | "edit" | "share" | "view";
 };
 
 function ActionIcon({ name }: ActionIconProps) {
@@ -139,6 +149,14 @@ function ActionIcon({ name }: ActionIconProps) {
     return (
       <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24">
         <path d="M4 7h16M9 7V4h6v3m3 0-1 13H7L6 7m4 4v5m4-5v5" />
+      </svg>
+    );
+  }
+
+  if (name === "share") {
+    return (
+      <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24">
+        <path d="M9 12h6m-4-4 2-2a4 4 0 0 1 5.7 5.7l-2 2M13 16l-2 2a4 4 0 0 1-5.7-5.7l2-2" />
       </svg>
     );
   }
@@ -360,10 +378,6 @@ function AuthPage({ setupRequired, onSuccess }: AuthPageProps) {
           </p>
         ) : null}
         {setupRequired ? <BootstrapForm onSuccess={onSuccess} /> : <LoginForm onSuccess={onSuccess} />}
-        <div className="security-note">
-          <span>权限边界</span>
-          <p>项目、资产与客户数据按账号角色和权限开放。</p>
-        </div>
       </section>
     </main>
   );
@@ -581,6 +595,94 @@ function DeleteProjectDialog({
   );
 }
 
+function PublicationDialog({ project, onClose, onChanged }: {
+  project: Project;
+  onClose: () => void;
+  onChanged: (result: PublicationResponse) => void;
+}) {
+  const [publication, setPublication] = useState<PublicationResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [confirmRevoke, setConfirmRevoke] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    void request<PublicationResponse>(`/api/v1/projects/${encodeURIComponent(project.id)}/publication`)
+      .then((result) => { if (active) setPublication(result); })
+      .catch((reason) => { if (active) setError(errorMessage(reason)); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [project.id]);
+
+  const shareUrl = publication?.shareToken
+    ? `${window.location.origin}${window.location.pathname}#/share/${publication.shareToken}`
+    : null;
+
+  const changePublication = async (method: "POST" | "DELETE") => {
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await request<PublicationResponse>(`/api/v1/projects/${encodeURIComponent(project.id)}/publication`, { method });
+      setPublication(result);
+      setConfirmRevoke(false);
+      setCopied(false);
+      onChanged(result);
+    } catch (reason) {
+      setError(errorMessage(reason));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const copyLink = async () => {
+    if (!shareUrl) return;
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      setCopied(true);
+      setError(null);
+    } catch (reason) {
+      setError(`复制链接失败：${errorMessage(reason)}`);
+    }
+  };
+
+  return (
+    <div aria-modal="true" className="dialog-backdrop" role="dialog">
+      <div className="dialog-card publication-dialog">
+        <button aria-label="关闭" className="dialog-close" disabled={busy} onClick={onClose} type="button">×</button>
+        <p className="eyebrow">项目发布</p>
+        <h2>{project.name}</h2>
+        {loading ? <p>正在读取发布状态…</p> : null}
+        {!loading && publication?.published && shareUrl ? <>
+          <p>任何获得此链接的人都可以免登录查看当前保存的项目。</p>
+          <label className="publication-link-label" htmlFor="publication-share-link">公开链接</label>
+          <input id="publication-share-link" className="publication-link-input" readOnly value={shareUrl} onFocus={(event) => event.currentTarget.select()} />
+          <div className="publication-link-actions">
+            <button className="primary-button compact-button" disabled={busy} onClick={() => void copyLink()} type="button">{copied ? "已复制" : "复制链接"}</button>
+            <a className="secondary-button compact-button" href={shareUrl} rel="noreferrer" target="_blank">打开链接</a>
+          </div>
+          <p className="publication-meta">发布于 {formatDate(publication.publishedAt ?? project.updatedAt)}</p>
+          {confirmRevoke ? <div className="publication-confirm"><p>取消后，此链接立即失效。</p><button className="danger-button compact-button" disabled={busy} onClick={() => void changePublication("DELETE")} type="button">确认取消发布</button><button className="secondary-button compact-button" disabled={busy} onClick={() => setConfirmRevoke(false)} type="button">保留发布</button></div> : null}
+          <div className="dialog-actions">
+            <button className="secondary-button" disabled={busy} onClick={() => setConfirmRevoke(true)} type="button">取消发布</button>
+            <button className="secondary-button" disabled={busy} onClick={() => void changePublication("POST")} type="button">重新发布</button>
+          </div>
+          <p className="publication-meta">重新发布会生成新链接，旧链接立即失效。</p>
+        </> : null}
+        {!loading && publication && !publication.published ? <>
+          <p>发布后会生成免登录访问链接，链接持有者可以查看项目及其关联展示内容。</p>
+          <div className="dialog-actions">
+            <button className="secondary-button" disabled={busy} onClick={onClose} type="button">关闭</button>
+            <button className="primary-button" disabled={busy} onClick={() => void changePublication("POST")} type="button">{busy ? "正在发布…" : "发布项目"}</button>
+          </div>
+        </> : null}
+        <FormNotice error={error} />
+      </div>
+    </div>
+  );
+}
+
 type WorkspaceProps = {
   user: CurrentUser;
   onLogout: () => Promise<void>;
@@ -665,6 +767,7 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
   const [createProjectTemplateId, setCreateProjectTemplateId] = useState<ProjectTemplate | null>(null);
   const [renamingProject, setRenamingProject] = useState<Project | null>(null);
   const [deletingProject, setDeletingProject] = useState<Project | null>(null);
+  const [publishingProject, setPublishingProject] = useState<Project | null>(null);
   const [projectNotice, setProjectNotice] = useState<string | null>(null);
   const [loggingOut, setLoggingOut] = useState(false);
 
@@ -754,6 +857,16 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
     );
   };
 
+  const changedPublication = (result: PublicationResponse) => {
+    setProjects((current) => current.map((project) => project.id === result.project.id ? result.project : project));
+    setProjectNotice(result.published ? "项目已发布，公开链接可以访问。" : "项目已取消发布，公开链接已失效。");
+    if ((result.revokedCount ?? 0) > 1) {
+      void request<ProjectsResponse>("/api/v1/projects")
+        .then((response) => setProjects(response.projects))
+        .catch((reason) => setProjectError(errorMessage(reason)));
+    }
+  };
+
   const projectCounts = {
     "2d": projects.filter((project) => project.projectType === "2d").length,
     "3d": projects.filter((project) => project.projectType === "3d").length,
@@ -824,7 +937,6 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
           <span className="brand-mark">◫</span>
           <span>
             <strong>{PRODUCT_NAME}</strong>
-            <small>交付配置台</small>
           </span>
         </a>
         <nav aria-label="主导航">
@@ -875,7 +987,6 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
           <div>
             <p className="eyebrow">Projects</p>
             <h1>项目</h1>
-            <p>创建并管理客户的 2D + 3D 数字孪生交付项目。</p>
           </div>
           {user.capabilities.canCreateProject ? (
             <button
@@ -893,7 +1004,6 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
         <div className="project-type-tabs-shell">
           <div className="project-type-tabs-copy">
             <strong>交付类型</strong>
-            <span>2D 看板与 3D 场景分开管理</span>
           </div>
           <div aria-label="项目交付类型" className="project-type-tabs" role="tablist">
             {user.modules.includes("2d") ? <button
@@ -1054,6 +1164,17 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
                     <footer>
                       <span>更新于 {formatDate(project.updatedAt)}</span>
                       <div className="project-card-actions">
+                        {canRename && project.status !== "archived" ? (
+                          <button
+                            aria-label={`${project.status === "published" ? "管理" : "发布"} ${project.name} 的公开链接`}
+                            className="icon-button project-action"
+                            onClick={() => setPublishingProject(project)}
+                            title={project.status === "published" ? "管理发布" : "发布项目"}
+                            type="button"
+                          >
+                            <ActionIcon name="share" />
+                          </button>
+                        ) : null}
                         {canRename ? (
                           <button
                             aria-label={`修改 ${project.name} 的名称`}
@@ -1118,12 +1239,45 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
           project={deletingProject}
         />
       ) : null}
+      {publishingProject ? (
+        <PublicationDialog
+          onChanged={changedPublication}
+          onClose={() => setPublishingProject(null)}
+          project={publishingProject}
+        />
+      ) : null}
     </main>
   );
 }
 
+function PublicProject({ token }: { token: string }) {
+  const [project, setProject] = useState<Project | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    setProject(null);
+    setError(null);
+    void request<{ project: Project }>(`/api/v1/publications?share=${encodeURIComponent(token)}`)
+      .then((result) => { if (active) setProject(result.project); })
+      .catch((reason) => {
+        if (active) setError(reason instanceof ApiRequestError && reason.code === "publication_not_found"
+          ? "此公开链接不存在或已取消发布。" : errorMessage(reason));
+      });
+    return () => { active = false; };
+  }, [token]);
+
+  if (error) return <main className="canvas-page-state error-state"><h1>无法打开项目</h1><p>{error}</p></main>;
+  if (!project) return <main className="canvas-page-state"><h1>正在打开项目…</h1></main>;
+  if (project.projectType === "2d") return <CanvasPage key={token} mode="preview" projectId={project.id} publicView />;
+  return <Suspense fallback={<main className="canvas-page-state"><h1>正在打开 3D 场景…</h1></main>}>
+    <Standalone3DProjectPage key={token} mode="preview" projectId={project.id} publicView />
+  </Suspense>;
+}
+
 export function App() {
   const [showProductLanding, setShowProductLanding] = useState(isProductLandingRoute);
+  const [shareToken, setShareToken] = useState(publicShareToken);
   const [initializing, setInitializing] = useState(true);
   const [setupRequired, setSetupRequired] = useState(false);
   const [user, setUser] = useState<CurrentUser | null>(null);
@@ -1132,6 +1286,7 @@ export function App() {
   useEffect(() => {
     const updatePublicRoute = () => {
       setShowProductLanding(isProductLandingRoute());
+      setShareToken(publicShareToken());
     };
 
     window.addEventListener("hashchange", updatePublicRoute);
@@ -1139,7 +1294,7 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    if (showProductLanding) {
+    if (showProductLanding || shareToken) {
       return;
     }
 
@@ -1184,7 +1339,7 @@ export function App() {
     return () => {
       active = false;
     };
-  }, [showProductLanding]);
+  }, [showProductLanding, shareToken]);
 
   const authenticated = (nextUser: CurrentUser) => {
     setSetupRequired(false);
@@ -1207,6 +1362,8 @@ export function App() {
       </Suspense>
     );
   }
+
+  if (shareToken) return <PublicProject token={shareToken} />;
 
   if (initializing) {
     return (

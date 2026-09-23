@@ -170,7 +170,6 @@ export default function Model3DEditorPage({
         </div>
         <div className="canvas-document-meta">
           <span>组件 {node.id.slice(0, 8)}</span>
-          <span>版本 {revision}</span>
           <span className={dirty ? "is-dirty" : "is-saved"}>{dirty ? "有未保存更改" : "已同步到画布"}</span>
         </div>
         <div className="canvas-toolbar-actions">

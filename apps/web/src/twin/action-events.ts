@@ -55,7 +55,7 @@ export function parseTwinActionEvent(value: unknown, now = Date.now()): TwinActi
   const allowedKeys = new Set(["type", "version", "originProjectId", "targetProjectId", "correlationId", "timestamp", "actions"]);
   const unknownKey = Object.keys(input).find((key) => !allowedKeys.has(key));
   if (unknownKey) throw new Error(`交互事件包含不支持的字段 ${unknownKey}。`);
-  if (input.type !== "twin-actions" || input.version !== 1) throw new Error("不支持的交互事件类型或版本。");
+  if (input.type !== "twin-actions" || input.version !== 1) throw new Error("不支持的交互事件类型或协议格式。");
   const originProjectId = identifier(input.originProjectId, "originProjectId");
   const targetProjectId = identifier(input.targetProjectId, "targetProjectId");
   const correlationId = identifier(input.correlationId, "correlationId");
