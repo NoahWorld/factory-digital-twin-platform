@@ -120,7 +120,7 @@ if (flags.has("--cleanup")) {
     assert.equal((await call(`/projects/${canvasId}/canvas`)).value.canvas.revision, canvas.revision);
     assert.equal((await call(`/projects/${sceneId}/scene`)).value.scene.revision, scene.revision);
     console.log("PASS: unknown/oversized actions, dangling targets, unrelated scenes and unlinking reject atomically without revision changes.");
-    const testUser = (await call("/users", { method: "POST", status: 201, body: { loginName: manifest.runId, email: `${manifest.runId}@local.test`, displayName: "Temporary interaction test", password: admin.password, role: "viewer" } })).value.user;
+    const testUser = (await call("/users", { method: "POST", status: 201, body: { loginName: manifest.runId, email: `${manifest.runId}@local.test`, displayName: "Temporary interaction test", password: admin.password, role: "viewer", modules: ["2d", "3d"] } })).value.user;
     manifest.users.push({ id: testUser.id, loginName: manifest.runId }); persist(manifest);
     await call(`/projects/${canvasId}/members/${testUser.id}`, { method: "PUT", body: { role: "editor" } });
     const userLogin = await call("/auth/login", { method: "POST", body: { identifier: manifest.runId, password: admin.password } });

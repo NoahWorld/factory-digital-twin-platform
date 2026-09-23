@@ -180,7 +180,7 @@ try {
     assert.equal(response.status, 307); assert.equal(response.headers.get('location'), model.contentPath);
     await assert.rejects(() => modelAssetContentResponse(new Request('https://local.test/content'), {}, 'project-a', 'builtin:missing'), /not in the catalog/);
     assert.equal(findBuiltinModel('builtin:missing'), undefined);
-    await assert.rejects(() => applyCanvasPatch({ DB: { prepare: () => ({ bind: () => ({ first: async () => null }) }) } }, 'project-a', 'user-a', patch({ ...node, resourceRefs: ['builtin:missing'] })), /does not belong to project/);
+    await assert.rejects(() => applyCanvasPatch({ DB: { prepare: () => ({ bind: () => ({ first: async () => null }) }) } }, 'project-a', { id: 'user-a', roles: [], modules: ['2d'] }, patch({ ...node, resourceRefs: ['builtin:missing'] })), /does not belong to project/);
   }
   console.log('PASS: packaged GLB hash, animation seams, unique parts, embedded resources, legacy single-model compatibility, batch-instance schema, invalid settings and unknown resources.');
 } finally {

@@ -20,6 +20,8 @@ import { FluidPathGuide, fluidPointOnPlane, type FluidEditorState } from "./flui
 import type { FluidDefinition } from "../../../../shared/fluids";
 import { createWalkPhysics, type WalkPhysics, type WalkSceneConfig } from "./walk-physics";
 import { createWalkControls } from "./walk-controls";
+import { TwinDriveRuntime, type TwinDriveAttachment } from "./twin-drive-runtime";
+import { createNativePlayback, type AnimationProgress, type NativePlaybackMode } from "./native-playback";
 import {
   constrainEditableInstanceScale,
   readEditableInstanceTransform,
@@ -55,11 +57,14 @@ export type SceneDiagnostics = {
 export type SceneRuntime = ReturnType<typeof createSceneRuntime>;
 
 /** Owns one renderer per scene. React passes configuration, never Three.js objects. */
-export function createSceneRuntime({ container, projectId, canvasNodeId, initial, onStatus, onSnapshot, onDiagnostics, onNavigation, onInstanceTransform, onTransformDragging }: {
+export function createSceneRuntime({ container, projectId, canvasNodeId, initial, onStatus, onSnapshot, onDiagnostics, onNavigation, onInstanceTransform, onTransformDragging, resolveModelUrl, nativePlayback }: {
   container: HTMLElement;
   projectId: string;
   canvasNodeId: string;
   initial: SceneInput;
+  // Trusted host configuration, never accepted from persisted scene JSON.
+  resolveModelUrl?: (assetId: string) => string;
+  nativePlayback?: { mode: NativePlaybackMode; onProgress: (progress: AnimationProgress) => void };
   onStatus: (status: SceneStatus) => void;
   onSnapshot: (snapshot: SceneSnapshot | null) => void;
   onDiagnostics?: (diagnostics: SceneDiagnostics) => void;
@@ -127,7 +132,7 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
       pmrem.dispose();
     };
 
-    const modelLoader = createSceneModelLoader(projectId, renderer);
+    const modelLoader = createSceneModelLoader(projectId, renderer, resolveModelUrl);
     constructionCleanup.push(modelLoader.dispose);
     const resources = new ResourceManager(modelLoader.load, (source) => disposeModelResources(source.scene));
     constructionCleanup.push(() => resources.dispose());
@@ -138,6 +143,26 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
     const fluidGuide = new FluidPathGuide(contentOffset);
     constructionCleanup.push(() => fluidGuide.dispose());
     let records: InstanceRecord[] = [];
+    let playback: ReturnType<typeof createNativePlayback> | null = null;
+    let lastPlaybackReport = 0;
+    let twinAttachment: TwinDriveAttachment | undefined;
+    let twinRuntime: TwinDriveRuntime | null = null;
+    let twinReady = false;
+    const rebuildTwin = () => {
+      twinRuntime?.dispose(); twinRuntime = null;
+      if (!twinAttachment || !twinReady) return;
+      try { twinRuntime = new TwinDriveRuntime(records, twinAttachment); }
+      catch (reason) {
+        const message = `点位绑定失败：${reason instanceof Error ? reason.message : String(reason)}`;
+        console.error("Failed to bind twin-drive scene", { projectId, canvasNodeId, reason });
+        twinAttachment.onDiagnostics?.({ status: "error", message, sequence: null, boundNodes: 0, activeCollisions: [], events: [] });
+      }
+    };
+    const setTwinDrive = (attachment: TwinDriveAttachment | undefined) => {
+      twinAttachment = attachment;
+      if (attachment?.config.enabled && (walk || navigation.mode === "loading")) exitWalk("点位驱动已启用：静态行走碰撞场景已退出");
+      rebuildTwin();
+    };
     let desired = initial;
     let desiredInstancesById = new Map(initial.instances.map((instance) => [instance.id, instance]));
     let revision = 0;
@@ -205,6 +230,7 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
       try {
         if (contextLost || !appliedInput || appliedInput !== desired || !records.length) throw new Error("场景未就绪，不能进入行走");
         if (!desired.controlsEnabled) throw new Error("当前视窗未开放相机交互");
+        if (twinAttachment?.config.enabled) throw new Error("点位驱动运行中不能使用静态行走碰撞；请先停用点位驱动");
         if (desired.settings.autoRotate || desired.settings.playAnimations || desired.settings.presentation.explosion !== 0 || desired.settings.presentation.shellMode === "hidden") {
           throw new Error("行走前请关闭整场旋转、模型动画和拆解，并显示外壳；当前碰撞体仅支持静态场景");
         }
@@ -340,6 +366,7 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
       transformControls.dispose();
       clearSelection();
       document.removeEventListener("visibilitychange", updateLoop);
+      twinRuntime?.dispose(); twinRuntime = null;
       fluidGuide.dispose();
       fluids.dispose();
       manager.dispose();
@@ -489,6 +516,7 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
         record.wrapper.name = instance.label;
       });
       updateSceneBounds();
+      twinRuntime?.invalidate();
     };
 
     const restoreRecord = (record: InstanceRecord) => {
@@ -612,6 +640,7 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
         ...settings.appearanceOverrides,
         ...desired.appearanceOverrides,
       });
+      twinRuntime?.invalidate();
       updateSceneBounds();
     };
 
@@ -734,12 +763,19 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
       const settings = desired.settings;
       if (settings.playAnimations) records.forEach((record) => {
         const animation = desiredInstancesById.get(record.id)?.animation;
-        if (record.wrapper.visible && animation?.enabled !== false) {
+        const driven = twinAttachment?.config.enabled && twinAttachment.config.bindings.some(binding => binding.target.instanceId === record.id);
+        if (!driven && record.wrapper.visible && animation?.enabled !== false) {
           record.mixer?.update(deltaSeconds * settings.animationSpeed * (animation?.speed ?? 1));
         }
       });
+      if (playback && nativePlayback && now - lastPlaybackReport >= 100) {
+        nativePlayback.onProgress(playback.progress());
+        lastPlaybackReport = now;
+      }
       fluids.update(deltaSeconds, settings.playAnimations, settings.animationSpeed);
       if (settings.autoRotate && !desired.fluidEditor?.active) rotationPivot.rotation.y += deltaSeconds * settings.rotationSpeed;
+      const animationConflict = settings.playAnimations && records.some(record => twinRuntime?.drivenInstances.has(record.id) && record.animationCount > 0 && desiredInstancesById.get(record.id)?.animation?.enabled !== false);
+      twinRuntime?.tick(Date.now(), animationConflict);
       selectionHelper?.update();
       updateRuntimeSelectionRing(now);
       if (walk) {
@@ -791,11 +827,14 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
         if (contextLost) throw new Error("WebGL 上下文已丢失，请重新打开场景");
         const graphChanged = graph !== appliedGraph;
         if (graphChanged) {
+          twinRuntime?.dispose(); twinRuntime = null; twinReady = false;
           detachTransformControl();
           notifyStatus({ status: "loading" });
           if (!await manager.reconcile(next.instances) || disposed || version !== revision) return;
           if (contextLost || renderer.getContext().isContextLost()) throw new Error("模型加载期间 WebGL 上下文已丢失，请重新打开场景");
           records = manager.records;
+          playback = nativePlayback && records.length ? createNativePlayback(records, nativePlayback.mode) : null;
+          if (playback) nativePlayback?.onProgress(playback.progress());
           records.forEach(record => record.model.traverse(object => {
             if (object instanceof THREE.Mesh) {
               object.castShadow = true;
@@ -839,6 +878,9 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
         }
         if (settingsChanged) applySceneSettings(next.settings);
         if (modelChanged) applyModelState(next.settings);
+        if (graphChanged || appliedInput?.settings.playAnimations !== next.settings.playAnimations || JSON.stringify(appliedInput?.instances.map(i => i.animation)) !== JSON.stringify(next.instances.map(i => i.animation))) {
+          twinReady = true; rebuildTwin();
+        }
         if (instancesChanged || modelChanged || appliedInput?.selectedPath !== next.selectedPath || appliedInput?.selectedInstanceId !== next.selectedInstanceId || appliedInput?.selectionStyle !== next.selectionStyle) {
           applySelection(next.selectedPath, next.selectedInstanceId, next.selectionStyle);
         }
@@ -860,7 +902,14 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
         notifyStatus({ status: "error", message: `3D 场景更新失败：${reason instanceof Error ? reason.message : String(reason)}` });
       }
     };
-    return { update, pickSceneTarget, pickSceneObject, pickFluidPoint, enterWalk, exitWalk, navigationStatus: () => navigation, dispose: disposeRuntime, diagnostics: () => lastDiagnostics };
+    const seekAnimation = (seconds: number) => {
+      if (disposed || !playback || !nativePlayback) throw new Error("原生动画播放控制尚未就绪");
+      if (twinAttachment?.config.enabled) throw new Error("点位驱动启用时不能定位原生动画");
+      playback.seek(seconds);
+      nativePlayback.onProgress(playback.progress());
+      renderSceneFrame();
+    };
+    return { update, setTwinDrive, seekAnimation, resetCamera: fitCameraToScene, pickSceneTarget, pickSceneObject, pickFluidPoint, enterWalk, exitWalk, navigationStatus: () => navigation, dispose: disposeRuntime, diagnostics: () => lastDiagnostics };
   } catch (reason) {
     for (const cleanup of constructionCleanup.reverse()) cleanup();
     throw reason;

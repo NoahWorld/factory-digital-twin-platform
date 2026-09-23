@@ -1,0 +1,172 @@
+{
+  "version": 1,
+  "title": "三相流体实验舱｜气体 · 液体 · 熔融（视觉演示）",
+  "duration": 12,
+  "simulation": true,
+  "modules": [
+    {
+      "id": "stage",
+      "label": "整体展台 · 金属与灯光",
+      "position": [
+        0,
+        0,
+        0
+      ],
+      "background": true,
+      "filename": "matter-stage.9fe54641a936.glb",
+      "sha256": "9fe54641a9361495f25fe7bc7b00b214932c7f86dc38f1a335abd4de7ed61fb9",
+      "bytes": 4846392,
+      "meshes": 8,
+      "triangles": 46008,
+      "animationCount": 0,
+      "animationChannels": 0,
+      "textureCount": 2,
+      "bounds": {
+        "min": [
+          -14.850000381469727,
+          -0.00999999325722456,
+          -6.100000381469727
+        ],
+        "max": [
+          14.850000381469727,
+          1.8450000286102295,
+          6.519999980926514
+        ]
+      }
+    },
+    {
+      "id": "gas",
+      "label": "气体 · 翻卷与扩散",
+      "position": [
+        -9.4,
+        0,
+        0
+      ],
+      "filename": "matter-gas.1291370f18b5.glb",
+      "sha256": "1291370f18b508ac4a43899e8c2b446b689b53c2982902797fdf75408d8aca57",
+      "bytes": 6235860,
+      "meshes": 6,
+      "triangles": 53885,
+      "animationCount": 1,
+      "animationChannels": 92,
+      "textureCount": 2,
+      "bounds": {
+        "min": [
+          -3.75,
+          0.47999998927116394,
+          -3.75
+        ],
+        "max": [
+          3.75,
+          8.418359191263713,
+          4.724999904632568
+        ]
+      }
+    },
+    {
+      "id": "liquid",
+      "label": "液体 · 瀑流、涡流与飞溅",
+      "position": [
+        0,
+        0,
+        0
+      ],
+      "filename": "matter-liquid.c1eca7e17863.glb",
+      "sha256": "c1eca7e178639f50d3a56c9c0995b3cbee89b326bc00046870438c9533024b9a",
+      "bytes": 8381940,
+      "meshes": 25,
+      "triangles": 97130,
+      "animationCount": 1,
+      "animationChannels": 254,
+      "textureCount": 3,
+      "bounds": {
+        "min": [
+          -3.75,
+          0.47999998927116394,
+          -3.75
+        ],
+        "max": [
+          3.75,
+          6.409999847412109,
+          4.724999904632568
+        ]
+      }
+    },
+    {
+      "id": "molten",
+      "label": "熔融 · 浇注与热对流",
+      "position": [
+        9.4,
+        0,
+        0
+      ],
+      "filename": "matter-molten.2a7be545b16b.glb",
+      "sha256": "2a7be545b16b494c00de991fd11f70699b3193c6b5ff27e1423d414c85b03c95",
+      "bytes": 8131924,
+      "meshes": 48,
+      "triangles": 75104,
+      "animationCount": 1,
+      "animationChannels": 210,
+      "textureCount": 4,
+      "bounds": {
+        "min": [
+          -3.75,
+          0.47999998927116394,
+          -3.75
+        ],
+        "max": [
+          3.75,
+          7.160489082336426,
+          4.724999904632568
+        ]
+      }
+    },
+    {
+      "id": "backdrop",
+      "label": "摄影棚背景 · 冷暖渐变光幕",
+      "position": [
+        0,
+        0,
+        0
+      ],
+      "background": true,
+      "filename": "matter-backdrop.7f6f784bea04.glb",
+      "sha256": "7f6f784bea04c79df56eb129870bba3655f3053812b7931426ea3b8b4b00fd76",
+      "bytes": 205616,
+      "meshes": 1,
+      "triangles": 2,
+      "animationCount": 0,
+      "animationChannels": 0,
+      "textureCount": 1,
+      "bounds": {
+        "min": [
+          -20.74213409423828,
+          -34.660099029541016,
+          -43.156272888183594
+        ],
+        "max": [
+          41.28066635131836,
+          30.793392181396484,
+          16.075838088989258
+        ]
+      }
+    }
+  ],
+  "settings": {
+    "animationSpeed": 1,
+    "autoRotate": false,
+    "backgroundColor": "#080e18",
+    "backgroundOpacity": 1,
+    "cameraFov": 36,
+    "cameraView": "isometric-left",
+    "preventBottomView": true,
+    "environmentLightColor": "#d6e7fa",
+    "environmentLightIntensity": 1.1,
+    "keyLightColor": "#fff4df",
+    "keyLightIntensity": 3.2,
+    "modelScale": 3.55,
+    "playAnimations": true,
+    "rotationSpeed": 0.12,
+    "showGrid": false
+  }
+}

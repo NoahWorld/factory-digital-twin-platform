@@ -45,6 +45,8 @@ try {
     INITIAL_ADMIN_LOGIN_NAME,
     createPasswordRecord,
     createUser,
+    validateModules,
+    canAccessModule,
     validateLoginIdentifier,
     verifyCredentials,
   } = require(join(temporary, "apps/api/src/auth.js"));
@@ -72,6 +74,8 @@ try {
     password_salt: passwordRecord.salt,
     password_iterations: passwordRecord.iterations,
     is_active: 1,
+    can_access_2d: 1,
+    can_access_3d: 1,
   };
   const credentialDatabase = {
     prepare(query) {
@@ -102,6 +106,12 @@ try {
   );
   assert.equal(byAccount.loginName, "admin");
   assert.deepEqual(byAccount.roles, ["platform_admin"]);
+  assert.deepEqual(byAccount.modules, ["2d", "3d"]);
+  assert.equal(canAccessModule(byAccount, "3d"), true);
+  assert.deepEqual(validateModules(["2d"]), ["2d"]);
+  assert.deepEqual(validateModules([]), []);
+  assert.throws(() => validateModules(["2d", "2d"]), (error) => error instanceof AppError && error.code === "invalid_modules");
+  assert.throws(() => validateModules(["4d"]), (error) => error instanceof AppError && error.code === "invalid_modules");
 
   const byEmail = await verifyCredentials(
     { DB: credentialDatabase },
@@ -133,11 +143,14 @@ try {
       displayName: "新管理员",
       password,
       roles: ["platform_admin"],
+      modules: ["2d", "3d"],
     },
   );
   assert.equal(created.loginName, "admin");
   assert.match(batch[0].query, /id, email, login_name, display_name/);
   assert.equal(batch[0].values[2], "admin");
+  assert.equal(batch[0].values[7], 1);
+  assert.equal(batch[0].values[8], 1);
 
   const database = new DatabaseSync(":memory:");
   database.exec("PRAGMA foreign_keys = ON");
@@ -157,13 +170,14 @@ try {
   insertRole.run("oldest-admin");
   insertRole.run("newer-admin");
   database.exec(readFileSync(join(root, "apps/api/migrations/0016_admin_login_name.sql"), "utf8"));
+  database.exec(readFileSync(join(root, "apps/api/migrations/0024_user_module_access.sql"), "utf8"));
 
   const migratedUsers = database.prepare(
-    "SELECT id, login_name FROM users ORDER BY created_at ASC",
-  ).all().map((row) => ({ id: row.id, login_name: row.login_name }));
+    "SELECT id, login_name, can_access_2d, can_access_3d FROM users ORDER BY created_at ASC",
+  ).all().map((row) => ({ id: row.id, login_name: row.login_name, can_access_2d: row.can_access_2d, can_access_3d: row.can_access_3d }));
   assert.deepEqual(migratedUsers, [
-    { id: "oldest-admin", login_name: "admin" },
-    { id: "newer-admin", login_name: null },
+    { id: "oldest-admin", login_name: "admin", can_access_2d: 1, can_access_3d: 1 },
+    { id: "newer-admin", login_name: null, can_access_2d: 1, can_access_3d: 1 },
   ]);
   assert.throws(
     () => database.prepare("UPDATE users SET login_name = 'ADMIN' WHERE id = 'newer-admin'").run(),

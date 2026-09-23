@@ -32,6 +32,7 @@ import type { InstanceTransformMode } from "../scene/instance-transform";
 import { applyOrbitViewLimits } from "../scene/orbit-view-limits";
 import type { SceneSelectionStyle } from "../scene/scene-runtime";
 import { registerCoverSurface } from "../covers/render-surfaces";
+import type { TwinDriveAttachment } from "../scene/twin-drive-runtime";
 
 export type Model3DNodeProps = {
   fluids?: import("../../../../shared/fluids").FluidDefinition[];
@@ -39,6 +40,7 @@ export type Model3DNodeProps = {
   fluidEditor?: import("../scene/fluid-path-editor").FluidEditorState | null;
   onFluidPoint?: (point: import("../../../../shared/fluids").FluidPoint) => void;
   onFluidSelect?: (id: string | null) => void;
+  twinDrive?: TwinDriveAttachment;
   walkScene?: WalkSceneConfig;
   cameraControlsEnabled?: boolean;
   runtimeControlsEnabled?: boolean;
@@ -1077,7 +1079,7 @@ const SingleModel3DNode = memo(function SingleModel3DNode({
 
 export const Model3DNode = memo(function Model3DNode(props: Model3DNodeProps) {
   const parsed = parseModel3DProps(props.node.props, props.maximumModelInstances);
-  if (parsed.ok && (parsed.value.modelInstances.length > 0 || props.maximumModelInstances !== undefined || props.walkScene !== undefined || props.fluids !== undefined || props.fluidEditor !== undefined)) {
+  if (parsed.ok && (parsed.value.modelInstances.length > 0 || props.maximumModelInstances !== undefined || props.walkScene !== undefined || props.twinDrive !== undefined || props.fluids !== undefined || props.fluidEditor !== undefined)) {
     return <BatchModel3DNode {...props} />;
   }
   return <SingleModel3DNode {...props} />;

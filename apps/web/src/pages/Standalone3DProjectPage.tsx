@@ -56,6 +56,12 @@ import { useTwinActions } from "../twin/useTwinActions";
 import { useLinkedTwinScenes } from "../twin/useLinkedTwinScenes";
 import { publishTwinActions, subscribeTwinActions } from "../twin/action-events";
 import { useAssetRuntimeConnections } from "../twin/useAssetRuntimeConnections";
+import { useTwinDrive } from "../twin/useTwinDrive";
+import { TwinDriveEditor } from "../twin/TwinDriveEditor";
+import { TwinDriveConsole } from "../twin/TwinDriveConsole";
+import { TwinDriveStatus } from "../twin/TwinDriveStatus";
+import { withTwinDriveEnabled } from "../twin/twin-config-state";
+import type { TwinDriveDiagnostics, TwinNodeCatalogEntry } from "../scene/twin-drive-runtime";
 
 type ProjectSummary = {
   id: string;
@@ -147,6 +153,19 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
   const draftSceneRef = useRef<StandaloneSceneDocument | null>(null);
   const layerTreeRef = useRef<HTMLDivElement | null>(null);
   const fluidLayerRef = useRef<HTMLDivElement | null>(null);
+  const [showTwinEditor, setShowTwinEditor] = useState(false);
+  const [testingTwin, setTestingTwin] = useState(false);
+  const twin = useTwinDrive(projectId, { live: mode === "preview" || testingTwin });
+  const [twinCatalog, setTwinCatalog] = useState<TwinNodeCatalogEntry[]>([]);
+  const [twinDiagnostics, setTwinDiagnostics] = useState<TwinDriveDiagnostics | null>(null);
+  const twinAttachment = useMemo(() => twin.document?.projectId === projectId ? {
+    config: mode === "preview" || testingTwin ? twin.document.config : withTwinDriveEnabled(twin.document.config, false),
+    source: twin.source,
+    onCatalog: setTwinCatalog,
+    onDiagnostics: setTwinDiagnostics,
+  } : undefined, [twin.document, twin.source, mode, testingTwin, projectId]);
+
+  useEffect(() => { setShowTwinEditor(false); setTestingTwin(false); }, [projectId, mode]);
 
   useEffect(() => {
     draftSceneRef.current = draftScene;
@@ -251,7 +270,7 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
   }, [mode, libraryView, fluidEditor.selectedId]);
 
   useEffect(() => {
-    if (mode !== "edit" || previewModel || showTemplates || fluidEditor.selectedId || fluidEditor.session) return;
+    if (mode !== "edit" || previewModel || showTemplates || showTwinEditor || fluidEditor.selectedId || fluidEditor.session) return;
     const handleShortcut = (event: KeyboardEvent) => {
       if (event.defaultPrevented || event.isComposing || event.altKey || event.ctrlKey || event.metaKey) return;
       const target = event.target;
@@ -261,7 +280,7 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
     };
     window.addEventListener("keydown", handleShortcut);
     return () => window.removeEventListener("keydown", handleShortcut);
-  }, [mode, previewModel, showTemplates, fluidEditor.selectedId, fluidEditor.session]);
+  }, [mode, previewModel, showTemplates, showTwinEditor, fluidEditor.selectedId, fluidEditor.session]);
 
   const dirty = !!fluidEditor.session || (savedScene !== null && draftScene !== null && !sameJson(savedScene, draftScene));
   useEffect(() => {
@@ -701,8 +720,16 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
       selectionStyle={mode === "edit" ? "editor" : "runtime"}
       selectedModelInstanceId={selectedInstanceId}
       selectedSceneNodePath={null}
+      twinDrive={twinAttachment}
     />
   );
+
+  const twinEditor = mode === "edit" && showTwinEditor && twin.document && savedScene ? <TwinDriveEditor
+    document={twin.document} scene={savedScene} catalog={twinCatalog} projectName={projectName}
+    onSaved={twin.acceptDocument} onClose={() => { setShowTwinEditor(false); setTestingTwin(false); }} onTestChange={setTestingTwin}
+    connectionTest={<TwinDriveConsole document={twin.document} loading={twin.loading} error={twin.error} source={twin.source}
+      stream={twin.stream} diagnostics={twinDiagnostics} onReload={twin.reload} onReconnect={twin.reconnect} />}
+  /> : null;
 
   if (mode === "preview") {
     return (
@@ -733,13 +760,15 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
           /> : null}
           <TwinActionFeedback messages={interactions.messages} error={interactions.error ?? interactionTransportError}
             onDismissMessage={interactions.dismissMessage} onDismissError={() => { interactions.dismissError(); setInteractionTransportError(null); }} />
+          <TwinDriveStatus document={twin.document} error={twin.error} stream={twin.stream}
+            diagnostics={twinDiagnostics} onReload={twin.reload} onReconnect={twin.reconnect} />
         </section>
       </main>
     );
   }
 
   return (
-    <main className="standalone-3d-editor">
+    <main className={`standalone-3d-editor${twinEditor ? " is-configuring-twin" : ""}`}>
       <header className="standalone-3d-toolbar">
         <a className="secondary-button compact-button" href="#/projects" onClick={(event) => { if (fluidEditor.session) { event.preventDefault(); setError("请先应用并保存或取消当前流体路径，再离开编辑器。"); setInspectorView("fluid"); } }}>返回项目</a>
         <div className="standalone-3d-title"><span>3D SCENE BUILDER</span><strong>{projectName}</strong></div>
@@ -750,6 +779,11 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
           {draftScene.settings.playAnimations ? <span>{scenePerformance.animatedInstances}/{limits.maximumAnimatedInstances} 动画实例</span> : null}
         </div>
         <ThemeToggle />
+        <button className="secondary-button compact-button" type="button" disabled={twin.loading || saving} onClick={() => {
+          if (twin.error || !twin.document) { twin.reload(); return; }
+          if (dirty) { setError("请先保存场景，再进入数据与模型配置。部件绑定需要使用已保存的模型。"); return; }
+          setShowTwinEditor(true);
+        }}>{twin.loading ? "加载数据配置…" : twin.error ? "重试数据配置" : "数据与模型"}</button>
         {editable ? <button className="secondary-button compact-button" disabled={saving || !!fluidEditor.session} title="替换模型与场景设置，保留现有流体路径" onClick={() => { setTemplateError(null); setShowTemplates(true); }} type="button">模板</button> : null}
         {editable && draftScene.instances.some(instance => {
           const latest = latestBuiltinModel(instance.modelAssetId);
@@ -1017,6 +1051,8 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
       </aside>
       {previewModel ? <ModelAssetPreviewDialog asset={previewModel} key={previewModel.id} name={modelName(previewModel)} onClose={() => setPreviewModel(null)} projectId={projectId} /> : null}
       {showTemplates ? <SceneTemplateDialog editable={editable && !saving} error={templateError} onApply={applySceneTemplate} onClose={() => setShowTemplates(false)} /> : null}
+      {twin.error ? <div className="twin-load-error twin-error" role="alert">数据配置加载失败：{twin.error}</div> : null}
+      {twinEditor}
     </main>
   );
 }

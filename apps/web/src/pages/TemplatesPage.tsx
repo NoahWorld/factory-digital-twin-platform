@@ -6,19 +6,21 @@ import { sceneTemplates, type ProjectTemplate } from "../scene/scene-templates";
 
 type TemplatesPageProps = {
   canCreateProject: boolean;
+  allowedModules: Array<"2d" | "3d">;
   onCreateFromTemplate: (template: ProjectTemplate) => void;
 };
 
 export function TemplatesPage({
   canCreateProject,
+  allowedModules,
   onCreateFromTemplate,
 }: TemplatesPageProps) {
   const templateCategories = ["全部", ...new Set(canvasTemplates.map((template) => template.category))];
   const [activeCategory, setActiveCategory] = useState("全部");
-  const [projectType, setProjectType] = useState<"2d" | "3d">("2d");
+  const [projectType, setProjectType] = useState<"2d" | "3d">(() => allowedModules.includes("2d") ? "2d" : "3d");
   const changeTabWithKeyboard = (event: KeyboardEvent<HTMLButtonElement>) => {
     const type = event.key === "ArrowLeft" || event.key === "Home" ? "2d" : event.key === "ArrowRight" || event.key === "End" ? "3d" : null;
-    if (!type) return;
+    if (!type || !allowedModules.includes(type)) return;
     event.preventDefault();
     setProjectType(type);
     document.getElementById(`template-kind-${type}`)?.focus();
@@ -57,14 +59,14 @@ export function TemplatesPage({
       </div>
 
       <div aria-label="模板类型" className="template-kind-tabs" role="tablist">
-        {(["2d", "3d"] as const).map((type) => <button
+        {(["2d", "3d"] as const).filter((type) => allowedModules.includes(type)).map((type) => <button
           aria-controls={`template-panel-${type}`} aria-selected={projectType === type}
           id={`template-kind-${type}`} key={type} onClick={() => setProjectType(type)}
           onKeyDown={changeTabWithKeyboard} role="tab" tabIndex={projectType === type ? 0 : -1} type="button"
         >{type === "2d" ? `2D 看板模板 · ${canvasTemplates.length}` : `3D 场景模板 · ${sceneTemplates.length}`}</button>)}
       </div>
 
-      <div aria-labelledby="template-kind-2d" hidden={projectType !== "2d"} id="template-panel-2d" role="tabpanel">
+      {allowedModules.includes("2d") ? <div aria-labelledby="template-kind-2d" hidden={projectType !== "2d"} id="template-panel-2d" role="tabpanel">
       <div className="template-category-toolbar">
         <div>
           <strong>场景分类</strong>
@@ -97,10 +99,10 @@ export function TemplatesPage({
         onApply={(id) => onCreateFromTemplate({ projectType: "2d", id })}
         visibleTemplateIds={visibleTemplateIds}
       />
-      </div>
-      <div aria-labelledby="template-kind-3d" hidden={projectType !== "3d"} id="template-panel-3d" role="tabpanel">
+      </div> : null}
+      {allowedModules.includes("3d") ? <div aria-labelledby="template-kind-3d" hidden={projectType !== "3d"} id="template-panel-3d" role="tabpanel">
         <SceneTemplateGallery editable={canCreateProject} onApply={(id) => onCreateFromTemplate({ projectType: "3d", id })} actionLabel="用模板创建 3D 项目" />
-      </div>
+      </div> : null}
     </section>
   );
 }

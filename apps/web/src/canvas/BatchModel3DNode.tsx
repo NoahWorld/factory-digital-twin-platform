@@ -11,6 +11,7 @@ const errorText = (reason: unknown) => reason instanceof Error ? reason.message 
 
 export const BatchModel3DNode = memo(function BatchModel3DNode({
   fluids, fluidEditor, selectedFluidId, onFluidPoint, onFluidSelect,
+  twinDrive,
   walkScene,
   cameraControlsEnabled,
   runtimeControlsEnabled = true,
@@ -35,6 +36,20 @@ export const BatchModel3DNode = memo(function BatchModel3DNode({
   const walkSignature = JSON.stringify(walkScene);
   const containerRef = useRef<HTMLDivElement>(null);
   const runtimeRef = useRef<SceneRuntime | null>(null);
+  const twinRef = useRef(twinDrive);
+  twinRef.current = twinDrive;
+  const twinSignature = JSON.stringify(twinDrive?.config);
+  const attachTwin = (runtime: SceneRuntime) => {
+    const current = twinRef.current;
+    runtime.setTwinDrive(current ? {
+      config: current.config, source: current.source,
+      onCatalog: (nodes) => twinRef.current?.onCatalog?.(nodes),
+      onDiagnostics: (diagnostics) => {
+        if (containerRef.current) containerRef.current.dataset.twinDriveDiagnostics = JSON.stringify({ ...diagnostics, events: diagnostics.events.slice(-5) });
+        twinRef.current?.onDiagnostics?.(diagnostics);
+      },
+    } : undefined);
+  };
   const sceneCallbackRef = useRef(onSceneChange);
   sceneCallbackRef.current = onSceneChange;
   const instanceTransformCallbackRef = useRef(onModelInstanceTransform);
@@ -104,6 +119,7 @@ export const BatchModel3DNode = memo(function BatchModel3DNode({
         },
       });
       runtimeRef.current = runtime;
+      attachTwin(runtime);
       return runtime.update(inputRef.current);
     }).catch((reason) => {
       if (cancelled) return;
@@ -123,6 +139,8 @@ export const BatchModel3DNode = memo(function BatchModel3DNode({
   useEffect(() => {
     if (inputRef.current && runtimeRef.current) void runtimeRef.current.update(inputRef.current);
   }, [inputSignature]);
+
+  useEffect(() => { if (runtimeRef.current) attachTwin(runtimeRef.current); }, [twinSignature, twinDrive?.source]);
 
   useEffect(() => { runtimeRef.current?.exitWalk("碰撞配置已变化，请核对后重新进入行走"); }, [walkSignature]);
 

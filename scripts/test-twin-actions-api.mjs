@@ -45,17 +45,20 @@ try {
     try { const result = []; for (const statement of statements) result.push(await statement.run()); database.exec("COMMIT"); return result; }
     catch (error) { database.exec("ROLLBACK"); throw error; }
   } } };
-  const user = { id: "user", roles: [], email: "user@example.invalid", loginName: "user", displayName: "User" };
+  const user = { id: "user", roles: [], modules: ["2d", "3d"], email: "user@example.invalid", loginName: "user", displayName: "User" };
+  const only2d = { ...user, modules: ["2d"] };
+  const only3d = { ...user, modules: ["3d"] };
   const node = (id, interaction) => ({ id, type: "plain-text", x: 0, y: 0, width: 320, height: 100, zIndex: 0, props: { text: "Text", align: "left", fontSize: 24, fontWeight: 400, scrollMode: "none", scrollDuration: 12, textColor: "#ffffff", accentColor: "#55d8ff", fillColor: "#071525", borderColor: "#123456", borderRadius: 0 }, resourceRefs: [], dataBindingRefs: [], ...(interaction === undefined ? {} : { interaction }) });
   const canvasPatch = (revision, nodes, deletes = []) => validateCanvasPatch({ expectedRevision: revision, upsertNodes: nodes, deleteNodeIds: deletes });
   const instance = (actions) => ({ id: "model", assetId: null, modelAssetId: "builtin:aqua-helix-hd-v1", label: "Pump", renderMode: "interactive", sortOrder: 0, transform: { position: [0,0,0], rotation: [0,0,0], scale: [1,1,1] }, visible: true, ...(actions === undefined ? {} : { clickActions: actions }) });
   const scenePatch = (revision, instances, extra = {}) => validateStandaloneScenePatch({ expectedRevision: revision, upsertInstances: instances, deleteInstanceIds: [], ...extra });
-  let canvas = await applyCanvasPatch(env, "canvas", "user", canvasPatch(0, [node("label"), node("panel"), node("trigger", { hiddenInPreview: false, clickActions: [{ type: "panel", nodeId: "panel", operation: "show" }] })]));
+  await assert.rejects(() => applyCanvasPatch(env, "canvas", only2d, { expectedRevision: 0, upsertNodes: [{ type: "scene-3d", props: { sceneProjectId: "scene" } }], deleteNodeIds: [] }), error => error.code === "module_access_denied");
+  let canvas = await applyCanvasPatch(env, "canvas", user, canvasPatch(0, [node("label"), node("panel"), node("trigger", { hiddenInPreview: false, clickActions: [{ type: "panel", nodeId: "panel", operation: "show" }] })]));
   assert.equal(canvas.nodes.find(node => node.id === "label").interaction, undefined);
   assert.equal(canvas.nodes.find(node => node.id === "trigger").interaction.clickActions[0].nodeId, "panel");
-  await assert.rejects(() => applyCanvasPatch(env, "canvas", "user", canvasPatch(1, [], ["panel"])), error => error.code === "invalid_twin_action_reference" && error.message.includes("trigger"));
+  await assert.rejects(() => applyCanvasPatch(env, "canvas", user, canvasPatch(1, [], ["panel"])), error => error.code === "invalid_twin_action_reference" && error.message.includes("trigger"));
   assert.equal((await getCanvas(env, "canvas")).revision, 1);
-  canvas = await applyCanvasPatch(env, "canvas", "user", canvasPatch(1, [node("trigger", { hiddenInPreview: true, clickActions: [] })], ["panel"]));
+  canvas = await applyCanvasPatch(env, "canvas", user, canvasPatch(1, [node("trigger", { hiddenInPreview: true, clickActions: [] })], ["panel"]));
   assert.deepEqual(canvas.nodes.find(node => node.id === "trigger").interaction, { hiddenInPreview: true, clickActions: [] });
   const legacy = await applyStandaloneScenePatch(env, "scene", user, scenePatch(0, [instance()]));
   assert.equal(Object.hasOwn(legacy.instances[0], "clickActions"), false);
@@ -66,8 +69,10 @@ try {
   assert.equal((await getStandaloneScene(env, "scene")).linked2dProjectId, "canvas");
   const base = { kind: "canvas", projectId: "canvas", nodes: [node("label")] };
   const refs = (actions, extras = []) => ({ ...base, nodes: [...base.nodes, node("trigger", { hiddenInPreview: false, clickActions: actions }), ...extras] });
-  await validateTwinActionReferences(env, "user", refs([{ type: "focus-model", projectId: "scene", instanceId: "model" }]));
-  for (const action of [{ type: "focus-model", projectId: "scene", instanceId: "missing" }, { type: "focus-model", projectId: "private", instanceId: "model" }, { type: "focus-model", projectId: "unrelated", instanceId: "model" }, { type: "select-asset", assetId: "missing" }, { type: "panel", nodeId: "embedded", operation: "show" }, { type: "set-text", nodeId: "embedded", text: "bad" }]) await assert.rejects(() => validateTwinActionReferences(env, "user", refs([action], [{ id: "embedded", type: "scene-3d", props: { sceneProjectId: "scene" } }])), error => error.code === "invalid_twin_action_reference");
+  await validateTwinActionReferences(env, user, refs([{ type: "focus-model", projectId: "scene", instanceId: "model" }]));
+  for (const action of [{ type: "focus-model", projectId: "scene", instanceId: "missing" }, { type: "focus-model", projectId: "private", instanceId: "model" }, { type: "focus-model", projectId: "unrelated", instanceId: "model" }, { type: "select-asset", assetId: "missing" }, { type: "panel", nodeId: "embedded", operation: "show" }, { type: "set-text", nodeId: "embedded", text: "bad" }]) await assert.rejects(() => validateTwinActionReferences(env, user, refs([action], [{ id: "embedded", type: "scene-3d", props: { sceneProjectId: "scene" } }])), error => error.code === "invalid_twin_action_reference");
+  await assert.rejects(() => validateTwinActionReferences(env, only2d, refs([{ type: "focus-model", projectId: "scene", instanceId: "model" }])), error => error.code === "invalid_twin_action_reference" && error.message.includes("3d module"));
+  await assert.rejects(() => applyStandaloneScenePatch(env, "scene", only3d, scenePatch(2, [], { linked2dProjectId: "canvas" })), error => error.code === "module_access_denied");
   assert.throws(() => validateCanvasPatch({ expectedRevision: 0, deleteNodeIds: [], upsertNodes: [{ ...node("embedded"), type: "scene-3d", props: { sceneProjectId: "scene", interactionEnabled: true }, width: 980, height: 620, interaction: { hiddenInPreview: false, clickActions: [] } }] }), error => error.code === "invalid_canvas_interaction");
   const empty = await applyStandaloneScenePatch(env, "scene", user, scenePatch(2, [instance([])]));
   assert.deepEqual(empty.instances[0].clickActions, []);

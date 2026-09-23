@@ -126,7 +126,7 @@ const CanvasNodeView = memo(function CanvasNodeView({ editable, overlay, preview
             ? (
                 <EmbeddedSceneNode
                   editable={editable}
-                  interactive={modelInteractionEnabled}
+                  interactive={previewMode && runtimeControlsEnabled && modelInteractionEnabled}
                   node={node}
                   onSelectionChange={onEmbeddedSceneSelectionChange}
                   onActions={onEmbeddedSceneActions}

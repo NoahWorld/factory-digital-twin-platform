@@ -10,6 +10,7 @@ import {
 } from "../../../shared/standalone-3d";
 import {
   AppError,
+  canAccessModule,
   hasGlobalRole,
   type AppEnv,
   type AuthenticatedUser,
@@ -449,6 +450,9 @@ const requireLinked2dProject = async (
   if (linked.project_type !== "2d") {
     throw new AppError(409, "linked_project_type_mismatch", "A standalone 3D scene can only link to a 2D project.");
   }
+  if (!canAccessModule(user, "2d")) {
+    throw new AppError(403, "module_access_denied", "Access to the 2D project module is not granted.");
+  }
 };
 
 const validateModelBudget = async (
@@ -580,7 +584,7 @@ export const applyStandaloneScenePatch = async (
   const settings = patch.settings ?? current.settings;
   const fluids = patch.fluids === undefined ? current.fluids ?? [] : patch.fluids;
   await validateModelBudget(env, projectId, nextInstances, settings.playAnimations);
-  await validateTwinActionReferences(env, user.id, { kind: "scene", projectId, linked2dProjectId, instances: nextInstances });
+  await validateTwinActionReferences(env, user, { kind: "scene", projectId, linked2dProjectId, instances: nextInstances });
   const now = new Date().toISOString();
   const nextRevision = current.revision + 1;
   const guard = "EXISTS (SELECT 1 FROM standalone_3d_scenes WHERE project_id = ? AND revision = ? AND updated_by_user_id = ? AND updated_at = ?)";

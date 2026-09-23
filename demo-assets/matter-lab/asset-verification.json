@@ -1,0 +1,60 @@
+{
+  "simulation": true,
+  "models": [
+    {
+      "module": "stage",
+      "sha256": "9fe54641a9361495f25fe7bc7b00b214932c7f86dc38f1a335abd4de7ed61fb9",
+      "bytes": 4846392,
+      "meshInstances": 8,
+      "triangles": 46008,
+      "embeddedTextures": 2,
+      "animationChannels": 0,
+      "finite48Samples": true,
+      "loopEndpointsEqual": true
+    },
+    {
+      "module": "gas",
+      "sha256": "1291370f18b508ac4a43899e8c2b446b689b53c2982902797fdf75408d8aca57",
+      "bytes": 6235860,
+      "meshInstances": 97,
+      "triangles": 53885,
+      "embeddedTextures": 2,
+      "animationChannels": 92,
+      "finite48Samples": true,
+      "loopEndpointsEqual": true
+    },
+    {
+      "module": "liquid",
+      "sha256": "c1eca7e178639f50d3a56c9c0995b3cbee89b326bc00046870438c9533024b9a",
+      "bytes": 8381940,
+      "meshInstances": 133,
+      "triangles": 97130,
+      "embeddedTextures": 3,
+      "animationChannels": 235,
+      "finite48Samples": true,
+      "loopEndpointsEqual": true
+    },
+    {
+      "module": "molten",
+      "sha256": "2a7be545b16b494c00de991fd11f70699b3193c6b5ff27e1423d414c85b03c95",
+      "bytes": 8131924,
+      "meshInstances": 102,
+      "triangles": 75104,
+      "embeddedTextures": 4,
+      "animationChannels": 151,
+      "finite48Samples": true,
+      "loopEndpointsEqual": true
+    },
+    {
+      "module": "backdrop",
+      "sha256": "7f6f784bea04c79df56eb129870bba3655f3053812b7931426ea3b8b4b00fd76",
+      "bytes": 205616,
+      "meshInstances": 1,
+      "triangles": 2,
+      "embeddedTextures": 1,
+      "animationChannels": 0,
+      "finite48Samples": true,
+      "loopEndpointsEqual": true
+    }
+  ]
+}

@@ -11,7 +11,7 @@ import assert from 'node:assert/strict';
 const root=fileURLToPath(new URL('..',import.meta.url));
 const require=createRequire(new URL('../apps/web/package.json',import.meta.url));
 const ts=require('typescript');
-const files=['apps/api/src/canvas.ts','apps/api/src/standalone-scenes.ts','apps/api/src/assets.ts','apps/api/src/data-sources.ts','apps/api/src/asset-data-bindings.ts','shared/canvas-ornaments.ts'];
+const files=['apps/api/src/canvas.ts','apps/api/src/standalone-scenes.ts','apps/api/src/assets.ts','apps/api/src/data-sources.ts','apps/api/src/asset-data-bindings.ts','shared/canvas-ornaments.ts','shared/twin-drive.ts'];
 const program=ts.createProgram(files.map(f=>join(root,f)),{strict:true,target:ts.ScriptTarget.ES2022,skipLibCheck:true,moduleResolution:ts.ModuleResolutionKind.Node10});
 const checker=program.getTypeChecker();
 const aliases=new Map();
@@ -44,8 +44,36 @@ function schema(t,inline=false){
   if(!Object.keys(properties).length)throw new Error('Unsupported contract type: '+checker.typeToString(t));
   return {type:'object',properties,required,additionalProperties:false};
 }
-const exports=['CanvasPatch','StandaloneScenePatch','AssetCreateInput','DataSourceCreateInput','AssetDataBindingCreateInput'];
+const exports=['CanvasPatch','StandaloneScenePatch','AssetCreateInput','DataSourceCreateInput','AssetDataBindingCreateInput','TwinDrivePatch','TwinDriveCommand'];
 for(const name of exports)schema(aliases.get(name));
+// Data-driven motion uses one generated structural/range contract in both repositories.
+const twinField=(type,key,limits)=>Object.assign(definitions[type].properties[key],limits);
+for(const [field,maxItems] of Object.entries({points:128,bindings:128,colliders:64,collisionRules:128,procedures:16}))twinField('TwinDriveConfig',field,{maxItems});
+twinField('TwinDriveConfig','description',{maxLength:4000});
+for(const type of ['TwinPoint','TwinMotionBinding','TwinCollider','TwinCollisionRule','TwinProcedure','TwinProcedureStep']){
+ twinField(type,'id',{minLength:1,maxLength:120,pattern:'^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$'});
+ twinField(type,'label',{minLength:1,maxLength:120});
+}
+for(const key of ['assetId','metricKey'])twinField('TwinPoint',key,{minLength:1,maxLength:80,pattern:'^[A-Za-z0-9][A-Za-z0-9._:-]{0,79}$'});
+twinField('TwinPoint','unit',{maxLength:32});
+twinField('TwinPoint','topic',{minLength:1,maxLength:200,pattern:'^[A-Za-z0-9][A-Za-z0-9._:/-]{0,199}$'});
+twinField('TwinSimulation','procedureId',{maxLength:120});
+for(const key of ['min','max','initialValue'])twinField('TwinPoint',key,{minimum:-1e6,maximum:1e6});
+twinField('TwinPoint','maxSpeed',{exclusiveMinimum:0,maximum:1e6});
+twinField('TwinPoint','staleAfterMs',{type:'integer',minimum:500,maximum:60000});
+for(const key of ['instanceId','modelAssetId'])twinField('TwinTarget',key,{minLength:1,maxLength:120,pattern:'^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$'});
+twinField('TwinTarget','nodeName',{minLength:1,maxLength:256});
+for(const key of ['valueScale','valueOffset'])twinField('TwinMotionBinding',key,{minimum:-1e6,maximum:1e6});
+twinField('TwinMotionBinding','poses',{maxItems:64});
+twinField('TwinProcedure','steps',{minItems:1,maxItems:64});
+twinField('TwinProcedureStep','targets',{minItems:1,maxItems:128});
+twinField('TwinProcedureStep','tolerance',{minimum:0,maximum:1e6});
+twinField('TwinProcedureStep','timeoutMs',{type:'integer',minimum:1000,maximum:600000});
+twinField('TwinDrivePatch','expectedRevision',{type:'integer',minimum:0,maximum:Number.MAX_SAFE_INTEGER});
+twinField('TwinDriveCommand','expectedRevision',{type:'integer',minimum:0,maximum:Number.MAX_SAFE_INTEGER});
+twinField('TwinDriveCommand','commandId',{minLength:1,maxLength:120,pattern:'^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$'});
+twinField('TwinDriveCommand','values',{maxItems:128});
+definitions.TwinVector.items.forEach(item=>Object.assign(item,{minimum:-1e6,maximum:1e6}));
 // Bind component kinds to their own props; a union alone would accept wrong component properties.
 const groups={
  ChartProps:['line-chart','bar-chart','area-chart','pie-chart','donut-chart','radar-chart'],ShapeProps:['rectangle','circle'],

@@ -99,7 +99,7 @@ async function run() {
     const {snapshot} = await checkFluidDocument(call, project.id, ok);
 
     const loginName = `fluidsmoke${Date.now()}`;
-    const user = (await call('/users', {method: 'POST', status: 201, body: {loginName, email: `${loginName}@local.test`, displayName: 'Temporary fluid smoke viewer', password: admin.password, role: 'viewer'}})).value.user;
+    const user = (await call('/users', {method: 'POST', status: 201, body: {loginName, email: `${loginName}@local.test`, displayName: 'Temporary fluid smoke viewer', password: admin.password, role: 'viewer', modules: ['2d', '3d']}})).value.user;
     users.push({id: user.id, loginName});
     const viewerLogin = await call('/auth/login', {method: 'POST', body: {identifier: loginName, password: admin.password}});
     assert.ok(viewerLogin.response.headers.get('set-cookie'));

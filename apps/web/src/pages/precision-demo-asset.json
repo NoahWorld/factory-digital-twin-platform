@@ -1,0 +1,12 @@
+{
+  "assetId": "public:precision-pick-place",
+  "contentPath": "/models/precision-pick-place.b8b3ed056c92.glb",
+  "sha256": "b8b3ed056c92cb7969b058eb37c51f12f90de248f6b1838e3040afb8b4c7091d",
+  "byteSize": 19966288,
+  "duration": 9,
+  "sampleCount": 271,
+  "nodeCount": 109,
+  "meshCount": 41,
+  "animationChannels": 20,
+  "sourceSha256": "2d98a2b1158e8db9952c91ef3898f3eaad959d4c3e26df9c7d2379d96c1d2dd5"
+}

@@ -2,7 +2,7 @@ import { findBuiltinModel } from "../../../shared/builtin-models";
 import { parseCanvasNodeInteraction, type CanvasNodeInteraction } from "../../../shared/twin-actions";
 import { validateTwinActionReferences } from "./twin-action-references";
 import { parseModelPresentation, type ModelPresentation } from "../../../shared/model-presentation";
-import { AppError, type AppEnv, type DatabaseResult } from "./auth";
+import { AppError, canAccessModule, hasGlobalRole, type AppEnv, type AuthenticatedUser, type DatabaseResult } from "./auth";
 import { isOrnamentNodeType, ornamentMinimumSizes, parseOrnamentProps, type OrnamentNodeType, type OrnamentProps } from "../../../shared/canvas-ornaments";
 
 export type ChartNodeType =
@@ -1615,7 +1615,7 @@ const changes = (result: DatabaseResult | undefined): number => {
 export const applyCanvasPatch = async (
   env: AppEnv,
   projectId: string,
-  userId: string,
+  user: AuthenticatedUser,
   patch: CanvasPatch,
 ): Promise<CanvasDocument> => {
   const sceneProjectIds = [...new Set(
@@ -1624,6 +1624,9 @@ export const applyCanvasPatch = async (
       .map((node) => (node.props as Scene3DProps).sceneProjectId)
       .filter((sceneProjectId): sceneProjectId is string => sceneProjectId !== null),
   )];
+  if (sceneProjectIds.length > 0 && !canAccessModule(user, "3d")) {
+    throw new AppError(403, "module_access_denied", "Access to the 3D project module is not granted.");
+  }
   for (const sceneProjectId of sceneProjectIds) {
     const referencedProject = await env.DB.prepare(
       `SELECT p.id
@@ -1631,14 +1634,8 @@ export const applyCanvasPatch = async (
        LEFT JOIN project_members pm ON pm.project_id = p.id AND pm.user_id = ?
        WHERE p.id = ?
          AND p.project_type = '3d'
-         AND (
-           pm.user_id IS NOT NULL
-           OR EXISTS (
-             SELECT 1 FROM user_roles ur
-             WHERE ur.user_id = ? AND ur.role = 'platform_admin'
-           )
-         )`,
-    ).bind(userId, sceneProjectId, userId).first<{ id: string }>();
+         AND (? = 1 OR pm.user_id IS NOT NULL)`,
+    ).bind(user.id, sceneProjectId, hasGlobalRole(user, "platform_admin") ? 1 : 0).first<{ id: string }>();
     if (!referencedProject) {
       throw new AppError(
         400,
@@ -1763,7 +1760,7 @@ export const applyCanvasPatch = async (
   const nextNodes = new Map(current.nodes.map((node) => [node.id, node]));
   patch.upsertNodes.forEach((node) => nextNodes.set(node.id, node));
   patch.deleteNodeIds.forEach((id) => nextNodes.delete(id));
-  await validateTwinActionReferences(env, userId, { kind: "canvas", projectId, nodes: [...nextNodes.values()] });
+  await validateTwinActionReferences(env, user, { kind: "canvas", projectId, nodes: [...nextNodes.values()] });
   const now = new Date().toISOString();
   const statements = [
     env.DB.prepare(
@@ -1788,7 +1785,7 @@ export const applyCanvasPatch = async (
       DEFAULT_THEME.textColor,
       DEFAULT_THEME.accentColor,
       DEFAULT_THEME.borderColor,
-      userId,
+      user.id,
       now,
     ),
   ];
@@ -1848,7 +1845,7 @@ export const applyCanvasPatch = async (
       patch.theme.textColor,
       patch.theme.accentColor,
       patch.theme.borderColor,
-      userId,
+      user.id,
       now,
       projectId,
       patch.expectedRevision,
@@ -1856,7 +1853,7 @@ export const applyCanvasPatch = async (
     : env.DB.prepare(
       `UPDATE project_canvases SET revision = revision + 1, updated_by_user_id = ?, updated_at = ?
        WHERE project_id = ? AND revision = ?`,
-    ).bind(userId, now, projectId, patch.expectedRevision));
+    ).bind(user.id, now, projectId, patch.expectedRevision));
 
   const results = await env.DB.batch(statements);
   if (changes(results.at(-1)) !== 1) {
