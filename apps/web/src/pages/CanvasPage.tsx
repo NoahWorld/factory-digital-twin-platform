@@ -14,6 +14,7 @@ import { ThemeDialog } from "../canvas/ThemeDialog";
 import { applyCanvasThemeToNode, applyCanvasThemeToNodes, canvasThemePresetLabels } from "../canvas/themes";
 import { CANVAS_DRAG_TYPE, componentLabels, createCanvasNode, isAssetDetailNodeType, isBackgroundNodeType, isModel3DNodeType, isScene3DNodeType, parseScene3DProps, type CanvasDocument, type CanvasNode, type CanvasNodeType, type CanvasPatchResponse, type CanvasResponse, type CanvasTheme, type ModelNodeAppearance } from "../canvas/types";
 import { DataSourcePanel } from "../DataSourcePanel";
+import { PublicationPanel } from "../publications";
 import { ThemeToggle } from "../theme/ThemeToggle";
 import { deviceVisualStatus, type DeviceVisualStatus } from "../runtime-state";
 import { AssetRuntimeDetailPanel } from "../twin/AssetRuntimeDetailPanel";
@@ -572,6 +573,7 @@ export function CanvasPage({ initialAssetId, initialTemplateId, mode, projectId 
             <button className="secondary-button compact-button" onClick={() => setShowDataSources(true)} type="button">数据源</button>
             <button className="secondary-button compact-button" disabled={!selectedNodeId || !canEdit || saving} onClick={deleteSelectedNode} type="button">删除组件</button>
             <button className="secondary-button compact-button" disabled={saving || configurationError !== null} onClick={() => void openPreview()} title={configurationError ?? undefined} type="button">预览</button>
+            <PublicationPanel projectId={projectId} canEdit={canEdit} disabled={dirty || saving || configurationError !== null} />
             <button className="primary-button compact-button" disabled={!dirty || saving || !canEdit || configurationError !== null} onClick={() => void save()} title={configurationError ?? undefined} type="button">{saving ? "保存中…" : "保存画布"}</button>
           </> : <a className="secondary-button compact-button" href={canvasRoutePath(projectId, "canvas")}>返回编辑</a>}
         </div>

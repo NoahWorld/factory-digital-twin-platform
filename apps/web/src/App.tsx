@@ -12,6 +12,7 @@ import {
 } from "./canvas/templates";
 import { CanvasPage } from "./pages/CanvasPage";
 import { ResourcesPage } from "./pages/ResourcesPage";
+import { PublicationRunPage } from "./publications";
 import { TemplatesPage } from "./pages/TemplatesPage";
 import { PRODUCT_NAME } from "./product-config";
 import { ThemeToggle } from "./theme/ThemeToggle";
@@ -584,6 +585,7 @@ type WorkspaceRoute =
   | { kind: "projects" }
   | { kind: "templates" }
   | { kind: "resources" }
+  | { kind: "publication-run"; projectId: string; versionId?: string }
   | { kind: "canvas"; projectId: string; mode: "edit" | "preview"; templateId?: CanvasTemplateId; initialAssetId?: string }
   | { kind: "standalone-scene"; projectId: string; mode: "edit" | "preview"; templateId?: SceneTemplateId }
   | { kind: "model-editor"; projectId: string; nodeId: string }
@@ -595,6 +597,11 @@ const currentWorkspaceRoute = (): WorkspaceRoute => {
   }
   if (window.location.hash === "#/resources") {
     return { kind: "resources" };
+  }
+  const publicationMatch = window.location.hash.match(/^#\/projects\/([^/]+)\/publications\/(?:([^/]+)\/)?run$/);
+  if (publicationMatch) {
+    return { kind: "publication-run", projectId: decodeURIComponent(publicationMatch[1]),
+      versionId: publicationMatch[2] ? decodeURIComponent(publicationMatch[2]) : undefined };
   }
   const standaloneSceneMatch = window.location.hash.match(/^#\/projects\/([^/]+)\/(scene|scene-preview)(?:\?([^#]*))?$/);
   if (standaloneSceneMatch) {
@@ -763,6 +770,11 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
         projectId={route.projectId}
       />
     );
+  }
+
+  if (route.kind === "publication-run") {
+    return <PublicationRunPage key={`${route.projectId}:${route.versionId ?? "active"}`}
+      projectId={route.projectId} versionId={route.versionId} />;
   }
 
   if (route.kind === "standalone-scene") {

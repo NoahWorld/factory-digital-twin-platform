@@ -31,6 +31,7 @@ import { ModelAssetThumbnail } from "../canvas/ModelAssetThumbnail";
 import { ModelAssetPreviewDialog } from "../canvas/ModelAssetPreviewDialog";
 import { standaloneRendererNode } from "../canvas/standalone-renderer-node";
 import { ThemeToggle } from "../theme/ThemeToggle";
+import { PublicationPanel } from "../publications";
 import {
   formatFileSize,
   modelAssetsPath,
@@ -701,6 +702,7 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
           return latest && latest.id !== instance.modelAssetId;
         }) ? <button className="secondary-button compact-button" disabled={saving} onClick={updateBuiltinModels} title="仅更新内置模型资源版本，保留当前布局与设置，保存后生效" type="button">更新内置模型</button> : null}
         <a className="secondary-button compact-button" href={standaloneSceneRoutePath(projectId, "preview")}>预览</a>
+        <PublicationPanel projectId={projectId} canEdit={editable} disabled={dirty || saving} />
         <button className="primary-button compact-button" disabled={!dirty || saving || !editable} onClick={() => void save()} type="button">
           {saving ? "保存中…" : dirty ? "保存场景" : "已保存"}
         </button>

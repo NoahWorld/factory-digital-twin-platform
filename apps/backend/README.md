@@ -45,6 +45,8 @@ pnpm backend:up:prebuilt
 
 `backend:verify` 包含编译、测试和打包。`prebuilt` 构建仅复制 `apps/backend/target/backend-0.1.0.jar`，修改 Java 后必须先重新打包。本机初始化遇到仓库直连超时，下载阶段使用了本机代理及临时 Maven settings；该网络配置未写入项目。离线交付应预先导出镜像和前端产物，不能依赖现场联网下载。
 
+修改 Meshopt Worker 源码后，先在 `apps/backend/meshopt` 执行 `npm ci && npm run build`，并提交生成的 `worker.mjs`。正式和预编译镜像都会携带 Node 22 与该文件；未提供 Worker 时压缩接口会明确失败。
+
 ```bash
 pnpm backend:logs
 pnpm backend:down
@@ -62,6 +64,8 @@ pnpm backend:up:prebuilt
 - 配置按节点/实例规范化保存；`GET /projects/{id}/manifest` 和 `GET /projects/{id}/document-items?revision=…&offset=…&limit=…` 提供版本绑定的清单和分页（最多 200 项）。原有整份文档接口继续兼容。
 - 旧 `model-3d` 画布在保存时补齐缺失的实例、外观、灯光和动画配置，默认值由原 TypeScript 校验器导出到契约的 `default` 注解；不改写已有值，不修复 `null` 或类型错误。属性严格按节点类型校验，错误去重并记录到带请求 ID 的日志，避免把缺少 `modelInstances` 误报成 `animationSpeed` 不受支持。`backend:smoke` 验证旧模型保存/读取与前端解析结果一致。
 - 模型、图片、视频/音频资源的受权访问与删除，文件签名检查、自包含 glTF/GLB 检查、SHA-256、私有 S3 与短期签名下载，支持 Range。短期签名链接在过期前具有持有者访问能力。
+- `POST /projects/{id}/model-assets/{sourceId}/meshopt-versions` 为可编辑项目中的自包含 GLB 生成独立 Meshopt 版本，保留源模型及来源 SHA-256，校验产物可解码且属性/索引一致后入库。单进程最多一个压缩任务、限时 30 秒；文件不适用或压缩失败时返回具体错误，不替换源模型。
+- `GET /projects/{id}/publications/draft` 预检已保存草稿，`POST /projects/{id}/publications` 用预检哈希创建不可变快照，`POST /projects/{id}/publications/{versionId}/activate` 用指针修订版激活或回滚。快照包括关联的 2D/3D 文档、资产和资源引用；创建与激活核验引用资源，固定版本页面按快照读取配置和资源，草稿保持独立。已发布引用的资源与项目受删除保护。运行指标沿用快照中的数据源配置实时采集；这不是离线导出包。
 - 保留前端原始二进制上传接口；新分片接口 `POST /projects/{id}/uploads` 接收 `{kind,filename,byteSize}`，`POST /uploads/{resourceId}/parts/{number}` 取得 PUT 签名，`POST /uploads/{resourceId}/complete` 完成上传并返回 202。`GET /uploads/{resourceId}` 查看 uploading/processing/ready/failed。单片 5 MiB，完成时核对分片顺序及总字节数；后台检查通过才成为 ready。
 - PostgreSQL 持久任务与采集租约，`SKIP LOCKED` 领取、租约过期处理和采集代次校验；后台进程重启不会依赖丢失的内存任务。普通上传中断后，超过五分钟仍未完成的资源会标记失败，可删除后重传。
 - REST 由 collector 按数据源采集一次，旧前端 `runtime-state` 接口读取共享状态，不再因为展示用户增多而重复请求上游。JSON 字段映射生成统一资产指标；数据过期返回 stale，采集失败返回 offline，不返回伪造实时值。
@@ -116,7 +120,7 @@ pnpm backend:backup:verify deploy/local/.local/backups/实际目录
 这是一套可运行的本地首版，不等于已经验收的生产平台：
 
 - 前端已通过同源代理连接 Java；旧页面仍按资产读取缓存。新的项目级 WebSocket、清单分块和直传接口已实现，但前端调用层尚未切换到它们。旧 Worker 的单图生成场景底座在 Java 返回 501，未伪造产物。
-- 上游 WebSocket 数据源执行、`credentialRef` 密钥解析、模型优化/LOD、不可变发布包与版本回滚尚未实现。浏览器到服务器的 WebSocket 与上游数据源 WebSocket 是两件事。
+- 上游 WebSocket 数据源执行、`credentialRef` 密钥解析、LOD 与离线发布包尚未实现。Meshopt 版本和在线发布快照/回滚已实现；浏览器到服务器的 WebSocket 与上游数据源 WebSocket 是两件事。
 - 数据包含 tenant_id、复合外键与应用授权，隔离已做回归；尚无租户开通/配额/计费、完整 RLS 或 SSO。当前托管可按客户部署独立实例。共享多租户生产部署需额外完成隔离审计与数据库最小权限；本地 Compose 的 `twin` 仍为开发用数据库所有者/超级用户。
 - JSON 请求上限 2 MiB，补丁最多 100 项；模型 25 MiB、图片 8 MiB、视频 100 MiB、音频 30 MiB，沿用现有产品边界。3D 保留 128 实例/24 唯一模型/150 MiB/6000 网格/24 动画实例预算。画布存储保护上限 10,000 节点，不表示浏览器可流畅同时渲染这些节点。
 - 项目、资产和数据源列表支持 `limit/offset/nextOffset`；旧调用不指定分页而超出 1000 项目/10000 条记录时明确返回 `pagination_required`，不会静默截断。前端分页界面与资源列表分页仍需完善；collector 单进程串行采集，API 目前按连接轮询共享流与授权。后续大负载需增加有界并发、按项目共享分发与查询批处理，并据真实模型/源速率/用户数量压测，不能把连接上限当吞吐承诺。

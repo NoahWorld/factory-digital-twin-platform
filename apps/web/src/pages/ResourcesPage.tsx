@@ -258,6 +258,7 @@ export function ResourcesPage({
   const [backgroundWizardOpen, setBackgroundWizardOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [generatingImageAssetId, setGeneratingImageAssetId] = useState<string | null>(null);
+  const [compressingModelAssetId, setCompressingModelAssetId] = useState<string | null>(null);
   const [uploadingKind, setUploadingKind] = useState<ResourceKind | null>(null);
   const [reloadVersion, setReloadVersion] = useState(0);
   const importedWizardImages = useRef(new WeakMap<File, ImageAsset>());
@@ -306,6 +307,25 @@ export function ResourcesPage({
     || selectedProject?.projectRole === "editor"
   );
   const filteredItems = filter === "all" ? items : items.filter((item) => item.kind === filter);
+
+  const generateMeshopt = async (asset: ModelAsset): Promise<void> => {
+    if (!selectedProjectId || !canEdit) return;
+    setCompressingModelAssetId(asset.id);
+    setLoadError(null);
+    setNotice(null);
+    try {
+      const result = await request<ModelAssetUploadResponse>(
+        `${modelAssetsPath(selectedProjectId)}/${encodeURIComponent(asset.id)}/meshopt-versions`,
+        { method: "POST" },
+      );
+      setNotice(`已生成 Meshopt 压缩版本“${result.modelAsset.originalFilename}”。原模型保留，可在场景中选择新版本。`);
+      setReloadVersion((value) => value + 1);
+    } catch (reason) {
+      setLoadError(errorMessage(reason));
+    } finally {
+      setCompressingModelAssetId(null);
+    }
+  };
 
   const uploadImageFile = async (file: File): Promise<ImageAsset> => {
     if (!selectedProjectId) throw new Error("没有选中的项目，无法上传资源。");
@@ -598,6 +618,7 @@ export function ResourcesPage({
                             ? <span className="is-generated">场景生成</span>
                             : <span>项目上传</span>}
                         {item.asset.usage.count > 0 ? <span className="is-used">已关联 {item.asset.usage.count}</span> : null}
+                        {item.kind === "model" && item.asset.compression ? <span className="is-generated">Meshopt 压缩版</span> : null}
                       </div>
                       <h2 title={itemName(item)}>{itemName(item)}</h2>
                       {itemDescription(item) ? <p>{itemDescription(item)}</p> : null}
@@ -605,9 +626,16 @@ export function ResourcesPage({
                         <div><dt>格式</dt><dd>{item.asset.format.toUpperCase()}</dd></div>
                         <div><dt>大小</dt><dd>{formatFileSize(item.asset.byteSize)}</dd></div>
                         <div><dt>添加日期</dt><dd>{formatDate(item.asset.createdAt)}</dd></div>
+                        {item.kind === "model" && item.asset.compression ? <div><dt>原模型</dt><dd title={item.asset.sourceModelAssetId ?? ""}>{items.find((candidate) => candidate.kind === "model" && candidate.asset.id === item.asset.sourceModelAssetId)?.asset.originalFilename ?? item.asset.sourceModelAssetId}</dd></div> : null}
                       </dl>
                       <footer>
                         <button className="secondary-button" onClick={() => setPreviewItem(item)} type="button">预览</button>
+                        {item.kind === "model" && canEdit && !systemResource && !item.asset.compression ? (
+                          <button className="secondary-button" disabled={compressingModelAssetId !== null}
+                            onClick={() => void generateMeshopt(item.asset)} type="button">
+                            {compressingModelAssetId === item.asset.id ? "压缩中…" : "生成 Meshopt 版本"}
+                          </button>
+                        ) : null}
                         {item.kind === "image" && canEdit ? (
                           <button
                             className="secondary-button"

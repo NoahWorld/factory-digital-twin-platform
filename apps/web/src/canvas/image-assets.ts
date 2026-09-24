@@ -1,4 +1,5 @@
 import { apiUrl } from "../api";
+import { publicationResourceUrl } from "../publication-runtime";
 import type { ResourceUsage } from "./resource-usage";
 
 export type ImageAsset = {
@@ -35,7 +36,7 @@ export const imageAssetsPath = (projectId: string): string =>
   `/api/v1/projects/${encodeURIComponent(projectId)}/image-assets`;
 
 export const imageAssetContentUrl = (projectId: string, assetId: string): string =>
-  apiUrl(`${imageAssetsPath(projectId)}/${encodeURIComponent(assetId)}/content`);
+  publicationResourceUrl(assetId) ?? apiUrl(`${imageAssetsPath(projectId)}/${encodeURIComponent(assetId)}/content`);
 
 export const imageAssetPath = (projectId: string, assetId: string): string =>
   `${imageAssetsPath(projectId)}/${encodeURIComponent(assetId)}`;

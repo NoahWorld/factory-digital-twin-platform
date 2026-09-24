@@ -91,6 +91,9 @@ public class Resources {
               ? Json.M.nullNode()
               : Json.parse(row.get("inspection").toString()));
       n.putNull("sourceImageAssetId").putNull("generation");
+      n.set("sourceModelAssetId", Json.M.valueToTree(row.get("source_model_id")));
+      n.set("compression", row.get("compression") == null
+          ? Json.M.nullNode() : Json.parse(row.get("compression").toString()));
     }
     if (kind.equals("media"))
       n.put(
@@ -107,6 +110,7 @@ public class Resources {
         n.put("projectId", project).put("source", "system").put("state", "ready");
         n.set("usage", usage(u, project, n.path("id").asText()));
         n.putNull("sourceImageAssetId").putNull("generation");
+        n.putNull("sourceModelAssetId").putNull("compression");
         result.add(n);
       }
     for (var row :
@@ -365,6 +369,14 @@ public class Resources {
           p.lock(u, project);
           p.access(u, project, true);
           var row = row(u, project, id);
+          int versions = p.db.queryForObject(
+              "SELECT count(*) FROM resources WHERE source_model_id=?", Integer.class, id);
+          if (versions > 0) throw new ApiException(409, "model_has_versions",
+              "Delete derived model versions before deleting their source model.");
+          int publications = p.db.queryForObject(
+              "SELECT count(*) FROM publication_resources WHERE resource_id=?", Integer.class, id);
+          if (publications > 0) throw new ApiException(409, "resource_in_publication",
+              "This resource belongs to an immutable published version and cannot be deleted.");
           ObjectNode usage = usage(u, project, id);
           if (usage.path("count").asInt() > 0 && !confirmed)
             throw new ApiException(

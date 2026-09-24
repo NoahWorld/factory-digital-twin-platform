@@ -8,6 +8,7 @@ import {
 } from "../../../../shared/standalone-3d";
 import { Model3DNode } from "./Model3DNode";
 import { standaloneRendererNode } from "./standalone-renderer-node";
+import { usePublicationSnapshot } from "../publication-runtime";
 import {
   parseScene3DProps,
   type CanvasNode,
@@ -54,6 +55,7 @@ export const EmbeddedSceneNode = memo(function EmbeddedSceneNode({
   const [response, setResponse] = useState<EmbeddedSceneResponse | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(sceneProjectId !== null);
+  const publication = usePublicationSnapshot();
 
   useEffect(() => {
     let active = true;
@@ -61,6 +63,16 @@ export const EmbeddedSceneNode = memo(function EmbeddedSceneNode({
     setLoadError(null);
     onSelectionChange(null);
     if (!sceneProjectId) {
+      setLoading(false);
+      return () => { active = false; };
+    }
+    if (publication) {
+      const linked = publication.projects[sceneProjectId];
+      if (linked?.project.projectType !== "3d") {
+        setLoadError(`发布快照中缺少 3D 场景 ${sceneProjectId}。`);
+      } else {
+        setResponse({ project: linked.project, scene: linked.document as StandaloneSceneDocument, requestId: "published" });
+      }
       setLoading(false);
       return () => { active = false; };
     }
@@ -76,7 +88,7 @@ export const EmbeddedSceneNode = memo(function EmbeddedSceneNode({
         if (active) setLoading(false);
       });
     return () => { active = false; };
-  }, [editable, onSelectionChange, sceneProjectId]);
+  }, [editable, onSelectionChange, publication, sceneProjectId]);
 
   const rendererNode = useMemo((): CanvasNode | null => {
     if (!response) return null;

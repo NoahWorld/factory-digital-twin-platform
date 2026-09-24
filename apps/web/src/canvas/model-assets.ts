@@ -1,5 +1,6 @@
 import { findBuiltinModel } from "../../../../shared/builtin-models";
 import { apiUrl } from "../api";
+import { publicationResourceUrl } from "../publication-runtime";
 import type { ResourceUsage } from "./resource-usage";
 
 export type ModelInspection = {
@@ -40,6 +41,16 @@ export type ModelAsset = {
   source: "system" | "upload" | "scene-background";
   sourceImageAssetId: string | null;
   generation: SceneBackgroundGeneration | null;
+  sourceModelAssetId: string | null;
+  compression: {
+    algorithm: "meshopt-buffer-views-v1";
+    encoderVersion: string;
+    sourceSha256: string;
+    sourceBytes: number;
+    compressedViews: number;
+    attributesExact: boolean;
+    indicesExact: boolean;
+  } | null;
   usage: ResourceUsage;
   createdAt: string;
 };
@@ -66,6 +77,7 @@ export const modelAssetsPath = (projectId: string): string =>
 
 export const modelAssetContentUrl = (projectId: string, assetId: string): string =>
   findBuiltinModel(assetId)?.contentPath
+    ?? publicationResourceUrl(assetId)
     ?? apiUrl(`${modelAssetsPath(projectId)}/${encodeURIComponent(assetId)}/content`);
 
 export const modelAssetPath = (projectId: string, assetId: string): string =>

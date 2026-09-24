@@ -16,6 +16,7 @@ type UseAssetRuntimeConnectionsOptions = {
   blockedReason?: string | null;
   enabled: boolean;
   projectId: string | null;
+  publicationVersion?: { rootProjectId: string; versionId: string };
 };
 
 /**
@@ -28,8 +29,11 @@ export const useAssetRuntimeConnections = ({
   blockedReason = null,
   enabled,
   projectId,
+  publicationVersion,
 }: UseAssetRuntimeConnectionsOptions): Record<string, RuntimeAssetConnection> => {
   const [connections, setConnections] = useState<Record<string, RuntimeAssetConnection>>({});
+  const publicationRootProjectId = publicationVersion?.rootProjectId;
+  const publicationVersionId = publicationVersion?.versionId;
 
   useEffect(() => {
     if (!enabled || blockedReason || !projectId || assets.length === 0) {
@@ -51,7 +55,9 @@ export const useAssetRuntimeConnections = ({
       const outcomes: AssetRuntimePollOutcome[] = await Promise.all(assets.map(async (asset) => {
         try {
           const result = await request<AssetRuntimeStateResponse>(
-            assetRuntimeStatePath(projectId, asset.id),
+            publicationRootProjectId && publicationVersionId
+              ? `/api/v1/projects/${encodeURIComponent(publicationRootProjectId)}/publications/${encodeURIComponent(publicationVersionId)}/projects/${encodeURIComponent(projectId)}/assets/${encodeURIComponent(asset.id)}/runtime-state`
+              : assetRuntimeStatePath(projectId, asset.id),
           );
           failureCounts.set(asset.id, 0);
           return { asset, kind: "success", result } as const;
@@ -117,7 +123,7 @@ export const useAssetRuntimeConnections = ({
       cancelled = true;
       if (nextPollTimer !== null) window.clearTimeout(nextPollTimer);
     };
-  }, [assets, blockedReason, enabled, projectId]);
+  }, [assets, blockedReason, enabled, projectId, publicationRootProjectId, publicationVersionId]);
 
   return connections;
 };

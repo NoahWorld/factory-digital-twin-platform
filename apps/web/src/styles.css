@@ -821,6 +821,43 @@ input:focus {
   box-shadow: 0 30px 90px rgba(var(--ui-shadow-rgb), calc(0.45 * var(--ui-shadow-strength)));
 }
 
+.publication-dialog {
+  width: min(100%, 720px);
+  max-height: min(90vh, 800px);
+  overflow: auto;
+}
+
+.publication-create,
+.publication-version {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.publication-create input,
+.publication-version > div {
+  min-width: 0;
+  flex: 1;
+}
+
+.publication-versions {
+  display: grid;
+  gap: 8px;
+}
+
+.publication-version {
+  flex-wrap: wrap;
+  padding: 12px;
+  border: 1px solid var(--ui-border);
+  border-radius: 8px;
+}
+
+.publication-version small {
+  display: block;
+  margin-top: 4px;
+  color: var(--ui-text-muted);
+}
+
 .delete-project-dialog {
   border-color: var(--ui-danger-border);
   box-shadow: 0 30px 90px rgba(var(--ui-shadow-rgb), calc(0.5 * var(--ui-shadow-strength)));
