@@ -168,7 +168,8 @@ public class Publications {
         }
       }
       for (String resourceId : referencedResourceIds(items)) {
-        if (resources.contracts.builtin(resourceId) != null) continue;
+        if (resources.contracts.builtin(resourceId) != null
+            || resources.contracts.builtinResource("image", resourceId) != null) continue;
         Map<String, Object> resource = resources.row(user, id, resourceId);
         if (!"ready".equals(resource.get("state")))
           throw new ApiException(409, "publication_resource_not_ready",
@@ -288,7 +289,7 @@ class PublicationController {
     if (!publication.publicResourceIds(reader, project).contains(id))
       throw new ApiException(404, "publication_resource_not_found",
           "Resource is not used by this published project.");
-    var builtin = kind.equals("model") ? publication.resources.contracts.builtin(id) : null;
+    var builtin = publication.resources.contracts.builtinResource(kind, id);
     if (builtin != null)
       return ResponseEntity.status(302).header(HttpHeaders.LOCATION,
           builtin.path("contentPath").asText()).build();

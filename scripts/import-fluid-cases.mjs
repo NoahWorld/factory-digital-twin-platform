@@ -87,7 +87,7 @@ try{
           for(const [key,value] of Object.entries({textColor:'#e9f5fa',accentColor:c.accent,fillColor:'#102434',borderColor:'#284757'}))if(key in n.props)n.props[key]=value;
           Object.assign(n.props,props);nodes.push(n);return n;
         }
-        add('title','screen-title',24,18,1872,96,{text:c.title,subtitle:`行业案例 · 虚构演示 / 模拟数据 · ${c.flow}`,align:'left'});
+        add('title','screen-title',24,18,1872,96,{text:c.title,subtitle:`行业案例 · 模拟数据 · ${c.flow}`,align:'left'});
         add('scene','scene-3d',24,132,1352,724,{sceneProjectId:record.sceneId,interactionEnabled:true});
         c.kpis.forEach(([title,value,unit],i)=>add(`kpi-${i}`,'metric-card',1396,132+i*140,500,124,{title,value,unit,subtitle:'工况示例 · 非现场采集值',sample:true,icon:['◈','↗','≈'][i]}));
         add('trend','line-chart',1396,560,500,236,{title:c.trend.title,categories:['01','02','03','04','05','06'],values:c.trend.values,unit:c.trend.unit,color:c.accent});

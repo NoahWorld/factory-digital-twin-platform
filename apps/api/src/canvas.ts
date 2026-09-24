@@ -1,4 +1,5 @@
 import { findBuiltinModel } from "../../../shared/builtin-models";
+import { findBuiltinImage } from "../../../shared/builtin-images";
 import { parseCanvasNodeInteraction, type CanvasNodeInteraction } from "../../../shared/twin-actions";
 import { validateTwinActionReferences } from "./twin-action-references";
 import { parseModelPresentation, type ModelPresentation } from "../../../shared/model-presentation";
@@ -1743,6 +1744,7 @@ export const applyCanvasPatch = async (
       .flatMap((node) => node.resourceRefs),
   )];
   for (const assetId of imageAssetRefs) {
+    if (findBuiltinImage(assetId)) continue;
     const imageAsset = await env.DB.prepare(
       "SELECT id FROM image_assets WHERE id = ? AND project_id = ?",
     ).bind(assetId, projectId).first<{ id: string }>();

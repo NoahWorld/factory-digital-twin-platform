@@ -1,15 +1,16 @@
 import { apiUrl } from "../api";
+import { findBuiltinImage } from "../../../../shared/builtin-images";
 import type { ResourceUsage } from "./resource-usage";
 
 export type ImageAsset = {
   id: string;
   projectId: string;
   originalFilename: string;
-  format: "png" | "jpeg" | "webp";
+  format: "png" | "jpeg" | "webp" | "svg";
   contentType: string;
   byteSize: number;
   sha256: string;
-  source: "upload";
+  source: "upload" | "system";
   usage: ResourceUsage;
   createdAt: string;
 };
@@ -34,8 +35,11 @@ export type ImageAssetDeletionResponse = {
 export const imageAssetsPath = (projectId: string): string =>
   `/api/v1/projects/${encodeURIComponent(projectId)}/image-assets`;
 
-export const imageAssetContentUrl = (projectId: string, assetId: string): string =>
-  apiUrl(`${imageAssetsPath(projectId)}/${encodeURIComponent(assetId)}/content`);
+export const imageAssetContentUrl = (projectId: string, assetId: string): string => {
+  const builtin = findBuiltinImage(assetId);
+  if (builtin) return `${import.meta.env.BASE_URL}${builtin.contentPath.slice(1)}`;
+  return apiUrl(`${imageAssetsPath(projectId)}/${encodeURIComponent(assetId)}/content`);
+};
 
 export const imageAssetPath = (projectId: string, assetId: string): string =>
   `${imageAssetsPath(projectId)}/${encodeURIComponent(assetId)}`;

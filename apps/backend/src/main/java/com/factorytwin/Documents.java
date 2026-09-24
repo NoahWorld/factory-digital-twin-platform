@@ -291,7 +291,7 @@ public class Documents {
   }
 
   public JsonNode resource(Auth.User u, String project, String id, String kind) {
-    JsonNode builtin = kind.equals("model") ? contracts.builtin(id) : null;
+    JsonNode builtin = contracts.builtinResource(kind, id);
     if (builtin != null) return builtin;
     var rows =
         p.db.queryForList(

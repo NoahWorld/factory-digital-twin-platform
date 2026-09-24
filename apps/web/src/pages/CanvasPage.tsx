@@ -15,6 +15,7 @@ import { applyCanvasThemeToNode, applyCanvasThemeToNodes, canvasThemePresetLabel
 import { CANVAS_DRAG_TYPE, componentLabels, createCanvasNode, isAssetDetailNodeType, isBackgroundNodeType, isModel3DNodeType, isScene3DNodeType, parseScene3DProps, type CanvasDocument, type CanvasNode, type CanvasNodeType, type CanvasPatchResponse, type CanvasResponse, type CanvasTheme, type ModelNodeAppearance } from "../canvas/types";
 import { DataSourcePanel } from "../DataSourcePanel";
 import { ThemeToggle } from "../theme/ThemeToggle";
+import { ToolbarIcon } from "../components/ToolbarIcon";
 import { deviceVisualStatus, type DeviceVisualStatus } from "../runtime-state";
 import { AssetRuntimeDetailPanel } from "../twin/AssetRuntimeDetailPanel";
 import { AssetRuntimeStatusBanner } from "../twin/AssetRuntimeStatusBanner";
@@ -560,21 +561,36 @@ export function CanvasPage({ initialAssetId, initialTemplateId, mode, projectId,
   return (
     <main className={`canvas-page canvas-page-${mode}`}>
       <header className="canvas-toolbar">
-        <div className="canvas-toolbar-title">{!publicView ? <a aria-label="返回项目列表" className="canvas-back-link" href="#/projects">←</a> : null}<div><span>{mode === "edit" ? "2D 画布" : "可视化预览"}</span><strong>{projectName}</strong></div></div>
-        <div className="canvas-document-meta"><span>{document.width} × {document.height}</span><span>{canvasThemePresetLabels[document.theme.presetId]}</span>{mode === "edit" ? <span className={dirty ? "is-dirty" : "is-saved"}>{dirty ? "有未保存更改" : "已保存"}</span> : null}</div>
+        <div className="canvas-toolbar-context">
+          <div className="canvas-toolbar-title">{!publicView ? <a aria-label="返回项目列表" className="canvas-back-link" href="#/projects">←</a> : null}<div><span>{mode === "edit" ? "2D 画布" : "可视化预览"}</span><strong>{projectName}</strong></div></div>
+          <div aria-label="画布信息" className="canvas-document-meta"><span>{document.width} × {document.height}</span><span>{canvasThemePresetLabels[document.theme.presetId]}</span>{mode === "edit" ? <span className={dirty ? "is-dirty" : "is-saved"}>{dirty ? "有未保存更改" : "已保存"}</span> : null}</div>
+        </div>
         <div className="canvas-toolbar-actions">
-          <ThemeToggle />
+          <div aria-label="界面显示" className="canvas-toolbar-group" role="group">
+            <span className="canvas-toolbar-group-label">界面</span>
+            <ThemeToggle />
+          </div>
           {mode === "edit" ? <>
-            <button className="secondary-button compact-button" disabled={!canEdit || saving} onClick={() => setShowTemplates(true)} type="button">模板</button>
-            <button className="secondary-button compact-button canvas-theme-button" disabled={!canEdit || saving} onClick={() => setShowThemes(true)} type="button">
-              <span aria-hidden="true" style={{ backgroundColor: document.theme.accentColor }} />
-              主题
-            </button>
-            <button className="secondary-button compact-button" onClick={() => setShowDataSources(true)} type="button">数据源</button>
-            <button className="secondary-button compact-button" disabled={!selectedNodeId || !canEdit || saving} onClick={deleteSelectedNode} type="button">删除组件</button>
-            <button className="secondary-button compact-button" disabled={saving || configurationError !== null} onClick={() => void openPreview()} title={configurationError ?? undefined} type="button">预览</button>
-            <button className="primary-button compact-button" disabled={!dirty || saving || !canEdit || configurationError !== null} onClick={() => void save()} title={configurationError ?? undefined} type="button">{saving ? "保存中…" : "保存画布"}</button>
-          </> : !publicView ? <a className="secondary-button compact-button" href={canvasRoutePath(projectId, "canvas")}>返回编辑</a> : null}
+            <div aria-label="画布设置" className="canvas-toolbar-group" role="group">
+              <span className="canvas-toolbar-group-label">画布设置</span>
+              <div className="canvas-toolbar-group-buttons">
+                <button className="secondary-button compact-button" disabled={!canEdit || saving} onClick={() => setShowTemplates(true)} type="button"><ToolbarIcon name="template" />模板</button>
+                <button className="secondary-button compact-button canvas-theme-button" disabled={!canEdit || saving} onClick={() => setShowThemes(true)} type="button"><span aria-hidden="true" className="canvas-theme-swatch" style={{ backgroundColor: document.theme.accentColor }} />主题</button>
+                <button className="secondary-button compact-button" onClick={() => setShowDataSources(true)} type="button"><ToolbarIcon name="data" />数据源</button>
+              </div>
+            </div>
+            <div aria-label="组件操作" className="canvas-toolbar-group" role="group">
+              <span className="canvas-toolbar-group-label">组件操作</span>
+              <div className="canvas-toolbar-group-buttons"><button className="secondary-button compact-button canvas-delete-button" disabled={!selectedNodeId || !canEdit || saving} onClick={deleteSelectedNode} type="button"><ToolbarIcon name="delete" />删除组件</button></div>
+            </div>
+            <div aria-label="预览与保存" className="canvas-toolbar-group canvas-toolbar-group-output" role="group">
+              <span className="canvas-toolbar-group-label">预览与保存</span>
+              <div className="canvas-toolbar-group-buttons">
+                <button className="secondary-button compact-button" disabled={saving || configurationError !== null} onClick={() => void openPreview()} title={configurationError ?? undefined} type="button"><ToolbarIcon name="preview" />预览</button>
+                <button className="primary-button compact-button" disabled={!dirty || saving || !canEdit || configurationError !== null} onClick={() => void save()} title={configurationError ?? undefined} type="button"><ToolbarIcon name="save" />{saving ? "保存中…" : "保存画布"}</button>
+              </div>
+            </div>
+          </> : !publicView ? <div aria-label="预览操作" className="canvas-toolbar-group" role="group"><span className="canvas-toolbar-group-label">预览操作</span><div className="canvas-toolbar-group-buttons"><a className="secondary-button compact-button" href={canvasRoutePath(projectId, "canvas")}>返回编辑</a></div></div> : null}
         </div>
       </header>
       {saveError || themeNotice || (mode === "edit" && !canEdit) ? (

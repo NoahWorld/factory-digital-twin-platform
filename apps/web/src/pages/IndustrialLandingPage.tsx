@@ -6,6 +6,7 @@ import { PRODUCT_NAME } from "../product-config";
 import { ThemeToggle } from "../theme/ThemeToggle";
 import { demoDevices, getDemoSelection, industrialDemoNode } from "./industrial-demo-scene";
 import { PrecisionMotionDemo } from "./PrecisionMotionDemo";
+import { DeliveryScrollStory, DeliveryScreenGallery } from "./DeliveryExperience";
 import "./IndustrialLandingPage.css";
 
 function Arrow({ direction = "right", framed = false }: { direction?: "right" | "down" | "up-right"; framed?: boolean }) {
@@ -102,18 +103,31 @@ const steps = [
 ];
 
 export default function IndustrialLandingPage() {
+  const page = useRef<HTMLDivElement>(null);
+  const header = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (!header.current) return;
+    const observer = new ResizeObserver(([entry]) => {
+      page.current?.style.setProperty("--delivery-header-height", `${entry.target.getBoundingClientRect().height}px`);
+    });
+    observer.observe(header.current);
+    return () => observer.disconnect();
+  }, []);
   return (
-    <div className="delivery-landing">
+    <div className="delivery-landing" ref={page}>
       <a className="delivery-skip" href="#industrial-main" onClick={(event) => { event.preventDefault(); document.getElementById("industrial-main")?.focus(); }}>跳到主要内容</a>
-      <header className="delivery-header"><div className="delivery-header-inner"><a href="#/" aria-label={`${PRODUCT_NAME} 首页`}><Brand /></a><nav aria-label="主导航"><button type="button" onClick={() => scrollToSection("industrial-demo")}>场景体验</button><button type="button" onClick={() => scrollToSection("industrial-motion")}>动作案例</button><button type="button" onClick={() => scrollToSection("industrial-value")}>平台优势</button><button type="button" onClick={() => scrollToSection("industrial-workflow")}>交付流程</button></nav><div className="delivery-header-actions"><ThemeToggle /><a className="delivery-nav-cta" href="#/projects">进入平台<Arrow direction="up-right" framed /></a></div></div></header>
+      <header className="delivery-header" ref={header}><div className="delivery-header-inner"><a href="#/" aria-label={`${PRODUCT_NAME} 首页`}><Brand /></a><nav aria-label="主导航"><button type="button" onClick={() => scrollToSection("industrial-demo")}>场景体验</button><button type="button" onClick={() => scrollToSection("industrial-story")}>滚动演示</button><button type="button" onClick={() => scrollToSection("industrial-motion")}>动作案例</button><button type="button" onClick={() => scrollToSection("industrial-gallery")}>宣传画面</button><button type="button" onClick={() => scrollToSection("industrial-workflow")}>交付流程</button></nav><div className="delivery-header-actions"><ThemeToggle /><a className="delivery-nav-cta" href="#/projects">进入平台<Arrow direction="up-right" framed /></a></div></div></header>
       <main id="industrial-main" tabIndex={-1}>
         <section className="delivery-hero delivery-container">
           <div className="delivery-flow-field delivery-hero-flow" aria-hidden="true" />
           <div className="delivery-hero-copy"><div><p className="delivery-eyebrow"><span />面向工业场景的 3D 交付平台</p><h1>把工业现场，<em>交付到客户眼前。</em></h1></div><div className="delivery-hero-intro"><p>从 3D 场景搭建、设备数据关联，到可交互看板。<br className="delivery-wide-break" />让模型有业务，让展示有说服力。</p><div className="delivery-actions"><a href="#/projects" className="delivery-button is-primary">开始搭建项目<Arrow framed /></a><button type="button" className="delivery-button is-secondary" onClick={() => scrollToSection("industrial-demo")}>体验 3D 场景<Arrow direction="down" framed /></button></div><div className="delivery-hero-tags"><span>场景可编辑</span><span>设备可关联</span><span>看板可组合</span></div></div></div>
           <FactoryDemo />
           <div className="delivery-capability-strip"><span>从模型到客户展示</span><strong>3D 场景搭建</strong><i>＋</i><strong>设备资产关联</strong><i>＋</i><strong>业务数据呈现</strong><i>＝</i><strong className="delivery-strip-result">有业务价值的 3D 交付</strong></div>
+          <div className="delivery-explore-shortcuts" aria-label="探索更多展示"><button type="button" onClick={() => scrollToSection("industrial-story")}><span><LocalIcon name="boxes" size={23} /></span><span><strong>滚动看交付</strong><small>模型 → 资产 → 业务画面</small></span><Arrow direction="down" /></button><button type="button" onClick={() => scrollToSection("industrial-motion")}><span><LocalIcon name="cog" size={23} /></span><span><strong>查看动作细节</strong><small>体验机械臂的精密取放</small></span><Arrow direction="down" /></button><button type="button" onClick={() => scrollToSection("industrial-gallery")}><span><LocalIcon name="monitor" size={23} /></span><span><strong>切换宣传画面</strong><small>探索四种行业展示</small></span><Arrow direction="down" /></button></div>
         </section>
+        <DeliveryScrollStory />
         <PrecisionMotionDemo />
+        <DeliveryScreenGallery />
         <section className="delivery-value delivery-container" id="industrial-value"><div className="delivery-section-heading"><div><p className="delivery-eyebrow">BUILT FOR DELIVERY</p><h2>好看的 3D，更要解决交付里的实际问题。</h2></div><p>把模型、资产、数据和界面放进同一个项目。<br />减少反复拼接，让每一步成果都能继续复用。</p></div><div className="delivery-advantage-grid">{advantages.map((item) => <article className={`delivery-advantage ${item.className}`} key={item.number}><div className="delivery-advantage-top"><span><LocalIcon name={item.icon} size={28} /></span><b>{item.number}</b></div><h3>{item.title}</h3><p>{item.text}</p><ul>{item.items.map((text) => <li key={text}><LocalIcon name="circle-check" size={17} />{text}</li>)}</ul></article>)}</div></section>
         <section className="delivery-formats delivery-container"><div className="delivery-format-intro"><p className="delivery-eyebrow">ONE PLATFORM. TWO WAYS TO SHOW.</p><h2>客户需要什么，就用什么方式呈现。</h2><p>同一套场景能力，适配不同的展示目标。</p><a href="#/projects">创建你的项目<Arrow /></a></div><article className="delivery-format"><span className="delivery-format-mark">3D</span><span className="delivery-format-tag">空间与设备</span><h3>沉浸式 3D 场景</h3><p>自由查看车间布局、设备结构和空间关系，适合方案沟通与现场展示。</p><div><span>工业制造</span><span>园区设施</span><span>仓储物流</span></div></article><article className="delivery-format is-dashboard"><span className="delivery-format-mark">2D <small>+</small> 3D</span><span className="delivery-format-tag">数据与业务</span><h3>数字孪生业务大屏</h3><p>在场景旁组合图表、指标和资产详情，适合运行监控与业务汇报。</p><div><span>设备运行</span><span>生产概览</span><span>资产管理</span></div></article></section>
         <section className="delivery-workflow" id="industrial-workflow"><div className="delivery-flow-field delivery-workflow-flow" aria-hidden="true" /><div className="delivery-container"><div className="delivery-section-heading"><div><p className="delivery-eyebrow">A CLEAR PATH TO YOUR PROJECT</p><h2>从一个模型，到一份完整展示。</h2></div><p>让交付过程有章可循，让项目成果持续积累。</p></div><ol className="delivery-steps">{steps.map(([title, text, index]) => <li key={index}><div><span>{index}</span><Arrow /></div><h3>{title}</h3><p>{text}</p></li>)}</ol></div></section>

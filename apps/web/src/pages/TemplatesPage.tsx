@@ -35,14 +35,10 @@ export function TemplatesPage({
         <div>
           <p className="eyebrow">Industry template library</p>
           <h1>行业模板库</h1>
-          <p>选择 2D 看板或 3D 场景模板，创建新项目后继续编辑。</p>
+          <p>从完整业务画面开始，创建属于你的 2D 看板与 3D 场景。</p>
         </div>
-      </div>
-
-      <div className="template-page-create-note">
-        <div>
-          <strong>模板用于创建新项目</strong>
-          <span>选择模板后先填写项目名称，系统会创建新草稿并载入模板，不会覆盖已有项目。</span>
+        <div className="template-page-summary">
+          <span>可放大查看，创建项目后自由编辑。</span>
         </div>
       </div>
 
@@ -52,11 +48,6 @@ export function TemplatesPage({
           <p>你仍可浏览模板；需要由平台管理员或交付经理创建新项目。</p>
         </section>
       ) : null}
-
-      <div className="template-dialog-notice template-page-notice">
-        <strong>以下均为虚构演示案例</strong>
-        <span>企业、地点、数值及动画均为模拟内容；模板可继续编辑，保存后生成真实项目截图封面。</span>
-      </div>
 
       <div aria-label="模板类型" className="template-kind-tabs" role="tablist">
         {(["2d", "3d"] as const).filter((type) => allowedModules.includes(type)).map((type) => <button

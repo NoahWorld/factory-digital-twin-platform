@@ -123,6 +123,7 @@ try{
  write('configuration.schema.json',{$schema:'http://json-schema.org/draft-07/schema#',definitions});write('sources.json',fingerprints);
  const builtins=createRequire(import.meta.url)(join(temp,'shared/builtin-models.js')).builtinModels;
  write('builtin-models.json',builtins);
+ write('builtin-images.json',createRequire(import.meta.url)(join(temp,'shared/builtin-images.js')).builtinImages);
  const source=readFileSync(join(root,'apps/api/src/canvas.ts'),'utf8');
  const minSizes=Object.fromEntries([...source.slice(source.indexOf('const minimumNodeSizes'),source.indexOf('const invalid')).matchAll(/(?:"([\w-]+)"|(\w+)):\s*\{ width: (\d+), height: (\d+) \}/g)].map(m=>[m[1]??m[2],[Number(m[3]),Number(m[4])]]));
  minSizes['card-title']=[120,32];minSizes['vector-icon']=[24,24];write('canvas-minimum-sizes.json',minSizes);

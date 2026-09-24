@@ -46,13 +46,50 @@ try{
  const page=(await call('/projects?limit=1')).value;assert.equal(page.projects.length,1);assert.equal(page.nextOffset,1);const next=(await call('/projects?limit=1&offset=1')).value;assert.notEqual(next.projects[0].id,page.projects[0].id);await call('/projects?limit=0',{status:400});ok('bounded explicit list pagination');
  execFileSync(process.execPath,[join(root,'apps/web/node_modules/typescript/bin/tsc'),'--target','ES2022','--module','commonjs','--moduleResolution','node','--strict','--skipLibCheck','--rootDir',root,'--outDir',temp,join(root,'apps/web/src/canvas/templates.ts')],{stdio:'inherit'});
  const {canvasTemplates,instantiateCanvasTemplate}=require(join(temp,'apps/web/src/canvas/templates.js'));
- let revision=0,old=[];
- for(const t of canvasTemplates){const nodes=instantiateCanvasTemplate(t.id,[]);const result=await call(`/projects/${id}/canvas`,{method:'PATCH',body:{expectedRevision:revision,theme:t.canvasTheme,upsertNodes:nodes,deleteNodeIds:old}});revision=result.value.canvas.revision;assert.equal(result.value.canvas.nodes.length,nodes.length);old=nodes.map(n=>n.id);}
+ let revision=0;
+ // The template library creates a new draft per template. Each replacement is
+ // separately bounded by the API; do not combine eight drafts into one patch sequence.
+ for(const [index,t] of canvasTemplates.entries()){
+   const templateProjectId=index===0?id:await project();
+   const nodes=instantiateCanvasTemplate(t.id,[]);
+   const result=await call(`/projects/${templateProjectId}/canvas`,{method:'PATCH',body:{expectedRevision:0,theme:t.canvasTheme,upsertNodes:nodes,deleteNodeIds:[]}});
+   const templateRevision=result.value.canvas.revision;
+   if(index===0) revision=templateRevision;
+   const saved=(await call(`/projects/${templateProjectId}/canvas`)).value.canvas;
+   assert.equal(saved.revision,templateRevision);
+   assert.deepEqual(saved.nodes,result.value.canvas.nodes);
+   assert.equal(saved.nodes.length,nodes.length);
+   for(const node of nodes) assert.deepEqual(saved.nodes.find(n=>n.id===node.id).props,node.props,`${t.id}: ${node.id} props`);
+   const artwork=nodes.find(node=>node.type==='image'&&node.resourceRefs[0]?.startsWith('builtin:'));
+   if(artwork){
+     const resourceId=artwork.resourceRefs[0];
+     const image=(await call(`/projects/${templateProjectId}/image-assets`)).value.imageAssets.find(image=>image.id===resourceId);
+     assert.equal(image.source,'system');assert.ok(image.usage.count>0);
+     const content=await call(`/projects/${templateProjectId}/image-assets/${encodeURIComponent(resourceId)}/content`,{status:302});
+     assert.match(content.r.headers.get('location'),/^\/images\/industry\//);
+     assert.equal((await call(`/projects/${templateProjectId}/image-assets/${encodeURIComponent(resourceId)}`,{method:'DELETE',status:403})).value.error,'system_resource_read_only');
+     await call(`/projects/${templateProjectId}/image-assets/${encodeURIComponent(resourceId)}/content`,{as:'',status:401});
+     for(const invalidId of ['builtin:industry-unknown-v1','builtin:aqua-helix-hd-v1']){
+       const invalid={...artwork,resourceRefs:[invalidId]};
+       assert.equal((await call(`/projects/${templateProjectId}/canvas`,{method:'PATCH',status:400,body:{expectedRevision:templateRevision,upsertNodes:[invalid],deleteNodeIds:[]}})).value.error,'invalid_resource_reference');
+     }
+     assert.equal((await call(`/projects/${templateProjectId}/canvas`)).value.canvas.revision,templateRevision);
+     const publication=(await call(`/projects/${templateProjectId}/publication`,{method:'POST'})).value;
+     const share=encodeURIComponent(publication.shareToken);
+     const publicImages=(await call(`/publications/projects/${templateProjectId}/image-assets?share=${share}`,{as:''})).value.imageAssets;
+     assert.deepEqual(publicImages.map(image=>image.id),[resourceId]);
+     const publicContent=await call(`/publications/projects/${templateProjectId}/image-assets/${encodeURIComponent(resourceId)}/content?share=${share}`,{as:'',status:302});
+     assert.equal(publicContent.r.headers.get('location'),content.r.headers.get('location'));
+     await call(`/projects/${templateProjectId}/publication`,{method:'DELETE'});
+     await call(`/publications/projects/${templateProjectId}/image-assets/${encodeURIComponent(resourceId)}/content?share=${share}`,{as:'',status:404});
+   }
+ }
  const saved2dProject=(await call(`/projects/${id}`)).value.project;assert.equal(saved2dProject.coverStatus,'pending');assert.equal(saved2dProject.documentRevision,revision);
  assert.match(saved2dProject.coverUrl,/\/cover\.png\?revision=\d+$/);
  assert.match((await call(saved2dProject.coverUrl.replace('/api/v1',''))).r.headers.get('content-type'),/^image\/png/);
  ok('2D content saves mark the previous screenshot pending');
  ok('all '+canvasTemplates.length+' actual frontend templates save and round trip');
+ ok('industry artwork stays typed, immutable, authorized and limited to the active publication');
  const {createCanvasNode,parseModel3DProps}=require(join(temp,'apps/web/src/canvas/types.js'));
  const legacy=createCanvasNode('model-3d',0,0,100);
  legacy.props.animationSpeed=2;

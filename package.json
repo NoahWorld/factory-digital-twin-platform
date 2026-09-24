@@ -18,6 +18,7 @@
     "test:resources": "node scripts/test-resource-library.mjs",
     "test:standalone-3d": "node scripts/test-standalone-3d.mjs",
     "test:scene-templates": "node scripts/test-scene-templates.mjs",
+    "test:canvas-templates": "node scripts/test-canvas-templates.mjs",
     "test:scene-background": "node scripts/test-scene-background.mjs",
     "test:workshop-motion": "node scripts/test-workshop-motion.mjs",
     "test:models": "node scripts/test-builtin-models.mjs",

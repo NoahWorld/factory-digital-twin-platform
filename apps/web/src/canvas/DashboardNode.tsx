@@ -1,4 +1,6 @@
 import { memo, type CSSProperties, type ReactNode } from "react";
+import type { IconId } from "../../../../shared/icon-catalog";
+import { LocalIcon } from "./LocalIcon";
 import {
   componentLabels,
   isDashboardNodeType,
@@ -30,6 +32,13 @@ const dashboardStyle = (props: DashboardBaseProps): DashboardStyle => ({
 
 const SampleBadge = ({ visible }: { visible: boolean }) =>
   visible ? <span className="dashboard-sample-badge">示例数据</span> : null;
+
+// Keep the existing short icon property compatible with saved canvases.
+const metricIcons: Record<string, IconId> = {
+  产: "package", 质: "shield-check", 效: "cog", 速: "gauge", 单: "container", 机: "activity",
+  库: "boxes", 位: "database", 入: "warehouse", 出: "truck", 电: "zap", 水: "droplets", 气: "flame",
+  碳: "leaf", "!": "bell", 楼: "factory", 人: "users", 车: "truck", 能: "zap",
+};
 
 const toneLabel = {
   normal: "正常",
@@ -160,9 +169,11 @@ export const DashboardNode = memo(function DashboardNode({ node }: { node: Canva
   const props = parsed.value;
   if (node.type === "metric-card") {
     const metric = props as import("./types").MetricCardProps;
+    const icon = metricIcons[metric.icon];
     return (
-      <article className="dashboard-component dashboard-metric-card" style={dashboardStyle(metric)}>
-        <header><span>{metric.icon}</span><strong>{metric.title}</strong><SampleBadge visible={metric.sample} /></header>
+      <article className={`dashboard-component dashboard-metric-card${icon ? " has-vector-icon" : ""}`} style={dashboardStyle(metric)}>
+        {icon && <span className="dashboard-metric-emblem"><LocalIcon name={icon} size={36} /></span>}
+        <header>{!icon && <span>{metric.icon}</span>}<strong>{metric.title}</strong><SampleBadge visible={metric.sample} /></header>
         <div className="dashboard-metric-value"><strong>{metric.value}</strong>{metric.unit ? <span>{metric.unit}</span> : null}</div>
         <p>{metric.subtitle}</p>
       </article>
@@ -170,7 +181,7 @@ export const DashboardNode = memo(function DashboardNode({ node }: { node: Canva
   }
 
   return (
-    <article className={`dashboard-component dashboard-${node.type}`} style={dashboardStyle(props)}>
+    <article className={`dashboard-component dashboard-kind-${node.type}`} style={dashboardStyle(props)}>
       <header className="dashboard-component-header"><strong>{props.title}</strong><SampleBadge visible={props.sample} /></header>
       {dashboardBody(node, props)}
     </article>

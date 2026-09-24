@@ -933,25 +933,28 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
   return (
     <main className="workspace-shell">
       <header className="topbar">
-        <a className="brand" href="#/projects">
-          <span className="brand-mark">◫</span>
-          <span>
-            <strong>{PRODUCT_NAME}</strong>
-          </span>
-        </a>
-        <nav aria-label="主导航">
-          <a aria-current={route.kind === "projects" ? "page" : undefined} href="#/projects">项目</a>
-          {user.modules.length > 0 ? <a aria-current={route.kind === "templates" ? "page" : undefined} href="#/templates">模板</a> : null}
-          {user.modules.length > 0 ? <a aria-current={route.kind === "resources" ? "page" : undefined} href="#/resources">资源库</a> : null}
-          {user.capabilities.canManageUsers ? <a aria-current={route.kind === "users" ? "page" : undefined} href="#/users">用户管理</a> : null}
-        </nav>
+        <div className="topbar-main">
+          <a className="brand" href="#/projects">
+            <span className="brand-mark" aria-hidden="true">◫</span>
+            <span className="brand-name"><strong>{PRODUCT_NAME}</strong><small>交付工作台</small></span>
+          </a>
+          <nav aria-label="主导航" className="topbar-nav">
+            <a aria-current={route.kind === "projects" ? "page" : undefined} href="#/projects">项目</a>
+            {user.modules.length > 0 ? <a aria-current={route.kind === "templates" ? "page" : undefined} href="#/templates">模板</a> : null}
+            {user.modules.length > 0 ? <a aria-current={route.kind === "resources" ? "page" : undefined} href="#/resources">资源库</a> : null}
+            {user.capabilities.canManageUsers ? <a aria-current={route.kind === "users" ? "page" : undefined} href="#/users">用户管理</a> : null}
+          </nav>
+        </div>
         <div className="user-menu">
           <ThemeToggle />
-          <div>
-            <strong>{user.displayName}</strong>
-            <span>{user.roles.includes("platform_admin") ? "平台管理员" : "交付账号"}</span>
+          <div className="user-identity">
+            <span className="user-avatar" aria-hidden="true">{user.displayName.trim().slice(0, 1)}</span>
+            <div className="user-identity-text">
+              <strong>{user.displayName}</strong>
+              <span>{user.roles.includes("platform_admin") ? "平台管理员" : "交付账号"}</span>
+            </div>
           </div>
-          <button className="text-button" disabled={loggingOut} onClick={() => void logout()} type="button">
+          <button className="secondary-button topbar-logout" disabled={loggingOut} onClick={() => void logout()} type="button">
             {loggingOut ? "退出中…" : "退出"}
           </button>
         </div>

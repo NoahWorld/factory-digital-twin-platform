@@ -546,7 +546,7 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
       setTemplateError(null);
       setError(null);
       setShowTemplates(false);
-      setNotice(`“${getSceneTemplate(templateId).name}”已载入草稿，保存场景后生效。模型动画为虚构演示，未绑定现场业务资产。${(next.fluids?.length ?? 0) > 0 ? "现有流体配置及路径已保留。" : ""}`);
+      setNotice(`“${getSceneTemplate(templateId).name}”已载入草稿，保存场景后生效。${(next.fluids?.length ?? 0) > 0 ? "现有流体配置及路径已保留。" : ""}`);
     } catch (reason) {
       console.error("Scene template application failed", { projectId, templateId, requireNewProject, reason });
       const message = errorMessage(reason);
