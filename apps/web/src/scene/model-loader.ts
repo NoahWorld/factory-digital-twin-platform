@@ -38,7 +38,7 @@ export function createModelLoader(renderer: WebGLRenderer) {
   return { loader, dispose: () => { ktx2.dispose(); draco.dispose(); } };
 }
 
-export function createSceneModelLoader(projectId: string, renderer: WebGLRenderer) {
+export function createSceneModelLoader(projectId: string, renderer: WebGLRenderer, resolveModelUrl = (assetId: string) => modelAssetContentUrl(projectId, assetId)) {
   const decoders = createModelLoader(renderer);
   let closing = false;
   let active = 0;
@@ -52,7 +52,7 @@ export function createSceneModelLoader(projectId: string, renderer: WebGLRendere
       const startedAt = performance.now();
       let gltf: GLTF | undefined;
       try {
-        const response = await fetch(modelAssetContentUrl(projectId, assetId), { signal, credentials: "same-origin" });
+        const response = await fetch(resolveModelUrl(assetId), { signal, credentials: "same-origin" });
         if (!response.ok) throw new Error(`HTTP ${response.status} ${response.statusText}`);
         const buffer = await response.arrayBuffer();
         signal.throwIfAborted();

@@ -1,4 +1,4 @@
-import { AnimationMixer, Box3, Group, type Material, type Object3D, type Quaternion, type Vector3 } from "three";
+import { AnimationMixer, Box3, Group, type AnimationAction, type Material, type Object3D, type Quaternion, type Vector3 } from "three";
 import type { GLTF } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { clone } from "three/examples/jsm/utils/SkeletonUtils.js";
 import { acceleratedRaycast } from "three-mesh-bvh";
@@ -12,6 +12,7 @@ export type InstanceRecord = {
   model: Object3D;
   wrapper: Group;
   mixer: AnimationMixer | null;
+  actions: AnimationAction[];
   animationCount: number;
   originals: Map<Object3D, { position: Vector3; quaternion: Quaternion; scale: Vector3 }>;
   originalVisibility: Map<Object3D, boolean>;
@@ -37,9 +38,9 @@ function createRecord(instance: ModelAssetInstance, lease: ResourceLease<GLTF>):
   wrapper.userData.modelAssetId = instance.assetId;
   wrapper.add(model);
   const mixer = lease.value.animations.length ? new AnimationMixer(model) : null;
-  lease.value.animations.forEach((clip) => mixer!.clipAction(clip).play());
+  const actions = lease.value.animations.map((clip) => mixer!.clipAction(clip).play());
   const record: InstanceRecord = {
-    assetId: instance.assetId, id: instance.id, model, wrapper, mixer,
+    assetId: instance.assetId, id: instance.id, model, wrapper, mixer, actions,
     animationCount: lease.value.animations.length,
     originals: new Map(), originalVisibility: new Map(), originalMaterials: new Map(),
     activeMaterialClones: new Map(), objectsByName: new Map(), release: lease.release,

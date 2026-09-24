@@ -16,6 +16,7 @@ import { createSceneModelLoader, disposeModelResources } from "./model-loader";
 import { createPickingService } from "./picking-service";
 import { createWalkPhysics, type WalkPhysics, type WalkSceneConfig } from "./walk-physics";
 import { createWalkControls } from "./walk-controls";
+import { createNativePlayback, type AnimationProgress, type NativePlaybackMode } from "./native-playback";
 import {
   constrainEditableInstanceScale,
   readEditableInstanceTransform,
@@ -47,11 +48,14 @@ export type SceneDiagnostics = {
 export type SceneRuntime = ReturnType<typeof createSceneRuntime>;
 
 /** Owns one renderer per scene. React passes configuration, never Three.js objects. */
-export function createSceneRuntime({ container, projectId, canvasNodeId, initial, onStatus, onSnapshot, onDiagnostics, onNavigation, onInstanceTransform, onTransformDragging }: {
+export function createSceneRuntime({ container, projectId, canvasNodeId, initial, onStatus, onSnapshot, onDiagnostics, onNavigation, onInstanceTransform, onTransformDragging, resolveModelUrl, nativePlayback }: {
   container: HTMLElement;
   projectId: string;
   canvasNodeId: string;
   initial: SceneInput;
+  // Trusted host options. They are never read from saved scene configuration.
+  resolveModelUrl?: (assetId: string) => string;
+  nativePlayback?: { mode: NativePlaybackMode; onProgress: (progress: AnimationProgress) => void };
   onStatus: (status: SceneStatus) => void;
   onSnapshot: (snapshot: SceneSnapshot | null) => void;
   onDiagnostics?: (diagnostics: SceneDiagnostics) => void;
@@ -119,13 +123,15 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
       pmrem.dispose();
     };
 
-    const modelLoader = createSceneModelLoader(projectId, renderer);
+    const modelLoader = createSceneModelLoader(projectId, renderer, resolveModelUrl);
     constructionCleanup.push(modelLoader.dispose);
     const resources = new ResourceManager(modelLoader.load, (source) => disposeModelResources(source.scene));
     constructionCleanup.push(() => resources.dispose());
     const manager = new InstanceManager(resources, contentOffset);
     constructionCleanup.push(() => manager.dispose());
     let records: InstanceRecord[] = [];
+    let playback: ReturnType<typeof createNativePlayback> | null = null;
+    let lastPlaybackReport = 0;
     let desired = initial;
     let desiredInstancesById = new Map(initial.instances.map((instance) => [instance.id, instance]));
     let revision = 0;
@@ -699,6 +705,10 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
           record.mixer?.update(deltaSeconds * settings.animationSpeed * (animation?.speed ?? 1));
         }
       });
+      if (playback && nativePlayback && now - lastPlaybackReport >= 100) {
+        nativePlayback.onProgress(playback.progress());
+        lastPlaybackReport = now;
+      }
       if (settings.autoRotate) rotationPivot.rotation.y += deltaSeconds * settings.rotationSpeed;
       selectionHelper?.update();
       updateRuntimeSelectionRing(now);
@@ -756,6 +766,8 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
           if (!await manager.reconcile(next.instances) || disposed || version !== revision) return;
           if (contextLost || renderer.getContext().isContextLost()) throw new Error("模型加载期间 WebGL 上下文已丢失，请重新打开场景");
           records = manager.records;
+          playback = nativePlayback && records.length ? createNativePlayback(records, nativePlayback.mode) : null;
+          if (playback) nativePlayback?.onProgress(playback.progress());
           records.forEach(record => record.model.traverse(object => {
             if (object instanceof THREE.Mesh) {
               object.castShadow = true;
@@ -811,7 +823,13 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
         notifyStatus({ status: "error", message: `3D 场景更新失败：${reason instanceof Error ? reason.message : String(reason)}` });
       }
     };
-    return { update, pickSceneTarget, enterWalk, exitWalk, navigationStatus: () => navigation, dispose: disposeRuntime, diagnostics: () => lastDiagnostics };
+    const seekAnimation = (seconds: number) => {
+      if (disposed || !playback || !nativePlayback) throw new Error("原生动画播放控制尚未就绪");
+      playback.seek(seconds);
+      nativePlayback.onProgress(playback.progress());
+      renderSceneFrame();
+    };
+    return { update, seekAnimation, resetCamera: fitCameraToScene, pickSceneTarget, enterWalk, exitWalk, navigationStatus: () => navigation, dispose: disposeRuntime, diagnostics: () => lastDiagnostics };
   } catch (reason) {
     for (const cleanup of constructionCleanup.reverse()) cleanup();
     throw reason;
