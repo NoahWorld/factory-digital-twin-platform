@@ -7,13 +7,14 @@ import type {
   ChartProps,
   DashboardBaseProps,
   DecorationProps,
-  Model3DProps,
   ProgressListItem,
   RankingListItem,
   ShapeProps,
   StatusGridItem,
   TimelineItem,
 } from "./types";
+import { templateScene } from "./template-scenes";
+import { productionTemplate, energyTemplate, parkTemplate, warehouseTemplate } from "./industry-templates";
 
 export type CanvasTemplateId =
   | "equipment-maintenance"
@@ -31,7 +32,6 @@ export type CanvasTemplateShowcase = {
   location: string;
   site: string;
   deliveryForm: string;
-  badge: "虚构演示";
   dataLabel: "模拟数据";
 };
 
@@ -55,7 +55,6 @@ const canvasTemplateShowcases: Record<CanvasTemplateId, CanvasTemplateShowcase> 
     location: "陕西 · 西安",
     site: "综合维修保障中心",
     deliveryForm: "2D 检修驾驶舱 · 流程与质量闭环",
-    badge: "虚构演示",
     dataLabel: "模拟数据",
   },
   "equipment-support": {
@@ -63,44 +62,39 @@ const canvasTemplateShowcases: Record<CanvasTemplateId, CanvasTemplateShowcase> 
     organization: "启岳装备（虚构）",
     location: "河南 · 洛阳",
     site: "车辆与装备保障场",
-    deliveryForm: "2D 指标区 · 3D 场区主视图",
-    badge: "虚构演示",
+    deliveryForm: "车辆分区示意 · 装备与钥匙监控",
     dataLabel: "模拟数据",
   },
   "production-operations": {
-    title: "江城智装 · 武汉智能装备态势看板",
+    title: "智能制造数字化管控平台",
     organization: "江城智装（虚构）",
     location: "湖北 · 武汉",
     site: "智能装备总装一号车间",
     deliveryForm: "2D 生产驾驶舱 · 设备状态联动",
-    badge: "虚构演示",
     dataLabel: "模拟数据",
   },
   "energy-safety": {
-    title: "皖江新材 · 合肥工厂能源安全看板",
+    title: "能源管理智能监控平台",
     organization: "皖江新材（虚构）",
     location: "安徽 · 合肥",
     site: "新材料生产基地",
     deliveryForm: "能源驾驶舱 · 安全告警联动",
-    badge: "虚构演示",
     dataLabel: "模拟数据",
   },
   "industrial-park-operations": {
-    title: "云港智谷 · 苏州园区综合运营看板",
+    title: "云港智谷 · 园区运营指挥中心",
     organization: "云港智谷（虚构）",
     location: "江苏 · 苏州",
     site: "智能制造产业园",
-    deliveryForm: "2D 运营指标 · 3D 园区主视图",
-    badge: "虚构演示",
+    deliveryForm: "园区空间总览 · 楼宇与设施监控",
     dataLabel: "模拟数据",
   },
   "warehouse-logistics": {
-    title: "东海链仓 · 宁波智慧物流调度看板",
+    title: "智慧仓储物流运营中心",
     organization: "东海链仓（虚构）",
     location: "浙江 · 宁波",
     site: "区域智能仓配中心",
     deliveryForm: "仓储驾驶舱 · 月台与设备调度",
-    badge: "虚构演示",
     dataLabel: "模拟数据",
   },
   "water-treatment-operations": {
@@ -109,7 +103,6 @@ const canvasTemplateShowcases: Record<CanvasTemplateId, CanvasTemplateShowcase> 
     location: "湖北 · 宜昌",
     site: "工业污水处理中心",
     deliveryForm: "工艺驾驶舱 · 水质与设备监测",
-    badge: "虚构演示",
     dataLabel: "模拟数据",
   },
   "data-center-infrastructure": {
@@ -118,7 +111,6 @@ const canvasTemplateShowcases: Record<CanvasTemplateId, CanvasTemplateShowcase> 
     location: "四川 · 成都",
     site: "高新算力基础设施中心",
     deliveryForm: "基础设施驾驶舱 · 容量与告警监控",
-    badge: "虚构演示",
     dataLabel: "模拟数据",
   },
 };
@@ -163,42 +155,6 @@ const lightBase: DashboardBaseProps = {
   accentColor: "#16839a",
   fillColor: "#edf8fa",
   borderColor: "#8cbec9",
-  sample: true,
-};
-
-const greenBase: DashboardBaseProps = {
-  title: "",
-  textColor: "#e9fff6",
-  accentColor: "#48e0a4",
-  fillColor: "#0c2927",
-  borderColor: "#2d826d",
-  sample: true,
-};
-
-const amberBase: DashboardBaseProps = {
-  title: "",
-  textColor: "#fff8e8",
-  accentColor: "#ffbf54",
-  fillColor: "#292417",
-  borderColor: "#8b6c32",
-  sample: true,
-};
-
-const parkBase: DashboardBaseProps = {
-  title: "",
-  textColor: "#e8f8ff",
-  accentColor: "#5cc9ff",
-  fillColor: "#0b2637",
-  borderColor: "#2f7797",
-  sample: true,
-};
-
-const logisticsBase: DashboardBaseProps = {
-  title: "",
-  textColor: "#f2efff",
-  accentColor: "#a99df5",
-  fillColor: "#211e3a",
-  borderColor: "#625a9d",
   sample: true,
 };
 
@@ -249,7 +205,7 @@ const title = (
 const datetime = (
   colors: { text: string; accent: string; fill: string; border: string },
 ) => makeNode("datetime", { x: 1570, y: 20, width: 320, height: 88 }, {
-  text: "数据同步中",
+  text: "当前时间",
   subtitle: "",
   textColor: colors.text,
   accentColor: colors.accent,
@@ -383,41 +339,11 @@ const timeline = (
   items,
 }, 10);
 
-const model = (box: Box, existingModel: CanvasNode | undefined) => {
-  const defaultProps: Model3DProps = {
-    presentation: { lighting: "standard", shellMode: "original", showFlow: true, explosion: 0 },
-    backgroundColor: "#061725",
-    backgroundOpacity: 1,
-    environmentLightColor: "#d7f5ff",
-    environmentLightIntensity: 2.1,
-    keyLightColor: "#ffffff",
-    keyLightIntensity: 2.4,
-    cameraFov: 42,
-    cameraView: "isometric",
-    preventBottomView: true,
-    modelScale: 1,
-    autoRotate: true,
-    rotationSpeed: 0.28,
-    showControlPanel: false,
-    playAnimations: true,
-    animationSpeed: 1,
-    showGrid: true,
-    modelInstances: [],
-    appearanceOverrides: {},
-    transformOverrides: {},
-  };
-  const node = makeNode(
-    "model-3d",
-    box,
-    existingModel?.props ?? defaultProps,
-    10,
-  );
-  return {
-    ...node,
-    resourceRefs: existingModel?.resourceRefs ?? [],
-    dataBindingRefs: existingModel?.dataBindingRefs ?? [],
-  };
-};
+const model = (box: Box, existingModel: CanvasNode): CanvasNode => ({
+  ...makeNode("model-3d", box, { ...existingModel.props }, 10),
+  resourceRefs: [...existingModel.resourceRefs],
+  dataBindingRefs: [...existingModel.dataBindingRefs],
+});
 
 const maintenanceTemplate = (): CanvasNode[] => {
   const colors = { text: "#173849", accent: "#16839a", fill: "#dff0f3", border: "#78aeb9" };
@@ -531,7 +457,9 @@ const supportTemplate = (existingNodes: CanvasNode[]): CanvasNode[] => {
         { time: "09:03", source: "车位采集器 P18", message: "采集器离线，保留最后状态", tone: "offline" },
       ],
     ),
-    model({ x: 490, y: 300, width: 900, height: 520 }, existingModel),
+    ...(existingModel
+      ? [model({ x: 490, y: 300, width: 900, height: 520 }, existingModel)]
+      : templateScene("support", { x: 490, y: 300, width: 900, height: 520 }, darkBase)),
     status(
       { x: 490, y: 850, width: 900, height: 200 },
       darkBase,
@@ -548,285 +476,6 @@ const supportTemplate = (existingNodes: CanvasNode[]): CanvasNode[] => {
   ];
 };
 
-const productionTemplate = (): CanvasNode[] => {
-  const colors = { text: "#eafff7", accent: "#48e0a4", fill: "#0b2525", border: "#2d806c" };
-  return [
-    background("#071a1d"),
-    title(
-      showcaseTitle("production-operations"),
-      showcaseSubtitle("production-operations", "产量、节拍、质量、设备与人员协同监测"),
-      colors,
-    ),
-    datetime(colors),
-    metric({ x: 30, y: 130, width: 348, height: 140 }, greenBase, "今日产量", "12,680", "件", "计划达成 96.2%", "产"),
-    metric({ x: 393, y: 130, width: 348, height: 140 }, greenBase, "平均节拍", "42.6", "秒", "目标 ≤ 45 秒", "速"),
-    metric({ x: 756, y: 130, width: 348, height: 140 }, greenBase, "一次合格率", "99.1", "%", "较昨日 +0.3%", "质"),
-    metric({ x: 1119, y: 130, width: 348, height: 140 }, greenBase, "设备 OEE", "87.4", "%", "目标 85%", "效"),
-    metric({ x: 1482, y: 130, width: 408, height: 140 }, greenBase, "在岗人员", "126", "人", "缺岗 2 人", "人"),
-    chart("area-chart", { x: 30, y: 300, width: 850, height: 360 }, "24 小时产量趋势", ["00", "04", "08", "12", "16", "20", "24"], [420, 510, 680, 820, 760, 690, 590], "件", "#48e0a4"),
-    chart("bar-chart", { x: 900, y: 300, width: 600, height: 360 }, "各产线完成率", ["一线", "二线", "三线", "四线", "五线"], [96, 92, 88, 101, 94], "%", "#67e6b4"),
-    gauge({ x: 1520, y: 300, width: 370, height: 360 }, greenBase, "订单达成率", 96.2, 100, "%", "计划 13,180 件"),
-    progress(
-      { x: 30, y: 690, width: 580, height: 360 },
-      greenBase,
-      "工序节拍",
-      [
-        { label: "上料", value: 39, maximum: 50, unit: "秒" },
-        { label: "装配", value: 43, maximum: 50, unit: "秒" },
-        { label: "检测", value: 46, maximum: 50, unit: "秒" },
-        { label: "包装", value: 35, maximum: 50, unit: "秒" },
-      ],
-    ),
-    status(
-      { x: 630, y: 690, width: 700, height: 360 },
-      greenBase,
-      "关键设备状态",
-      3,
-      [
-        { label: "冲压机 A01", value: "运行", tone: "normal" },
-        { label: "机器人 R03", value: "运行", tone: "normal" },
-        { label: "检测台 Q02", value: "待料", tone: "warning" },
-        { label: "输送线 L01", value: "运行", tone: "normal" },
-        { label: "包装机 P02", value: "保养", tone: "offline" },
-        { label: "空压站 U01", value: "运行", tone: "normal" },
-      ],
-    ),
-    alarms(
-      { x: 1350, y: 690, width: 540, height: 360 },
-      greenBase,
-      "产线实时异常",
-      [
-        { time: "15:42", source: "检测台 Q02", message: "工件到位信号延迟 18 秒", tone: "warning" },
-        { time: "15:18", source: "包装机 P02", message: "计划保养，预计 16:10 恢复", tone: "offline" },
-        { time: "14:56", source: "机器人 R03", message: "夹具寿命剩余 8%", tone: "danger" },
-        { time: "14:12", source: "输送线 L01", message: "节拍恢复至目标区间", tone: "normal" },
-      ],
-    ),
-  ];
-};
-
-const energyTemplate = (): CanvasNode[] => {
-  const colors = { text: "#fff8e8", accent: "#ffbf54", fill: "#251f14", border: "#8b6c32" };
-  return [
-    background("#17140e"),
-    title(
-      showcaseTitle("energy-safety"),
-      showcaseSubtitle("energy-safety", "水、电、气、碳排与安全告警统一监测"),
-      colors,
-    ),
-    datetime(colors),
-    metric({ x: 30, y: 130, width: 348, height: 140 }, amberBase, "今日用电", "28,460", "kWh", "同比 -3.2%", "电"),
-    metric({ x: 393, y: 130, width: 348, height: 140 }, amberBase, "今日用水", "1,286", "m³", "预算占比 76%", "水"),
-    metric({ x: 756, y: 130, width: 348, height: 140 }, amberBase, "天然气", "3,820", "Nm³", "较昨日 +1.6%", "气"),
-    metric({ x: 1119, y: 130, width: 348, height: 140 }, amberBase, "碳排估算", "18.6", "tCO₂", "月目标内", "碳"),
-    metric({ x: 1482, y: 130, width: 408, height: 140 }, amberBase, "未处置告警", "7", "条", "高优先级 2 条", "!"),
-    chart("area-chart", { x: 30, y: 300, width: 850, height: 360 }, "综合能耗趋势", ["00", "04", "08", "12", "16", "20", "24"], [42, 38, 66, 82, 75, 61, 48], "MWh", "#ffbf54"),
-    ranking(
-      { x: 900, y: 300, width: 600, height: 360 },
-      amberBase,
-      "区域能耗排名",
-      [
-        { label: "一号熔炼车间", value: 82, unit: "MWh", trend: "up" },
-        { label: "二号成型车间", value: 71, unit: "MWh", trend: "down" },
-        { label: "动力站", value: 66, unit: "MWh", trend: "flat" },
-        { label: "原料仓储", value: 48, unit: "MWh", trend: "up" },
-        { label: "研发办公区", value: 29, unit: "MWh", trend: "down" },
-      ],
-    ),
-    gauge({ x: 1520, y: 300, width: 370, height: 360 }, amberBase, "本月能源预算", 76, 100, "%", "剩余预算 24%"),
-    alarms(
-      { x: 30, y: 690, width: 760, height: 360 },
-      amberBase,
-      "安全告警处置",
-      [
-        { time: "15:36", source: "熔炼炉 T-03", message: "炉壁温度超过二级阈值", tone: "danger" },
-        { time: "15:08", source: "空压站 P-02", message: "出口压力连续波动", tone: "warning" },
-        { time: "14:40", source: "消防泵房网关", message: "通信心跳中断", tone: "offline" },
-        { time: "13:25", source: "危化品库", message: "通风联锁恢复正常", tone: "normal" },
-      ],
-    ),
-    progress(
-      { x: 820, y: 690, width: 520, height: 360 },
-      amberBase,
-      "能源目标达成",
-      [
-        { label: "电力预算", value: 76, maximum: 100, unit: "%" },
-        { label: "用水预算", value: 69, maximum: 100, unit: "%" },
-        { label: "天然气预算", value: 81, maximum: 100, unit: "%" },
-        { label: "碳排预算", value: 72, maximum: 100, unit: "%" },
-      ],
-    ),
-    status(
-      { x: 1370, y: 690, width: 520, height: 360 },
-      amberBase,
-      "重点区域状态",
-      2,
-      [
-        { label: "动力站", value: "正常", tone: "normal" },
-        { label: "危化品库", value: "预警", tone: "warning" },
-        { label: "一车间", value: "正常", tone: "normal" },
-        { label: "消防泵房", value: "离线", tone: "offline" },
-      ],
-    ),
-  ];
-};
-
-const parkTemplate = (existingNodes: CanvasNode[]): CanvasNode[] => {
-  const colors = { text: "#e8f8ff", accent: "#5cc9ff", fill: "#081d2d", border: "#2f7797" };
-  const existingModel = existingNodes.find((node) => node.type === "model-3d");
-  return [
-    background("#061522"),
-    title(
-      showcaseTitle("industrial-park-operations"),
-      showcaseSubtitle("industrial-park-operations", "楼宇、通行、停车、能耗与事件协同监控"),
-      colors,
-    ),
-    datetime(colors),
-    metric({ x: 30, y: 130, width: 348, height: 140 }, parkBase, "在线楼宇", "18", "栋", "重点区域 6 个", "楼"),
-    metric({ x: 393, y: 130, width: 348, height: 140 }, parkBase, "今日入园", "3,286", "人次", "访客 186 人次", "人"),
-    metric({ x: 756, y: 130, width: 348, height: 140 }, parkBase, "停车占用", "72.6", "%", "空余 328 个", "车"),
-    metric({ x: 1119, y: 130, width: 348, height: 140 }, parkBase, "当日能耗", "86.4", "MWh", "较昨日 -2.8%", "能"),
-    metric({ x: 1482, y: 130, width: 408, height: 140 }, parkBase, "待处置事件", "9", "起", "高优先级 2 起", "!"),
-    progress(
-      { x: 30, y: 300, width: 420, height: 340 },
-      parkBase,
-      "园区空间使用率",
-      [
-        { label: "生产区", value: 86, maximum: 100, unit: "%" },
-        { label: "仓储区", value: 74, maximum: 100, unit: "%" },
-        { label: "办公区", value: 68, maximum: 100, unit: "%" },
-        { label: "停车区", value: 73, maximum: 100, unit: "%" },
-      ],
-    ),
-    status(
-      { x: 30, y: 670, width: 420, height: 380 },
-      parkBase,
-      "出入口与道路",
-      2,
-      [
-        { label: "东门", value: "畅通", tone: "normal" },
-        { label: "南门", value: "拥堵", tone: "warning" },
-        { label: "物流门", value: "畅通", tone: "normal" },
-        { label: "北侧道路", value: "施工", tone: "offline" },
-      ],
-    ),
-    model({ x: 480, y: 300, width: 920, height: 500 }, existingModel),
-    chart(
-      "area-chart",
-      { x: 480, y: 830, width: 920, height: 220 },
-      "今日园区人流趋势",
-      ["00", "04", "08", "12", "16", "20", "24"],
-      [86, 52, 648, 482, 726, 365, 118],
-      "人次",
-      "#5cc9ff",
-    ),
-    status(
-      { x: 1430, y: 300, width: 460, height: 340 },
-      parkBase,
-      "重点区域状态",
-      2,
-      [
-        { label: "危化品库", value: "正常", tone: "normal" },
-        { label: "动力中心", value: "预警", tone: "warning" },
-        { label: "消防泵房", value: "正常", tone: "normal" },
-        { label: "污水站", value: "离线", tone: "offline" },
-      ],
-    ),
-    timeline(
-      { x: 1430, y: 670, width: 460, height: 380 },
-      parkBase,
-      "园区事件时间线",
-      [
-        { time: "15:30", title: "南门车辆排队", detail: "已增开 2 条临时通道", tone: "warning" },
-        { time: "14:52", title: "动力中心压力预警", detail: "运维班组已到场确认", tone: "danger" },
-        { time: "13:40", title: "访客团进入 B 区", detail: "预约与陪同人员核验完成", tone: "normal" },
-        { time: "11:18", title: "污水站网关失联", detail: "正在切换备用通信链路", tone: "offline" },
-      ],
-    ),
-  ];
-};
-
-const warehouseTemplate = (): CanvasNode[] => {
-  const colors = { text: "#f2efff", accent: "#a99df5", fill: "#1b1931", border: "#625a9d" };
-  return [
-    background("#121022"),
-    title(
-      showcaseTitle("warehouse-logistics"),
-      showcaseSubtitle("warehouse-logistics", "库存、吞吐、作业任务、月台与车辆协同监控"),
-      colors,
-    ),
-    datetime(colors),
-    metric({ x: 30, y: 130, width: 348, height: 140 }, logisticsBase, "库存总量", "128,640", "件", "SKU 3,826 种", "库"),
-    metric({ x: 393, y: 130, width: 348, height: 140 }, logisticsBase, "库容使用率", "78.3", "%", "可用库位 1,248", "位"),
-    metric({ x: 756, y: 130, width: 348, height: 140 }, logisticsBase, "今日入库", "6,420", "件", "已完成 42 车", "入"),
-    metric({ x: 1119, y: 130, width: 348, height: 140 }, logisticsBase, "今日出库", "5,986", "件", "准时率 97.6%", "出"),
-    metric({ x: 1482, y: 130, width: 408, height: 140 }, logisticsBase, "待执行任务", "36", "单", "超时任务 3 单", "!"),
-    chart(
-      "area-chart",
-      { x: 30, y: 300, width: 820, height: 360 },
-      "24 小时出入库吞吐",
-      ["00", "04", "08", "12", "16", "20", "24"],
-      [320, 245, 860, 1120, 980, 735, 428],
-      "件/时",
-      "#a99df5",
-    ),
-    ranking(
-      { x: 870, y: 300, width: 640, height: 360 },
-      logisticsBase,
-      "库区库容使用率排名",
-      [
-        { label: "成品区 C", value: 91, unit: "%", trend: "up" },
-        { label: "原料区 A", value: 82, unit: "%", trend: "flat" },
-        { label: "冷链区 E", value: 76, unit: "%", trend: "up" },
-        { label: "半成品区 B", value: 74, unit: "%", trend: "down" },
-        { label: "备件区 D", value: 63, unit: "%", trend: "down" },
-      ],
-    ),
-    gauge({ x: 1530, y: 300, width: 360, height: 360 }, logisticsBase, "订单准时率", 97.6, 100, "%", "目标 ≥ 96%"),
-    status(
-      { x: 30, y: 690, width: 600, height: 360 },
-      logisticsBase,
-      "装卸月台状态",
-      3,
-      [
-        { label: "1 号月台", value: "装货", tone: "normal" },
-        { label: "2 号月台", value: "卸货", tone: "normal" },
-        { label: "3 号月台", value: "等待", tone: "warning" },
-        { label: "4 号月台", value: "空闲", tone: "normal" },
-        { label: "5 号月台", value: "检修", tone: "offline" },
-        { label: "6 号月台", value: "装货", tone: "normal" },
-      ],
-    ),
-    dataTable(
-      { x: 650, y: 690, width: 600, height: 360 },
-      logisticsBase,
-      "当班波次任务",
-      ["波次", "作业区", "任务", "进度"],
-      [
-        ["WV-260906-08", "成品 C", "拣选复核", "68 / 76"],
-        ["WV-260906-09", "月台 1", "出库装车", "39 / 45"],
-        ["WV-260906-10", "原料 A", "入库上架", "42 / 48"],
-        ["WV-260906-11", "备件 D", "循环盘点", "16 / 20"],
-      ],
-      3,
-    ),
-    status(
-      { x: 1270, y: 690, width: 620, height: 360 },
-      logisticsBase,
-      "搬运设备状态",
-      3,
-      [
-        { label: "AGV 在线", value: "26 / 28", tone: "normal" },
-        { label: "叉车可用", value: "14 / 16", tone: "normal" },
-        { label: "堆垛机", value: "5 / 6", tone: "warning" },
-        { label: "输送线", value: "8 / 8", tone: "normal" },
-        { label: "扫码站", value: "11 / 12", tone: "warning" },
-        { label: "失联设备", value: "1 台", tone: "offline" },
-      ],
-    ),
-  ];
-};
-
 const waterTemplate = (): CanvasNode[] => {
   const colors = { text: "#eaf8ff", accent: "#4fb7ff", fill: "#081f33", border: "#2e6e9b" };
   return [
@@ -837,13 +486,14 @@ const waterTemplate = (): CanvasNode[] => {
       colors,
     ),
     datetime(colors),
+    ...templateScene("water", { x: 480, y: 300, width: 950, height: 470 }, waterBase),
     metric({ x: 30, y: 130, width: 348, height: 140 }, waterBase, "今日处理量", "48,620", "m³", "设计负荷 81.0%", "量"),
     metric({ x: 393, y: 130, width: 348, height: 140 }, waterBase, "出水 COD", "23.6", "mg/L", "限值 ≤ 50", "质"),
     metric({ x: 756, y: 130, width: 348, height: 140 }, waterBase, "出水氨氮", "1.42", "mg/L", "限值 ≤ 5", "氮"),
     metric({ x: 1119, y: 130, width: 348, height: 140 }, waterBase, "吨水电耗", "0.286", "kWh", "较昨日 -1.8%", "电"),
     metric({ x: 1482, y: 130, width: 408, height: 140 }, waterBase, "设备在线率", "96.4", "%", "离线设备 3 台", "机"),
     status(
-      { x: 30, y: 300, width: 500, height: 360 },
+      { x: 30, y: 800, width: 590, height: 250 },
       waterBase,
       "工艺单元运行状态",
       2,
@@ -858,17 +508,17 @@ const waterTemplate = (): CanvasNode[] => {
     ),
     chart(
       "area-chart",
-      { x: 550, y: 300, width: 800, height: 360 },
+      { x: 30, y: 300, width: 430, height: 220 },
       "24 小时出水流量",
       ["00", "04", "08", "12", "16", "20", "24"],
       [1820, 1740, 2050, 2260, 2180, 1940, 1860],
       "m³/h",
       "#4fb7ff",
     ),
-    gauge({ x: 1370, y: 300, width: 520, height: 360 }, waterBase, "水质达标率", 99.2, 100, "%", "本月有效样本 2,864 组"),
+    gauge({ x: 1450, y: 300, width: 440, height: 220 }, waterBase, "水质达标率", 99.2, 100, "%", "本月有效样本 2,864 组"),
     chart(
       "bar-chart",
-      { x: 30, y: 690, width: 700, height: 360 },
+      { x: 30, y: 550, width: 430, height: 220 },
       "工艺单元能耗",
       ["提升泵", "曝气", "回流泵", "脱水", "消毒"],
       [28, 46, 19, 14, 8],
@@ -877,7 +527,7 @@ const waterTemplate = (): CanvasNode[] => {
     ),
     chart(
       "radar-chart",
-      { x: 750, y: 690, width: 560, height: 360 },
+      { x: 1450, y: 550, width: 440, height: 220 },
       "关键水质指标",
       ["COD", "氨氮", "总磷", "悬浮物", "pH 稳定度"],
       [86, 92, 89, 84, 96],
@@ -885,7 +535,7 @@ const waterTemplate = (): CanvasNode[] => {
       "#4fb7ff",
     ),
     alarms(
-      { x: 1330, y: 690, width: 560, height: 360 },
+      { x: 1280, y: 800, width: 610, height: 250 },
       waterBase,
       "设备与水质告警",
       [
@@ -895,6 +545,12 @@ const waterTemplate = (): CanvasNode[] => {
         { time: "12:18", source: "出水 COD", message: "在线仪表自动校准完成", tone: "normal" },
       ],
     ),
+    dataTable({ x: 640, y: 800, width: 620, height: 250 }, waterBase, "出水化验记录 · 演示控制值", ["指标", "实测值", "控制值", "单位"], [
+      ["COD", "23.6", "≤ 50", "mg/L"],
+      ["氨氮", "1.42", "≤ 5", "mg/L"],
+      ["总磷", "0.28", "≤ 0.5", "mg/L"],
+      ["悬浮物", "6.8", "≤ 10", "mg/L"],
+    ], 1),
   ];
 };
 
@@ -908,6 +564,7 @@ const dataCenterTemplate = (): CanvasNode[] => {
       colors,
     ),
     datetime(colors),
+    ...templateScene("datacenter", { x: 480, y: 300, width: 950, height: 470 }, dataCenterBase),
     metric({ x: 30, y: 130, width: 348, height: 140 }, dataCenterBase, "IT 实时负载", "2.86", "MW", "容量占用 71.5%", "IT"),
     metric({ x: 393, y: 130, width: 348, height: 140 }, dataCenterBase, "实时 PUE", "1.32", "", "目标 ≤ 1.40", "能"),
     metric({ x: 756, y: 130, width: 348, height: 140 }, dataCenterBase, "机柜使用率", "76.8", "%", "空闲机柜 116 个", "柜"),
@@ -915,7 +572,7 @@ const dataCenterTemplate = (): CanvasNode[] => {
     metric({ x: 1482, y: 130, width: 408, height: 140 }, dataCenterBase, "活动告警", "12", "条", "严重告警 2 条", "!"),
     chart(
       "area-chart",
-      { x: 30, y: 300, width: 820, height: 360 },
+      { x: 30, y: 300, width: 430, height: 220 },
       "24 小时 IT 负载趋势",
       ["00", "04", "08", "12", "16", "20", "24"],
       [2.22, 2.08, 2.46, 2.72, 2.86, 2.64, 2.38],
@@ -923,17 +580,17 @@ const dataCenterTemplate = (): CanvasNode[] => {
       "#f08ba6",
     ),
     chart(
-      "donut-chart",
-      { x: 870, y: 300, width: 640, height: 360 },
+      "bar-chart",
+      { x: 30, y: 550, width: 430, height: 220 },
       "机房容量使用率",
       ["A1", "A2", "B1", "B2", "C1", "C2"],
       [82, 76, 69, 88, 64, 72],
       "%",
       "#c96989",
     ),
-    gauge({ x: 1530, y: 300, width: 360, height: 360 }, dataCenterBase, "制冷容量利用率", 68.2, 100, "%", "剩余容量 1.26 MW"),
+    gauge({ x: 1450, y: 300, width: 440, height: 220 }, dataCenterBase, "制冷容量利用率", 68.2, 100, "%", "剩余容量 1.26 MW"),
     status(
-      { x: 30, y: 690, width: 620, height: 360 },
+      { x: 30, y: 800, width: 590, height: 250 },
       dataCenterBase,
       "基础设施运行状态",
       3,
@@ -947,7 +604,7 @@ const dataCenterTemplate = (): CanvasNode[] => {
       ],
     ),
     progress(
-      { x: 670, y: 690, width: 580, height: 360 },
+      { x: 1450, y: 550, width: 440, height: 220 },
       dataCenterBase,
       "环境与容量指标",
       [
@@ -958,7 +615,7 @@ const dataCenterTemplate = (): CanvasNode[] => {
       ],
     ),
     alarms(
-      { x: 1270, y: 690, width: 620, height: 360 },
+      { x: 1280, y: 800, width: 610, height: 250 },
       dataCenterBase,
       "基础设施活动告警",
       [
@@ -968,6 +625,12 @@ const dataCenterTemplate = (): CanvasNode[] => {
         { time: "13:45", source: "UPS-2B", message: "旁路切换自检完成", tone: "normal" },
       ],
     ),
+    dataTable({ x: 640, y: 800, width: 620, height: 250 }, dataCenterBase, "供配电与制冷巡检", ["设备", "负载 / 温度", "冗余", "状态"], [
+      ["UPS-1A", "56.2%", "N+1", "正常"],
+      ["UPS-2B", "60.6%", "N+1", "自检完成"],
+      ["冷机 CH-01", "7.2 ℃", "2+1", "正常"],
+      ["冷机 CH-03", "9.8 ℃", "2+1", "供水偏高"],
+    ], 1),
   ];
 };
 
@@ -1000,7 +663,7 @@ export const canvasTemplates: CanvasTemplate[] = [
     id: "equipment-support",
     code: "SUP-02",
     name: "装备场综合保障",
-    description: "深色科技主题，组合车辆、钥匙、人员、动用趋势与 3D 场区主视图。",
+    description: "深色科技主题，组合车辆、钥匙、人员、动用趋势与场区车辆分布。",
     category: "装备保障",
     theme: "dark",
     canvasTheme: {
@@ -1016,8 +679,8 @@ export const canvasTemplates: CanvasTemplate[] = [
       accentColor: "#52d7ff",
       borderColor: "#276f8d",
     },
-    componentSummary: "5 指标卡 · 3D 场景 · 状态矩阵 · 环形进度 · 趋势图",
-    tags: ["车辆在位", "钥匙管理", "3D 场区"],
+    componentSummary: "5 指标卡 · 场区分布 · 状态矩阵 · 环形进度 · 趋势图",
+    tags: ["车辆在位", "钥匙管理", "场区分布"],
     showcase: canvasTemplateShowcases["equipment-support"],
   },
   {
@@ -1034,13 +697,13 @@ export const canvasTemplates: CanvasTemplate[] = [
       fontFamily: "data",
       glowIntensity: 0.58,
       panelRadius: 8,
-      backgroundColor: "#071a1d",
-      surfaceColor: "#0c2927",
+      backgroundColor: "#031718",
+      surfaceColor: "#082b29",
       textColor: "#e9fff6",
-      accentColor: "#48e0a4",
-      borderColor: "#2d826d",
+      accentColor: "#35edbf",
+      borderColor: "#1b7466",
     },
-    componentSummary: "5 指标卡 · 产量面积图 · 产线对比 · 设备状态 · 实时告警",
+    componentSummary: "6 指标卡 · 产线全景 · 质量排行 · 工单进度 · 实时告警",
     tags: ["产线总览", "设备联动", "OEE"],
     showcase: canvasTemplateShowcases["production-operations"],
   },
@@ -1058,13 +721,13 @@ export const canvasTemplates: CanvasTemplate[] = [
       fontFamily: "data",
       glowIntensity: 0.5,
       panelRadius: 0,
-      backgroundColor: "#17140e",
-      surfaceColor: "#292417",
+      backgroundColor: "#100f0b",
+      surfaceColor: "#211e12",
       textColor: "#fff8e8",
-      accentColor: "#ffbf54",
-      borderColor: "#8b6c32",
+      accentColor: "#ffd15a",
+      borderColor: "#80632b",
     },
-    componentSummary: "5 指标卡 · 能耗面积图 · 区域排名 · 预算进度 · 实时告警",
+    componentSummary: "5 指标卡 · 能源流向 · 分项计量 · 预算进度 · 安全告警",
     tags: ["能耗分析", "安全告警", "区域状态"],
     showcase: canvasTemplateShowcases["energy-safety"],
   },
@@ -1072,7 +735,7 @@ export const canvasTemplates: CanvasTemplate[] = [
     id: "industrial-park-operations",
     code: "PARK-03",
     name: "工业园区综合态势",
-    description: "围绕楼宇、人员、车辆、能耗和事件组织园区运行态势，并预留 3D 园区主视区。",
+    description: "围绕楼宇、人员、车辆、能耗和事件组织园区运行态势，并展示楼宇与设施分布。",
     category: "园区运营",
     theme: "dark",
     canvasTheme: {
@@ -1082,13 +745,13 @@ export const canvasTemplates: CanvasTemplate[] = [
       fontFamily: "industrial",
       glowIntensity: 0.6,
       panelRadius: 6,
-      backgroundColor: "#061522",
-      surfaceColor: "#0b2637",
+      backgroundColor: "#03152b",
+      surfaceColor: "#072844",
       textColor: "#e8f8ff",
-      accentColor: "#5cc9ff",
-      borderColor: "#2f7797",
+      accentColor: "#33c9ff",
+      borderColor: "#146c9f",
     },
-    componentSummary: "5 指标卡 · 3D 园区主视图 · 人流趋势 · 事件时间线",
+    componentSummary: "5 指标卡 · 园区鸟瞰 · 楼宇标注 · 人流趋势 · 事件闭环",
     tags: ["空间态势", "停车门禁", "事件闭环"],
     showcase: canvasTemplateShowcases["industrial-park-operations"],
   },
@@ -1106,13 +769,13 @@ export const canvasTemplates: CanvasTemplate[] = [
       fontFamily: "data",
       glowIntensity: 0.45,
       panelRadius: 8,
-      backgroundColor: "#121022",
-      surfaceColor: "#211e3a",
+      backgroundColor: "#090d24",
+      surfaceColor: "#161b3a",
       textColor: "#f2efff",
-      accentColor: "#a99df5",
-      borderColor: "#625a9d",
+      accentColor: "#9b8dff",
+      borderColor: "#505ba0",
     },
-    componentSummary: "5 指标卡 · 吞吐面积图 · 库容排名 · 波次表格 · 设备状态",
+    componentSummary: "6 指标卡 · 仓储全景 · 月台调度 · 波次任务 · 设备效率",
     tags: ["库存库容", "车辆月台", "任务跟踪"],
     showcase: canvasTemplateShowcases["warehouse-logistics"],
   },
@@ -1160,7 +823,7 @@ export const canvasTemplates: CanvasTemplate[] = [
       accentColor: "#f08ba6",
       borderColor: "#8a5064",
     },
-    componentSummary: "5 指标卡 · IT 负载面积图 · 容量环图 · 设施状态 · 活动告警",
+    componentSummary: "5 指标卡 · 机房分区 · IT 负载趋势 · 容量对比 · 巡检与告警",
     tags: ["供配电", "机柜容量", "环境告警"],
     showcase: canvasTemplateShowcases["data-center-infrastructure"],
   },

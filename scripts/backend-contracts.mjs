@@ -11,7 +11,7 @@ import assert from 'node:assert/strict';
 const root=fileURLToPath(new URL('..',import.meta.url));
 const require=createRequire(new URL('../apps/web/package.json',import.meta.url));
 const ts=require('typescript');
-const files=['apps/api/src/canvas.ts','apps/api/src/standalone-scenes.ts','apps/api/src/assets.ts','apps/api/src/data-sources.ts','apps/api/src/asset-data-bindings.ts','shared/canvas-ornaments.ts'];
+const files=['apps/api/src/canvas.ts','apps/api/src/standalone-scenes.ts','apps/api/src/assets.ts','apps/api/src/data-sources.ts','apps/api/src/asset-data-bindings.ts','shared/canvas-ornaments.ts','shared/twin-drive.ts'];
 const program=ts.createProgram(files.map(f=>join(root,f)),{strict:true,target:ts.ScriptTarget.ES2022,skipLibCheck:true,moduleResolution:ts.ModuleResolutionKind.Node10});
 const checker=program.getTypeChecker();
 const aliases=new Map();
@@ -44,8 +44,36 @@ function schema(t,inline=false){
   if(!Object.keys(properties).length)throw new Error('Unsupported contract type: '+checker.typeToString(t));
   return {type:'object',properties,required,additionalProperties:false};
 }
-const exports=['CanvasPatch','StandaloneScenePatch','AssetCreateInput','DataSourceCreateInput','AssetDataBindingCreateInput'];
+const exports=['CanvasPatch','StandaloneScenePatch','AssetCreateInput','DataSourceCreateInput','AssetDataBindingCreateInput','TwinDrivePatch','TwinDriveCommand'];
 for(const name of exports)schema(aliases.get(name));
+// Data-driven motion uses one generated structural/range contract in both repositories.
+const twinField=(type,key,limits)=>Object.assign(definitions[type].properties[key],limits);
+for(const [field,maxItems] of Object.entries({points:128,bindings:128,colliders:64,collisionRules:128,procedures:16}))twinField('TwinDriveConfig',field,{maxItems});
+twinField('TwinDriveConfig','description',{maxLength:4000});
+for(const type of ['TwinPoint','TwinMotionBinding','TwinCollider','TwinCollisionRule','TwinProcedure','TwinProcedureStep']){
+ twinField(type,'id',{minLength:1,maxLength:120,pattern:'^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$'});
+ twinField(type,'label',{minLength:1,maxLength:120});
+}
+for(const key of ['assetId','metricKey'])twinField('TwinPoint',key,{minLength:1,maxLength:80,pattern:'^[A-Za-z0-9][A-Za-z0-9._:-]{0,79}$'});
+twinField('TwinPoint','unit',{maxLength:32});
+twinField('TwinPoint','topic',{minLength:1,maxLength:200,pattern:'^[A-Za-z0-9][A-Za-z0-9._:/-]{0,199}$'});
+twinField('TwinSimulation','procedureId',{maxLength:120});
+for(const key of ['min','max','initialValue'])twinField('TwinPoint',key,{minimum:-1e6,maximum:1e6});
+twinField('TwinPoint','maxSpeed',{exclusiveMinimum:0,maximum:1e6});
+twinField('TwinPoint','staleAfterMs',{type:'integer',minimum:500,maximum:60000});
+for(const key of ['instanceId','modelAssetId'])twinField('TwinTarget',key,{minLength:1,maxLength:120,pattern:'^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$'});
+twinField('TwinTarget','nodeName',{minLength:1,maxLength:256});
+for(const key of ['valueScale','valueOffset'])twinField('TwinMotionBinding',key,{minimum:-1e6,maximum:1e6});
+twinField('TwinMotionBinding','poses',{maxItems:64});
+twinField('TwinProcedure','steps',{minItems:1,maxItems:64});
+twinField('TwinProcedureStep','targets',{minItems:1,maxItems:128});
+twinField('TwinProcedureStep','tolerance',{minimum:0,maximum:1e6});
+twinField('TwinProcedureStep','timeoutMs',{type:'integer',minimum:1000,maximum:600000});
+twinField('TwinDrivePatch','expectedRevision',{type:'integer',minimum:0,maximum:Number.MAX_SAFE_INTEGER});
+twinField('TwinDriveCommand','expectedRevision',{type:'integer',minimum:0,maximum:Number.MAX_SAFE_INTEGER});
+twinField('TwinDriveCommand','commandId',{minLength:1,maxLength:120,pattern:'^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$'});
+twinField('TwinDriveCommand','values',{maxItems:128});
+definitions.TwinVector.items.forEach(item=>Object.assign(item,{minimum:-1e6,maximum:1e6}));
 // Bind component kinds to their own props; a union alone would accept wrong component properties.
 const groups={
  ChartProps:['line-chart','bar-chart','area-chart','pie-chart','donut-chart','radar-chart'],ShapeProps:['rectangle','circle'],
@@ -73,8 +101,19 @@ try{
  for(const [key,value] of Object.entries(normalized))if(!(key in legacyProps))definitions.Model3DProps.properties[key].default=value;
  const {validateStandaloneScenePatch}=require(join(temp,'apps/api/src/standalone-scenes.js'));
  const {TWIN_ACTION_LIMITS,TWIN_ACTION_ID_PATTERN,TWIN_ACTION_ASSET_ID_PATTERN,TWIN_ACTION_TEXT_PATTERN}=require(join(temp,'shared/twin-actions.js'));
+ const {FLUID_LIMITS,FLUID_ID_PATTERN,FLUID_COLOR_PATTERN,FLUID_LABEL_PATTERN}=require(join(temp,'shared/fluids.js'));
  // The shared parser's declarative limits also constrain Java's generated schema.
  const constrain=(entry,limits)=>{if(entry.anyOf)entry.anyOf.forEach(value=>constrain(value,limits));else Object.assign(entry,limits);};
+ constrain(definitions.StandaloneScenePatch.properties.fluids,{maxItems:FLUID_LIMITS.maximumFluids});
+ for(const [field,limits] of Object.entries({
+   id:{pattern:FLUID_ID_PATTERN},label:{minLength:1,maxLength:FLUID_LIMITS.maximumLabelLength,pattern:FLUID_LABEL_PATTERN},
+   color:{pattern:FLUID_COLOR_PATTERN},points:{minItems:FLUID_LIMITS.minimumPoints,maxItems:FLUID_LIMITS.maximumPoints},
+   radius:{minimum:FLUID_LIMITS.minimumRadius,maximum:FLUID_LIMITS.maximumRadius},
+   speed:{minimum:FLUID_LIMITS.minimumSpeed,maximum:FLUID_LIMITS.maximumSpeed},
+   spread:{minimum:FLUID_LIMITS.minimumSpread,maximum:FLUID_LIMITS.maximumSpread},
+   opacity:{minimum:FLUID_LIMITS.minimumOpacity,maximum:FLUID_LIMITS.maximumOpacity},
+ }))constrain(definitions.FluidDefinition.properties[field],limits);
+ definitions.FluidPoint.items.forEach(item=>Object.assign(item,{minimum:-FLUID_LIMITS.maximumCoordinate,maximum:FLUID_LIMITS.maximumCoordinate}));
  constrain(definitions.CanvasNodeInteraction.properties.clickActions,{maxItems:TWIN_ACTION_LIMITS.maximumActions});
  constrain(definitions.StandaloneSceneInstance.properties.clickActions,{maxItems:TWIN_ACTION_LIMITS.maximumActions});
  for(const [name,fields] of Object.entries({TwinMessageAction:{title:{minLength:0,maxLength:TWIN_ACTION_LIMITS.maximumTitleLength,pattern:TWIN_ACTION_TEXT_PATTERN},text:{minLength:1,maxLength:TWIN_ACTION_LIMITS.maximumTextLength,pattern:TWIN_ACTION_TEXT_PATTERN}},TwinSelectAssetAction:{assetId:{pattern:TWIN_ACTION_ASSET_ID_PATTERN}},TwinPanelAction:{nodeId:{pattern:TWIN_ACTION_ID_PATTERN}},TwinFocusModelAction:{projectId:{pattern:TWIN_ACTION_ID_PATTERN},instanceId:{pattern:TWIN_ACTION_ID_PATTERN}},TwinSetTextAction:{nodeId:{pattern:TWIN_ACTION_ID_PATTERN},text:{minLength:0,maxLength:TWIN_ACTION_LIMITS.maximumTextLength,pattern:TWIN_ACTION_TEXT_PATTERN}}}))for(const [field,limits] of Object.entries(fields))constrain(definitions[name].properties[field],limits);
@@ -84,6 +123,7 @@ try{
  write('configuration.schema.json',{$schema:'http://json-schema.org/draft-07/schema#',definitions});write('sources.json',fingerprints);
  const builtins=createRequire(import.meta.url)(join(temp,'shared/builtin-models.js')).builtinModels;
  write('builtin-models.json',builtins);
+ write('builtin-images.json',createRequire(import.meta.url)(join(temp,'shared/builtin-images.js')).builtinImages);
  const source=readFileSync(join(root,'apps/api/src/canvas.ts'),'utf8');
  const minSizes=Object.fromEntries([...source.slice(source.indexOf('const minimumNodeSizes'),source.indexOf('const invalid')).matchAll(/(?:"([\w-]+)"|(\w+)):\s*\{ width: (\d+), height: (\d+) \}/g)].map(m=>[m[1]??m[2],[Number(m[3]),Number(m[4])]]));
  minSizes['card-title']=[120,32];minSizes['vector-icon']=[24,24];write('canvas-minimum-sizes.json',minSizes);

@@ -1,5 +1,5 @@
 import type { TwinAction, CanvasNodeInteraction } from "../../../shared/twin-actions";
-import { AppError, type AppEnv } from "./auth";
+import { AppError, canAccessModule, hasGlobalRole, type AppEnv, type AuthenticatedUser } from "./auth";
 
 type ActionNode = { id: string; type: string; props: object; interaction?: CanvasNodeInteraction };
 type ActionInstance = { id: string; clickActions?: TwinAction[] };
@@ -8,7 +8,7 @@ type Source =
   | { kind: "scene"; projectId: string; linked2dProjectId: string | null; instances: ActionInstance[] };
 
 /** Checks the final merged document. Queries are cached per target project/asset, never per frame. */
-export const validateTwinActionReferences = async (env: AppEnv, userId: string, source: Source): Promise<void> => {
+export const validateTwinActionReferences = async (env: AppEnv, user: AuthenticatedUser, source: Source): Promise<void> => {
   const sources = source.kind === "canvas"
     ? source.nodes.map((node) => ({ id: node.id, actions: node.interaction?.clickActions ?? [] }))
     : source.instances.map((instance) => ({ id: instance.id, actions: instance.clickActions ?? [] }));
@@ -20,12 +20,12 @@ export const validateTwinActionReferences = async (env: AppEnv, userId: string, 
   if (source.kind === "canvas") nodes.set(source.projectId, new Map(source.nodes.map((node) => [node.id, node.type])));
   else scenes.set(source.projectId, { linked2dProjectId: source.linked2dProjectId, instances: new Set(source.instances.map((instance) => instance.id)) });
   const requireProject = async (projectId: string, type: "2d" | "3d", fail: (message: string) => never) => {
+    if (!canAccessModule(user, type)) fail(`Access to the ${type} module is not granted.`);
     if (!readable.has(projectId)) {
       const row = await env.DB.prepare(`SELECT p.project_type FROM projects p
         LEFT JOIN project_members pm ON pm.project_id = p.id AND pm.user_id = ?
-        WHERE p.id = ? AND (pm.user_id IS NOT NULL OR EXISTS
-          (SELECT 1 FROM user_roles ur WHERE ur.user_id = ? AND ur.role = 'platform_admin'))`)
-        .bind(userId, projectId, userId).first<{ project_type: string }>();
+        WHERE p.id = ? AND (? = 1 OR pm.user_id IS NOT NULL)`)
+        .bind(user.id, projectId, hasGlobalRole(user, "platform_admin") ? 1 : 0).first<{ project_type: string }>();
       if (!row) fail(`Target project ${projectId} does not exist or is not readable.`);
       readable.set(projectId, row!.project_type);
     }

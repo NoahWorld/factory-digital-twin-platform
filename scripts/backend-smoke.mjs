@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {createServer} from 'node:http';
 import {websocket} from './backend-websocket-client.mjs';
 import {createCoverPng} from './backend-cover-smoke.mjs';
+import {checkFluidDocument,checkFluidViewer} from './backend-fluid-smoke.mjs';
 import {readFileSync,mkdtempSync,rmSync} from 'node:fs';
 import {execFileSync} from 'node:child_process';
 import {createRequire} from 'node:module';
@@ -45,13 +46,50 @@ try{
  const page=(await call('/projects?limit=1')).value;assert.equal(page.projects.length,1);assert.equal(page.nextOffset,1);const next=(await call('/projects?limit=1&offset=1')).value;assert.notEqual(next.projects[0].id,page.projects[0].id);await call('/projects?limit=0',{status:400});ok('bounded explicit list pagination');
  execFileSync(process.execPath,[join(root,'apps/web/node_modules/typescript/bin/tsc'),'--target','ES2022','--module','commonjs','--moduleResolution','node','--strict','--skipLibCheck','--rootDir',root,'--outDir',temp,join(root,'apps/web/src/canvas/templates.ts')],{stdio:'inherit'});
  const {canvasTemplates,instantiateCanvasTemplate}=require(join(temp,'apps/web/src/canvas/templates.js'));
- let revision=0,old=[];
- for(const t of canvasTemplates){const nodes=instantiateCanvasTemplate(t.id,[]);const result=await call(`/projects/${id}/canvas`,{method:'PATCH',body:{expectedRevision:revision,theme:t.canvasTheme,upsertNodes:nodes,deleteNodeIds:old}});revision=result.value.canvas.revision;assert.equal(result.value.canvas.nodes.length,nodes.length);old=nodes.map(n=>n.id);}
+ let revision=0;
+ // The template library creates a new draft per template. Each replacement is
+ // separately bounded by the API; do not combine eight drafts into one patch sequence.
+ for(const [index,t] of canvasTemplates.entries()){
+   const templateProjectId=index===0?id:await project();
+   const nodes=instantiateCanvasTemplate(t.id,[]);
+   const result=await call(`/projects/${templateProjectId}/canvas`,{method:'PATCH',body:{expectedRevision:0,theme:t.canvasTheme,upsertNodes:nodes,deleteNodeIds:[]}});
+   const templateRevision=result.value.canvas.revision;
+   if(index===0) revision=templateRevision;
+   const saved=(await call(`/projects/${templateProjectId}/canvas`)).value.canvas;
+   assert.equal(saved.revision,templateRevision);
+   assert.deepEqual(saved.nodes,result.value.canvas.nodes);
+   assert.equal(saved.nodes.length,nodes.length);
+   for(const node of nodes) assert.deepEqual(saved.nodes.find(n=>n.id===node.id).props,node.props,`${t.id}: ${node.id} props`);
+   const artwork=nodes.find(node=>node.type==='image'&&node.resourceRefs[0]?.startsWith('builtin:'));
+   if(artwork){
+     const resourceId=artwork.resourceRefs[0];
+     const image=(await call(`/projects/${templateProjectId}/image-assets`)).value.imageAssets.find(image=>image.id===resourceId);
+     assert.equal(image.source,'system');assert.ok(image.usage.count>0);
+     const content=await call(`/projects/${templateProjectId}/image-assets/${encodeURIComponent(resourceId)}/content`,{status:302});
+     assert.match(content.r.headers.get('location'),/^\/images\/industry\//);
+     assert.equal((await call(`/projects/${templateProjectId}/image-assets/${encodeURIComponent(resourceId)}`,{method:'DELETE',status:403})).value.error,'system_resource_read_only');
+     await call(`/projects/${templateProjectId}/image-assets/${encodeURIComponent(resourceId)}/content`,{as:'',status:401});
+     for(const invalidId of ['builtin:industry-unknown-v1','builtin:aqua-helix-hd-v1']){
+       const invalid={...artwork,resourceRefs:[invalidId]};
+       assert.equal((await call(`/projects/${templateProjectId}/canvas`,{method:'PATCH',status:400,body:{expectedRevision:templateRevision,upsertNodes:[invalid],deleteNodeIds:[]}})).value.error,'invalid_resource_reference');
+     }
+     assert.equal((await call(`/projects/${templateProjectId}/canvas`)).value.canvas.revision,templateRevision);
+     const publication=(await call(`/projects/${templateProjectId}/publication`,{method:'POST'})).value;
+     const share=encodeURIComponent(publication.shareToken);
+     const publicImages=(await call(`/publications/projects/${templateProjectId}/image-assets?share=${share}`,{as:''})).value.imageAssets;
+     assert.deepEqual(publicImages.map(image=>image.id),[resourceId]);
+     const publicContent=await call(`/publications/projects/${templateProjectId}/image-assets/${encodeURIComponent(resourceId)}/content?share=${share}`,{as:'',status:302});
+     assert.equal(publicContent.r.headers.get('location'),content.r.headers.get('location'));
+     await call(`/projects/${templateProjectId}/publication`,{method:'DELETE'});
+     await call(`/publications/projects/${templateProjectId}/image-assets/${encodeURIComponent(resourceId)}/content?share=${share}`,{as:'',status:404});
+   }
+ }
  const saved2dProject=(await call(`/projects/${id}`)).value.project;assert.equal(saved2dProject.coverStatus,'pending');assert.equal(saved2dProject.documentRevision,revision);
  assert.match(saved2dProject.coverUrl,/\/cover\.png\?revision=\d+$/);
  assert.match((await call(saved2dProject.coverUrl.replace('/api/v1',''))).r.headers.get('content-type'),/^image\/png/);
  ok('2D content saves mark the previous screenshot pending');
  ok('all '+canvasTemplates.length+' actual frontend templates save and round trip');
+ ok('industry artwork stays typed, immutable, authorized and limited to the active publication');
  const {createCanvasNode,parseModel3DProps}=require(join(temp,'apps/web/src/canvas/types.js'));
  const legacy=createCanvasNode('model-3d',0,0,100);
  legacy.props.animationSpeed=2;
@@ -79,6 +117,7 @@ try{
  const manifest=(await call(`/projects/${id}/manifest`)).value;assert.equal(manifest.revision,revision);assert.ok(manifest.settings.backgroundColor);const chunk=(await call(`/projects/${id}/document-items?revision=${revision}&limit=2`)).value;assert.equal(chunk.items.length,2);await call(`/projects/${id}/document-items?revision=0`,{status:409});ok('manifest and revision-bound document chunks');
  let cameraScene=(await call(`/projects/${scene}/scene`)).value.scene;
  assert.equal(cameraScene.settings.preventBottomView,true);
+ assert.deepEqual(cameraScene.fluids,[]);
  for(const enabled of [false,true]){
    cameraScene=(await call(`/projects/${scene}/scene`,{method:'PATCH',body:{expectedRevision:cameraScene.revision,settings:{...cameraScene.settings,preventBottomView:enabled},upsertInstances:[],deleteInstanceIds:[]}})).value.scene;
    assert.equal((await call(`/projects/${scene}/scene`)).value.scene.settings.preventBottomView,enabled);
@@ -96,6 +135,7 @@ try{
  assert.match(saved3dProject.coverUrl,/\/cover\.png\?revision=\d+$/);
  assert.match((await call(saved3dProject.coverUrl.replace('/api/v1',''))).r.headers.get('content-type'),/^image\/png/);
  ok('3D content saves mark the previous screenshot pending');
+ const {snapshot:fluidSnapshot}=await checkFluidDocument(call,scene,ok);
  const asset=(await call(`/projects/${id}/assets`,{method:'POST',status:201,body:{assetId:'motor-01',name:'Test motor',assetType:'motor',modelNode:null,metadata:{}}})).value.asset;
  const source=(await call(`/projects/${id}/data-sources`,{method:'POST',status:201,body:{name:'Integration source',sourceType:'rest_polling',config:{url:'http://host.docker.internal:8790/metrics',intervalSeconds:1,timeoutMs:2000,timestampPath:'$.timestamp',credentialRef:null}}})).value.dataSource;
  await call(`/projects/${id}/assets/${asset.id}/data-bindings`,{method:'POST',status:201,body:{dataSourceId:source.id,metricKey:'temperature',sourcePath:'$.temperature',valueType:'number',unit:'C',staleAfterSeconds:3}});
@@ -116,9 +156,11 @@ try{
  const part=(await call(`/projects/${id}/uploads/${upload.resourceId}/parts/1`,{method:'POST'})).value;assert.equal((await fetch(part.url,{method:'PUT',body:png})).status,200);
  await call(`/projects/${id}/uploads/${upload.resourceId}/complete`,{method:'POST',status:202});
  let state;for(let i=0;i<30;i++){state=(await call(`/projects/${id}/uploads/${upload.resourceId}`)).value.resource;if(['ready','failed'].includes(state.state))break;await new Promise(r=>setTimeout(r,500));}assert.equal(state.state,'ready',JSON.stringify(state));ok('signed multipart upload and durable worker inspection');
- const username='smoke'+Date.now();const user=(await call('/users',{method:'POST',status:201,body:{loginName:username,email:username+'@local.test',displayName:'Integration viewer',password:admin.password,role:'viewer'}})).value.user;users.push(user.id);
+ const username='smoke'+Date.now();const user=(await call('/users',{method:'POST',status:201,body:{loginName:username,email:username+'@local.test',displayName:'Integration viewer',password:admin.password,role:'viewer',modules:['2d','3d']}})).value.user;users.push(user.id);
  const other=await call('/auth/login',{method:'POST',body:{identifier:username,password:admin.password}});const viewer=other.r.headers.get('set-cookie').split(';')[0];await call(`/projects/${id}`,{as:viewer,status:404});
  await call(`/projects/${id}/members/${user.id}`,{method:'PUT',body:{role:'viewer'}});await call(`/projects/${id}/canvas`,{as:viewer});await call(`/projects/${id}`,{method:'PATCH',as:viewer,body:{name:'denied'},status:403});await call(`/projects/${scene}`,{as:viewer,status:404});ok('project membership and viewer write isolation');
+ await call(`/projects/${scene}/members/${user.id}`,{method:'PUT',body:{role:'viewer'}});
+ await checkFluidViewer(call,scene,viewer,fluidSnapshot,ok);
  await call(`/users/${user.id}/revoke-sessions`,{method:'POST'});await call('/auth/me',{as:viewer,status:401});ok('session revocation');
  const tenant='isolation-'+Date.now(),tenantUser='tenant-user-'+Date.now();tenants.push(tenant);users.push(tenantUser);
  sql(`INSERT INTO tenants(id,name) VALUES('${tenant}','Isolation check'); INSERT INTO users(id,tenant_id,email,login_name,display_name,password_hash,role) SELECT '${tenantUser}','${tenant}','admin@isolation.test','admin','Isolated admin',password_hash,'platform_admin' FROM users WHERE tenant_id='local' AND login_name='admin';`);

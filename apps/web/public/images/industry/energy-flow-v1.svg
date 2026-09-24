@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="550" viewBox="0 0 960 550">
+  <defs>
+    <pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse"><path d="M32 0H0V32" fill="none" stroke="#756027" stroke-opacity=".12"/></pattern>
+    <radialGradient id="bg"><stop stop-color="#2e2815"/><stop offset="1" stop-color="#100f0b"/></radialGradient>
+    <linearGradient id="power"><stop stop-color="#c38b23" stop-opacity=".2"/><stop offset=".5" stop-color="#ffdc68"/><stop offset="1" stop-color="#ffbb31" stop-opacity=".7"/></linearGradient>
+    <linearGradient id="water"><stop stop-color="#125c99" stop-opacity=".3"/><stop offset=".6" stop-color="#48c9ff"/><stop offset="1" stop-color="#419cea" stop-opacity=".5"/></linearGradient>
+    <linearGradient id="gas"><stop stop-color="#b65b22" stop-opacity=".3"/><stop offset=".6" stop-color="#ffb465"/><stop offset="1" stop-color="#f6a335" stop-opacity=".6"/></linearGradient>
+    <linearGradient id="air"><stop stop-color="#287855" stop-opacity=".3"/><stop offset=".5" stop-color="#5de3af"/><stop offset="1" stop-color="#44c792" stop-opacity=".6"/></linearGradient>
+    <filter id="glow"><feGaussianBlur stdDeviation="8"/></filter>
+    <g id="routes" fill="none">
+      <path d="M188 100C285 100 288 134 372 134M552 134C638 134 625 85 737 85" stroke="url(#power)" stroke-width="23"/>
+      <path d="M552 134C646 134 628 186 737 186" stroke="url(#power)" stroke-width="15"/>
+      <path d="M552 134C653 134 633 285 737 285" stroke="url(#power)" stroke-width="12"/>
+      <path d="M188 208C281 208 298 238 372 238M552 238C655 238 635 386 737 386" stroke="url(#water)" stroke-width="19"/>
+      <path d="M552 238C642 238 639 85 737 85" stroke="url(#water)" stroke-width="9"/>
+      <path d="M188 316C288 316 285 344 372 344M552 344C657 344 628 285 737 285" stroke="url(#gas)" stroke-width="22"/>
+      <path d="M552 344C655 344 650 486 737 486" stroke="url(#gas)" stroke-width="10"/>
+      <path d="M188 425C271 425 296 450 372 450M552 450C638 450 635 186 737 186" stroke="url(#air)" stroke-width="12"/>
+      <path d="M552 450C652 450 637 486 737 486" stroke="url(#air)" stroke-width="18"/>
+    </g>
+  </defs>
+  <rect width="960" height="550" fill="url(#bg)"/><rect width="960" height="550" fill="url(#grid)"/>
+  <use href="#routes" filter="url(#glow)" opacity=".55"/><use href="#routes"/>
+  <g fill="#fff0a5"><path d="m350 134-15-8v16zM716 85l-13-7v14zM716 186l-13-7v14zM716 285l-13-7v14z"/></g>
+  <g fill="#99deff"><path d="m350 238-15-8v16zM716 386l-13-7v14z"/></g>
+  <path d="m350 344-15-8v16z" fill="#ffc17b"/><path d="m350 450-15-8v16zM716 486l-13-7v14z" fill="#8bf5c3"/>
+</svg>

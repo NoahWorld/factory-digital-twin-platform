@@ -1,4 +1,5 @@
 import type { TwinAction } from "./twin-actions";
+import type { FluidDefinition } from "./fluids";
 
 export type ProjectType = "2d" | "3d";
 
@@ -70,6 +71,7 @@ export const defaultStandaloneSceneInstanceAppearance = (): StandaloneSceneInsta
 });
 
 export type StandaloneSceneDocument = {
+  fluids?: FluidDefinition[];
   instances: StandaloneSceneInstance[];
   linked2dProjectId: string | null;
   projectId: string;

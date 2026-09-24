@@ -47,6 +47,7 @@ export type AppEnv = {
 };
 
 export type GlobalRole = "platform_admin" | "delivery_manager" | "viewer";
+export type Module = "2d" | "3d";
 
 type UserRow = {
   id: string;
@@ -57,6 +58,8 @@ type UserRow = {
   password_salt: string;
   password_iterations: number;
   is_active: number;
+  can_access_2d: number;
+  can_access_3d: number;
 };
 
 type RoleRow = {
@@ -69,6 +72,7 @@ export type AuthenticatedUser = {
   loginName: string | null;
   displayName: string;
   roles: GlobalRole[];
+  modules: Module[];
 };
 
 export type PasswordRecord = {
@@ -200,16 +204,35 @@ const rolesForUser = async (env: AppEnv, userId: string): Promise<GlobalRole[]> 
   return (result.results ?? []).map((row) => row.role);
 };
 
-const toAuthenticatedUser = async (
+export const toAuthenticatedUser = async (
   env: AppEnv,
-  user: Pick<UserRow, "id" | "email" | "login_name" | "display_name">,
-): Promise<AuthenticatedUser> => ({
-  id: user.id,
-  email: user.email,
-  loginName: user.login_name,
-  displayName: user.display_name,
-  roles: await rolesForUser(env, user.id),
-});
+  user: Pick<UserRow, "id" | "email" | "login_name" | "display_name" | "can_access_2d" | "can_access_3d">,
+): Promise<AuthenticatedUser> => {
+  const roles = await rolesForUser(env, user.id);
+  const admin = roles.includes("platform_admin");
+  return {
+    id: user.id,
+    email: user.email,
+    loginName: user.login_name,
+    displayName: user.display_name,
+    roles,
+    modules: [
+      ...(admin || user.can_access_2d === 1 ? ["2d" as const] : []),
+      ...(admin || user.can_access_3d === 1 ? ["3d" as const] : []),
+    ],
+  };
+};
+
+export const validateModules = (value: unknown): Module[] => {
+  if (!Array.isArray(value) || !value.every((module) => module === "2d" || module === "3d")
+    || new Set(value).size !== value.length) {
+    throw new AppError(400, "invalid_modules", "modules must be an array containing 2d and/or 3d without duplicates.");
+  }
+  return value as Module[];
+};
+
+export const canAccessModule = (user: AuthenticatedUser, module: Module): boolean =>
+  hasGlobalRole(user, "platform_admin") || user.modules.includes(module);
 
 const parseCookie = (request: Request, name: string): string | null => {
   const cookieHeader = request.headers.get("cookie");
@@ -361,9 +384,14 @@ export const createUser = async (
     displayName: string;
     password: string;
     roles: GlobalRole[];
+    modules: Module[];
   },
 ): Promise<AuthenticatedUser> => {
   const password = await createPasswordRecord(input.password);
+  if (input.roles.includes("platform_admin") && !input.modules.includes("2d"))
+    throw new AppError(400, "invalid_modules", "Platform administrators must have both modules.");
+  if (input.roles.includes("platform_admin") && !input.modules.includes("3d"))
+    throw new AppError(400, "invalid_modules", "Platform administrators must have both modules.");
   const userId = crypto.randomUUID();
   const now = new Date().toISOString();
   const statements: DatabaseStatement[] = [
@@ -371,8 +399,8 @@ export const createUser = async (
       .prepare(
         `INSERT INTO users (
           id, email, login_name, display_name, password_hash, password_salt, password_iterations,
-          is_active, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
+          is_active, can_access_2d, can_access_3d, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?)`,
       )
       .bind(
         userId,
@@ -382,6 +410,8 @@ export const createUser = async (
         password.hash,
         password.salt,
         password.iterations,
+        input.modules.includes("2d") ? 1 : 0,
+        input.modules.includes("3d") ? 1 : 0,
         now,
         now,
       ),
@@ -415,6 +445,7 @@ export const createUser = async (
     loginName: input.loginName,
     displayName: input.displayName,
     roles: input.roles,
+    modules: input.modules,
   };
 };
 
@@ -424,7 +455,8 @@ export const verifyCredentials = async (
   password: string,
 ): Promise<AuthenticatedUser> => {
   const user = await env.DB.prepare(
-    `SELECT id, email, login_name, display_name, password_hash, password_salt, password_iterations, is_active
+    `SELECT id, email, login_name, display_name, password_hash, password_salt, password_iterations, is_active,
+            can_access_2d, can_access_3d
      FROM users
      WHERE email = ? OR login_name = ?`,
   )
@@ -485,7 +517,7 @@ export const getAuthenticatedUser = async (
   const now = new Date().toISOString();
   const user = await env.DB.prepare(
     `SELECT u.id, u.email, u.login_name, u.display_name, u.password_hash, u.password_salt,
-            u.password_iterations, u.is_active
+            u.password_iterations, u.is_active, u.can_access_2d, u.can_access_3d
      FROM sessions s
      INNER JOIN users u ON u.id = s.user_id
      WHERE s.token_hash = ? AND s.expires_at > ?`,
@@ -539,6 +571,8 @@ export const hasGlobalRole = (
 ): boolean => roles.some((role) => user.roles.includes(role));
 
 export const capabilitiesFor = (user: AuthenticatedUser) => ({
-  canCreateProject: hasGlobalRole(user, "platform_admin", "delivery_manager"),
+  canCreateProject: hasGlobalRole(user, "platform_admin", "delivery_manager") && user.modules.length > 0,
   canManageUsers: hasGlobalRole(user, "platform_admin"),
+  canAccess2D: canAccessModule(user, "2d"),
+  canAccess3D: canAccessModule(user, "3d"),
 });

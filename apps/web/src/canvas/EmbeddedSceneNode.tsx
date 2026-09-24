@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useState, type ComponentProps } from "react";
 import { errorMessage, request } from "../api";
 import type { TwinAction } from "../../../../shared/twin-actions";
 import {
@@ -9,6 +9,10 @@ import {
 import { Model3DNode } from "./Model3DNode";
 import { standaloneRendererNode } from "./standalone-renderer-node";
 import { usePublicationSnapshot } from "../publication-runtime";
+import type { TwinDriveDiagnostics } from "../scene/twin-drive-runtime";
+import { useTwinDrive } from "../twin/useTwinDrive";
+import { TwinDriveStatus } from "../twin/TwinDriveStatus";
+import "../twin/twin-drive.css";
 import {
   parseScene3DProps,
   type CanvasNode,
@@ -40,6 +44,24 @@ type EmbeddedSceneNodeProps = {
 };
 
 const ignoreSceneNodeSelection = () => undefined;
+
+/** Mounted only for interactive preview: editors and screenshot jobs never open a point stream. */
+function EmbeddedLiveScene({ projectId, rendererProps }: {
+  projectId: string;
+  rendererProps: ComponentProps<typeof Model3DNode>;
+}) {
+  const twin = useTwinDrive(projectId);
+  const [diagnostics, setDiagnostics] = useState<TwinDriveDiagnostics | null>(null);
+  const attachment = useMemo(() => twin.document ? {
+    config: twin.document.config,
+    source: twin.source,
+    onDiagnostics: setDiagnostics,
+  } : undefined, [twin.document, twin.source]);
+  return <>
+    <Model3DNode {...rendererProps} twinDrive={attachment} />
+    <TwinDriveStatus document={twin.document} error={twin.error} stream={twin.stream} diagnostics={diagnostics} onReload={twin.reload} onReconnect={twin.reconnect} />
+  </>;
+}
 
 export const EmbeddedSceneNode = memo(function EmbeddedSceneNode({
   editable,
@@ -131,23 +153,27 @@ export const EmbeddedSceneNode = memo(function EmbeddedSceneNode({
     return <div className="embedded-scene-state" data-cover-state="loading"><span className="model-loading-spinner" /><strong>正在加载 3D 场景</strong></div>;
   }
 
+  const rendererProps: ComponentProps<typeof Model3DNode> = {
+    fluids: response.scene.fluids ?? [],
+    cameraControlsEnabled: !editable,
+    editable: false,
+    interactive: interactive && parsed.value.interactionEnabled,
+    maximumModelInstances: STANDALONE_3D_LIMITS.maximumInstances,
+    modelFocusRequest: modelFocusRequest?.projectId === sceneProjectId ? modelFocusRequest : null,
+    node: rendererNode,
+    onModelInstanceSelect: selectInstance,
+    onSceneNodeSelect: ignoreSceneNodeSelection,
+    projectId: sceneProjectId,
+    runtimeControlsEnabled: false,
+    selectionStyle: editable ? "none" : "runtime",
+    selectedModelInstanceId: modelFocusRequest?.projectId === sceneProjectId ? modelFocusRequest.instanceId : selectedInstanceId,
+    selectedSceneNodePath: null,
+  };
+
   return (
     <div className="embedded-scene-node" data-cover-state="ready">
-      <Model3DNode
-        cameraControlsEnabled={!editable}
-        editable={false}
-        interactive={interactive && parsed.value.interactionEnabled}
-        maximumModelInstances={STANDALONE_3D_LIMITS.maximumInstances}
-        modelFocusRequest={modelFocusRequest?.projectId === sceneProjectId ? modelFocusRequest : null}
-        node={rendererNode}
-        onModelInstanceSelect={selectInstance}
-        onSceneNodeSelect={ignoreSceneNodeSelection}
-        projectId={sceneProjectId}
-        runtimeControlsEnabled={false}
-        selectionStyle={editable ? "none" : "runtime"}
-        selectedModelInstanceId={modelFocusRequest?.projectId === sceneProjectId ? modelFocusRequest.instanceId : selectedInstanceId}
-        selectedSceneNodePath={null}
-      />
+      {!editable && interactive ? <EmbeddedLiveScene key={sceneProjectId} projectId={sceneProjectId} rendererProps={rendererProps} />
+        : <Model3DNode {...rendererProps} />}
       {editable ? <div className="embedded-scene-reference">引用场景 · {response.project.name}</div> : null}
     </div>
   );

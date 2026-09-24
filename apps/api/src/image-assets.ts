@@ -1,4 +1,5 @@
 import { AppError, type AppEnv } from "./auth";
+import { builtinImages, findBuiltinImage } from "../../../shared/builtin-images";
 import {
   emptyResourceUsage,
   listProjectResourceUsage,
@@ -13,11 +14,11 @@ export type ImageAsset = {
   id: string;
   projectId: string;
   originalFilename: string;
-  format: ImageFormat;
+  format: ImageFormat | "svg";
   contentType: string;
   byteSize: number;
   sha256: string;
-  source: "upload";
+  source: "upload" | "system";
   usage: ResourceUsage;
   createdAt: string;
 };
@@ -41,8 +42,13 @@ type ImageAssetRow = {
 };
 
 export type StoredImageAsset = {
-  asset: ImageAsset;
+  asset: UploadedImageAsset;
   bytes: Uint8Array;
+};
+
+type UploadedImageAsset = Omit<ImageAsset, "format" | "source"> & {
+  format: ImageFormat;
+  source: "upload";
 };
 
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
@@ -136,7 +142,7 @@ const sha256Hex = async (bytes: Uint8Array): Promise<string> => {
   return [...digest].map((value) => value.toString(16).padStart(2, "0")).join("");
 };
 
-const presentImageAsset = (row: ImageAssetRow): ImageAsset => ({
+const presentImageAsset = (row: ImageAssetRow): UploadedImageAsset => ({
   id: row.id,
   projectId: row.project_id,
   originalFilename: row.original_filename,
@@ -159,10 +165,11 @@ export const listImageAssets = async (env: AppEnv, projectId: string): Promise<I
     ).bind(projectId).all<ImageAssetRow>(),
     listProjectResourceUsage(env, projectId),
   ]);
-  return result.results.map((row) => ({
+  return [...builtinImages.map(image => ({ ...image, projectId, source: "system" as const,
+    usage: resourceUsageFor(usageByResourceId, image.id) })), ...result.results.map((row) => ({
     ...presentImageAsset(row),
     usage: resourceUsageFor(usageByResourceId, row.id),
-  }));
+  }))];
 };
 
 const getImageAssetRow = async (
@@ -290,6 +297,7 @@ export const deleteImageAsset = async (
   assetId: string,
   confirmedReferencedDeletion: boolean,
 ): Promise<ImageAssetDeletion> => {
+  if (assetId.startsWith("builtin:")) throw new AppError(403, "system_resource_read_only", "Bundled scene artwork cannot be deleted.");
   const row = await getImageAssetRow(env, projectId, assetId);
   const usage = resourceUsageFor(await listProjectResourceUsage(env, projectId), assetId);
   requireResourceDeletionConfirmation(row.original_filename, usage, confirmedReferencedDeletion);
@@ -325,6 +333,8 @@ export const imageAssetContentResponse = async (
   projectId: string,
   assetId: string,
 ): Promise<Response> => {
+  const builtin = findBuiltinImage(assetId);
+  if (builtin) return new Response(null, { status: 302, headers: { location: builtin.contentPath } });
   const imageStorage = requireImageStorage(env);
   const row = await getImageAssetRow(env, projectId, assetId);
   const object = await imageStorage.get(row.object_key);

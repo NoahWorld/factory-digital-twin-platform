@@ -13,9 +13,14 @@ import type { Model3DProps, ModelAssetInstance, ModelNodeAppearance, ModelNodeTr
 import { ResourceManager } from "./resource-manager";
 import { InstanceManager, disposeClonedMaterials, type InstanceRecord, type MaterialObject } from "./instance-manager";
 import { createSceneModelLoader, disposeModelResources } from "./model-loader";
-import { createPickingService } from "./picking-service";
+import { createSceneObjectPickingService } from "./picking-service";
+import { FluidManager } from "./fluid-manager";
+import { SceneFrameClock } from "./frame-clock";
+import { FluidPathGuide, fluidPointOnPlane, type FluidEditorState } from "./fluid-path-editor";
+import type { FluidDefinition } from "../../../../shared/fluids";
 import { createWalkPhysics, type WalkPhysics, type WalkSceneConfig } from "./walk-physics";
 import { createWalkControls } from "./walk-controls";
+import { TwinDriveRuntime, type TwinDriveAttachment } from "./twin-drive-runtime";
 import { createNativePlayback, type AnimationProgress, type NativePlaybackMode } from "./native-playback";
 import {
   constrainEditableInstanceScale,
@@ -29,6 +34,9 @@ export type NavigationStatus = { mode: "orbit" | "loading" | "walk"; message?: s
 export type SceneSnapshot = { scene: ModelSceneSnapshot; animationCount: number };
 export type SceneSelectionStyle = "editor" | "runtime" | "none";
 export type SceneInput = {
+  fluids?: FluidDefinition[];
+  selectedFluidId?: string | null;
+  fluidEditor?: FluidEditorState | null;
   instances: ModelAssetInstance[];
   settings: Model3DProps;
   appearanceOverrides: Record<string, ModelNodeAppearance>;
@@ -40,6 +48,7 @@ export type SceneInput = {
   modelFocusRequest?: { instanceId: string; requestId: string } | null;
 };
 export type SceneDiagnostics = {
+  fluids: ReturnType<FluidManager["diagnostics"]>;
   activeLoads: number; queuedLoads: number; resources: number; instanceCount: number;
   cameraPosition: number[]; cameraTarget: number[];
   navigation: NavigationStatus; physics: ReturnType<WalkPhysics["diagnostics"]> | null;
@@ -129,9 +138,31 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
     constructionCleanup.push(() => resources.dispose());
     const manager = new InstanceManager(resources, contentOffset);
     constructionCleanup.push(() => manager.dispose());
+    const fluids = new FluidManager(contentOffset);
+    constructionCleanup.push(() => fluids.dispose());
+    const fluidGuide = new FluidPathGuide(contentOffset);
+    constructionCleanup.push(() => fluidGuide.dispose());
     let records: InstanceRecord[] = [];
     let playback: ReturnType<typeof createNativePlayback> | null = null;
     let lastPlaybackReport = 0;
+    let twinAttachment: TwinDriveAttachment | undefined;
+    let twinRuntime: TwinDriveRuntime | null = null;
+    let twinReady = false;
+    const rebuildTwin = () => {
+      twinRuntime?.dispose(); twinRuntime = null;
+      if (!twinAttachment || !twinReady) return;
+      try { twinRuntime = new TwinDriveRuntime(records, twinAttachment); }
+      catch (reason) {
+        const message = `点位绑定失败：${reason instanceof Error ? reason.message : String(reason)}`;
+        console.error("Failed to bind twin-drive scene", { projectId, canvasNodeId, reason });
+        twinAttachment.onDiagnostics?.({ status: "error", message, sequence: null, boundNodes: 0, activeCollisions: [], events: [] });
+      }
+    };
+    const setTwinDrive = (attachment: TwinDriveAttachment | undefined) => {
+      twinAttachment = attachment;
+      if (attachment?.config.enabled && (walk || navigation.mode === "loading")) exitWalk("点位驱动已启用：静态行走碰撞场景已退出");
+      rebuildTwin();
+    };
     let desired = initial;
     let desiredInstancesById = new Map(initial.instances.map((instance) => [instance.id, instance]));
     let revision = 0;
@@ -148,7 +179,7 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
     const clippingCenter = new THREE.Vector3();
     let frameCount = 0;
     let frameTotal = 0;
-    let sampleAt = performance.now();
+    let sampleAt: number | null = null;
     let lastDiagnostics: SceneDiagnostics | null = null;
     let primaryPathsByObject = new Map<Object3D, string>();
     let primaryObjectsByPath = new Map<string, Object3D>();
@@ -162,7 +193,7 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
     let transformDragging = false;
     let modelRadius: number | null = null;
     let visible = true;
-    let lastFrame = performance.now();
+    const frameClock = new SceneFrameClock();
     let disposed = false;
     let unregisterCoverSurface: (() => void) | null = null;
     let resizeObserver: ResizeObserver | null = null;
@@ -199,6 +230,7 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
       try {
         if (contextLost || !appliedInput || appliedInput !== desired || !records.length) throw new Error("场景未就绪，不能进入行走");
         if (!desired.controlsEnabled) throw new Error("当前视窗未开放相机交互");
+        if (twinAttachment?.config.enabled) throw new Error("点位驱动运行中不能使用静态行走碰撞；请先停用点位驱动");
         if (desired.settings.autoRotate || desired.settings.playAnimations || desired.settings.presentation.explosion !== 0 || desired.settings.presentation.shellMode === "hidden") {
           throw new Error("行走前请关闭整场旋转、模型动画和拆解，并显示外壳；当前碰撞体仅支持静态场景");
         }
@@ -268,7 +300,7 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
       const record = input.selectedPath === null && input.selectedInstanceId !== null
         ? records.find((candidate) => candidate.id === input.selectedInstanceId)
         : undefined;
-      if (!input.instanceTransformMode || !record?.wrapper.visible || walk) {
+      if (!input.instanceTransformMode || !record?.wrapper.visible || walk || input.fluidEditor?.active) {
         detachTransformControl();
         return;
       }
@@ -334,6 +366,9 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
       transformControls.dispose();
       clearSelection();
       document.removeEventListener("visibilitychange", updateLoop);
+      twinRuntime?.dispose(); twinRuntime = null;
+      fluidGuide.dispose();
+      fluids.dispose();
       manager.dispose();
       resources.dispose();
       modelLoader.dispose();
@@ -348,6 +383,9 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
     };
     constructionCleanup.splice(0, constructionCleanup.length, disposeRuntime);
     renderer.domElement.addEventListener("webglcontextlost", handleContextLost);
+
+    const currentSceneCenter = (target: THREE.Vector3) => target.copy(sceneCenter)
+      .sub(rotationPivot.position).applyQuaternion(rotationPivot.quaternion).add(rotationPivot.position);
 
     const fitCameraToScene = () => {
       if (modelRadius === null) {
@@ -370,8 +408,9 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
             ? new THREE.Vector3(-1.35, 0.78, 1.78)
             : new THREE.Vector3(1.35, 0.9, 1.65);
       camera.up.set(0, 1, 0);
-      camera.position.copy(direction.normalize().multiplyScalar(distance).add(sceneCenter));
-      controls.target.copy(sceneCenter);
+      const center = currentSceneCenter(new THREE.Vector3());
+      camera.position.copy(direction.normalize().multiplyScalar(distance).add(center));
+      controls.target.copy(center);
       cameraInitialized = true;
       controls.update();
     };
@@ -390,6 +429,8 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
           hasVisibleGeometry = true;
         }
       }
+      const fluidBounds = fluids.getBounds();
+      if (!fluidBounds.isEmpty()) { box.union(fluidBounds); hasVisibleGeometry = true; }
       if (!hasVisibleGeometry) {
         rotationPivot.rotation.y = priorRotation;
         if (modelRadius !== null) emptyCameraInitialized = false;
@@ -405,12 +446,16 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
         rotationPivot.rotation.y = priorRotation;
         throw new Error("模型实例变换产生了无效的场景边界");
       }
-      sceneCenter.copy(center);
-      if (!cameraInitialized) {
-        rotationPivot.position.copy(center);
-        contentOffset.position.copy(center).multiplyScalar(-1);
-      }
       rotationPivot.rotation.y = priorRotation;
+      if (!cameraInitialized) {
+        // Move the rotation origin without moving any scene-local point. The
+        // presentation may already be rotated when the first path is drawn.
+        const localCenter = center.clone().sub(rotationPivot.position).sub(contentOffset.position);
+        center.sub(rotationPivot.position).applyQuaternion(rotationPivot.quaternion).add(rotationPivot.position);
+        rotationPivot.position.copy(center);
+        contentOffset.position.copy(localCenter).negate();
+      }
+      sceneCenter.copy(center);
       scene.updateMatrixWorld(true);
       modelRadius = Math.max(size.length() / 2, 0.01);
       // A single bounded shadow map covers the scene, including rotation about its center.
@@ -471,6 +516,7 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
         record.wrapper.name = instance.label;
       });
       updateSceneBounds();
+      twinRuntime?.invalidate();
     };
 
     const restoreRecord = (record: InstanceRecord) => {
@@ -594,6 +640,7 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
         ...settings.appearanceOverrides,
         ...desired.appearanceOverrides,
       });
+      twinRuntime?.invalidate();
       updateSceneBounds();
     };
 
@@ -655,8 +702,22 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
       updateRuntimeSelectionRing(performance.now());
     };
 
-    const pick = createPickingService(camera, renderer.domElement);
-    const pickSceneTarget = (x: number, y: number) => pick(x, y, records, primaryPathsByObject);
+    const pick = createSceneObjectPickingService(camera, renderer.domElement);
+    const pickSceneObject = (x: number, y: number) => pick(x, y, records, primaryPathsByObject, fluids);
+    const pickSceneTarget = (x: number, y: number) => {
+      const target = pickSceneObject(x, y);
+      return target && "instanceId" in target ? target : null;
+    };
+    const pickFluidPoint = (x: number, y: number) => {
+      if (!desired.fluidEditor?.active) throw new Error("请先开始编辑流体路径");
+      const viewport = renderer.domElement.getBoundingClientRect();
+      if (viewport.width <= 0 || viewport.height <= 0) throw new Error("3D 视窗尺寸无效，无法选点");
+      camera.updateMatrixWorld();
+      contentOffset.updateWorldMatrix(true, false);
+      const raycaster = new THREE.Raycaster();
+      raycaster.setFromCamera(new THREE.Vector2((x - viewport.left) / viewport.width * 2 - 1, -(y - viewport.top) / viewport.height * 2 + 1), camera);
+      return fluidPointOnPlane(raycaster.ray, contentOffset.matrixWorld, desired.fluidEditor);
+    };
 
     const resize = () => {
       const width = Math.max(container.clientWidth, 1);
@@ -672,7 +733,9 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
     const renderSceneFrame = () => {
       if (!walk) {
         camera.updateMatrixWorld();
-        const centerDepth = -clippingCenter.copy(modelRadius === null ? grid.position : sceneCenter).applyMatrix4(camera.matrixWorldInverse).z;
+        if (modelRadius === null) clippingCenter.copy(grid.position);
+        else currentSceneCenter(clippingCenter);
+        const centerDepth = -clippingCenter.applyMatrix4(camera.matrixWorldInverse).z;
         const clipping = sceneCameraClipping(centerDepth, modelRadius ?? EMPTY_SCENE_GRID_SIZE / Math.sqrt(2));
         if (camera.near !== clipping.near || camera.far !== clipping.far) {
           camera.near = clipping.near;
@@ -695,13 +758,13 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
       return renderer.domElement.toDataURL("image/png");
     });
     const animate = (now: number) => {
-      const frameMs = now - lastFrame;
-      const deltaSeconds = Math.min(frameMs / 1000, 0.1);
-      lastFrame = now;
+      const { frameMs, deltaSeconds } = frameClock.tick(now);
+      if (sampleAt === null) sampleAt = now;
       const settings = desired.settings;
       if (settings.playAnimations) records.forEach((record) => {
         const animation = desiredInstancesById.get(record.id)?.animation;
-        if (record.wrapper.visible && animation?.enabled !== false) {
+        const driven = twinAttachment?.config.enabled && twinAttachment.config.bindings.some(binding => binding.target.instanceId === record.id);
+        if (!driven && record.wrapper.visible && animation?.enabled !== false) {
           record.mixer?.update(deltaSeconds * settings.animationSpeed * (animation?.speed ?? 1));
         }
       });
@@ -709,11 +772,14 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
         nativePlayback.onProgress(playback.progress());
         lastPlaybackReport = now;
       }
-      if (settings.autoRotate) rotationPivot.rotation.y += deltaSeconds * settings.rotationSpeed;
+      fluids.update(deltaSeconds, settings.playAnimations, settings.animationSpeed);
+      if (settings.autoRotate && !desired.fluidEditor?.active) rotationPivot.rotation.y += deltaSeconds * settings.rotationSpeed;
+      const animationConflict = settings.playAnimations && records.some(record => twinRuntime?.drivenInstances.has(record.id) && record.animationCount > 0 && desiredInstancesById.get(record.id)?.animation?.enabled !== false);
+      twinRuntime?.tick(Date.now(), animationConflict);
       selectionHelper?.update();
       updateRuntimeSelectionRing(now);
       if (walk) {
-        try { walk.controls.update(Math.max(0, frameMs / 1000)); }
+        try { walk.controls.update(frameMs / 1000); }
         catch (reason) { navigationError(reason); }
       } else controls.update();
       renderSceneFrame();
@@ -721,7 +787,7 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
       frameTotal += frameMs;
       if (now - sampleAt >= 2000) {
         lastDiagnostics = {
-          ...resources.stats, instanceCount: records.length,
+          ...resources.stats, instanceCount: records.length, fluids: fluids.diagnostics(),
           cameraPosition: camera.position.toArray(), cameraTarget: walk ? camera.position.clone().add(camera.getWorldDirection(new THREE.Vector3())).toArray() : controls.target.toArray(),
           navigation, physics: walk?.physics.diagnostics() ?? null,
           frameMs: frameTotal / frameCount,
@@ -736,8 +802,8 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
       if (disposed || contextLost) return;
       const running = visible && !document.hidden;
       walk?.controls.pause();
-      lastFrame = performance.now();
-      frameCount = 0; frameTotal = 0; sampleAt = lastFrame;
+      frameClock.reset();
+      frameCount = 0; frameTotal = 0; sampleAt = null;
       renderer.setAnimationLoop(running ? animate : null);
     }
     intersectionObserver = new IntersectionObserver(([entry]) => {
@@ -761,6 +827,7 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
         if (contextLost) throw new Error("WebGL 上下文已丢失，请重新打开场景");
         const graphChanged = graph !== appliedGraph;
         if (graphChanged) {
+          twinRuntime?.dispose(); twinRuntime = null; twinReady = false;
           detachTransformControl();
           notifyStatus({ status: "loading" });
           if (!await manager.reconcile(next.instances) || disposed || version !== revision) return;
@@ -799,14 +866,26 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
           value.instances.map((instance) => [instance.id, instance.appearance]),
         ]);
         const modelChanged = graphChanged || modelKey(appliedInput) !== modelKey(next);
+        const fluidsChanged = JSON.stringify(appliedInput?.fluids) !== JSON.stringify(next.fluids);
+        if (fluidsChanged) fluids.reconcile(next.fluids ?? []);
         if (instancesChanged) applyInstances(next.instances);
+        else if (fluidsChanged) updateSceneBounds();
+        if (fluidsChanged || JSON.stringify(appliedInput?.fluidEditor) !== JSON.stringify(next.fluidEditor) || appliedInput?.selectedFluidId !== next.selectedFluidId || appliedInput?.selectionStyle !== next.selectionStyle) {
+          const selected = next.fluids?.find(fluid => fluid.id === next.selectedFluidId && fluid.visible);
+          const selectedPoints = selected?.direction === "reverse" ? [...selected.points].reverse() : selected?.points;
+          if (next.selectionStyle === "editor") fluidGuide.update(next.fluidEditor ?? null, selectedPoints, selected?.radius);
+          else fluidGuide.clear();
+        }
         if (settingsChanged) applySceneSettings(next.settings);
         if (modelChanged) applyModelState(next.settings);
+        if (graphChanged || appliedInput?.settings.playAnimations !== next.settings.playAnimations || JSON.stringify(appliedInput?.instances.map(i => i.animation)) !== JSON.stringify(next.instances.map(i => i.animation))) {
+          twinReady = true; rebuildTwin();
+        }
         if (instancesChanged || modelChanged || appliedInput?.selectedPath !== next.selectedPath || appliedInput?.selectedInstanceId !== next.selectedInstanceId || appliedInput?.selectionStyle !== next.selectionStyle) {
           applySelection(next.selectedPath, next.selectedInstanceId, next.selectionStyle);
         }
         syncTransformControl(next);
-        if (modelRadius === null ? !emptyCameraInitialized : !cameraInitialized) fitCameraToScene();
+        if (!next.fluidEditor?.active && (modelRadius === null ? !emptyCameraInitialized : !cameraInitialized)) fitCameraToScene();
         if (next.modelFocusRequest && next.modelFocusRequest.requestId !== appliedFocusRequestId) {
           const record = records.find((candidate) => candidate.id === next.modelFocusRequest!.instanceId);
           if (!record?.wrapper.visible) throw new Error(`聚焦目标模型不存在或已隐藏：${next.modelFocusRequest.instanceId}`);
@@ -815,7 +894,7 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
           appliedFocusRequestId = next.modelFocusRequest.requestId;
         }
         appliedInput = next;
-        notifyStatus({ status: records.length ? "ready" : "empty" });
+        notifyStatus({ status: records.length || fluids.diagnostics().fluidCount ? "ready" : "empty" });
       } catch (reason) {
         if (disposed || version !== revision) return;
         appliedInput = null;
@@ -825,11 +904,12 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
     };
     const seekAnimation = (seconds: number) => {
       if (disposed || !playback || !nativePlayback) throw new Error("原生动画播放控制尚未就绪");
+      if (twinAttachment?.config.enabled) throw new Error("点位驱动启用时不能定位原生动画");
       playback.seek(seconds);
       nativePlayback.onProgress(playback.progress());
       renderSceneFrame();
     };
-    return { update, seekAnimation, resetCamera: fitCameraToScene, pickSceneTarget, enterWalk, exitWalk, navigationStatus: () => navigation, dispose: disposeRuntime, diagnostics: () => lastDiagnostics };
+    return { update, setTwinDrive, seekAnimation, resetCamera: fitCameraToScene, pickSceneTarget, pickSceneObject, pickFluidPoint, enterWalk, exitWalk, navigationStatus: () => navigation, dispose: disposeRuntime, diagnostics: () => lastDiagnostics };
   } catch (reason) {
     for (const cleanup of constructionCleanup.reverse()) cleanup();
     throw reason;

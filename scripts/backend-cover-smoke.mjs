@@ -175,7 +175,7 @@ async function run() {
 
     const loginName = `coversmoke${Date.now()}`;
     const viewer = (await call('/users', {method: 'POST', status: 201, body: {
-      loginName, email: `${loginName}@local.test`, displayName: 'Temporary cover smoke viewer', password: admin.password, role: 'viewer',
+      loginName, email: `${loginName}@local.test`, displayName: 'Temporary cover smoke viewer', password: admin.password, role: 'viewer', modules: ['2d', '3d'],
     }})).value.user;
     users.push(viewer.id);
     const viewerLogin = await call('/auth/login', {method: 'POST', body: {identifier: loginName, password: admin.password}});

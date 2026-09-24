@@ -55,10 +55,14 @@ const shortenLabel = (value: string, maximum: number) =>
 
 const buildLabelIndexes = (itemCount: number, plotWidth: number) => {
   const labelCount = Math.min(itemCount, Math.max(Math.floor(plotWidth / 56), 2));
-  return new Set(
-    Array.from({ length: labelCount }, (_, index) =>
-      Math.round(index * (itemCount - 1) / Math.max(labelCount - 1, 1))),
-  );
+  const stride = Math.max(1, Math.ceil((itemCount - 1) / Math.max(labelCount - 1, 1)));
+  const indexes = Array.from({ length: Math.ceil(itemCount / stride) }, (_, index) => index * stride);
+  const last = itemCount - 1;
+  if (indexes.at(-1) !== last) {
+    if (indexes.length > 1 && last - indexes[indexes.length - 1] < stride) indexes.pop();
+    indexes.push(last);
+  }
+  return new Set(indexes);
 };
 
 const seriesColor = (primary: string, index: number) => index === 0
@@ -97,10 +101,10 @@ function CartesianChart({
   const { categories, values, color } = props;
   const chartWidth = Math.max(size.width, 1);
   const chartHeight = Math.max(size.height, 1);
-  const left = Math.min(42, Math.max(28, chartWidth * 0.09));
-  const right = Math.min(16, Math.max(8, chartWidth * 0.03));
-  const top = Math.min(14, Math.max(6, chartHeight * 0.08));
-  const bottom = Math.min(24, Math.max(17, chartHeight * 0.16));
+  const left = Math.min(52, Math.max(38, chartWidth * 0.13));
+  const right = 18;
+  const top = 24;
+  const bottom = 28;
   const plotWidth = Math.max(chartWidth - left - right, 1);
   const plotHeight = Math.max(chartHeight - top - bottom, 1);
   const minimum = Math.min(...values, 0);
@@ -129,12 +133,20 @@ function CartesianChart({
       ) : null}
       {[0, 1, 2, 3].map((row) => {
         const y = top + (plotHeight / 3) * row;
-        return <line className="chart-grid-line" key={row} x1={left} x2={left + plotWidth} y1={y} y2={y} />;
+        const tick = maximum - (range / 3) * row;
+        return <g key={row}>
+          <line className="chart-grid-line" x1={left} x2={left + plotWidth} y1={y} y2={y} />
+          <text className="chart-axis-label" x={left - 9} y={y + 4} textAnchor="end">{tick.toLocaleString("zh-CN", { maximumFractionDigits: maximum < 10 ? 1 : 0 })}</text>
+        </g>;
       })}
       {type === "bar-chart" ? values.map((value, index) => {
         const valueY = top + plotHeight - ((value - minimum) / range) * plotHeight;
         const height = Math.max(Math.abs(barZeroY - valueY), 1);
-        return <rect fill={color} height={height} key={`${categories[index]}-${index}`} opacity={0.82 + (index / values.length) * 0.18} rx="3" width={barWidth} x={left + index * (barWidth + barGap)} y={Math.min(valueY, barZeroY)} />;
+        const x = left + index * (barWidth + barGap);
+        return <g key={`${categories[index]}-${index}`}>
+          <rect fill={color} height={height} opacity={0.68 + (index / values.length) * 0.32} rx="3" width={barWidth} x={x} y={Math.min(valueY, barZeroY)} />
+          {barWidth >= 22 && <text className="chart-data-label" textAnchor="middle" x={x + barWidth / 2} y={Math.min(valueY, barZeroY) - 7}>{value}</text>}
+        </g>;
       }) : (
         <>
           {type === "area-chart" ? <polygon fill={`url(#${gradientId})`} points={areaPoints} /> : null}
@@ -145,7 +157,8 @@ function CartesianChart({
       {categories.map((category, index) => {
         if (!labelIndexes.has(index)) return null;
         const x = type === "bar-chart" ? left + index * (barWidth + barGap) + barWidth / 2 : left + index * step;
-        return <text className="chart-axis-label" key={`${category}-label-${index}`} textAnchor="middle" x={x} y={chartHeight - 3}><title>{category}</title>{shortenLabel(category, labelCharacterLimit)}</text>;
+        const anchor = type !== "bar-chart" && index === 0 ? "start" : type !== "bar-chart" && index === categories.length - 1 ? "end" : "middle";
+        return <text className="chart-axis-label" key={`${category}-label-${index}`} textAnchor={anchor} x={x} y={chartHeight - 5}><title>{category}</title>{shortenLabel(category, labelCharacterLimit)}</text>;
       })}
     </>
   );

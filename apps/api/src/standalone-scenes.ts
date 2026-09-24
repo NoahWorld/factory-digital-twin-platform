@@ -1,4 +1,5 @@
 import { findBuiltinModel } from "../../../shared/builtin-models";
+import { parseFluids, type FluidDefinition } from "../../../shared/fluids";
 import { parseTwinActions, type TwinAction } from "../../../shared/twin-actions";
 import { validateTwinActionReferences } from "./twin-action-references";
 import {
@@ -9,6 +10,7 @@ import {
 } from "../../../shared/standalone-3d";
 import {
   AppError,
+  canAccessModule,
   hasGlobalRole,
   type AppEnv,
   type AuthenticatedUser,
@@ -17,6 +19,7 @@ import {
 type JsonObject = Record<string, unknown>;
 
 type SceneRow = {
+  fluids_json: string;
   animation_speed: number;
   auto_rotate: number;
   background_color: string;
@@ -63,6 +66,7 @@ type InstanceRow = {
 };
 
 export type StandaloneScenePatch = {
+  fluids?: FluidDefinition[];
   deleteInstanceIds: string[];
   expectedRevision: number;
   linked2dProjectId?: string | null;
@@ -74,6 +78,7 @@ const ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$/;
 const BUSINESS_ASSET_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,79}$/;
 const HEX_COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/;
 const scenePatchFields = new Set([
+  "fluids",
   "deleteInstanceIds",
   "expectedRevision",
   "linked2dProjectId",
@@ -307,10 +312,17 @@ export const validateStandaloneScenePatch = (body: JsonObject): StandaloneSceneP
       ? null
       : validateId(body.linked2dProjectId, "linked2dProjectId");
   }
-  if (!body.settings && upsertInstances.length === 0 && deleteInstanceIds.length === 0 && linked2dProjectId === undefined) {
+  let fluids: FluidDefinition[] | undefined;
+  if (Object.hasOwn(body, "fluids")) {
+    const parsed = parseFluids(body.fluids);
+    if (!parsed.ok) throw new AppError(400, "invalid_scene_fluids", parsed.message);
+    fluids = parsed.value;
+  }
+  if (!body.settings && upsertInstances.length === 0 && deleteInstanceIds.length === 0 && linked2dProjectId === undefined && fluids === undefined) {
     throw new AppError(400, "empty_scene_patch", "A scene patch must contain at least one change.");
   }
   return {
+    ...(fluids === undefined ? {} : { fluids }),
     deleteInstanceIds,
     expectedRevision: body.expectedRevision as number,
     linked2dProjectId,
@@ -323,7 +335,7 @@ const sceneColumns = `
   project_id, revision, linked_2d_project_id, background_color, background_opacity,
   environment_light_color, environment_light_intensity, key_light_color,
   key_light_intensity, camera_fov, camera_view, model_scale, auto_rotate,
-  rotation_speed, play_animations, animation_speed, show_grid, prevent_bottom_view, updated_at
+  rotation_speed, play_animations, animation_speed, show_grid, prevent_bottom_view, fluids_json, updated_at
 `;
 
 const instanceColumns = `
@@ -385,6 +397,15 @@ const presentInstance = (row: InstanceRow): StandaloneSceneInstance => ({
   visible: row.visible === 1,
 });
 
+const storedFluids = (row: SceneRow): FluidDefinition[] => {
+  let value: unknown;
+  try { value = JSON.parse(row.fluids_json); }
+  catch (error) { throw new AppError(500, "invalid_scene_storage", `Scene ${row.project_id} has invalid fluids JSON: ${String(error)}`); }
+  const parsed = parseFluids(value);
+  if (!parsed.ok) throw new AppError(500, "invalid_scene_storage", `Scene ${row.project_id}: ${parsed.message}`);
+  return parsed.value;
+};
+
 export const getStandaloneScene = async (
   env: AppEnv,
   projectId: string,
@@ -401,6 +422,7 @@ export const getStandaloneScene = async (
     throw new AppError(404, "standalone_scene_not_found", "The standalone 3D scene was not found for this project.");
   }
   return {
+    fluids: storedFluids(scene),
     instances: instances.results.map(presentInstance),
     linked2dProjectId: scene.linked_2d_project_id,
     projectId: scene.project_id,
@@ -427,6 +449,9 @@ const requireLinked2dProject = async (
   }
   if (linked.project_type !== "2d") {
     throw new AppError(409, "linked_project_type_mismatch", "A standalone 3D scene can only link to a 2D project.");
+  }
+  if (!canAccessModule(user, "2d")) {
+    throw new AppError(403, "module_access_denied", "Access to the 2D project module is not granted.");
   }
 };
 
@@ -557,8 +582,9 @@ export const applyStandaloneScenePatch = async (
     await requireLinked2dProject(env, user, linked2dProjectId);
   }
   const settings = patch.settings ?? current.settings;
+  const fluids = patch.fluids === undefined ? current.fluids ?? [] : patch.fluids;
   await validateModelBudget(env, projectId, nextInstances, settings.playAnimations);
-  await validateTwinActionReferences(env, user.id, { kind: "scene", projectId, linked2dProjectId, instances: nextInstances });
+  await validateTwinActionReferences(env, user, { kind: "scene", projectId, linked2dProjectId, instances: nextInstances });
   const now = new Date().toISOString();
   const nextRevision = current.revision + 1;
   const guard = "EXISTS (SELECT 1 FROM standalone_3d_scenes WHERE project_id = ? AND revision = ? AND updated_by_user_id = ? AND updated_at = ?)";
@@ -569,7 +595,7 @@ export const applyStandaloneScenePatch = async (
         background_opacity = ?, environment_light_color = ?, environment_light_intensity = ?,
         key_light_color = ?, key_light_intensity = ?, camera_fov = ?, camera_view = ?,
         model_scale = ?, auto_rotate = ?, rotation_speed = ?, play_animations = ?,
-        animation_speed = ?, show_grid = ?, prevent_bottom_view = ?, updated_by_user_id = ?, updated_at = ?
+        animation_speed = ?, show_grid = ?, prevent_bottom_view = ?, fluids_json = ?, updated_by_user_id = ?, updated_at = ?
        WHERE project_id = ? AND revision = ?`,
     ).bind(
       linked2dProjectId,
@@ -588,6 +614,7 @@ export const applyStandaloneScenePatch = async (
       settings.animationSpeed,
       settings.showGrid ? 1 : 0,
       settings.preventBottomView ? 1 : 0,
+      JSON.stringify(fluids),
       user.id,
       now,
       projectId,

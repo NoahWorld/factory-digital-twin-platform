@@ -2,6 +2,8 @@ import {
   AppError,
   applySessionCookie,
   capabilitiesFor,
+  canAccessModule,
+  createPasswordRecord,
   createSession,
   createUser,
   destroyCurrentSession,
@@ -9,15 +11,19 @@ import {
   hasGlobalRole,
   INITIAL_ADMIN_LOGIN_NAME,
   isBootstrapRequired,
+  toAuthenticatedUser,
   validateDisplayName,
   validateEmail,
   validateLoginIdentifier,
   validateLoginName,
   validatePassword,
+  validateModules,
   verifyBootstrapToken,
   verifyCredentials,
   type AppEnv,
   type AuthenticatedUser,
+  type GlobalRole,
+  type Module,
 } from "./auth";
 import {
   createAsset,
@@ -173,8 +179,44 @@ const presentUser = (user: AuthenticatedUser) => ({
   loginName: user.loginName,
   displayName: user.displayName,
   roles: user.roles,
+  modules: user.modules,
   capabilities: capabilitiesFor(user),
 });
+
+type ManagedUserRow = {
+  id: string;
+  email: string;
+  login_name: string | null;
+  display_name: string;
+  is_active: number;
+  can_access_2d: number;
+  can_access_3d: number;
+};
+
+const presentManagedUser = async (env: AppEnv, row: ManagedUserRow) => {
+  const account = await toAuthenticatedUser(env, row);
+  if (account.roles.length !== 1) {
+    throw new AppError(500, "invalid_user_roles", `User ${account.id} must have exactly one global role.`);
+  }
+  return {
+    id: account.id,
+    email: account.email,
+    loginName: account.loginName,
+    displayName: account.displayName,
+    role: account.roles[0],
+    modules: account.modules,
+    active: row.is_active === 1,
+  };
+};
+
+const requireManagedUser = async (env: AppEnv, id: string): Promise<ManagedUserRow> => {
+  const row = await env.DB.prepare(
+    `SELECT id, email, login_name, display_name, is_active, can_access_2d, can_access_3d
+     FROM users WHERE id = ?`,
+  ).bind(id).first<ManagedUserRow>();
+  if (!row) throw new AppError(404, "user_not_found", "User was not found.");
+  return row;
+};
 
 const presentProject = (project: ProjectRow) => ({
   id: project.id,
@@ -210,6 +252,10 @@ const requireProjectAccess = async (
     throw new AppError(404, "project_not_found", "Project was not found or is not accessible.");
   }
 
+  if (!canAccessModule(user, project.project_type)) {
+    throw new AppError(403, "module_access_denied", "Access to this project module is not granted.");
+  }
+
   return project;
 };
 
@@ -227,10 +273,11 @@ const listProjects = async (env: AppEnv, user: AuthenticatedUser): Promise<Proje
      FROM projects p
      LEFT JOIN project_members pm ON pm.project_id = p.id AND pm.user_id = ?
      LEFT JOIN project_canvases pc ON pc.project_id = p.id
-     WHERE ? = 1 OR pm.user_id IS NOT NULL
+     WHERE (? = 1 OR pm.user_id IS NOT NULL)
+       AND ((p.project_type = '2d' AND ? = 1) OR (p.project_type = '3d' AND ? = 1))
      ORDER BY p.updated_at DESC, p.name ASC`,
   )
-    .bind(user.id, isPlatformAdmin)
+    .bind(user.id, isPlatformAdmin, canAccessModule(user, "2d") ? 1 : 0, canAccessModule(user, "3d") ? 1 : 0)
     .all<ProjectRow>();
 
   return result.results ?? [];
@@ -244,6 +291,9 @@ const createProject = async (
 ): Promise<ProjectRow> => {
   if (!hasGlobalRole(user, "platform_admin", "delivery_manager")) {
     throw new AppError(403, "permission_denied", "You do not have permission to create projects.");
+  }
+  if (!canAccessModule(user, projectType)) {
+    throw new AppError(403, "module_access_denied", "Access to this project module is not granted.");
   }
 
   const projectId = crypto.randomUUID();
@@ -435,6 +485,7 @@ const handleApiRequest = async (
       displayName: validateDisplayName(body.displayName),
       password: validatePassword(body.password),
       roles: ["platform_admin"],
+      modules: ["2d", "3d"],
     });
     const session = await createSession(env, user.id);
 
@@ -466,6 +517,186 @@ const handleApiRequest = async (
   if (method === "GET" && pathname === "/api/v1/auth/me") {
     const user = await getAuthenticatedUser(env, request);
     return json({ user: presentUser(user), requestId });
+  }
+
+  if (method === "GET" && pathname === "/api/v1/users") {
+    const actor = await getAuthenticatedUser(env, request);
+    if (!hasGlobalRole(actor, "platform_admin")) {
+      throw new AppError(403, "permission_denied", "Platform administrator permission is required.");
+    }
+    const rows = await env.DB.prepare(
+      `SELECT id, email, login_name, display_name, is_active, can_access_2d, can_access_3d
+       FROM users ORDER BY created_at ASC`,
+    ).all<ManagedUserRow>();
+    const users = await Promise.all(rows.results.map((row) => presentManagedUser(env, row)));
+    return json({ users, requestId });
+  }
+
+  if (method === "POST" && pathname === "/api/v1/users") {
+    const actor = await getAuthenticatedUser(env, request);
+    if (!hasGlobalRole(actor, "platform_admin")) {
+      throw new AppError(403, "permission_denied", "Platform administrator permission is required.");
+    }
+    const body = await readJsonObject(request);
+    const role = body.role;
+    if (role !== "platform_admin" && role !== "delivery_manager" && role !== "viewer") {
+      throw new AppError(400, "invalid_role", "Role must be platform_admin, delivery_manager, or viewer.");
+    }
+    const account = await createUser(env, {
+      email: validateEmail(body.email),
+      loginName: validateLoginName(body.loginName),
+      displayName: validateDisplayName(body.displayName),
+      password: validatePassword(body.password),
+      roles: [role],
+      modules: validateModules(body.modules),
+    });
+    console.log(JSON.stringify({ event: "user_created", requestId, actorId: actor.id, userId: account.id, role }));
+    return json({ user: presentUser(account), requestId }, 201);
+  }
+
+  const userMatch = pathname.match(/^\/api\/v1\/users\/([^/]+)$/);
+  if (userMatch && (method === "GET" || method === "PUT" || method === "DELETE")) {
+    const actor = await getAuthenticatedUser(env, request);
+    if (!hasGlobalRole(actor, "platform_admin")) {
+      throw new AppError(403, "permission_denied", "Platform administrator permission is required.");
+    }
+    const targetId = decodePathSegment(userMatch[1]);
+    const previous = await presentManagedUser(env, await requireManagedUser(env, targetId));
+    if (method === "GET") return json({ user: previous, requestId });
+
+    if (method === "PUT") {
+      if (!previous.active) throw new AppError(409, "user_inactive", "Restore the account before editing it.");
+      const body = await readJsonObject(request);
+      const role = body.role;
+      if (role !== "platform_admin" && role !== "delivery_manager" && role !== "viewer") {
+        throw new AppError(400, "invalid_role", "Role must be platform_admin, delivery_manager, or viewer.");
+      }
+      const modules = validateModules(body.modules);
+      if (role === "platform_admin" && (!modules.includes("2d") || !modules.includes("3d"))) {
+        throw new AppError(400, "invalid_modules", "Platform administrators must have both modules.");
+      }
+      if (targetId === actor.id && role !== "platform_admin") {
+        throw new AppError(403, "self_admin_required", "You cannot remove your own administrator role.");
+      }
+      const email = validateEmail(body.email);
+      const loginName = validateLoginName(body.loginName);
+      const displayName = validateDisplayName(body.displayName);
+      const password = body.password === undefined ? null : await createPasswordRecord(validatePassword(body.password));
+      const now = new Date().toISOString();
+      const roleUpdate = env.DB.prepare(
+        `UPDATE user_roles SET role = ? WHERE user_id = ? AND role = ?
+         AND EXISTS (SELECT 1 FROM users WHERE id = ? AND is_active = 1)
+         AND (role != 'platform_admin' OR ? = 'platform_admin' OR
+           (SELECT COUNT(*) FROM users u JOIN user_roles ur ON ur.user_id = u.id
+            WHERE u.is_active = 1 AND ur.role = 'platform_admin') > 1)`,
+      ).bind(role, targetId, previous.role, targetId, role);
+      const fields = ["email = ?", "login_name = ?", "display_name = ?", "can_access_2d = ?", "can_access_3d = ?", "updated_at = ?"];
+      const values: unknown[] = [email, loginName, displayName, modules.includes("2d") ? 1 : 0,
+        modules.includes("3d") ? 1 : 0, now];
+      if (password) {
+        fields.push("password_hash = ?", "password_salt = ?", "password_iterations = ?");
+        values.push(password.hash, password.salt, password.iterations);
+      }
+      const userUpdate = env.DB.prepare(
+        `UPDATE users SET ${fields.join(", ")} WHERE id = ? AND is_active = 1
+         AND EXISTS (SELECT 1 FROM user_roles WHERE user_id = ? AND role = ?)`,
+      ).bind(...values, targetId, targetId, role);
+      const statements = [roleUpdate, userUpdate];
+      if (password) {
+        statements.push(env.DB.prepare(
+          `DELETE FROM sessions WHERE user_id = ? AND EXISTS
+           (SELECT 1 FROM users u JOIN user_roles ur ON ur.user_id = u.id
+            WHERE u.id = ? AND u.is_active = 1 AND ur.role = ?)`,
+        ).bind(targetId, targetId, role));
+      }
+      let results;
+      try {
+        results = await env.DB.batch(statements);
+      } catch (error) {
+        if (error instanceof Error && /unique/i.test(error.message)) {
+          throw new AppError(409, "account_identifier_already_exists", "An account already uses this login name or email.");
+        }
+        throw error;
+      }
+      if (results[0]?.meta?.changes !== 1 || results[1]?.meta?.changes !== 1) {
+        throw new AppError(409, "user_update_conflict", "The account changed while editing; reload and retry.");
+      }
+      console.log(JSON.stringify({ event: "user_updated", requestId, actorId: actor.id, userId: targetId,
+        role, modules, passwordReset: password !== null }));
+      return json({ user: await presentManagedUser(env, await requireManagedUser(env, targetId)), requestId });
+    }
+
+    if (targetId === actor.id) {
+      throw new AppError(403, "self_delete_forbidden", "You cannot delete your own account.");
+    }
+    if (!previous.active) throw new AppError(409, "user_inactive", "The account is already deleted.");
+    const now = new Date().toISOString();
+    const results = await env.DB.batch([
+      env.DB.prepare(
+        `UPDATE users SET is_active = 0, updated_at = ? WHERE id = ? AND is_active = 1
+         AND (NOT EXISTS (SELECT 1 FROM user_roles WHERE user_id = ? AND role = 'platform_admin')
+           OR (SELECT COUNT(*) FROM users u JOIN user_roles ur ON ur.user_id = u.id
+               WHERE u.is_active = 1 AND ur.role = 'platform_admin') > 1)`,
+      ).bind(now, targetId, targetId),
+      env.DB.prepare("DELETE FROM sessions WHERE user_id = ? AND EXISTS (SELECT 1 FROM users WHERE id = ? AND is_active = 0)")
+        .bind(targetId, targetId),
+    ]);
+    if (results[0]?.meta?.changes !== 1) {
+      throw new AppError(409, previous.role === "platform_admin" ? "last_admin_required" : "user_update_conflict",
+        previous.role === "platform_admin" ? "The last active administrator cannot be removed."
+          : "The account changed while deleting; reload and retry.");
+    }
+    console.log(JSON.stringify({ event: "user_deleted", requestId, actorId: actor.id, userId: targetId }));
+    return new Response(null, { status: 204 });
+  }
+
+  const userRestoreMatch = pathname.match(/^\/api\/v1\/users\/([^/]+)\/restore$/);
+  if (method === "POST" && userRestoreMatch) {
+    const actor = await getAuthenticatedUser(env, request);
+    if (!hasGlobalRole(actor, "platform_admin")) {
+      throw new AppError(403, "permission_denied", "Platform administrator permission is required.");
+    }
+    const targetId = decodePathSegment(userRestoreMatch[1]);
+    const previous = await presentManagedUser(env, await requireManagedUser(env, targetId));
+    if (previous.active) throw new AppError(409, "user_active", "The account is already active.");
+    const result = await env.DB.prepare("UPDATE users SET is_active = 1, updated_at = ? WHERE id = ? AND is_active = 0")
+      .bind(new Date().toISOString(), targetId).run();
+    if (result.meta?.changes !== 1) {
+      throw new AppError(409, "user_update_conflict", "The account changed while restoring; reload and retry.");
+    }
+    console.log(JSON.stringify({ event: "user_restored", requestId, actorId: actor.id, userId: targetId }));
+    return json({ user: await presentManagedUser(env, await requireManagedUser(env, targetId)), requestId });
+  }
+
+  const userModulesMatch = pathname.match(/^\/api\/v1\/users\/([^/]+)\/modules$/);
+  if (method === "PATCH" && userModulesMatch) {
+    const actor = await getAuthenticatedUser(env, request);
+    if (!hasGlobalRole(actor, "platform_admin")) {
+      throw new AppError(403, "permission_denied", "Platform administrator permission is required.");
+    }
+    const targetId = decodePathSegment(userModulesMatch[1]);
+    const body = await readJsonObject(request);
+    const modules: Module[] = validateModules(body.modules);
+    const target = await env.DB.prepare("SELECT id, is_active FROM users WHERE id = ?")
+      .bind(targetId).first<{ id: string; is_active: number }>();
+    if (!target) throw new AppError(404, "user_not_found", "User was not found.");
+    if (target.is_active !== 1) throw new AppError(409, "user_inactive", "Restore the account before editing it.");
+    const adminRole = await env.DB.prepare(
+      "SELECT 1 AS present FROM user_roles WHERE user_id = ? AND role = 'platform_admin'",
+    ).bind(targetId).first<{ present: number }>();
+    if (adminRole) throw new AppError(403, "admin_modules_fixed", "Platform administrators have both modules.");
+    const result = await env.DB.prepare(
+      `UPDATE users SET can_access_2d = ?, can_access_3d = ?, updated_at = ?
+       WHERE id = ? AND is_active = 1 AND NOT EXISTS (
+         SELECT 1 FROM user_roles WHERE user_id = ? AND role = 'platform_admin'
+       )`,
+    ).bind(modules.includes("2d") ? 1 : 0, modules.includes("3d") ? 1 : 0,
+      new Date().toISOString(), targetId, targetId).run();
+    if (result.meta?.changes !== 1) {
+      throw new AppError(409, "user_update_conflict", "User permissions changed while updating; reload and retry.");
+    }
+    console.log(JSON.stringify({ event: "user_modules_changed", requestId, actorId: actor.id, userId: targetId, modules }));
+    return json({ userId: targetId, modules, requestId });
   }
 
   if (method === "GET" && pathname === "/api/v1/projects") {
@@ -1146,7 +1377,7 @@ const handleApiRequest = async (
 
     const body = await readJsonObject(request, 512 * 1024);
     const patch = validateCanvasPatch(body);
-    const canvas = await applyCanvasPatch(env, projectId, user.id, patch);
+    const canvas = await applyCanvasPatch(env, projectId, user, patch);
     console.log(JSON.stringify({
       event: "canvas_saved",
       requestId,

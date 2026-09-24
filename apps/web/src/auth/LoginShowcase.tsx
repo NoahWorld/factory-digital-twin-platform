@@ -38,7 +38,7 @@ export function LoginShowcase() {
           onSceneNodeSelect={() => { /* Decorative scene: picking is disabled. */ }}
         />
       </div>
-      <figcaption>工业装配单元<span>虚构演示</span></figcaption>
+      <figcaption>工业装配单元</figcaption>
       <button
         className="login-showcase-motion"
         type="button"

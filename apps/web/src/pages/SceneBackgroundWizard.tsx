@@ -365,7 +365,7 @@ export function SceneBackgroundWizard({ onClose, onCreate, projectName }: SceneB
                         </label>
                       ))}
                     </div>
-                    <small>当前版本始终保留原图清晰度；此选项会随模型记录，供后续纹理压缩与多级细节生成使用。</small>
+                    <small>目前始终保留原图清晰度；此选项会随模型记录，供后续纹理压缩与多级细节生成使用。</small>
                   </fieldset>
 
                   <fieldset>

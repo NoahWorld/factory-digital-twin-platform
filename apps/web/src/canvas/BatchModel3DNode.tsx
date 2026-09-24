@@ -10,6 +10,8 @@ import "../scene/walk-navigation.css";
 const errorText = (reason: unknown) => reason instanceof Error ? reason.message : String(reason);
 
 export const BatchModel3DNode = memo(function BatchModel3DNode({
+  fluids, fluidEditor, selectedFluidId, onFluidPoint, onFluidSelect,
+  twinDrive,
   walkScene,
   cameraControlsEnabled,
   runtimeControlsEnabled = true,
@@ -29,10 +31,25 @@ export const BatchModel3DNode = memo(function BatchModel3DNode({
   selectedModelInstanceId = null,
   selectedSceneNodePath,
 }: Model3DNodeProps) {
+  const [interactionError, setInteractionError] = useState<string | null>(null);
   const [navigation, setNavigation] = useState<NavigationStatus>({ mode: "orbit" });
   const walkSignature = JSON.stringify(walkScene);
   const containerRef = useRef<HTMLDivElement>(null);
   const runtimeRef = useRef<SceneRuntime | null>(null);
+  const twinRef = useRef(twinDrive);
+  twinRef.current = twinDrive;
+  const twinSignature = JSON.stringify(twinDrive?.config);
+  const attachTwin = (runtime: SceneRuntime) => {
+    const current = twinRef.current;
+    runtime.setTwinDrive(current ? {
+      config: current.config, source: current.source,
+      onCatalog: (nodes) => twinRef.current?.onCatalog?.(nodes),
+      onDiagnostics: (diagnostics) => {
+        if (containerRef.current) containerRef.current.dataset.twinDriveDiagnostics = JSON.stringify({ ...diagnostics, events: diagnostics.events.slice(-5) });
+        twinRef.current?.onDiagnostics?.(diagnostics);
+      },
+    } : undefined);
+  };
   const sceneCallbackRef = useRef(onSceneChange);
   sceneCallbackRef.current = onSceneChange;
   const instanceTransformCallbackRef = useRef(onModelInstanceTransform);
@@ -56,6 +73,7 @@ export const BatchModel3DNode = memo(function BatchModel3DNode({
     ? resolveModelInstances(node.resourceRefs, parsed.value.modelInstances)
     : [];
   const input: SceneInput | null = parsed.ok ? {
+    fluids, fluidEditor, selectedFluidId,
     instances, settings: parsed.value, appearanceOverrides: runtimeAppearanceOverrides,
     selectedPath: selectedSceneNodePath, selectedInstanceId: selectedModelInstanceId,
     selectionStyle,
@@ -101,6 +119,7 @@ export const BatchModel3DNode = memo(function BatchModel3DNode({
         },
       });
       runtimeRef.current = runtime;
+      attachTwin(runtime);
       return runtime.update(inputRef.current);
     }).catch((reason) => {
       if (cancelled) return;
@@ -121,6 +140,8 @@ export const BatchModel3DNode = memo(function BatchModel3DNode({
     if (inputRef.current && runtimeRef.current) void runtimeRef.current.update(inputRef.current);
   }, [inputSignature]);
 
+  useEffect(() => { if (runtimeRef.current) attachTwin(runtimeRef.current); }, [twinSignature, twinDrive?.source]);
+
   useEffect(() => { runtimeRef.current?.exitWalk("碰撞配置已变化，请核对后重新进入行走"); }, [walkSignature]);
 
   const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -138,12 +159,29 @@ export const BatchModel3DNode = memo(function BatchModel3DNode({
     if ((!editable && !interactive) || !start || start.pointerId !== event.pointerId) return;
     if (Math.hypot(event.clientX - start.clientX, event.clientY - start.clientY) > 4) return;
     try {
-      const target = runtimeRef.current?.pickSceneTarget(event.clientX, event.clientY) ?? null;
+      const runtime = runtimeRef.current;
+      if (!runtime) return;
+      if (fluidEditor?.active) {
+        const point = runtime.pickFluidPoint(event.clientX, event.clientY);
+        onFluidPoint?.(point);
+        setInteractionError(null);
+        return;
+      }
+      const picked = runtime.pickSceneObject(event.clientX, event.clientY);
+      if (picked && "fluidId" in picked && onFluidSelect) {
+        onFluidSelect(picked.fluidId);
+        onSceneNodeSelect(node.id, null);
+        setInteractionError(null);
+        return;
+      }
+      const target = picked && "instanceId" in picked ? picked : null;
+      onFluidSelect?.(null);
+      setInteractionError(null);
       onModelInstanceSelect?.(node.id, target?.instanceId ?? null);
       onSceneNodeSelect(node.id, target?.path ?? null);
     } catch (reason) {
       console.error("Failed to pick an item in the batched model scene.", { canvasNodeId: node.id, reason });
-      setLoadState({ status: "error", message: `节点选择失败：${errorText(reason)}` });
+      setInteractionError(`节点选择失败：${errorText(reason)}`);
     }
   };
 
@@ -163,6 +201,7 @@ export const BatchModel3DNode = memo(function BatchModel3DNode({
         onPointerUp={handlePointerUp}
         ref={containerRef}
       />
+      {interactionError ? <div className="scene-walk-navigation" role="alert" onPointerDown={event => event.stopPropagation()} onPointerUp={event => event.stopPropagation()}><span>{interactionError}</span><button type="button" onClick={() => setInteractionError(null)}>关闭</button></div> : null}
       {walkScene && !editable && input?.controlsEnabled && loadState.status === "ready" ? (
         <div className="scene-walk-navigation" onPointerDown={(event) => event.stopPropagation()} onPointerUp={(event) => event.stopPropagation()}>
           <button type="button" onClick={() => {

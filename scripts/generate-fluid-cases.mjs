@@ -380,7 +380,7 @@ const cases={
   cooling:{title:'工业循环冷却水站',accent:'#63caff',theme:'deep-blue',flow:'冷却塔集水 → 循环泵 → 换热器吸热 → 热回水 → 塔内喷淋',summary:'供水、换热、热回水及塔内散热组成闭环，含补水与投药辅助单元。',kpis:[['循环流量','240','m³/h'],['供回水温差','8','°C'],['换热负荷','2.2','MW']],steps:[['01','冷却塔','布水喷淋、填料水膜、风机与集水盘'],['02','循环供水','一用一备泵组与蓝色供水管'],['03','负载换热','透明壳体、铜管束、独立热回路'],['04','回水与补水','红色热回水、补水箱、投药装置']],trend:{title:'模拟循环温度',unit:'°C',values:[29,29.5,34,37,33,29]},controls:['冷却塔前部剖开，可观察喷淋和水膜','蓝管供冷水，红管输送热回水','换热器透明壳体内可见水流方向']},
 };
 
-const manifest={version:1,units:'meters',dataLabel:'虚构演示 / 模拟数据',simulation:'Visual process animation, not engineering CFD or a live plant connection.',cases:[]};
+const manifest={version:1,units:'meters',dataLabel:'模拟数据',simulation:'Visual process animation, not engineering CFD or a live plant connection.',cases:[]};
 for(const [id,info] of Object.entries(cases)){
   const record={id,...info,modules:[]};
   for(const def of definitions.filter(d=>d.caseId===id)){

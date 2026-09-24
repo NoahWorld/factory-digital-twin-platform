@@ -28,7 +28,7 @@ export function SceneTemplateGallery({ editable, onApply, actionLabel = "使用�
         <div>{template.previewModelIds.map((modelId) => <TemplateModelImage key={modelId} modelId={modelId} />)}</div>
       </div>
       <div className="scene-template-copy">
-        <div className="scene-template-meta"><span>3D 场景 · {template.category}</span><span>虚构演示</span></div>
+        <div className="scene-template-meta"><span>3D 场景 · {template.category}</span></div>
         <h3>{template.name}</h3>
         <p>{template.description}</p>
         <p className="scene-template-stats">{template.instances.length} 个实例 · {new Set(template.instances.map((instance) => instance.modelAssetId)).size} 类模型 · 预设动画</p>

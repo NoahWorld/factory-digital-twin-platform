@@ -1,4 +1,6 @@
 import './walk-physics.test.mjs';
+import './native-playback.test.mjs';
+import './frame-clock.test.mjs';
 import { sceneCameraClipping } from '../src/scene/camera-clipping';
 import assert from 'node:assert/strict';
 import { BoxGeometry, Group, Mesh, MeshBasicMaterial, PerspectiveCamera, InstancedMesh, Matrix4, Vector3 } from 'three';

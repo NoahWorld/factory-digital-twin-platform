@@ -104,6 +104,13 @@ public class Resources {
   public List<ObjectNode> list(Auth.User u, String project, String kind) {
     p.access(u, project, false);
     List<ObjectNode> result = new ArrayList<>();
+    if (kind.equals("image"))
+      for (JsonNode image : contracts.builtinImages) {
+        ObjectNode n = image.deepCopy();
+        n.put("projectId", project).put("source", "system").put("state", "ready");
+        n.set("usage", usage(u, project, n.path("id").asText()));
+        result.add(n);
+      }
     if (kind.equals("model"))
       for (JsonNode model : contracts.builtins) {
         ObjectNode n = model.deepCopy();
@@ -368,6 +375,9 @@ public class Resources {
         st -> {
           p.lock(u, project);
           p.access(u, project, true);
+          if (id.startsWith("builtin:"))
+            throw new ApiException(
+                403, "system_resource_read_only", "Bundled resources cannot be deleted.");
           var row = row(u, project, id);
           int versions = p.db.queryForObject(
               "SELECT count(*) FROM resources WHERE source_model_id=?", Integer.class, id);
@@ -442,7 +452,7 @@ class ResourceController {
       HttpServletRequest r) {
     var u = s.p.auth.require(r);
     s.p.access(u, project, false);
-    var builtin = kind.equals("model") ? s.contracts.builtin(id) : null;
+    var builtin = s.contracts.builtinResource(kind, id);
     if (builtin != null)
       return ResponseEntity.status(302)
           .header("Location", builtin.path("contentPath").asText())
