@@ -1,0 +1,47 @@
+.scene-extras { min-width: 0; color: var(--ui-text); font-size: 12px; }
+.scene-extras *, .scene-extras *::before, .scene-extras *::after { box-sizing: border-box; }
+.scene-extras-tabs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 3px; margin-bottom: 12px; padding: 3px; border: 1px solid var(--ui-border); border-radius: 8px; background: var(--ui-readonly-bg); }
+.scene-extras button { min-width: 0; padding: 7px 8px; border: 1px solid var(--ui-border-strong); border-radius: 6px; background: var(--ui-input-bg); color: var(--ui-text-strong); font: inherit; line-height: 1.35; cursor: pointer; }
+.scene-extras button:hover:not(:disabled) { border-color: var(--ui-accent); background: var(--ui-hover); }
+.scene-extras button:active:not(:disabled) { transform: translateY(1px); }
+.scene-extras :is(button, input, textarea, summary):focus-visible { outline: 2px solid var(--ui-accent); outline-offset: 2px; }
+.scene-extras button:disabled, .scene-extras fieldset:disabled :is(input, textarea, button, .ui-select-trigger) { color: var(--ui-text-subtle); border-color: var(--ui-border); background: var(--ui-readonly-bg); cursor: not-allowed; }
+.scene-extras button.is-danger { color: var(--ui-danger); border-color: var(--ui-danger-border); background: var(--ui-danger-soft); }
+.scene-extras button.is-danger:hover:not(:disabled) { color: var(--ui-on-danger); border-color: var(--ui-danger); background: var(--ui-danger-solid); }
+.scene-extras-tabs button { padding: 7px 2px; border-color: transparent; background: transparent; font-size: 11px; white-space: nowrap; }
+.scene-extras-tabs button[aria-selected="true"] { color: var(--ui-accent); border-color: var(--ui-accent); background: var(--ui-accent-soft); }
+.scene-extras fieldset { min-width: 0; margin: 10px 0; padding: 10px; border: 1px solid var(--ui-border); border-radius: 8px; background: var(--ui-surface); }
+.scene-extras fieldset > legend { padding: 0 5px; color: var(--ui-text-strong); font-weight: 650; }
+.scene-extras fieldset > :is(label, details, button, .scene-extras-actions) + :is(label, details, button, .scene-extras-actions) { margin-top: 9px; }
+.scene-extras label { display: grid; gap: 5px; min-width: 0; color: var(--ui-text-muted); }
+.scene-extras label > span { overflow-wrap: anywhere; }
+.scene-extras :is(input:not([type="checkbox"]):not([type="color"]), textarea, .ui-select-trigger) { display: block; width: 100%; min-width: 0; padding: 7px 8px; border: 1px solid var(--ui-border-strong); border-radius: 6px; color: var(--ui-text-strong); background: var(--ui-input-bg); font: inherit; color-scheme: var(--ui-color-scheme); }
+.scene-extras input[type="color"] { width: 48px; height: 30px; padding: 2px; border: 1px solid var(--ui-border-strong); border-radius: 6px; background: var(--ui-input-bg); }
+.scene-extras input[type="file"] { overflow: hidden; max-width: 100%; font-size: 11px; }
+.scene-extras input[aria-invalid="true"] { border-color: var(--ui-danger); }
+.scene-extras textarea { resize: vertical; overflow-wrap: anywhere; }
+.scene-extras .scene-extras-check { display: flex; align-items: center; gap: 7px; color: var(--ui-text-strong); }
+.scene-extras .scene-extras-check input { accent-color: var(--ui-accent); }
+.scene-extras-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.scene-extras-actions button { flex: 1 1 auto; }
+.scene-extras-list { display: grid; gap: 5px; max-height: 180px; overflow: auto; }
+.scene-extras-list button { display: flex; justify-content: space-between; align-items: center; gap: 7px; width: 100%; text-align: left; }
+.scene-extras-list button[aria-pressed="true"] { border-color: var(--ui-accent); background: var(--ui-accent-soft); }
+.scene-extras-list button span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.scene-extras-list button small { flex: 0 0 auto; color: var(--ui-text-subtle); font-size: 10px; }
+.scene-extras details { min-width: 0; padding: 8px; border: 1px solid var(--ui-border); border-radius: 6px; background: var(--ui-readonly-bg); }
+.scene-extras details > summary { cursor: pointer; font-weight: 600; color: var(--ui-text-strong); }
+.scene-extras-fields, .scene-extras-features { display: grid; gap: 9px; min-width: 0; margin-top: 10px; }
+.scene-extras-vector { min-width: 0; }
+.scene-extras-vector > strong { display: block; margin-bottom: 5px; color: var(--ui-text-muted); font-size: 11px; }
+.scene-extras-vector > div { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; }
+.scene-extras-vector label { min-width: 0; font-size: 10px; }
+.scene-extras-vector input { padding-inline: 4px !important; }
+.scene-extras-point { padding: 7px; border: 1px solid var(--ui-border); border-radius: 6px; }
+.scene-extras-point > button { margin-top: 7px; }
+.scene-extras-note, .scene-extras-error, .scene-extras-status { margin: 8px 0; line-height: 1.55; overflow-wrap: anywhere; }
+.scene-extras-note { color: var(--ui-text-muted); }
+.scene-extras-error, .scene-extras-status:is(.is-error, .is-offline, .is-stale) { color: var(--ui-danger); }
+.scene-extras-status { padding: 7px; border: 1px solid var(--ui-border); border-radius: 6px; background: var(--ui-readonly-bg); }
+.scene-extras-status.is-alarm { color: var(--ui-danger); border-color: var(--ui-danger-border); background: var(--ui-danger-soft); }
+@media (max-width: 370px) { .scene-extras-tabs button { font-size: 10px; } .scene-extras-list button { flex-wrap: wrap; } }

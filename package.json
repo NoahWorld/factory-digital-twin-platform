@@ -41,7 +41,7 @@
     "backend:init": "node scripts/init-local.mjs",
     "backend:contracts": "node scripts/backend-contracts.mjs",
     "backend:contracts:check": "node scripts/backend-contracts.mjs --check",
-    "backend:verify": "mvn -B -f apps/backend/pom.xml verify",
+    "backend:verify": "node scripts/backend-verify.mjs",
     "backend:up": "docker compose --env-file deploy/local/.env -f deploy/local/compose.yml up -d --build",
     "backend:up:prebuilt": "docker compose --env-file deploy/local/.env -f deploy/local/compose.yml -f deploy/local/prebuilt.yml up -d --build",
     "backend:down": "docker compose --env-file deploy/local/.env -f deploy/local/compose.yml down",
@@ -55,6 +55,9 @@
     "backend:backup:verify": "node scripts/backend-verify-backup.mjs",
     "backend:recover:wrangler:prepare": "node --no-warnings scripts/import-wrangler-local.mjs",
     "backend:recover:wrangler:apply": "node --no-warnings scripts/import-wrangler-local.mjs --apply",
-    "backend:recover:wrangler:verify": "node --no-warnings scripts/import-wrangler-local.mjs --verify-only"
+    "backend:recover:wrangler:verify": "node --no-warnings scripts/import-wrangler-local.mjs --verify-only",
+    "test:scene-extensions": "node scripts/test-scene-decorations.mjs && node scripts/test-room-alarms.mjs && node scripts/test-room-alarm-data.mjs && node scripts/test-static-map.mjs",
+    "test:scene-extensions:api": "node scripts/test-scene-extensions-api.mjs",
+    "test:scene-extensions:browser": "node scripts/test-scene-extensions-browser.mjs"
   }
 }

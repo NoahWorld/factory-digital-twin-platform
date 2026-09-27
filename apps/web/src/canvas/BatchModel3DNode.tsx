@@ -10,6 +10,8 @@ import "../scene/walk-navigation.css";
 const errorText = (reason: unknown) => reason instanceof Error ? reason.message : String(reason);
 
 export const BatchModel3DNode = memo(function BatchModel3DNode({
+  decorations, roomAlarms, roomAlarmObservations, onRoomAlarmStatuses,
+  staticMap, extrasSelection, onExtrasSelect,
   fluids, fluidEditor, selectedFluidId, onFluidPoint, onFluidSelect,
   twinDrive,
   walkScene,
@@ -36,6 +38,10 @@ export const BatchModel3DNode = memo(function BatchModel3DNode({
   const walkSignature = JSON.stringify(walkScene);
   const containerRef = useRef<HTMLDivElement>(null);
   const runtimeRef = useRef<SceneRuntime | null>(null);
+  const roomDataRef = useRef(roomAlarmObservations);
+  roomDataRef.current = roomAlarmObservations;
+  const roomStatusRef = useRef(onRoomAlarmStatuses);
+  roomStatusRef.current = onRoomAlarmStatuses;
   const twinRef = useRef(twinDrive);
   twinRef.current = twinDrive;
   const twinSignature = JSON.stringify(twinDrive?.config);
@@ -73,6 +79,7 @@ export const BatchModel3DNode = memo(function BatchModel3DNode({
     ? resolveModelInstances(node.resourceRefs, parsed.value.modelInstances)
     : [];
   const input: SceneInput | null = parsed.ok ? {
+    decorations, roomAlarms, staticMap, extrasSelection,
     fluids, fluidEditor, selectedFluidId,
     instances, settings: parsed.value, appearanceOverrides: runtimeAppearanceOverrides,
     selectedPath: selectedSceneNodePath, selectedInstanceId: selectedModelInstanceId,
@@ -100,6 +107,12 @@ export const BatchModel3DNode = memo(function BatchModel3DNode({
       if (cancelled || !inputRef.current) return;
       runtime = createSceneRuntime({
         container, projectId, canvasNodeId: node.id, initial: inputRef.current,
+        getRoomAlarmObservations: () => roomDataRef.current ?? {},
+        onRoomAlarmStatuses: (statuses) => {
+          if (cancelled) return;
+          container.dataset.roomAlarmStatuses = JSON.stringify(statuses);
+          roomStatusRef.current?.(statuses);
+        },
         onNavigation: (status) => { if (!cancelled) setNavigation(status); },
         onStatus: (status) => { if (!cancelled) setLoadState(status); },
         onSnapshot: (snapshot) => {
@@ -179,6 +192,8 @@ export const BatchModel3DNode = memo(function BatchModel3DNode({
       setInteractionError(null);
       onModelInstanceSelect?.(node.id, target?.instanceId ?? null);
       onSceneNodeSelect(node.id, target?.path ?? null);
+      onExtrasSelect?.(picked && "decorationId" in picked ? { kind: "decoration", id: picked.decorationId }
+        : picked && "staticMapId" in picked ? { kind: "map", id: picked.staticMapId } : null);
     } catch (reason) {
       console.error("Failed to pick an item in the batched model scene.", { canvasNodeId: node.id, reason });
       setInteractionError(`节点选择失败：${errorText(reason)}`);

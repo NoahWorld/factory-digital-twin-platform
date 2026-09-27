@@ -1,7 +1,7 @@
 name: factory-twin
 x-app: &app
   image: factory-twin-backend:0.1.0
-  build: ../../apps/backend
+  build: ${TWIN_BACKEND_DIR:-../../../factory-digital-twin-backend}
   restart: unless-stopped
   env_file: .env
   environment: &env

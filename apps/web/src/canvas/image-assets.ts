@@ -37,10 +37,10 @@ export const imageAssetsPath = (projectId: string): string =>
   `/api/v1/projects/${encodeURIComponent(projectId)}/image-assets`;
 
 export const imageAssetContentUrl = (projectId: string, assetId: string): string => {
-  const published = publicationResourceUrl(assetId);
-  if (published) return published;
   const builtin = findBuiltinImage(assetId);
   if (builtin) return `${import.meta.env.BASE_URL}${builtin.contentPath.slice(1)}`;
+  const published = publicationResourceUrl(assetId);
+  if (published) return published;
   return apiUrl(`${imageAssetsPath(projectId)}/${encodeURIComponent(assetId)}/content`);
 };
 

@@ -8,6 +8,7 @@ import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {createHash} from 'node:crypto';
 import assert from 'node:assert/strict';
+import {backendDirectory} from './backend-target.mjs';
 const root=fileURLToPath(new URL('..',import.meta.url));
 const require=createRequire(new URL('../apps/web/package.json',import.meta.url));
 const ts=require('typescript');
@@ -86,7 +87,7 @@ const kinds=checker.getTypeFromTypeNode(aliases.get('CanvasNodeType').aliasSymbo
 assert.deepEqual(Object.values(groups).flat().sort(),kinds.types.map(t=>t.value).sort(),'Every canvas kind must have exactly one props validator');
 definitions.CanvasNode.properties.props={type:'object'};
 definitions.CanvasNode.allOf=Object.entries(groups).map(([name,types])=>({if:{required:['type'],properties:{type:{enum:types}}},then:{properties:{props:schema(aliases.get(name))}}}));
-const output=join(root,'apps/backend/src/main/resources/contracts');mkdirSync(output,{recursive:true});
+const output=join(backendDirectory(),'src/main/resources/contracts');mkdirSync(output,{recursive:true});
 const fingerprints=Object.fromEntries(program.getSourceFiles().filter(s=>s.fileName.startsWith(root)&&!s.fileName.includes('node_modules')).map(s=>[s.fileName.slice(root.length),createHash('sha256').update(s.text).digest('hex')]));
 function write(name,value){const contents=JSON.stringify(value,null,2)+'\n';const path=join(output,name);if(process.argv.includes('--check')){if(readFileSync(path,'utf8')!==contents)throw new Error('Contract drift: '+name+'; run pnpm backend:contracts');}else writeFileSync(path,contents);}
 const temp=mkdtempSync(join(tmpdir(),'twin-contracts-'));
@@ -104,6 +105,61 @@ try{
  const {FLUID_LIMITS,FLUID_ID_PATTERN,FLUID_COLOR_PATTERN,FLUID_LABEL_PATTERN}=require(join(temp,'shared/fluids.js'));
  // The shared parser's declarative limits also constrain Java's generated schema.
  const constrain=(entry,limits)=>{if(entry.anyOf)entry.anyOf.forEach(value=>constrain(value,limits));else Object.assign(entry,limits);};
+ // New procedural objects and room alarms use the same generated structural contract.
+ const {SCENE_DECORATION_LIMITS:D}=require(join(temp,'shared/scene-decorations.js'));
+ const {ROOM_ALARM_LIMITS:A}=require(join(temp,'shared/room-alarms.js'));
+ const idPattern='^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}(?![\\s\\S])';
+ const printable='^[^\\u0000-\\u001f\\u007f-\\u009f]*(?![\\s\\S])';
+ const field=(type,key,bounds)=>constrain(definitions[type].properties[key],bounds);
+ field('StandaloneScenePatch','decorations',{maxItems:D.maximumDecorations});
+ field('StandaloneScenePatch','roomAlarms',{maxItems:A.maximumRules});
+ for(const type of ['SceneDecoration','RoomAlarmRule']) {
+   field(type,'id',{pattern:idPattern,maxLength:120});
+   field(type,'label',{minLength:1,maxLength:80,pattern:printable});
+   field(type,'color',{pattern:FLUID_COLOR_PATTERN});
+ }
+ field('SceneDecoration','accentColor',{pattern:FLUID_COLOR_PATTERN});
+ field('SceneDecoration','seed',{type:'integer',minimum:0,maximum:4294967295});
+ const decoration=definitions.SceneDecoration.properties;
+ for(const [key,min,max] of [['position',-D.maximumCoordinate,D.maximumCoordinate],['rotation',-D.maximumRotation,D.maximumRotation],['scale',D.minimumScale,D.maximumScale]]) {
+   decoration.transform.properties[key].items.forEach(item=>Object.assign(item,{minimum:min,maximum:max}));
+ }
+ const river=(decoration.river.anyOf?.find(entry=>entry.type==='object')??decoration.river).properties;
+ Object.assign(river.points,{minItems:D.minimumRiverPoints,maxItems:D.maximumRiverPoints});
+ river.points.items.items.forEach(item=>Object.assign(item,{minimum:-D.maximumCoordinate,maximum:D.maximumCoordinate}));
+ Object.assign(river.width,{minimum:D.minimumRiverWidth,maximum:D.maximumRiverWidth});
+ Object.assign(river.speed,{minimum:0,maximum:D.maximumRiverSpeed});
+ Object.assign(river.opacity,{minimum:D.minimumRiverOpacity,maximum:1});
+ definitions.SceneDecoration.allOf=[{if:{properties:{kind:{const:'river'}}},then:{required:['river']},else:{not:{required:['river']}}}];
+ for(const key of ['projectId','assetId','metricKey']) Object.assign(definitions.RoomAlarmRule.properties.source.properties[key],{pattern:idPattern,maxLength:120});
+ for(const key of ['instanceId','modelAssetId']) Object.assign(definitions.RoomAlarmRule.properties.target.properties[key],{pattern:idPattern,maxLength:120});
+ Object.assign(definitions.RoomAlarmRule.properties.target.properties.nodeName,{minLength:1,maxLength:A.maximumNodeNameLength,pattern:printable});
+ const condition=definitions.RoomAlarmRule.properties.condition;
+ condition.properties.value.anyOf.forEach(item=>{
+   if(item.type==='number')Object.assign(item,{minimum:-A.maximumNumericValue,maximum:A.maximumNumericValue});
+   if(item.type==='string')Object.assign(item,{maxLength:A.maximumStringValueLength});
+ });
+ condition.allOf=[{if:{properties:{operator:{enum:['gt','gte','lt','lte']}}},then:{properties:{value:{type:'number'}}}}];
+ const {STATIC_MAP_LIMITS:M}=require(join(temp,'shared/static-map.js'));
+ for(const type of ['StaticMapDefinition','StaticMapFeature']) {
+   field(type,'id',{pattern:idPattern,maxLength:M.maximumIdLength});
+   field(type,'label',{minLength:1,maxLength:M.maximumLabelLength,pattern:printable});
+ }
+ field('StaticMapDefinition','features',{minItems:1,maxItems:M.maximumFeatures});
+ field('StaticMapDefinition','width',{minimum:M.minimumWidth,maximum:M.maximumWidth});
+ field('StaticMapDefinition','outlineColor',{pattern:FLUID_COLOR_PATTERN});
+ field('StaticMapFeature','height',{minimum:0,maximum:M.maximumHeight});
+ field('StaticMapFeature','color',{pattern:FLUID_COLOR_PATTERN});
+ field('StaticMapFeature','polygons',{minItems:1,maxItems:M.maximumPolygonsPerFeature});
+ field('StaticMapPolygon','outer',{minItems:M.minimumRingPoints,maxItems:M.maximumRingPoints});
+ field('StaticMapPolygon','holes',{maxItems:M.maximumHolesPerPolygon});
+ Object.assign(definitions.StaticMapPolygon.properties.holes.items,{minItems:M.minimumRingPoints,maxItems:M.maximumRingPoints});
+ definitions.MapPoint.items.forEach(item=>Object.assign(item,{minimum:-M.maximumCoordinate,maximum:M.maximumCoordinate}));
+ const mapTransform=definitions.StaticMapDefinition.properties.transform;
+ for(const [key,min,max] of [['position',-M.maximumCoordinate,M.maximumCoordinate],['rotation',-M.maximumRotation,M.maximumRotation]]) {
+   mapTransform.properties[key].items.forEach(item=>Object.assign(item,{minimum:min,maximum:max}));
+ }
+ mapTransform.properties.scale.items.forEach(item=>Object.assign(item,{exclusiveMinimum:M.minimumScale,maximum:M.maximumScale}));
  constrain(definitions.StandaloneScenePatch.properties.fluids,{maxItems:FLUID_LIMITS.maximumFluids});
  for(const [field,limits] of Object.entries({
    id:{pattern:FLUID_ID_PATTERN},label:{minLength:1,maxLength:FLUID_LIMITS.maximumLabelLength,pattern:FLUID_LABEL_PATTERN},

@@ -63,6 +63,13 @@ import { TwinDriveConsole } from "../twin/TwinDriveConsole";
 import { TwinDriveStatus } from "../twin/TwinDriveStatus";
 import { withTwinDriveEnabled } from "../twin/twin-config-state";
 import type { TwinDriveDiagnostics, TwinNodeCatalogEntry } from "../scene/twin-drive-runtime";
+import { SceneExtrasEditor } from "../scene/SceneExtrasEditor";
+import { RoomAlarmStatusPanel } from "../scene/RoomAlarmStatusPanel";
+import type { RoomAlarmStatus } from "../scene/room-alarm-runtime";
+import { useRoomAlarmData } from "../twin/useRoomAlarmData";
+import { parseSceneDecorations, sceneDecorationBudget, type SceneDecoration } from "../../../../shared/scene-decorations";
+import { parseRoomAlarms, type RoomAlarmRule } from "../../../../shared/room-alarms";
+import { parseStaticMap, staticMapBudget, type StaticMapDefinition } from "../../../../shared/static-map";
 
 type ProjectSummary = {
   id: string;
@@ -71,6 +78,7 @@ type ProjectSummary = {
 };
 
 type SceneResponse = {
+  sceneExtensionsVersion?: number;
   editable: boolean;
   limits: typeof STANDALONE_3D_LIMITS;
   project: ProjectSummary;
@@ -84,6 +92,9 @@ type ProjectsResponse = {
 };
 
 type ScenePatch = {
+  decorations?: SceneDecoration[];
+  roomAlarms?: RoomAlarmRule[];
+  staticMap?: StaticMapDefinition | null;
   deleteInstanceIds: string[];
   expectedRevision: number;
   linked2dProjectId?: string | null;
@@ -100,7 +111,7 @@ type Standalone3DProjectPageProps = {
 };
 
 type LibraryView = "layers" | "models";
-type InspectorView = "model" | "scene" | "fluid";
+type InspectorView = "model" | "scene" | "fluid" | "extras";
 
 const MAX_MODEL_BYTES = 25 * 1024 * 1024;
 const axisLabels = ["X", "Y", "Z"] as const;
@@ -121,6 +132,22 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
   const [projectName, setProjectName] = useState("");
   const [savedScene, setSavedScene] = useState<StandaloneSceneDocument | null>(null);
   const [draftScene, setDraftScene] = useState<StandaloneSceneDocument | null>(null);
+  const [extrasSupported, setExtrasSupported] = useState(false);
+  const [extrasPending, setExtrasPending] = useState(false);
+  const [testingRoomAlarms, setTestingRoomAlarms] = useState(false);
+  const [roomStatuses, setRoomStatuses] = useState<RoomAlarmStatus[]>([]);
+  const [extrasSelection, setExtrasSelection] = useState<{ kind: "decoration" | "map"; id: string } | null>(null);
+  const [extrasFocus, setExtrasFocus] = useState<{ kind: "decoration" | "map"; id: string; requestId: number }>();
+  const renderExtras = useRef<{ projectId: string; decorations: SceneDecoration[]; roomAlarms: RoomAlarmRule[]; staticMap: StaticMapDefinition | null }>({ projectId, decorations: [], roomAlarms: [], staticMap: null });
+  if (renderExtras.current.projectId !== projectId) renderExtras.current = { projectId, decorations: [], roomAlarms: [], staticMap: null };
+  const parsedDecorations = useMemo(() => parseSceneDecorations(draftScene?.decorations === undefined ? [] : draftScene.decorations), [draftScene?.decorations]);
+  const parsedRoomAlarms = useMemo(() => parseRoomAlarms(draftScene?.roomAlarms === undefined ? [] : draftScene.roomAlarms), [draftScene?.roomAlarms]);
+  const parsedMap = useMemo(() => parseStaticMap(draftScene?.staticMap === undefined ? null : draftScene.staticMap), [draftScene?.staticMap]);
+  const extraParsers = useMemo(() => ({ decorations: parsedDecorations, roomAlarms: parsedRoomAlarms, staticMap: parsedMap }), [parsedDecorations, parsedRoomAlarms, parsedMap]);
+  for (const key of ["decorations", "roomAlarms", "staticMap"] as const) {
+    const parsed = extraParsers[key];
+    if (parsed.ok) Object.assign(renderExtras.current, { [key]: parsed.value });
+  }
   const [editable, setEditable] = useState(false);
   const [limits, setLimits] = useState<typeof STANDALONE_3D_LIMITS>(STANDALONE_3D_LIMITS);
   const [models, setModels] = useState<ModelAsset[]>([]);
@@ -187,6 +214,8 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
       setProjectName(sceneResult.project.name);
       setSavedScene(sceneResult.scene);
       setDraftScene(sceneResult.scene);
+      setExtrasSupported(sceneResult.sceneExtensionsVersion === 1);
+      setExtrasPending(false); setTestingRoomAlarms(false); setExtrasSelection(null); setExtrasFocus(undefined);
       setEditable(sceneResult.editable);
       setLimits(sceneResult.limits);
       setModels(modelResult.modelAssets);
@@ -284,7 +313,7 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
     return () => window.removeEventListener("keydown", handleShortcut);
   }, [mode, previewModel, showTemplates, showTwinEditor, fluidEditor.selectedId, fluidEditor.session]);
 
-  const dirty = !!fluidEditor.session || (savedScene !== null && draftScene !== null && !sameJson(savedScene, draftScene));
+  const dirty = extrasPending || !!fluidEditor.session || (savedScene !== null && draftScene !== null && !sameJson(savedScene, draftScene));
   useEffect(() => {
     if (!dirty || mode !== "edit") return;
     const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ""; };
@@ -304,8 +333,21 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
   };
   const selectScene = () => {
     if (!fluidEditor.select(null)) { setInspectorView("fluid"); return; }
+    setExtrasSelection(null);
     setSelectedInstanceId(null); setInspectorView("scene");
   };
+  const selectExtras = useCallback((selection: { kind: "decoration" | "map"; id: string } | null) => {
+    if (mode !== "edit") return;
+    if (!selection) { setExtrasSelection(null); return; }
+    if (!fluidEditor.select(null)) { setInspectorView("fluid"); return; }
+    setSelectedInstanceId(null); setExtrasSelection(selection); setInspectorView("extras");
+    setExtrasFocus({ ...selection, requestId: Date.now() });
+  }, [mode, fluidEditor.select]);
+  const onExtrasSelectionChange = useCallback((selection: { kind: "decoration" | "map"; id: string } | null) => {
+    if (inspectorView !== "extras") return;
+    setExtrasSelection(previous => previous?.id === selection?.id && previous?.kind === selection?.kind ? previous : selection);
+    if (selection) setSelectedInstanceId(null);
+  }, [inspectorView]);
   const selectedInstance = draftScene?.instances.find((item) => item.id === selectedInstanceId) ?? null;
   const selectedModelAsset = selectedInstance
     ? models.find((model) => model.id === selectedInstance.modelAssetId) ?? null
@@ -320,10 +362,11 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
       draftScene?.instances.flatMap((instance) => instance.assetId ? [instance.assetId] : []) ?? [],
     );
     if (selectedRuntimeAssetId) boundAssetIds.add(selectedRuntimeAssetId);
+    for (const rule of draftScene?.roomAlarms ?? []) if (rule.enabled && rule.source.projectId === draftScene?.linked2dProjectId) boundAssetIds.add(rule.source.assetId);
     return linkedAssets.filter((asset) => boundAssetIds.has(asset.assetId));
-  }, [draftScene?.instances, linkedAssets, selectedRuntimeAssetId]);
+  }, [draftScene?.instances, draftScene?.roomAlarms, draftScene?.linked2dProjectId, linkedAssets, selectedRuntimeAssetId]);
   const runtimeSetupError = useMemo(() => {
-    if (mode !== "preview" || linkedAssetsLoading) return null;
+    if ((mode !== "preview" && !testingRoomAlarms) || linkedAssetsLoading) return null;
     if (linkedAssetLoadError) return `资产台账加载失败：${linkedAssetLoadError}`;
     if (draftScene?.linked2dProjectId) {
       const availableAssetIds = new Set(linkedAssets.map((asset) => asset.assetId));
@@ -336,16 +379,29 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
       return `当前绑定 ${boundRuntimeAssets.length} 台设备；本地直连轮询上限为 50，请使用服务端批量采集器。`;
     }
     return null;
-  }, [boundRuntimeAssets.length, draftScene, linkedAssetLoadError, linkedAssets, linkedAssetsLoading, mode]);
+  }, [boundRuntimeAssets.length, draftScene, linkedAssetLoadError, linkedAssets, linkedAssetsLoading, mode, testingRoomAlarms]);
   const runtimeConnections = useAssetRuntimeConnections({
     assets: boundRuntimeAssets,
     blockedReason: runtimeSetupError,
-    enabled: mode === "preview" && !linkedAssetsLoading,
+    enabled: (mode === "preview" || testingRoomAlarms) && !linkedAssetsLoading,
     projectId: draftScene?.linked2dProjectId ?? null,
+    stopOnAccessDenied: true,
   });
+  const roomData = useRoomAlarmData({
+    projectId, linkedProjectId: draftScene?.linked2dProjectId ?? null, rules: renderExtras.current.roomAlarms,
+    enabled: mode === "preview" || testingRoomAlarms, loadEditableAssets: inspectorView === "extras",
+    linkedData: draftScene?.linked2dProjectId ? { projectId: draftScene.linked2dProjectId, label: "关联 2D 项目", assets: linkedAssets, loading: linkedAssetsLoading, error: linkedAssetLoadError ?? runtimeSetupError, connections: runtimeConnections } : undefined,
+  });
+  const extrasCost = useMemo(() => {
+    const a = sceneDecorationBudget(renderExtras.current.decorations), b = staticMapBudget(renderExtras.current.staticMap);
+    return { instances: a.instances + b.instances, meshes: a.meshes + b.meshes, animatedInstances: a.animatedInstances + b.animatedInstances };
+  }, [extraParsers]);
   const scenePerformance = useMemo(
-    () => measureScenePerformance(draftScene?.instances ?? [], models),
-    [draftScene?.instances, models],
+    () => {
+      const cost = measureScenePerformance(draftScene?.instances ?? [], models);
+      return { ...cost, estimatedMeshInstances: cost.estimatedMeshInstances + extrasCost.meshes, animatedInstances: cost.animatedInstances + extrasCost.animatedInstances };
+    },
+    [draftScene?.instances, models, extrasCost],
   );
 
   const rendererNode = useMemo(
@@ -595,9 +651,18 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
   };
 
   const save = async () => {
+    if (extrasPending) { setError("请先应用或放弃场景扩展中尚未完成的输入。"); setInspectorView("extras"); return; }
     if (fluidEditor.hasInvalidFields) { setError("请修正流体属性中标红的参数后再保存。"); setInspectorView("fluid"); return; }
     if (fluidEditor.session) { setError("当前流体路径尚未应用。请在流体属性中点击“应用流体”或“取消路径修改”，再保存场景。"); setInspectorView("fluid"); return; }
     if (!savedScene || !draftScene || !dirty) return;
+    for (const parsed of Object.values(extraParsers)) if (!parsed.ok) { setError(`场景扩展无法保存：${parsed.message}`); setInspectorView("extras"); return; }
+    if (draftScene.instances.length + extrasCost.instances > limits.maximumInstances) { setError(`模型、装饰和地图合计最多 ${limits.maximumInstances} 个实例。`); return; }
+    const budgetError = sceneBudgetViolation(scenePerformance, limits, draftScene.settings.playAnimations);
+    if (budgetError) { setError(budgetError); return; }
+    for (const rule of draftScene.roomAlarms ?? []) {
+      const entry = twinCatalog.find(node => node.instanceId === rule.target.instanceId && node.modelAssetId === rule.target.modelAssetId && node.nodeName === rule.target.nodeName);
+      if (!entry?.unique || !entry.drivable) { setError(`报警“${rule.label}”的房间节点不存在、重名或尚未加载，请重新选择。`); setInspectorView("extras"); return; }
+    }
     const savedById = new Map(savedScene.instances.map((instance) => [instance.id, instance]));
     const draftIds = new Set(draftScene.instances.map((instance) => instance.id));
     const upsertInstances = draftScene.instances.filter((instance) =>
@@ -614,6 +679,9 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
       expectedRevision: savedScene.revision,
       upsertInstances,
     };
+    if (!sameJson(savedScene.decorations ?? [], draftScene.decorations ?? []) && extraParsers.decorations.ok) patch.decorations = extraParsers.decorations.value;
+    if (!sameJson(savedScene.roomAlarms ?? [], draftScene.roomAlarms ?? []) && extraParsers.roomAlarms.ok) patch.roomAlarms = extraParsers.roomAlarms.value;
+    if (!sameJson(savedScene.staticMap ?? null, draftScene.staticMap ?? null) && extraParsers.staticMap.ok) patch.staticMap = extraParsers.staticMap.value;
     if (!sameJson(savedScene.fluids ?? [], draftScene.fluids ?? [])) {
       const parsed = parseFluids(draftScene.fluids ?? []);
       if (!parsed.ok) { setError(`流体无法保存：${parsed.message}`); return; }
@@ -677,6 +745,7 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
   };
 
   const selectModelInstance = useCallback((_nodeId: string, instanceId: string | null) => {
+    setExtrasSelection(null);
     if (mode === "edit" && !fluidEditor.select(null)) { setInspectorView("fluid"); return; }
     setSelectedInstanceId(instanceId);
     setNotice(null);
@@ -698,10 +767,17 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
   if (error && !draftScene) {
     return <main className="canvas-page-state error-state"><p className="eyebrow">3D workspace</p><h1>3D 项目加载失败</h1><p>{error}</p>{!publicView ? <a className="secondary-button" href="#/projects">返回项目</a> : null}</main>;
   }
-  if (!draftScene || !rendererNode) return null;
+  if (!draftScene || draftScene.projectId !== projectId || !rendererNode) return null;
 
   const sceneView = (
     <Model3DNode
+      decorations={renderExtras.current.decorations}
+      roomAlarms={renderExtras.current.roomAlarms}
+      staticMap={renderExtras.current.staticMap}
+      extrasSelection={mode === "edit" ? extrasSelection : null}
+      onExtrasSelect={selectExtras}
+      roomAlarmObservations={roomData.observations}
+      onRoomAlarmStatuses={setRoomStatuses}
       cameraControlsEnabled
       editable={false}
       interactive
@@ -744,6 +820,7 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
         </header>
         <section className="standalone-3d-preview-stage" data-canvas-fullscreen-root>
           {sceneView}
+          <RoomAlarmStatusPanel rules={renderExtras.current.roomAlarms} statuses={roomStatuses} />
           {linkedCanvas ? <CanvasSurface
             document={linkedCanvas} editable={false} presentation="overlay"
             selectedNodeId={null} selectedModelSceneNodePath={null}
@@ -775,12 +852,13 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
         <a className="secondary-button compact-button" href="#/projects" onClick={(event) => { if (fluidEditor.session) { event.preventDefault(); setError("请先应用并保存或取消当前流体路径，再离开编辑器。"); setInspectorView("fluid"); } }}>返回项目</a>
         <div className="standalone-3d-title"><span>3D SCENE BUILDER</span><strong>{projectName}</strong></div>
         <div className="standalone-3d-budget" title="通过明确预算阻止浏览器无上限加载">
-          <span>{draftScene.instances.length}/{limits.maximumInstances} 实例</span>
+          <span>{draftScene.instances.length + extrasCost.instances}/{limits.maximumInstances} 实例</span>
           <span>{scenePerformance.estimatedMeshInstances}/{limits.maximumEstimatedMeshInstances} 网格</span>
           <span>{formatFileSize(scenePerformance.uniqueModelBytes)}/{formatFileSize(limits.maximumUniqueModelBytes)}</span>
           {draftScene.settings.playAnimations ? <span>{scenePerformance.animatedInstances}/{limits.maximumAnimatedInstances} 动画实例</span> : null}
         </div>
         <ThemeToggle />
+        {extrasSupported ? <button className="secondary-button compact-button" disabled={saving || !!fluidEditor.session} onClick={() => setInspectorView("extras")} type="button">场景扩展</button> : null}
         <button className="secondary-button compact-button" type="button" disabled={twin.loading || saving} onClick={() => {
           if (twin.error || !twin.document) { twin.reload(); return; }
           if (dirty) { setError("请先保存场景，再进入数据与模型配置。部件绑定需要使用已保存的模型。"); return; }
@@ -793,14 +871,14 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
         }) ? <button className="secondary-button compact-button" disabled={saving} onClick={updateBuiltinModels} title="仅更新内置模型资源版本，保留当前布局与设置，保存后生效" type="button">更新内置模型</button> : null}
         <a className="secondary-button compact-button" href={standaloneSceneRoutePath(projectId, "preview")} onClick={(event) => { if (dirty) { event.preventDefault(); setError(fluidEditor.session ? "请先应用流体路径并保存场景，再进入预览。" : "请先保存场景，再预览已保存的配置。"); if (fluidEditor.session) setInspectorView("fluid"); } }}>预览</a>
         <PublicationPanel projectId={projectId} canEdit={editable} disabled={dirty || saving || !!fluidEditor.session} />
-        <button className="primary-button compact-button" disabled={!dirty || saving || !editable} onClick={() => void save()} type="button">
+        <button className="primary-button compact-button" disabled={!dirty || saving || !editable || extrasPending} onClick={() => void save()} type="button">
           {saving ? "保存中…" : dirty ? "保存场景" : "已保存"}
         </button>
       </header>
 
       <aside className="standalone-3d-library">
         <nav aria-label="场景内容" className="standalone-panel-tabs">
-          <button aria-pressed={libraryView === "layers"} className={libraryView === "layers" ? "is-active" : ""} onClick={() => setLibraryView("layers")} type="button">图层 <span>{draftScene.instances.length + (draftScene.fluids?.length ?? 0)}</span></button>
+          <button aria-pressed={libraryView === "layers"} className={libraryView === "layers" ? "is-active" : ""} onClick={() => setLibraryView("layers")} type="button">图层 <span>{draftScene.instances.length + (draftScene.fluids?.length ?? 0) + (draftScene.decorations?.length ?? 0) + (draftScene.staticMap ? 1 : 0)}</span></button>
           <button aria-pressed={libraryView === "models"} className={libraryView === "models" ? "is-active" : ""} onClick={() => setLibraryView("models")} type="button">模型库 <span>{models.length}</span></button>
         </nav>
         {libraryView === "layers" ? (
@@ -850,6 +928,20 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
             </div>
             {draftScene.instances.length === 0 ? <p className="standalone-layer-empty">打开“模型库”添加模型，或在下方添加可沿路径流动的流体。</p> : null}
             <div ref={fluidLayerRef}><FluidLayers editor={fluidEditor} onSelect={selectFluid} onAdd={startFluid} /></div>
+            {extrasSupported ? <section className="standalone-layer-tree" aria-label="场景扩展图层">
+              {(draftScene.decorations ?? []).map(item => <article key={item.id} data-decoration-id={item.id} className={extrasSelection?.id === item.id ? "is-selected" : ""}>
+                <span className="standalone-layer-branch" aria-hidden="true">└</span>
+                <button type="button" className="standalone-layer-main" onClick={() => selectExtras({ kind: "decoration", id: item.id })}>
+                  <span className="standalone-layer-icon">◇</span><span><strong>{item.label}</strong><small>{item.kind === "river" ? "河流" : item.kind.startsWith("military-") ? "军事模型" : "植物"}</small></span>
+                </button>
+              </article>)}
+              {draftScene.staticMap ? <article className={extrasSelection?.kind === "map" ? "is-selected" : ""}>
+                <span className="standalone-layer-branch" aria-hidden="true">└</span>
+                <button className="standalone-layer-main" type="button" onClick={() => selectExtras({ kind: "map", id: draftScene.staticMap!.id })}>
+                  <span className="standalone-layer-icon">▱</span><span><strong>{draftScene.staticMap.label}</strong><small>{draftScene.staticMap.features.length} 个地图区域</small></span>
+                </button>
+              </article> : null}
+            </section> : null}
           </>
         ) : (
           <>
@@ -866,7 +958,7 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
                 <article key={asset.id}>
                   <ModelAssetThumbnail asset={asset} name={modelName(asset)} onPreview={() => setPreviewModel(asset)} />
                   <div><strong title={modelName(asset)}>{modelName(asset)}</strong><span>{modelSourceText(asset.source)} · {formatFileSize(asset.byteSize)}</span></div>
-                  <button aria-label={`加入场景 ${modelName(asset)}`} className="icon-button" disabled={!editable || !!fluidEditor.session || draftScene.instances.length >= limits.maximumInstances} onClick={() => addModel(asset)} title="加入场景" type="button">＋</button>
+                  <button aria-label={`加入场景 ${modelName(asset)}`} className="icon-button" disabled={!editable || !!fluidEditor.session || draftScene.instances.length + extrasCost.instances >= limits.maximumInstances} onClick={() => addModel(asset)} title="加入场景" type="button">＋</button>
                 </article>
               ))}
             </div>
@@ -880,7 +972,7 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
           <strong>{fluidEditor.session.active ? "正在绘制流体" : "流体拾取已暂停"}</strong>
           <span>{fluidEditor.session.selectedPointIndex === null ? "左键单击添加点" : `左键单击移动第 ${fluidEditor.session.selectedPointIndex + 1} 点`} · 拖动旋转 · 滚轮缩放 · {fluidEditor.session.fluid.points.length} 个点</span>
           <button className="inspector-action-button" type="button" onClick={() => setInspectorView("fluid")}>路径属性</button>
-        </div> : editable && !fluidEditor.selectedId ? (
+        </div> : editable && extrasSelection ? <div className="standalone-transform-tools" role="status">已选中场景对象，在右侧调整位置、旋转与缩放。</div> : editable && !fluidEditor.selectedId ? (
           <div
             aria-label="模型变换工具"
             className="standalone-transform-tools"
@@ -919,7 +1011,7 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
       </section>
 
       <aside className="standalone-3d-inspector">
-        <nav aria-label="属性对象" className="standalone-panel-tabs standalone-inspector-tabs has-fluid">
+        <nav aria-label="属性对象" className={`standalone-panel-tabs standalone-inspector-tabs has-fluid${extrasSupported ? " has-extras" : ""}`}>
           <button
             aria-pressed={inspectorView === "model"}
             className={inspectorView === "model" ? "is-active" : ""}
@@ -935,9 +1027,10 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
           >场景属性</button>
           <button aria-pressed={inspectorView === "fluid"} className={inspectorView === "fluid" ? "is-active" : ""} disabled={!fluidEditor.selected}
             onClick={() => setInspectorView("fluid")} type="button">流体属性</button>
+          {extrasSupported ? <button aria-pressed={inspectorView === "extras"} className={inspectorView === "extras" ? "is-active" : ""} disabled={!!fluidEditor.session} onClick={() => setInspectorView("extras")} type="button">扩展属性</button> : null}
         </nav>
 
-        {inspectorView === "fluid" ? <FluidEditor editor={fluidEditor} sceneAnimationsEnabled={draftScene.settings.playAnimations} sceneAnimationSpeed={draftScene.settings.animationSpeed} /> : inspectorView === "model" && selectedInstance ? (
+        {inspectorView === "extras" ? null : inspectorView === "fluid" ? <FluidEditor editor={fluidEditor} sceneAnimationsEnabled={draftScene.settings.playAnimations} sceneAnimationSpeed={draftScene.settings.animationSpeed} /> : inspectorView === "model" && selectedInstance ? (
           <>
             <div className="standalone-inspector-title">
               <div><span>SELECTED MODEL</span><strong>{selectedInstance.label}</strong><small>{selectedModelAsset ? modelName(selectedModelAsset) : selectedInstance.modelAssetId}</small></div>
@@ -1051,6 +1144,19 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
             </section>
           </>
         )}
+        {extrasSupported ? <div hidden={inspectorView !== "extras"}>
+          <div className="standalone-property-actions">
+            <button className="inspector-action-button" disabled={!draftScene.roomAlarms?.length || saving} type="button" onClick={() => setTestingRoomAlarms(value => !value)}>{testingRoomAlarms ? "停止报警数据预览" : "预览报警数据"}</button>
+          </div>
+          <SceneExtrasEditor disabled={!editable || saving || !!fluidEditor.session} scene={draftScene}
+            decorations={draftScene.decorations ?? []} roomAlarms={draftScene.roomAlarms ?? []} staticMap={draftScene.staticMap ?? null}
+            catalog={twinCatalog} sources={roomData.sources} alarmStatuses={roomStatuses}
+            onDecorationsChange={decorations => setDraftScene(current => current ? { ...current, decorations } : current)}
+            onRoomAlarmsChange={roomAlarms => setDraftScene(current => current ? { ...current, roomAlarms } : current)}
+            onStaticMapChange={staticMap => setDraftScene(current => current ? { ...current, staticMap } : current)}
+            onPendingChange={setExtrasPending} focusRequest={extrasFocus} onSelectionChange={onExtrasSelectionChange} selection={extrasSelection}
+          />
+        </div> : null}
       </aside>
       {previewModel ? <ModelAssetPreviewDialog asset={previewModel} key={previewModel.id} name={modelName(previewModel)} onClose={() => setPreviewModel(null)} projectId={projectId} /> : null}
       {showTemplates ? <SceneTemplateDialog editable={editable && !saving} error={templateError} onApply={applySceneTemplate} onClose={() => setShowTemplates(false)} /> : null}

@@ -3,7 +3,7 @@ import type { StandaloneSceneDocument } from "../../../shared/standalone-3d";
 import type { TwinAction } from "../../../shared/twin-actions";
 import { errorMessage, request } from "./api";
 import { CanvasSurface } from "./canvas/CanvasSurface";
-import { Model3DNode } from "./canvas/Model3DNode";
+import { RoomAlarmSceneNode } from "./scene/RoomAlarmSceneNode";
 import { standaloneRendererNode } from "./canvas/standalone-renderer-node";
 import type { ProjectAsset } from "./canvas/assets";
 import type { CanvasDocument, CanvasNode } from "./canvas/types";
@@ -13,6 +13,7 @@ import { AssetRuntimeDetailPanel } from "./twin/AssetRuntimeDetailPanel";
 import { TwinActionFeedback } from "./twin/TwinActionFeedback";
 import { PublicationContext, publicationRunRoute, publicationsPath } from "./publication-runtime";
 import type { PublicationSnapshot } from "./publication-runtime";
+const EMPTY_PUBLICATION_ASSETS: ProjectAsset[] = [];
 
 type PublicationVersion = {
   id: string;
@@ -149,14 +150,14 @@ export function PublicationRunPage({ projectId, versionId }: { projectId: string
   const root = snapshot?.projects[projectId] ?? null;
   const isCanvas = root?.project.projectType === "2d";
   const canvas = root ? (isCanvas ? root.document as CanvasDocument : snapshot?.projects[(root.document as StandaloneSceneDocument).linked2dProjectId ?? ""]?.document as CanvasDocument | undefined) : null;
-  const assets = root ? (isCanvas ? root.assets : snapshot?.projects[canvas?.projectId ?? ""]?.assets ?? []) : [];
+  const assets = useMemo(() => root ? (isCanvas ? root.assets : snapshot?.projects[canvas?.projectId ?? ""]?.assets ?? EMPTY_PUBLICATION_ASSETS) : EMPTY_PUBLICATION_ASSETS, [root, isCanvas, snapshot, canvas?.projectId]);
   const runtimeProjectId = canvas?.projectId ?? null;
   const runtimeConnections = useAssetRuntimeConnections({
     assets, enabled: Boolean(response), projectId: runtimeProjectId,
     publicationVersion: versionId ? { rootProjectId: projectId, versionId } : undefined,
   });
   const embeddedProjectId = embeddedSelection?.assetId ? embeddedSelection.linked2dProjectId : null;
-  const embeddedAssets = embeddedProjectId ? snapshot?.projects[embeddedProjectId]?.assets ?? [] : [];
+  const embeddedAssets = embeddedProjectId ? snapshot?.projects[embeddedProjectId]?.assets ?? EMPTY_PUBLICATION_ASSETS : EMPTY_PUBLICATION_ASSETS;
   const embeddedAsset = embeddedSelection?.assetId
     ? embeddedAssets.find((asset) => asset.assetId === embeddedSelection.assetId) ?? null : null;
   const embeddedRuntimeAssets = useMemo(() => embeddedAsset ? [embeddedAsset] : [], [embeddedAsset]);
@@ -224,8 +225,8 @@ export function PublicationRunPage({ projectId, versionId }: { projectId: string
         runtimeNodeVisibility={actions.nodeVisibility} runtimeTextOverrides={actions.textOverrides}
       /> : null}
       {!isCanvas && rendererNode && scene ? <section className="standalone-3d-preview-stage" data-canvas-fullscreen-root>
-        <Model3DNode cameraControlsEnabled editable={false} interactive node={rendererNode}
-          onModelInstanceSelect={(_nodeId, instanceId) => {
+        <RoomAlarmSceneNode scene={scene} rendererProps={{ cameraControlsEnabled: true, editable: false, interactive: true, node: rendererNode,
+          onModelInstanceSelect: (_nodeId, instanceId) => {
             setSelectedInstanceId(instanceId);
             const instance = scene.instances.find((candidate) => candidate.id === instanceId);
             if (!instance || instance.renderMode === "background") return;
@@ -233,9 +234,9 @@ export function PublicationRunPage({ projectId, versionId }: { projectId: string
               ?? (instance.assetId && scene.linked2dProjectId
                 ? [{ type: "select-asset", assetId: instance.assetId }] : []);
             if (steps.length) execute(steps, `模型 ${instance.label}`);
-          }}
-          onSceneNodeSelect={ignore} projectId={projectId} runtimeControlsEnabled={false}
-          selectedModelInstanceId={selectedInstanceId} selectedSceneNodePath={null} />
+          },
+          onSceneNodeSelect: ignore, projectId, runtimeControlsEnabled: false,
+          selectedModelInstanceId: selectedInstanceId, selectedSceneNodePath: null }} />
         {canvas ? <CanvasSurface document={canvas} editable={false} presentation="overlay"
           selectedNodeId={null} selectedModelSceneNodePath={null}
           onCreateNode={ignore} onModelSceneNodeSelect={ignore} onNodeChange={ignore} onSelectNode={ignore}

@@ -14,6 +14,10 @@ export type AssetRuntimeState = {
     valueType: "number" | "string" | "boolean" | "timestamp";
     unit: string | null;
     staleAfterSeconds: number;
+    sourceId?: string;
+    timestamp?: string;
+    collectedAt?: string;
+    quality?: "good";
   }>;
   sources: Array<{
     id: string;

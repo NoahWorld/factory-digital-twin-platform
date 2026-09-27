@@ -18,6 +18,12 @@ import { FluidManager } from "./fluid-manager";
 import { SceneFrameClock } from "./frame-clock";
 import { FluidPathGuide, fluidPointOnPlane, type FluidEditorState } from "./fluid-path-editor";
 import type { FluidDefinition } from "../../../../shared/fluids";
+import { DecorationManager } from "./decoration-manager";
+import { RoomAlarmRuntime, type RoomAlarmObservation, type RoomAlarmStatus } from "./room-alarm-runtime";
+import type { SceneDecoration } from "../../../../shared/scene-decorations";
+import type { RoomAlarmRule } from "../../../../shared/room-alarms";
+import { StaticMapManager } from "./static-map-manager";
+import type { StaticMapDefinition } from "../../../../shared/static-map";
 import { createWalkPhysics, type WalkPhysics, type WalkSceneConfig } from "./walk-physics";
 import { createWalkControls } from "./walk-controls";
 import { TwinDriveRuntime, type TwinDriveAttachment } from "./twin-drive-runtime";
@@ -34,6 +40,10 @@ export type NavigationStatus = { mode: "orbit" | "loading" | "walk"; message?: s
 export type SceneSnapshot = { scene: ModelSceneSnapshot; animationCount: number };
 export type SceneSelectionStyle = "editor" | "runtime" | "none";
 export type SceneInput = {
+  staticMap?: StaticMapDefinition | null;
+  extrasSelection?: { kind: "decoration" | "map"; id: string } | null;
+  decorations?: SceneDecoration[];
+  roomAlarms?: RoomAlarmRule[];
   fluids?: FluidDefinition[];
   selectedFluidId?: string | null;
   fluidEditor?: FluidEditorState | null;
@@ -48,6 +58,8 @@ export type SceneInput = {
   modelFocusRequest?: { instanceId: string; requestId: string } | null;
 };
 export type SceneDiagnostics = {
+  staticMap: ReturnType<StaticMapManager["diagnostics"]>;
+  decorations: ReturnType<DecorationManager["diagnostics"]>;
   fluids: ReturnType<FluidManager["diagnostics"]>;
   activeLoads: number; queuedLoads: number; resources: number; instanceCount: number;
   cameraPosition: number[]; cameraTarget: number[];
@@ -57,11 +69,13 @@ export type SceneDiagnostics = {
 export type SceneRuntime = ReturnType<typeof createSceneRuntime>;
 
 /** Owns one renderer per scene. React passes configuration, never Three.js objects. */
-export function createSceneRuntime({ container, projectId, canvasNodeId, initial, onStatus, onSnapshot, onDiagnostics, onNavigation, onInstanceTransform, onTransformDragging, resolveModelUrl, nativePlayback }: {
+export function createSceneRuntime({ container, projectId, canvasNodeId, initial, onStatus, onSnapshot, onDiagnostics, onNavigation, onInstanceTransform, onTransformDragging, resolveModelUrl, nativePlayback, getRoomAlarmObservations, onRoomAlarmStatuses }: {
   container: HTMLElement;
   projectId: string;
   canvasNodeId: string;
   initial: SceneInput;
+  getRoomAlarmObservations?: () => Record<string, RoomAlarmObservation>;
+  onRoomAlarmStatuses?: (statuses: RoomAlarmStatus[]) => void;
   // Trusted host options. They are never read from saved scene configuration.
   resolveModelUrl?: (assetId: string) => string;
   nativePlayback?: { mode: NativePlaybackMode; onProgress: (progress: AnimationProgress) => void };
@@ -140,6 +154,13 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
     constructionCleanup.push(() => manager.dispose());
     const fluids = new FluidManager(contentOffset);
     constructionCleanup.push(() => fluids.dispose());
+    const decorations = new DecorationManager(contentOffset);
+    constructionCleanup.push(() => decorations.dispose());
+    const staticMap = new StaticMapManager(contentOffset);
+    constructionCleanup.push(() => staticMap.dispose());
+    const roomAlarms = new RoomAlarmRuntime();
+    constructionCleanup.push(() => roomAlarms.dispose());
+    let roomStatusSignature = "";
     const fluidGuide = new FluidPathGuide(contentOffset);
     constructionCleanup.push(() => fluidGuide.dispose());
     let records: InstanceRecord[] = [];
@@ -369,6 +390,9 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
       twinRuntime?.dispose(); twinRuntime = null;
       fluidGuide.dispose();
       fluids.dispose();
+      decorations.dispose();
+      staticMap.dispose();
+      roomAlarms.dispose();
       manager.dispose();
       resources.dispose();
       modelLoader.dispose();
@@ -431,6 +455,10 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
       }
       const fluidBounds = fluids.getBounds();
       if (!fluidBounds.isEmpty()) { box.union(fluidBounds); hasVisibleGeometry = true; }
+      const decorationBounds = decorations.getBounds();
+      if (!decorationBounds.isEmpty()) { box.union(decorationBounds); hasVisibleGeometry = true; }
+      const mapBounds = staticMap.getBounds();
+      if (!mapBounds.isEmpty()) { box.union(mapBounds); hasVisibleGeometry = true; }
       if (!hasVisibleGeometry) {
         rotationPivot.rotation.y = priorRotation;
         if (modelRadius !== null) emptyCameraInitialized = false;
@@ -582,6 +610,7 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
     };
 
     const applyModelState = (settings: Model3DProps) => {
+      roomAlarms.beforeModelStateChange();
       records.forEach(restoreRecord);
       const primary = records[0];
       if (!primary) return;
@@ -664,7 +693,12 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
     const applySelection = (path: string | null, instanceId: string | null, style: SceneSelectionStyle) => {
       clearSelection();
       let selected: Object3D | undefined;
-      if (path !== null) {
+      if (desired.extrasSelection && style === "editor") {
+        selected = desired.extrasSelection.kind === "decoration"
+          ? decorations.getPickObjects().find(root => root.userData.sceneDecorationId === desired.extrasSelection!.id)
+          : staticMap.getPickObjects().find(root => root.userData.staticMapId === desired.extrasSelection!.id);
+        if (desired.extrasSelection.kind === "map" && selected?.parent?.userData.staticMapId === desired.extrasSelection.id) selected = selected.parent;
+      } else if (path !== null) {
         selected = primaryObjectsByPath.get(path);
         if (!selected) throw new Error(`主模型中找不到当前选择路径：${path}`);
       } else if (instanceId !== null) {
@@ -703,7 +737,7 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
     };
 
     const pick = createSceneObjectPickingService(camera, renderer.domElement);
-    const pickSceneObject = (x: number, y: number) => pick(x, y, records, primaryPathsByObject, fluids);
+    const pickSceneObject = (x: number, y: number) => pick(x, y, records, primaryPathsByObject, fluids, [...decorations.getPickObjects(), ...staticMap.getPickObjects()]);
     const pickSceneTarget = (x: number, y: number) => {
       const target = pickSceneObject(x, y);
       return target && "instanceId" in target ? target : null;
@@ -773,6 +807,10 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
         lastPlaybackReport = now;
       }
       fluids.update(deltaSeconds, settings.playAnimations, settings.animationSpeed);
+      decorations.update(deltaSeconds, settings.playAnimations, settings.animationSpeed);
+      const roomStatuses = roomAlarms.update(getRoomAlarmObservations?.() ?? {});
+      const roomSignature = JSON.stringify(roomStatuses);
+      if (roomSignature !== roomStatusSignature) { roomStatusSignature = roomSignature; onRoomAlarmStatuses?.(roomStatuses); }
       if (settings.autoRotate && !desired.fluidEditor?.active) rotationPivot.rotation.y += deltaSeconds * settings.rotationSpeed;
       const animationConflict = settings.playAnimations && records.some(record => twinRuntime?.drivenInstances.has(record.id) && record.animationCount > 0 && desiredInstancesById.get(record.id)?.animation?.enabled !== false);
       twinRuntime?.tick(Date.now(), animationConflict);
@@ -787,7 +825,7 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
       frameTotal += frameMs;
       if (now - sampleAt >= 2000) {
         lastDiagnostics = {
-          ...resources.stats, instanceCount: records.length, fluids: fluids.diagnostics(),
+          ...resources.stats, instanceCount: records.length, fluids: fluids.diagnostics(), decorations: decorations.diagnostics(), staticMap: staticMap.diagnostics(),
           cameraPosition: camera.position.toArray(), cameraTarget: walk ? camera.position.clone().add(camera.getWorldDirection(new THREE.Vector3())).toArray() : controls.target.toArray(),
           navigation, physics: walk?.physics.diagnostics() ?? null,
           frameMs: frameTotal / frameCount,
@@ -827,6 +865,7 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
         if (contextLost) throw new Error("WebGL 上下文已丢失，请重新打开场景");
         const graphChanged = graph !== appliedGraph;
         if (graphChanged) {
+          roomAlarms.beforeModelStateChange();
           twinRuntime?.dispose(); twinRuntime = null; twinReady = false;
           detachTransformControl();
           notifyStatus({ status: "loading" });
@@ -867,9 +906,13 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
         ]);
         const modelChanged = graphChanged || modelKey(appliedInput) !== modelKey(next);
         const fluidsChanged = JSON.stringify(appliedInput?.fluids) !== JSON.stringify(next.fluids);
+        const decorationsChanged = JSON.stringify(appliedInput?.decorations) !== JSON.stringify(next.decorations);
+        const mapChanged = JSON.stringify(appliedInput?.staticMap) !== JSON.stringify(next.staticMap);
+        if (mapChanged) staticMap.reconcile(next.staticMap ?? null);
+        if (decorationsChanged) decorations.reconcile(next.decorations ?? []);
         if (fluidsChanged) fluids.reconcile(next.fluids ?? []);
         if (instancesChanged) applyInstances(next.instances);
-        else if (fluidsChanged) updateSceneBounds();
+        else if (fluidsChanged || decorationsChanged || mapChanged) updateSceneBounds();
         if (fluidsChanged || JSON.stringify(appliedInput?.fluidEditor) !== JSON.stringify(next.fluidEditor) || appliedInput?.selectedFluidId !== next.selectedFluidId || appliedInput?.selectionStyle !== next.selectionStyle) {
           const selected = next.fluids?.find(fluid => fluid.id === next.selectedFluidId && fluid.visible);
           const selectedPoints = selected?.direction === "reverse" ? [...selected.points].reverse() : selected?.points;
@@ -878,10 +921,13 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
         }
         if (settingsChanged) applySceneSettings(next.settings);
         if (modelChanged) applyModelState(next.settings);
+        if (modelChanged || JSON.stringify(appliedInput?.roomAlarms) !== JSON.stringify(next.roomAlarms)) {
+          roomAlarms.reconcile(records, next.roomAlarms ?? []);
+        }
         if (graphChanged || appliedInput?.settings.playAnimations !== next.settings.playAnimations || JSON.stringify(appliedInput?.instances.map(i => i.animation)) !== JSON.stringify(next.instances.map(i => i.animation))) {
           twinReady = true; rebuildTwin();
         }
-        if (instancesChanged || modelChanged || appliedInput?.selectedPath !== next.selectedPath || appliedInput?.selectedInstanceId !== next.selectedInstanceId || appliedInput?.selectionStyle !== next.selectionStyle) {
+        if (instancesChanged || modelChanged || decorationsChanged || mapChanged || JSON.stringify(appliedInput?.extrasSelection) !== JSON.stringify(next.extrasSelection) || appliedInput?.selectedPath !== next.selectedPath || appliedInput?.selectedInstanceId !== next.selectedInstanceId || appliedInput?.selectionStyle !== next.selectionStyle) {
           applySelection(next.selectedPath, next.selectedInstanceId, next.selectionStyle);
         }
         syncTransformControl(next);
@@ -894,7 +940,7 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
           appliedFocusRequestId = next.modelFocusRequest.requestId;
         }
         appliedInput = next;
-        notifyStatus({ status: records.length || fluids.diagnostics().fluidCount ? "ready" : "empty" });
+        notifyStatus({ status: records.length || fluids.diagnostics().fluidCount || decorations.diagnostics().decorationCount || staticMap.diagnostics().featureCount ? "ready" : "empty" });
       } catch (reason) {
         if (disposed || version !== revision) return;
         appliedInput = null;

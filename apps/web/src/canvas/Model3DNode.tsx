@@ -35,6 +35,13 @@ import { registerCoverSurface } from "../covers/render-surfaces";
 import type { TwinDriveAttachment } from "../scene/twin-drive-runtime";
 
 export type Model3DNodeProps = {
+  staticMap?: import("../../../../shared/static-map").StaticMapDefinition | null;
+  extrasSelection?: { kind: "decoration" | "map"; id: string } | null;
+  onExtrasSelect?: (selection: { kind: "decoration" | "map"; id: string } | null) => void;
+  decorations?: import("../../../../shared/scene-decorations").SceneDecoration[];
+  roomAlarms?: import("../../../../shared/room-alarms").RoomAlarmRule[];
+  roomAlarmObservations?: Record<string, import("../scene/room-alarm-runtime").RoomAlarmObservation>;
+  onRoomAlarmStatuses?: (statuses: import("../scene/room-alarm-runtime").RoomAlarmStatus[]) => void;
   fluids?: import("../../../../shared/fluids").FluidDefinition[];
   selectedFluidId?: string | null;
   fluidEditor?: import("../scene/fluid-path-editor").FluidEditorState | null;
@@ -1079,7 +1086,7 @@ const SingleModel3DNode = memo(function SingleModel3DNode({
 
 export const Model3DNode = memo(function Model3DNode(props: Model3DNodeProps) {
   const parsed = parseModel3DProps(props.node.props, props.maximumModelInstances);
-  if (parsed.ok && (parsed.value.modelInstances.length > 0 || props.maximumModelInstances !== undefined || props.walkScene !== undefined || props.twinDrive !== undefined || props.fluids !== undefined || props.fluidEditor !== undefined)) {
+  if (parsed.ok && (parsed.value.modelInstances.length > 0 || props.maximumModelInstances !== undefined || props.walkScene !== undefined || props.twinDrive !== undefined || props.fluids !== undefined || props.fluidEditor !== undefined || props.decorations !== undefined || props.roomAlarms !== undefined || props.staticMap !== undefined)) {
     return <BatchModel3DNode {...props} />;
   }
   return <SingleModel3DNode {...props} />;

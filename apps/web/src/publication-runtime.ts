@@ -10,7 +10,7 @@ export const publicationsPath = (projectId: string): string =>
 export const publicationRunRoute = (projectId: string, versionId?: string): string =>
   `#/projects/${encodeURIComponent(projectId)}/publications/${versionId ? `${encodeURIComponent(versionId)}/` : ""}run`;
 
-const currentPublication = (): { rootProjectId: string; versionId: string } | null => {
+export const currentPublication = (): { rootProjectId: string; versionId: string } | null => {
   const match = window.location.hash.match(/^#\/projects\/([^/]+)\/publications\/([^/]+)\/run$/);
   return match ? { rootProjectId: decodeURIComponent(match[1]), versionId: decodeURIComponent(match[2]) } : null;
 };

@@ -1,5 +1,8 @@
 import type { TwinAction } from "./twin-actions";
 import type { FluidDefinition } from "./fluids";
+import type { SceneDecoration } from "./scene-decorations";
+import type { RoomAlarmRule } from "./room-alarms";
+import type { StaticMapDefinition } from "./static-map";
 
 export type ProjectType = "2d" | "3d";
 
@@ -71,6 +74,9 @@ export const defaultStandaloneSceneInstanceAppearance = (): StandaloneSceneInsta
 });
 
 export type StandaloneSceneDocument = {
+  staticMap?: StaticMapDefinition | null;
+  decorations?: SceneDecoration[];
+  roomAlarms?: RoomAlarmRule[];
   fluids?: FluidDefinition[];
   instances: StandaloneSceneInstance[];
   linked2dProjectId: string | null;

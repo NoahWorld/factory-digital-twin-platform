@@ -2,7 +2,7 @@ import { Box3, Raycaster, Vector2, type Camera, type Object3D } from "three";
 import type { InstanceRecord } from "./instance-manager";
 
 export type SceneTarget = { instanceId: string; path: string | null };
-export type SceneObjectTarget = SceneTarget | { fluidId: string };
+export type SceneObjectTarget = SceneTarget | { fluidId: string } | { decorationId: string } | { staticMapId: string };
 
 export function createPickingService(camera: Camera, canvas: HTMLCanvasElement) {
   const pick = createSceneObjectPickingService(camera, canvas);
@@ -17,7 +17,7 @@ export function createSceneObjectPickingService(camera: Camera, canvas: HTMLCanv
   raycaster.firstHitOnly = true;
   const pointer = new Vector2();
   const bounds = new Box3();
-  return (clientX: number, clientY: number, records: InstanceRecord[], paths: Map<Object3D, string>, fluids?: { getObjects(): Object3D[]; pickId(object: Object3D): string | null }): SceneObjectTarget | null => {
+  return (clientX: number, clientY: number, records: InstanceRecord[], paths: Map<Object3D, string>, fluids?: { getObjects(): Object3D[]; pickId(object: Object3D): string | null }, extras: Object3D[] = []): SceneObjectTarget | null => {
     const viewport = canvas.getBoundingClientRect();
     if (viewport.width <= 0 || viewport.height <= 0) throw new Error("3D 视窗尺寸无效，无法执行对象命中测试");
     pointer.set(((clientX - viewport.left) / viewport.width) * 2 - 1, -((clientY - viewport.top) / viewport.height) * 2 + 1);
@@ -42,11 +42,21 @@ export function createSceneObjectPickingService(camera: Camera, canvas: HTMLCanv
         if ("isMesh" in object || "isLine" in object || "isPoints" in object) candidates.push(object);
       });
     }
+    for (const root of extras) {
+      root.updateWorldMatrix(true, true);
+      root.traverseVisible(object => { if ("isMesh" in object || "isLine" in object) candidates.push(object); });
+    }
     // Background remains in the candidate set: walls still occlude equipment behind them.
     const hit = raycaster.intersectObjects(candidates, false)[0];
     if (!hit) return null;
     const fluidId = fluids?.pickId(hit.object);
     if (fluidId) return { fluidId };
-    return { instanceId: ownerByObject.get(hit.object)!.id, path: paths.get(hit.object) ?? null };
+    const owner = ownerByObject.get(hit.object);
+    if (owner) return { instanceId: owner.id, path: paths.get(hit.object) ?? null };
+    for (let object: Object3D | null = hit.object; object; object = object.parent) {
+      if (typeof object.userData.sceneDecorationId === "string") return { decorationId: object.userData.sceneDecorationId };
+      if (typeof object.userData.staticMapId === "string") return { staticMapId: object.userData.staticMapId };
+    }
+    return null;
   };
 }

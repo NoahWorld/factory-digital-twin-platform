@@ -1,5 +1,7 @@
 # Java 后端：本地运行与交付边界
 
+> 本目录自 2026-09-27 起仅为历史快照。后续 Java 修改、生成契约和运行构建以独立仓库 `NoahWorld/factory-digital-twin-backend/main` 为准；本目录不再作为运行目标。下文保留当时的实施记录。
+
 2026-09-17 首版。与 `apps/web` 同仓库、同级目录；Java 21 + Spring Boot 3.5.16 + PostgreSQL 17 + Valkey 8.1 + S3 兼容对象存储。现有 Cloudflare Worker 保留，未切换线上流量或搬迁 D1/R2 数据。
 
 一个模块化 Spring Boot 应用，按 `TWIN_MODE=api|collector|worker` 启动三个独立进程，统一代码、版本和迁移。API 负责授权、配置和 WebSocket；collector 集中采集 REST；worker 执行持久化资源检查任务。此部署没有 Kubernetes、服务注册中心或跨服务分布式事务。
