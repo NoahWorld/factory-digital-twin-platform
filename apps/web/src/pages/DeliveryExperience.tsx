@@ -151,13 +151,86 @@ const galleryItems = [
 ] as const satisfies ReadonlyArray<{ id: CanvasTemplateId; icon: string; label: string; title: string; copy: string }>;
 
 export function DeliveryScreenGallery() {
+  const track = useRef<HTMLDivElement>(null);
+  const stage = useRef<HTMLDivElement>(null);
+  const steps = useRef<Array<HTMLDivElement | null>>([]);
+  const dialogOpen = useRef(false);
   const [selected, setSelected] = useState(0);
   const [expanded, setExpanded] = useState(false);
   const dialog = useRef<HTMLDialogElement>(null);
   const expandButton = useRef<HTMLButtonElement>(null);
   const item = galleryItems[selected];
   const template = getCanvasTemplate(item.id);
-  const move = (offset: number) => setSelected(value => (value + offset + galleryItems.length) % galleryItems.length);
+
+  function readingLine() {
+    const element = stage.current;
+    if (!element) throw new Error("宣传画面滚动区域尚未挂载");
+    const stickyTop = getComputedStyle(element).top;
+    const top = stickyTop === "auto" ? 0 : parseFloat(stickyTop);
+    return (top + window.innerHeight) / 2;
+  }
+
+  function goToItem(index: number, immediate = false) {
+    const step = steps.current[index];
+    if (!step) throw new Error(`宣传画面滚动节点尚未挂载：${index}`);
+    const rect = step.getBoundingClientRect();
+    window.scrollTo({ top: window.scrollY + rect.top + rect.height / 2 - readingLine(), behavior: immediate || reduceMotion() ? "instant" : "smooth" });
+  }
+
+  function closeDialog() {
+    setExpanded(false);
+    requestAnimationFrame(() => {
+      goToItem(selected, true);
+      dialogOpen.current = false;
+    });
+  }
+
+  function move(offset: number) {
+    const next = (selected + offset + galleryItems.length) % galleryItems.length;
+    if (expanded) setSelected(next);
+    else goToItem(next);
+  }
+
+  useEffect(() => {
+    const container = track.current;
+    const pinned = stage.current;
+    if (!container || !pinned) throw new Error("宣传画面滚动区域尚未挂载");
+    let frame = 0;
+    let observing = false;
+    const measure = () => {
+      frame = 0;
+      if (dialogOpen.current) return;
+      const line = readingLine();
+      const centers = steps.current.map((step, index) => {
+        if (!step) throw new Error(`宣传画面滚动节点尚未挂载：${index}`);
+        const rect = step.getBoundingClientRect();
+        return rect.top + rect.height / 2;
+      });
+      let nearest = 0;
+      centers.forEach((center, index) => { if (Math.abs(center - line) < Math.abs(centers[nearest] - line)) nearest = index; });
+      setSelected(value => value === nearest ? value : nearest);
+    };
+    const requestMeasure = () => { if (!frame) frame = requestAnimationFrame(measure); };
+    const observer = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting && !observing) {
+        observing = true;
+        window.addEventListener("scroll", requestMeasure, { passive: true });
+        requestMeasure();
+      } else if (!entry.isIntersecting && observing) {
+        observing = false;
+        window.removeEventListener("scroll", requestMeasure);
+      }
+    });
+    observer.observe(container);
+    const resize = new ResizeObserver(requestMeasure);
+    resize.observe(pinned);
+    window.addEventListener("resize", requestMeasure);
+    return () => {
+      observer.disconnect(); resize.disconnect(); cancelAnimationFrame(frame);
+      window.removeEventListener("scroll", requestMeasure);
+      window.removeEventListener("resize", requestMeasure);
+    };
+  }, []);
 
   useEffect(() => {
     if (!expanded || !dialog.current) return;
@@ -173,15 +246,20 @@ export function DeliveryScreenGallery() {
   }, [expanded]);
 
   return <section className="delivery-gallery delivery-container" id="industrial-gallery" aria-labelledby="delivery-gallery-title">
-    <div className="delivery-experience-heading"><div><p className="delivery-eyebrow">A NEW SCENE. A NEW POSSIBILITY.</p><h2 id="delivery-gallery-title">换个画面，<br />发现下一种交付可能。</h2></div><p>选择一个行业，看看不同的业务表达。<br />这些画面来自平台内可继续编辑的模板。</p></div>
-    <div className="delivery-gallery-filters" role="group" aria-label="选择宣传画面">{galleryItems.map((entry, index) => <button type="button" key={entry.id} aria-pressed={index === selected} onClick={() => setSelected(index)}><LocalIcon name={entry.icon} size={20} /><span>{entry.label}</span><span>0{index + 1}</span></button>)}</div>
-    <div className="delivery-gallery-showcase">
-      <div className="delivery-gallery-copy" aria-live="polite" aria-atomic="true"><span className="delivery-gallery-index">0{selected + 1}<small>/ 04</small></span><span className="delivery-gallery-code">{template.code} / {item.label}</span><h3>{item.title}</h3><p>{item.copy}</p><div className="delivery-gallery-tags">{template.tags.map(tag => <span key={tag}>{tag}</span>)}</div></div>
-      <div className="delivery-gallery-screen"><div className="delivery-gallery-screen-top"><span><i /><i /><i /></span><strong>{template.name}</strong><button type="button" ref={expandButton} onClick={() => setExpanded(true)} aria-label={`放大查看${item.label}宣传画面`}><ExperienceIcon kind="expand" />放大查看</button></div><CanvasTemplatePreview templateId={item.id} /><div className="delivery-gallery-screen-bottom"><span>{template.showcase.deliveryForm}</span><span>1920 × 1080 / 示例画面</span></div></div>
+    <div className="delivery-experience-heading"><div><p className="delivery-eyebrow">A NEW SCENE. A NEW POSSIBILITY.</p><h2 id="delivery-gallery-title">换个画面，<br />发现下一种交付可能。</h2></div><p>继续向下滚动，依次查看四种行业画面。<br />也可以点击标签，查看可继续编辑的模板。</p></div>
+    <div className="delivery-gallery-track" ref={track}>
+      <div className="delivery-gallery-stage" ref={stage}>
+        <div className="delivery-gallery-filters" role="group" aria-label="选择宣传画面">{galleryItems.map((entry, index) => <button type="button" key={entry.id} aria-pressed={index === selected} onClick={() => goToItem(index)}><LocalIcon name={entry.icon} size={20} /><span>{entry.label}</span><span>0{index + 1}</span></button>)}</div>
+        <div className="delivery-gallery-showcase">
+          <div className="delivery-gallery-copy" aria-live="polite" aria-atomic="true"><span className="delivery-gallery-index">0{selected + 1}<small>/ 04</small></span><span className="delivery-gallery-code">{template.code} / {item.label}</span><h3>{item.title}</h3><p>{item.copy}</p><div className="delivery-gallery-tags">{template.tags.map(tag => <span key={tag}>{tag}</span>)}</div></div>
+          <div className="delivery-gallery-screen"><div className="delivery-gallery-screen-top"><span><i /><i /><i /></span><strong>{template.name}</strong><button type="button" ref={expandButton} onClick={() => { dialogOpen.current = true; setExpanded(true); }} aria-label={`放大查看${item.label}宣传画面`}><ExperienceIcon kind="expand" />放大查看</button></div><CanvasTemplatePreview templateId={item.id} /><div className="delivery-gallery-screen-bottom"><span>{template.showcase.deliveryForm}</span><span>1920 × 1080 / 示例画面</span></div></div>
+        </div>
+      </div>
+      <div className="delivery-gallery-scroll-steps" aria-hidden="true">{galleryItems.map((entry, index) => <div className="delivery-gallery-scroll-step" key={entry.id} ref={element => { steps.current[index] = element; }} />)}</div>
     </div>
     <div className="delivery-gallery-bottom"><p>从模板出发，继续搭建你的项目。</p><div><button type="button" aria-label="上一张宣传画面" onClick={() => move(-1)}><ExperienceIcon kind="previous" /></button><button type="button" onClick={() => move(1)}>下一张画面<ExperienceIcon kind="next" /></button><a href="#/projects">进入平台<ExperienceIcon kind="next" /></a></div></div>
-    {expanded && <dialog className="delivery-gallery-dialog" ref={dialog} aria-labelledby="gallery-dialog-title" onCancel={() => setExpanded(false)} onClose={() => setExpanded(false)}>
-      <header><div><span className="delivery-eyebrow">{item.label}</span><h3 id="gallery-dialog-title">{template.name}</h3></div><button type="button" aria-label="关闭宣传画面" onClick={() => setExpanded(false)} autoFocus><ExperienceIcon kind="close" /></button></header>
+    {expanded && <dialog className="delivery-gallery-dialog" ref={dialog} aria-labelledby="gallery-dialog-title" onCancel={event => { event.preventDefault(); closeDialog(); }} onClose={() => setExpanded(false)}>
+      <header><div><span className="delivery-eyebrow">{item.label}</span><h3 id="gallery-dialog-title">{template.name}</h3></div><button type="button" aria-label="关闭宣传画面" onClick={closeDialog} autoFocus><ExperienceIcon kind="close" /></button></header>
       <CanvasTemplatePreview templateId={item.id} />
       <footer><span>0{selected + 1} / 04 · {template.showcase.dataLabel}</span><div><button type="button" onClick={() => move(-1)}><ExperienceIcon kind="previous" />上一张</button><button type="button" onClick={() => move(1)}>下一张<ExperienceIcon kind="next" /></button></div></footer>
     </dialog>}
