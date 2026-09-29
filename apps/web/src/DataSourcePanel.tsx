@@ -1,6 +1,7 @@
+import { useNotifications } from "./components/NotificationProvider";
 import { Select } from "./components/Select";
 import { useEffect, useState, type FormEvent } from "react";
-import { errorMessage, request } from "./api";
+import { errorMessage, request, UserFacingError } from "./api";
 import {
   dataSourceProbePath,
   dataSourcePath,
@@ -76,7 +77,7 @@ const sourceTypeLabel: Record<DataSourceType, string> = {
 const requiredInteger = (value: string, label: string): number => {
   const parsed = Number(value);
   if (!Number.isInteger(parsed)) {
-    throw new Error(`${label}必须是整数。`);
+    throw new UserFacingError(`${label}必须是整数。`);
   }
   return parsed;
 };
@@ -102,16 +103,13 @@ export function DataSourcePanel({
   const [dataSources, setDataSources] = useState<ProjectDataSource[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [saveError, setSaveError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  const notify = useNotifications();
   const [saving, setSaving] = useState(false);
   const [probing, setProbing] = useState(false);
-  const [probeError, setProbeError] = useState<string | null>(null);
   const [probeResult, setProbeResult] = useState<RestDataSourceProbe | null>(null);
   const [draft, setDraft] = useState<DataSourceDraft>(emptyDraft);
 
   useEffect(() => {
-    setProbeError(null);
     setProbeResult(null);
   }, [draft]);
 
@@ -136,20 +134,15 @@ export function DataSourcePanel({
 
   const selectSource = (source: ProjectDataSource) => {
     setDraft(draftFromSource(source));
-    setSaveError(null);
-    setNotice(null);
   };
 
   const startNewSource = () => {
     setDraft(emptyDraft());
-    setSaveError(null);
-    setNotice(null);
   };
 
   const probeSource = async () => {
     if (!draft.id || draft.sourceType !== "rest_polling" || probing) return;
     setProbing(true);
-    setProbeError(null);
     setProbeResult(null);
     try {
       const result = await request<RestDataSourceProbeResponse>(
@@ -158,7 +151,7 @@ export function DataSourcePanel({
       );
       setProbeResult(result.probe);
     } catch (reason) {
-      setProbeError(errorMessage(reason));
+      notify.error(reason);
     } finally {
       setProbing(false);
     }
@@ -169,8 +162,6 @@ export function DataSourcePanel({
     if (!editable || saving || loading || loadError) return;
 
     setSaving(true);
-    setSaveError(null);
-    setNotice(null);
     try {
       const config = draft.sourceType === "rest_polling"
         ? {
@@ -207,9 +198,9 @@ export function DataSourcePanel({
         ...current.filter((source) => source.id !== result.dataSource.id),
       ]);
       setDraft(draftFromSource(result.dataSource));
-      setNotice(draft.id ? "数据源配置已更新。" : "数据源已创建。");
+      notify.success(draft.id ? "数据源配置已更新。" : "数据源已创建。");
     } catch (reason) {
-      setSaveError(errorMessage(reason));
+      notify.error(reason);
     } finally {
       setSaving(false);
     }
@@ -461,12 +452,7 @@ export function DataSourcePanel({
                 账号、Token 与 API Key 必须由服务端密钥存储按引用提供，不能写进 URL、前端配置或 Git。
               </p>
             </div>
-            {probeError ? (
-              <div className="data-source-probe-error" role="alert">
-                <strong>连接测试失败</strong>
-                <p>{probeError}</p>
-              </div>
-            ) : null}
+
             {probeResult ? (
               <section className="data-source-probe-result" aria-label="数据源测试结果">
                 <header>
@@ -513,8 +499,6 @@ export function DataSourcePanel({
                 ) : null}
               </section>
             ) : null}
-            {saveError ? <p className="data-source-form-error" role="alert">{saveError}</p> : null}
-            {notice ? <p className="data-source-form-notice" role="status">{notice}</p> : null}
             {!editable ? <p className="data-source-readonly">当前项目只有查看权限。</p> : null}
             <footer>
               <button

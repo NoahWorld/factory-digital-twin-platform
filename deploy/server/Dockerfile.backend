@@ -1,0 +1,13 @@
+ARG NODE_IMAGE
+ARG JAVA_IMAGE
+FROM ${NODE_IMAGE} AS meshopt-node
+FROM ${JAVA_IMAGE}
+RUN groupadd --system twin && useradd --system --gid twin twin
+WORKDIR /app
+COPY backend.jar /app/backend.jar
+COPY --from=meshopt-node /usr/local/bin/node /usr/local/bin/node
+COPY worker.mjs /app/meshopt/worker.mjs
+USER twin
+ENV JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=60 -XX:+ExitOnOutOfMemoryError"
+ENV TWIN_MESHOPT_WORKER=/app/meshopt/worker.mjs
+ENTRYPOINT ["java", "-jar", "/app/backend.jar"]

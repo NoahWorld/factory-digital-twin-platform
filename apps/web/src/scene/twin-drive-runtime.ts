@@ -1,3 +1,4 @@
+import { errorMessage, reportError } from "../errors";
 import { Euler, MathUtils, Matrix4, Quaternion, Vector3, type Object3D } from "three";
 import { OBB } from "three/examples/jsm/math/OBB.js";
 import { twinDriveErrors, type TwinCollisionEvent, type TwinDriveConfig, type TwinMotionBinding, type TwinTarget } from "../../../../shared/twin-drive";
@@ -206,8 +207,8 @@ export class TwinDriveRuntime {
       if (changed || now - this.lastReport >= 200) this.collisions(snapshot.sequence, snapshot.timestamp);
       this.report(snapshot.status === "paused" ? "paused" : "live", snapshot.status === "paused" ? "模拟器已暂停；显示最后反馈位置" : "模型由实际点位反馈驱动", now);
     } catch (reason) {
-      this.failed = reason instanceof Error ? reason.message : String(reason);
-      console.error("Twin drive runtime failed", { bindings: this.bindings.map(b => b.definition.id), sequence: this.lastSequence, reason });
+      reportError(reason, { operation: "twin-drive.tick", bindingIds: this.bindings.map(b => b.definition.id), sequence: this.lastSequence });
+      this.failed = errorMessage(reason);
       this.report("error", this.failed, now);
     }
   }

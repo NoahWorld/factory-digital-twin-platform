@@ -1,3 +1,4 @@
+import { errorMessage, reportError } from "../api";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createCanvasNode, type Model3DProps } from "../canvas/types";
 import type { SceneInput, SceneRuntime, SceneStatus } from "../scene/scene-runtime";
@@ -98,8 +99,8 @@ export function PrecisionMotionDemo() {
       return created.update(latestInput.current);
     }).catch((reason: unknown) => {
       if (disposed) return;
-      console.error("public.motion-demo.failed", { assetId: asset.assetId, reason });
-      setStatus({ status: "error", message: reason instanceof Error ? reason.message : String(reason) });
+      reportError(reason, { operation: "public.motion-demo", assetId: asset.assetId });
+      setStatus({ status: "error", message: errorMessage(reason) });
     });
     return () => { disposed = true; resizeObserver?.disconnect(); runtime.current?.dispose(); runtime.current = null; };
   }, [nearby, retry]);

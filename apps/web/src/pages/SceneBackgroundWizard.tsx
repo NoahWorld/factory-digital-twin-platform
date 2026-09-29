@@ -6,6 +6,7 @@ import {
   type DragEvent,
 } from "react";
 import { formatFileSize } from "../canvas/model-assets";
+import { useNotifications } from "../components/NotificationProvider";
 import {
   modeFileAccept,
   validateKnownScale,
@@ -89,6 +90,7 @@ const isPreviewVideo = (file: File): boolean =>
   ["mp4", "webm"].includes(fileExtension(file.name));
 
 export function SceneBackgroundWizard({ onClose, onCreate, projectName }: SceneBackgroundWizardProps) {
+  const notify = useNotifications();
   const [step, setStep] = useState<WizardStep>(1);
   const [mode, setMode] = useState<SceneBackgroundMode>("single-image");
   const [files, setFiles] = useState<File[]>([]);
@@ -99,7 +101,6 @@ export function SceneBackgroundWizard({ onClose, onCreate, projectName }: SceneB
   const [knownScale, setKnownScale] = useState("");
   const [checked, setChecked] = useState(false);
   const [importing, setImporting] = useState(false);
-  const [importError, setImportError] = useState<string | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
   const validation = useMemo(
@@ -133,7 +134,6 @@ export function SceneBackgroundWizard({ onClose, onCreate, projectName }: SceneB
   const replaceFiles = (nextFiles: File[]) => {
     setFiles(nextFiles);
     setChecked(false);
-    setImportError(null);
   };
 
   const selectMode = (nextMode: SceneBackgroundMode) => {
@@ -161,14 +161,12 @@ export function SceneBackgroundWizard({ onClose, onCreate, projectName }: SceneB
 
   const completePreflight = () => {
     if (validation.errors.length > 0 || !configurationValid) return;
-    setImportError(null);
     setChecked(true);
   };
 
   const createBackground = async () => {
     if (validation.errors.length > 0 || !configurationValid || files.length === 0) return;
     setImporting(true);
-    setImportError(null);
     try {
       await onCreate({
         files,
@@ -180,7 +178,7 @@ export function SceneBackgroundWizard({ onClose, onCreate, projectName }: SceneB
       });
       onClose();
     } catch (reason) {
-      setImportError(reason instanceof Error ? reason.message : "场景底座创建失败，请查看服务端日志。");
+      notify.error(reason);
     } finally {
       setImporting(false);
     }
@@ -431,12 +429,6 @@ export function SceneBackgroundWizard({ onClose, onCreate, projectName }: SceneB
                   </div>
                 </div>
               ) : null}
-              {importError ? (
-                <div className="scene-background-validation is-error" role="alert">
-                  <strong>场景底座创建失败</strong>
-                  <p>{importError}</p>
-                </div>
-              ) : null}
             </div>
           ) : null}
         </div>
@@ -448,7 +440,7 @@ export function SceneBackgroundWizard({ onClose, onCreate, projectName }: SceneB
           </div>
           <div>
             {step === 1 ? <button className="secondary-button" disabled={importing} onClick={onClose} type="button">取消</button> : null}
-            {step > 1 ? <button className="secondary-button" disabled={importing} onClick={() => { setStep((step - 1) as WizardStep); setChecked(false); setImportError(null); }} type="button">上一步</button> : null}
+            {step > 1 ? <button className="secondary-button" disabled={importing} onClick={() => { setStep((step - 1) as WizardStep); setChecked(false); }} type="button">上一步</button> : null}
             {step === 1 ? <button className="primary-button" onClick={() => setStep(2)} type="button">添加素材</button> : null}
             {step === 2 ? (
               <button className="primary-button" disabled={validation.errors.length > 0} onClick={() => setStep(3)} type="button">检查配置</button>

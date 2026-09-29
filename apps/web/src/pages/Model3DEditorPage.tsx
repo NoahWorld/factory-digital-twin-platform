@@ -1,3 +1,4 @@
+import { useNotifications } from "../components/NotificationProvider";
 import { useCallback, useEffect, useState } from "react";
 import { errorMessage, request } from "../api";
 import { Model3DInspector } from "../canvas/Model3DInspector";
@@ -32,7 +33,7 @@ export default function Model3DEditorPage({
   const [configurationError, setConfigurationError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [saveError, setSaveError] = useState<string | null>(null);
+  const notify = useNotifications();
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -85,7 +86,6 @@ export default function Model3DEditorPage({
   const updateNode = useCallback((nextNode: CanvasNode) => {
     setNode(nextNode);
     setDirty(true);
-    setSaveError(null);
   }, []);
 
   const updateModelScene = useCallback((
@@ -97,13 +97,12 @@ export default function Model3DEditorPage({
 
   const save = async (): Promise<boolean> => {
     if (configurationError) {
-      setSaveError(`3D 配置无效：${configurationError}`);
+      notify.warning(`3D 配置无效：${configurationError}`);
       return false;
     }
     if (!node || !dirty || saving || !canEdit) return !dirty;
 
     setSaving(true);
-    setSaveError(null);
     try {
       const result = await request<CanvasPatchResponse>(projectCanvasPath(projectId), {
         method: "PATCH",
@@ -120,9 +119,10 @@ export default function Model3DEditorPage({
       setNode(savedNode);
       setRevision(result.canvas.revision);
       setDirty(false);
+      notify.success("3D 配置已保存。");
       return true;
     } catch (reason) {
-      setSaveError(errorMessage(reason));
+      notify.error(reason);
       return false;
     } finally {
       setSaving(false);
@@ -196,7 +196,6 @@ export default function Model3DEditorPage({
         </div>
       </header>
 
-      {saveError ? <div className="canvas-save-error" role="alert">保存失败：{saveError}</div> : null}
       {!canEdit ? <div className="canvas-readonly-notice">当前项目权限为只读，可以查看场景，但不能修改或保存配置。</div> : null}
 
       <div className="model-editor-workbench">

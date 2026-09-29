@@ -4,15 +4,8 @@ type ApiFailure = {
   requestId?: string;
 };
 
-export class ApiRequestError extends Error {
-  constructor(
-    readonly code: string,
-    readonly requestId: string | undefined,
-    message: string,
-  ) {
-    super(message);
-  }
-}
+import { ApiRequestError, type RequestContext } from "./errors";
+export { ApiRequestError, UserFacingError, errorMessage, errorPresentation, reportError } from "./errors";
 
 const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
 
@@ -42,34 +35,52 @@ export async function request<T>(path: string, init: RequestInit = {}): Promise<
     headers.set("content-type", "application/json");
   }
 
-  const response = await fetch(apiUrl(path), {
-    ...init,
-    credentials: share ? "omit" : "include",
-    headers,
-  });
+  // Never store headers, request bodies, query strings or share tokens in diagnostics.
+  const context: RequestContext = {
+    method: (init.method ?? "GET").toUpperCase(),
+    path: new URL(path, "http://dtwin.invalid").pathname,
+  };
+  let response: Response;
+  try {
+    response = await fetch(apiUrl(path), {
+      ...init,
+      credentials: share ? "omit" : "include",
+      headers,
+    });
+  } catch (cause) {
+    if (init.signal?.aborted) throw cause;
+    if (!(cause instanceof TypeError)) throw cause;
+    throw new ApiRequestError("network_error", undefined, cause.message, { ...context, cause });
+  }
+  context.status = response.status;
+  const headerRequestId = response.headers.get("x-request-id") ?? undefined;
   const contentType = response.headers.get("content-type") ?? "";
-  const payload: unknown = contentType.includes("application/json")
-    ? await response.json()
-    : null;
+  let payload: unknown = null;
+  const emptyResponse = response.status === 204 || response.status === 205 || context.method === "HEAD";
+  if (!emptyResponse && contentType.includes("application/json")) {
+    try {
+      payload = await response.json();
+    } catch (cause) {
+      if (init.signal?.aborted) throw cause;
+      if (!(cause instanceof SyntaxError) && !(cause instanceof TypeError)) throw cause;
+      const code = cause instanceof SyntaxError ? "invalid_response" : "network_error";
+      throw new ApiRequestError(code, headerRequestId, cause.message, { ...context, cause });
+    }
+  } else if (response.ok && !emptyResponse) {
+    throw new ApiRequestError("invalid_response", headerRequestId,
+      `Expected a JSON response; received ${contentType || "no Content-Type"}.`, context);
+  }
 
   if (!response.ok) {
-    const failure = payload as ApiFailure | null;
+    const failure = payload !== null && typeof payload === "object" && !Array.isArray(payload)
+      ? payload as ApiFailure : null;
     throw new ApiRequestError(
-      failure?.error ?? "request_failed",
-      failure?.requestId,
-      failure?.message ?? `API request failed with HTTP ${response.status}.`,
+      typeof failure?.error === "string" && failure.error ? failure.error : "request_failed",
+      typeof failure?.requestId === "string" && failure.requestId ? failure.requestId : headerRequestId,
+      typeof failure?.message === "string" && failure.message ? failure.message : `API request failed with HTTP ${response.status}.`,
+      context,
     );
   }
 
   return payload as T;
 }
-
-export const errorMessage = (reason: unknown): string => {
-  if (reason instanceof ApiRequestError) {
-    return reason.requestId
-      ? `${reason.message}（请求 ID：${reason.requestId}）`
-      : reason.message;
-  }
-
-  return reason instanceof Error ? reason.message : String(reason);
-};

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ApiRequestError, errorMessage, request } from "../api";
+import { ApiRequestError, errorMessage, reportError, request } from "../api";
 import type { ProjectAsset } from "../canvas/assets";
 import {
   assetRuntimeStatePath,
@@ -17,6 +17,7 @@ type UseAssetRuntimeConnectionsOptions = {
   enabled: boolean;
   projectId: string | null;
   publicationVersion?: { rootProjectId: string; versionId: string };
+  stopOnAccessDenied?: boolean;
 };
 
 /**
@@ -30,6 +31,7 @@ export const useAssetRuntimeConnections = ({
   enabled,
   projectId,
   publicationVersion,
+  stopOnAccessDenied = false,
 }: UseAssetRuntimeConnectionsOptions): Record<string, RuntimeAssetConnection> => {
   const [connections, setConnections] = useState<Record<string, RuntimeAssetConnection>>({});
   const publicationRootProjectId = publicationVersion?.rootProjectId;
@@ -37,7 +39,7 @@ export const useAssetRuntimeConnections = ({
 
   useEffect(() => {
     if (!enabled || blockedReason || !projectId || assets.length === 0) {
-      setConnections({});
+      setConnections(current => Object.keys(current).length ? {} : current);
       return;
     }
 
@@ -64,16 +66,7 @@ export const useAssetRuntimeConnections = ({
         } catch (reason) {
           const failureCount = (failureCounts.get(asset.id) ?? 0) + 1;
           failureCounts.set(asset.id, failureCount);
-          const apiError = reason instanceof ApiRequestError ? reason : null;
-          console.error("Asset runtime polling failed.", {
-            assetId: asset.assetId,
-            assetRecordId: asset.id,
-            errorCode: apiError?.code ?? "runtime_request_failed",
-            failureCount,
-            projectId,
-            reason,
-            requestId: apiError?.requestId,
-          });
+          reportError(reason, { operation: "asset-runtime.poll", projectId, assetId: asset.assetId, assetRecordId: asset.id, failureCount });
           return { asset, failureCount, kind: "failure", reason } as const;
         }
       }));
@@ -108,6 +101,9 @@ export const useAssetRuntimeConnections = ({
         return next;
       });
 
+      if (stopOnAccessDenied && outcomes.some(outcome => outcome.kind === "failure"
+        && outcome.reason instanceof ApiRequestError
+        && ["unauthenticated", "forbidden", "project_access_denied", "module_access_denied", "project_not_found", "publication_not_found", "publication_revoked"].includes(outcome.reason.code ?? ""))) return;
       const successfulIntervals = outcomes.flatMap((outcome) => (
         outcome.kind === "success" ? [outcome.result.runtimeState.pollAfterSeconds] : []
       ));
@@ -123,7 +119,7 @@ export const useAssetRuntimeConnections = ({
       cancelled = true;
       if (nextPollTimer !== null) window.clearTimeout(nextPollTimer);
     };
-  }, [assets, blockedReason, enabled, projectId, publicationRootProjectId, publicationVersionId]);
+  }, [assets, blockedReason, enabled, projectId, publicationRootProjectId, publicationVersionId, stopOnAccessDenied]);
 
   return connections;
 };

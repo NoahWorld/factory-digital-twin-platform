@@ -1,3 +1,4 @@
+import { errorMessage, reportError } from "../api";
 import {
   memo,
   useCallback,
@@ -35,6 +36,13 @@ import { registerCoverSurface } from "../covers/render-surfaces";
 import type { TwinDriveAttachment } from "../scene/twin-drive-runtime";
 
 export type Model3DNodeProps = {
+  staticMap?: import("../../../../shared/static-map").StaticMapDefinition | null;
+  extrasSelection?: { kind: "decoration" | "map"; id: string } | null;
+  onExtrasSelect?: (selection: { kind: "decoration" | "map"; id: string } | null) => void;
+  decorations?: import("../../../../shared/scene-decorations").SceneDecoration[];
+  roomAlarms?: import("../../../../shared/room-alarms").RoomAlarmRule[];
+  roomAlarmObservations?: Record<string, import("../scene/room-alarm-runtime").RoomAlarmObservation>;
+  onRoomAlarmStatuses?: (statuses: import("../scene/room-alarm-runtime").RoomAlarmStatus[]) => void;
   fluids?: import("../../../../shared/fluids").FluidDefinition[];
   selectedFluidId?: string | null;
   fluidEditor?: import("../scene/fluid-path-editor").FluidEditorState | null;
@@ -52,6 +60,7 @@ export type Model3DNodeProps = {
   modelFocusRequest?: { instanceId: string; requestId: string } | null;
   onModelInstanceSelect?: (canvasNodeId: string, instanceId: string | null) => void;
   onModelInstanceTransform?: (canvasNodeId: string, instanceId: string, transform: ModelNodeTransform) => void;
+  onDecorationTransform?: (canvasNodeId: string, decorationId: string, transform: ModelNodeTransform) => void;
   onSceneChange?: (canvasNodeId: string, snapshot: ModelSceneSnapshot | null) => void;
   onSceneNodeSelect: (canvasNodeId: string, sceneNodePath: string | null) => void;
   projectId: string;
@@ -84,8 +93,7 @@ type ColorMaterial = Material & {
   color?: { set: (value: string) => unknown };
 };
 
-const errorText = (reason: unknown): string =>
-  reason instanceof Error ? reason.message : String(reason);
+const errorText = errorMessage;
 
 const disposeSceneResources = (root: Object3D) => {
   const geometries = new Set<BufferGeometry>();
@@ -207,11 +215,7 @@ const SingleModel3DNode = memo(function SingleModel3DNode({
       runtimeRef.current.applySceneSettings(parsed.value);
       setLoadState({ status: "ready" });
     } catch (reason) {
-      console.error("Failed to apply 3D scene settings.", {
-        assetId,
-        canvasNodeId: node.id,
-        reason,
-      });
+      reportError(reason, { operation: "model.settings", assetId, canvasNodeId: node.id });
       setLoadState({
         status: "error",
         message: `场景配置应用失败：${errorText(reason)}`,
@@ -225,7 +229,7 @@ const SingleModel3DNode = memo(function SingleModel3DNode({
     try {
       runtimeRef.current.applyPresentation(parsed.value);
     } catch (reason) {
-      console.error("Failed to apply model presentation.", { assetId, canvasNodeId: node.id, reason });
+      reportError(reason, { operation: "model.presentation", assetId, canvasNodeId: node.id });
       setLoadState({ status: "error", message: `模型检查设置应用失败：${errorText(reason)}` });
     }
   }, [assetId, node.id, parsed.ok, presentationSignature]);
@@ -242,11 +246,7 @@ const SingleModel3DNode = memo(function SingleModel3DNode({
       runtimeRef.current.applyTransforms(parsed.value.transformOverrides);
       setLoadState({ status: "ready" });
     } catch (reason) {
-      console.error("Failed to apply model node transforms.", {
-        assetId,
-        canvasNodeId: node.id,
-        reason,
-      });
+      reportError(reason, { operation: "model.transforms", assetId, canvasNodeId: node.id });
       setLoadState({
         status: "error",
         message: `节点变换应用失败：${errorText(reason)}`,
@@ -263,11 +263,7 @@ const SingleModel3DNode = memo(function SingleModel3DNode({
       });
       setLoadState({ status: "ready" });
     } catch (reason) {
-      console.error("Failed to apply model node appearances.", {
-        assetId,
-        canvasNodeId: node.id,
-        reason,
-      });
+      reportError(reason, { operation: "model.appearances", assetId, canvasNodeId: node.id });
       setLoadState({
         status: "error",
         message: `节点外观应用失败：${errorText(reason)}`,
@@ -281,12 +277,7 @@ const SingleModel3DNode = memo(function SingleModel3DNode({
       runtimeRef.current.applySelection(selectedSceneNodePath, selectionStyle);
       setLoadState({ status: "ready" });
     } catch (reason) {
-      console.error("Failed to highlight the selected model node.", {
-        assetId,
-        canvasNodeId: node.id,
-        reason,
-        selectedSceneNodePath,
-      });
+      reportError(reason, { operation: "model.selection", assetId, canvasNodeId: node.id });
       setLoadState({
         status: "error",
         message: `节点高亮失败：${errorText(reason)}`,
@@ -550,7 +541,7 @@ const SingleModel3DNode = memo(function SingleModel3DNode({
           try {
             sceneTree = buildModelSceneTree(gltf.scene);
           } catch (reason) {
-            console.error("Invalid model scene metadata.", { assetId, canvasNodeId: node.id, reason });
+            reportError(reason, { operation: "model.metadata", assetId, canvasNodeId: node.id });
             setLoadState({ status: "error", message: `模型元数据无效：${errorText(reason)}` });
             disposeSceneResources(gltf.scene);
             return;
@@ -895,11 +886,7 @@ const SingleModel3DNode = memo(function SingleModel3DNode({
               });
             }
           } catch (reason) {
-            console.error("Failed to initialize the 3D model scene.", {
-              assetId,
-              canvasNodeId: node.id,
-              reason,
-            });
+            reportError(reason, { operation: "model.initialize", assetId, canvasNodeId: node.id });
             onSceneChange?.(node.id, null);
             setLoadState({
               status: "error",
@@ -1030,13 +1017,7 @@ const SingleModel3DNode = memo(function SingleModel3DNode({
       ) ?? null;
       onSceneNodeSelect(node.id, sceneNodePath);
     } catch (reason) {
-      console.error("Failed to pick a model node.", {
-        assetId,
-        canvasNodeId: node.id,
-        clientX: event.clientX,
-        clientY: event.clientY,
-        reason,
-      });
+      reportError(reason, { operation: "model.pick", assetId, canvasNodeId: node.id });
       setLoadState({
         status: "error",
         message: `节点选择失败：${errorText(reason)}`,
@@ -1079,7 +1060,7 @@ const SingleModel3DNode = memo(function SingleModel3DNode({
 
 export const Model3DNode = memo(function Model3DNode(props: Model3DNodeProps) {
   const parsed = parseModel3DProps(props.node.props, props.maximumModelInstances);
-  if (parsed.ok && (parsed.value.modelInstances.length > 0 || props.maximumModelInstances !== undefined || props.walkScene !== undefined || props.twinDrive !== undefined || props.fluids !== undefined || props.fluidEditor !== undefined)) {
+  if (parsed.ok && (parsed.value.modelInstances.length > 0 || props.maximumModelInstances !== undefined || props.walkScene !== undefined || props.twinDrive !== undefined || props.fluids !== undefined || props.fluidEditor !== undefined || props.decorations !== undefined || props.roomAlarms !== undefined || props.staticMap !== undefined)) {
     return <BatchModel3DNode {...props} />;
   }
   return <SingleModel3DNode {...props} />;

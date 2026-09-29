@@ -1,3 +1,5 @@
+import { errorMessage, reportError } from "../errors";
+import { createUuid } from "../uuid";
 import type { TwinDriveCommand, TwinDriveSnapshot, TwinPoint } from "../../../../shared/twin-drive";
 
 export type TwinDriveLiveSource = {
@@ -169,7 +171,8 @@ export class TwinPointStream implements TwinDriveLiveSource {
           throw new Error(`未知点位消息类型：${String(message.type)}`);
         }
       } catch (reason) {
-        this.update({ connected: false, phase: "error", error: reason instanceof Error ? reason.message : String(reason) });
+        reportError(reason, { operation: "twin-stream.message", projectId: this.projectId, revision: this.revision });
+        this.update({ connected: false, phase: "error", error: errorMessage(reason) });
         socket.close(4002, "invalid point message");
       }
     };
@@ -211,7 +214,7 @@ export class TwinPointStream implements TwinDriveLiveSource {
     if (!this.state.connected || this.socket?.readyState !== WebSocket.OPEN) return Promise.reject(new Error("点位连接尚未就绪，命令未发送。"));
     if (input.expectedRevision !== this.state.snapshot?.revision) return Promise.reject(new Error("点位配置已变化，请重新加载配置后操作。"));
     const socket = this.socket;
-    const commandId = crypto.randomUUID();
+    const commandId = createUuid();
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
         this.pending.delete(commandId);

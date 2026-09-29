@@ -8,7 +8,8 @@ import { MeshBVH } from 'three-mesh-bvh';
 import { ResourceManager } from '../src/scene/resource-manager';
 import { InstanceManager } from '../src/scene/instance-manager';
 import { createPickingService } from '../src/scene/picking-service';
-import { constrainEditableInstanceScale, readEditableInstanceTransform } from '../src/scene/instance-transform';
+import { constrainEditableDecorationScale, constrainEditableInstanceScale, readEditableDecorationTransform, readEditableInstanceTransform } from '../src/scene/instance-transform';
+import { createSceneDecoration, parseSceneDecorations } from '../../../shared/scene-decorations';
 import { captureCoverSurface, registerCoverSurface } from '../src/covers/render-surfaces';
 import { EMPTY_SCENE_GRID_SIZE, fitEmptySceneCamera } from '../src/scene/empty-scene-view';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
@@ -237,6 +238,30 @@ console.log('Scene runtime tests passed: coalescing, concurrency, cancellation, 
   assert.throws(() => constrainEditableInstanceScale(object), /非有限数值/);
 }
 console.log('Instance transform tests passed: mouse scale bounds, finite values, degree conversion and stable precision.');
+
+// Procedural models share the gesture, but must never emit values rejected by
+// the narrower decorations contract or alter uploaded-model scale limits.
+{
+  const object = new Group();
+  object.position.set(-10_000, 12.345678, 10_000);
+  object.rotation.set(Math.PI / 2, -Math.PI / 4, 0);
+  object.scale.set(-2, 2.345678, 2_000);
+  constrainEditableDecorationScale(object);
+  const transform = readEditableDecorationTransform(object);
+  assert.deepEqual(transform, { position: [-10_000, 12.3457, 10_000], rotation: [90, -45, 0], scale: [0.001, 2.3457, 100] });
+  for (const kind of ['tree','shrub','river','military-truck','military-tent','military-radar','military-armored']) {
+    assert.equal(parseSceneDecorations([{...createSceneDecoration(`transform-${kind}`,kind),transform}]).ok,true);
+  }
+  object.position.x = 10_001;
+  assert.throws(() => readEditableDecorationTransform(object), /位置超出可保存范围/);
+  object.position.x = 0;object.rotation.z = Math.PI * 21;
+  assert.throws(() => readEditableDecorationTransform(object), /旋转超出可保存范围/);
+  object.rotation.z = 0;object.scale.y = Number.POSITIVE_INFINITY;
+  assert.throws(() => constrainEditableDecorationScale(object), /非有限数值/);
+  object.scale.y = Number.NaN;
+  assert.throws(() => constrainEditableDecorationScale(object), /非有限数值/);
+}
+console.log('Decoration transform tests passed: API-compatible values for every library kind, distinct scale/coordinate limits and invalid transform rejection.');
 
 // Keep visible scene bounds while recovering precision for millimeter-spaced details.
 for (const [distance, radius] of [[50,18], [0,18], [-10,18], [-100,18], [10,18], [10000,18], [.02,.01]]) {

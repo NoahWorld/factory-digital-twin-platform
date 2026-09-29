@@ -1,3 +1,4 @@
+import { createUuid } from "../uuid";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { FLUID_LIMITS, createFluidDefinition, parseFluids, type FluidDefinition, type FluidKind, type FluidPoint } from "../../../../shared/fluids";
 import { Select } from "../components/Select";
@@ -59,7 +60,7 @@ export function useFluidEditor({ fluids = EMPTY_FLUIDS, onChange, enabled }: {
     if (!enabled) return false;
     if (session) { setError("请先应用或取消当前路径，再添加流体。"); return false; }
     if (fluids.length >= FLUID_LIMITS.maximumFluids) { setError(`场景最多支持 ${FLUID_LIMITS.maximumFluids} 条流体。`); return false; }
-    const fluid = createFluidDefinition(`fluid-${crypto.randomUUID()}`, kind);
+    const fluid = createFluidDefinition(`fluid-${createUuid()}`, kind);
     fluid.label = `${fluidKindLabels[kind]} ${fluids.length + 1}`;
     setSession({ fluid, isNew: true, plane: "xz", offset: 0, active: true, selectedPointIndex: null });
     setSelectedId(fluid.id); setError(null);

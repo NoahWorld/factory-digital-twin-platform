@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Select } from "../components/Select";
+import { useNotifications } from "../components/NotificationProvider";
 import { errorMessage, request } from "../api";
 import "./UsersPage.css";
 
@@ -22,6 +23,7 @@ const roleName: Record<Role, string> = {
 };
 
 export function UsersPage({ currentUserId }: { currentUserId: string }) {
+  const notify = useNotifications();
   const [users, setUsers] = useState<ManagedUser[]>([]);
   const [selected, setSelected] = useState<ManagedUser | null>(null);
   const [query, setQuery] = useState("");
@@ -31,8 +33,6 @@ export function UsersPage({ currentUserId }: { currentUserId: string }) {
   const [deleting, setDeleting] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [actionError, setActionError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
   const [busyUserId, setBusyUserId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [email, setEmail] = useState("");
@@ -66,14 +66,10 @@ export function UsersPage({ currentUserId }: { currentUserId: string }) {
     setRole("viewer");
     setModules([]);
     setConfirmDelete(false);
-    setActionError(null);
-    setNotice(null);
   };
 
   const selectUser = async (user: ManagedUser) => {
     setDetailLoading(true);
-    setActionError(null);
-    setNotice(null);
     setConfirmDelete(false);
     try {
       const result = await request<{ user: ManagedUser }>(`/api/v1/users/${encodeURIComponent(user.id)}`);
@@ -86,7 +82,7 @@ export function UsersPage({ currentUserId }: { currentUserId: string }) {
       setModules(result.user.modules);
       setUsers((current) => current.map((item) => item.id === user.id ? result.user : item));
     } catch (reason) {
-      setActionError(`读取“${user.displayName}”失败：${errorMessage(reason)}`);
+      notify.error(reason);
     } finally {
       setDetailLoading(false);
     }
@@ -101,8 +97,6 @@ export function UsersPage({ currentUserId }: { currentUserId: string }) {
   const createUser = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setCreating(true);
-    setActionError(null);
-    setNotice(null);
     try {
       const payload = { email, loginName, displayName, role,
         modules: role === "platform_admin" ? ["2d", "3d"] : modules,
@@ -119,11 +113,11 @@ export function UsersPage({ currentUserId }: { currentUserId: string }) {
         setRole(result.user.role);
         setModules(result.user.modules);
         setPassword("");
+        notify.success(`已保存“${result.user.displayName}”的资料和权限。${password ? "原有会话已撤销。" : ""}`);
         if (selected.id === currentUserId) {
           window.location.reload();
           return;
         }
-        setNotice(`已保存“${result.user.displayName}”的资料和权限。${password ? "原有会话已撤销。" : ""}`);
       } else {
         const result = await request<{ user: {
           id: string; email: string; loginName: string | null; displayName: string;
@@ -141,10 +135,10 @@ export function UsersPage({ currentUserId }: { currentUserId: string }) {
         setRole(created.role);
         setModules(created.modules);
         setPassword("");
-        setNotice(`已创建账号“${created.displayName}”。`);
+        notify.success(`已创建账号“${created.displayName}”。`);
       }
     } catch (reason) {
-      setActionError(`${selected ? "保存" : "创建"}账号失败：${errorMessage(reason)}`);
+      notify.error(reason);
     } finally {
       setCreating(false);
     }
@@ -154,8 +148,6 @@ export function UsersPage({ currentUserId }: { currentUserId: string }) {
     const nextModules = (["2d", "3d"] as const).filter((candidate) =>
       candidate === module ? !user.modules.includes(candidate) : user.modules.includes(candidate));
     setBusyUserId(user.id);
-    setActionError(null);
-    setNotice(null);
     try {
       const result = await request<{ userId: string; modules: Module[] }>(
         `/api/v1/users/${encodeURIComponent(user.id)}/modules`,
@@ -167,9 +159,9 @@ export function UsersPage({ currentUserId }: { currentUserId: string }) {
         setSelected({ ...selected, modules: result.modules });
         setModules(result.modules);
       }
-      setNotice(`已更新“${user.displayName}”的模块权限。`);
+      notify.success(`已更新“${user.displayName}”的模块权限。`);
     } catch (reason) {
-      setActionError(`更新“${user.displayName}”失败：${errorMessage(reason)}`);
+      notify.error(reason);
     } finally {
       setBusyUserId(null);
     }
@@ -178,17 +170,15 @@ export function UsersPage({ currentUserId }: { currentUserId: string }) {
   const deleteUser = async () => {
     if (!selected || selected.id === currentUserId) return;
     setDeleting(true);
-    setActionError(null);
-    setNotice(null);
     try {
       await request<void>(`/api/v1/users/${encodeURIComponent(selected.id)}`, { method: "DELETE" });
       const deleted = { ...selected, active: false };
       setUsers((current) => current.map((item) => item.id === selected.id ? deleted : item));
       setSelected(deleted);
       setConfirmDelete(false);
-      setNotice(`已删除“${selected.displayName}”的登录权限，关联记录仍保留。`);
+      notify.success(`已删除“${selected.displayName}”的登录权限，关联记录仍保留。`);
     } catch (reason) {
-      setActionError(`删除“${selected.displayName}”失败：${errorMessage(reason)}`);
+      notify.error(reason);
     } finally {
       setDeleting(false);
     }
@@ -197,17 +187,15 @@ export function UsersPage({ currentUserId }: { currentUserId: string }) {
   const restoreUser = async () => {
     if (!selected) return;
     setDeleting(true);
-    setActionError(null);
-    setNotice(null);
     try {
       const result = await request<{ user: ManagedUser }>(
         `/api/v1/users/${encodeURIComponent(selected.id)}/restore`, { method: "POST" },
       );
       setUsers((current) => current.map((item) => item.id === result.user.id ? result.user : item));
       setSelected(result.user);
-      setNotice(`已恢复“${result.user.displayName}”的登录权限。`);
+      notify.success(`已恢复“${result.user.displayName}”的登录权限。`);
     } catch (reason) {
-      setActionError(`恢复“${selected.displayName}”失败：${errorMessage(reason)}`);
+      notify.error(reason);
     } finally {
       setDeleting(false);
     }
@@ -232,9 +220,6 @@ export function UsersPage({ currentUserId }: { currentUserId: string }) {
       </div>
       <button className="primary-button" disabled={busy} onClick={startCreate} type="button">新建用户</button>
     </div>
-
-    {actionError ? <p className="form-error" role="alert">{actionError}</p> : null}
-    {notice ? <p className="users-notice" role="status">{notice}</p> : null}
 
     <div className="users-layout">
       <section className="users-panel" aria-labelledby="users-list-title">

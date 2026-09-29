@@ -1,5 +1,8 @@
 import { findBuiltinModel } from "../../../shared/builtin-models";
 import { parseFluids, type FluidDefinition } from "../../../shared/fluids";
+import { parseSceneDecorations, type SceneDecoration } from "../../../shared/scene-decorations";
+import { parseRoomAlarms, type RoomAlarmRule } from "../../../shared/room-alarms";
+import { parseStaticMap, type StaticMapDefinition } from "../../../shared/static-map";
 import { parseTwinActions, type TwinAction } from "../../../shared/twin-actions";
 import { validateTwinActionReferences } from "./twin-action-references";
 import {
@@ -66,6 +69,9 @@ type InstanceRow = {
 };
 
 export type StandaloneScenePatch = {
+  staticMap?: StaticMapDefinition | null;
+  decorations?: SceneDecoration[];
+  roomAlarms?: RoomAlarmRule[];
   fluids?: FluidDefinition[];
   deleteInstanceIds: string[];
   expectedRevision: number;
@@ -78,6 +84,7 @@ const ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$/;
 const BUSINESS_ASSET_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,79}$/;
 const HEX_COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/;
 const scenePatchFields = new Set([
+  "decorations", "roomAlarms", "staticMap",
   "fluids",
   "deleteInstanceIds",
   "expectedRevision",
@@ -313,15 +320,37 @@ export const validateStandaloneScenePatch = (body: JsonObject): StandaloneSceneP
       : validateId(body.linked2dProjectId, "linked2dProjectId");
   }
   let fluids: FluidDefinition[] | undefined;
+  let decorations: SceneDecoration[] | undefined;
+  let roomAlarms: RoomAlarmRule[] | undefined;
+  let staticMap: StaticMapDefinition | null | undefined;
+  if (Object.hasOwn(body, "staticMap")) {
+    if (body.staticMap !== null && (typeof body.staticMap !== "object" || Array.isArray(body.staticMap))) throw new AppError(400, "invalid_static_map", "staticMap must be a map object or null.");
+    const parsed = parseStaticMap(body.staticMap);
+    if (!parsed.ok) throw new AppError(400, "invalid_static_map", parsed.message);
+    staticMap = parsed.value;
+  }
+  if (Object.hasOwn(body, "decorations")) {
+    const parsed = parseSceneDecorations(body.decorations);
+    if (!parsed.ok) throw new AppError(400, "invalid_scene_decorations", parsed.message);
+    decorations = parsed.value;
+  }
+  if (Object.hasOwn(body, "roomAlarms")) {
+    const parsed = parseRoomAlarms(body.roomAlarms);
+    if (!parsed.ok) throw new AppError(400, "invalid_room_alarms", parsed.message);
+    roomAlarms = parsed.value;
+  }
   if (Object.hasOwn(body, "fluids")) {
     const parsed = parseFluids(body.fluids);
     if (!parsed.ok) throw new AppError(400, "invalid_scene_fluids", parsed.message);
     fluids = parsed.value;
   }
-  if (!body.settings && upsertInstances.length === 0 && deleteInstanceIds.length === 0 && linked2dProjectId === undefined && fluids === undefined) {
+  if (!body.settings && upsertInstances.length === 0 && deleteInstanceIds.length === 0 && linked2dProjectId === undefined && fluids === undefined && decorations === undefined && roomAlarms === undefined && staticMap === undefined) {
     throw new AppError(400, "empty_scene_patch", "A scene patch must contain at least one change.");
   }
   return {
+    ...(staticMap === undefined ? {} : { staticMap }),
+    ...(decorations === undefined ? {} : { decorations }),
+    ...(roomAlarms === undefined ? {} : { roomAlarms }),
     ...(fluids === undefined ? {} : { fluids }),
     deleteInstanceIds,
     expectedRevision: body.expectedRevision as number,
@@ -561,6 +590,9 @@ export const applyStandaloneScenePatch = async (
   user: AuthenticatedUser,
   patch: StandaloneScenePatch,
 ): Promise<StandaloneSceneDocument> => {
+  if (["decorations", "roomAlarms", "staticMap"].some(key => Object.hasOwn(patch, key))) {
+    throw new AppError(501, "scene_extensions_not_supported", "This server does not support scene decorations or room alarms; use the current Java backend.");
+  }
   const current = await getStandaloneScene(env, projectId);
   if (current.revision !== patch.expectedRevision) {
     throw new AppError(

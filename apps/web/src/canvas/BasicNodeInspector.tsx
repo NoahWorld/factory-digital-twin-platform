@@ -1,4 +1,5 @@
 import { Select } from "../components/Select";
+import { useNotifications } from "../components/NotificationProvider";
 import { useEffect, useMemo, useState, type ChangeEvent } from "react";
 import { errorMessage, request } from "../api";
 import { imageAssetsPath, type ImageAsset } from "./image-assets";
@@ -47,6 +48,7 @@ export function BasicNodeInspector({
   onValidationChange,
   projectId,
 }: BasicNodeInspectorProps) {
+  const notify = useNotifications();
   const type = node.type as BasicNodeType;
   const [draft, setDraft] = useState<Record<string, unknown>>(() => cloneProps(node.props));
   const [imageAssets, setImageAssets] = useState<ImageAsset[]>([]);
@@ -112,29 +114,30 @@ export function BasicNodeInspector({
     if (!file) return;
     const extension = file.name.split(".").at(-1)?.toLowerCase();
     if (extension !== "png" && extension !== "jpg" && extension !== "jpeg" && extension !== "webp") {
-      setAssetError("只支持 PNG、JPEG 和 WebP 图片。");
+      notify.warning("只支持 PNG、JPEG 和 WebP 图片。");
       return;
     }
     if (file.size === 0) {
-      setAssetError("不能上传空图片。");
+      notify.warning("不能上传空图片。");
       return;
     }
     if (file.size > MAX_IMAGE_BYTES) {
-      setAssetError(`单张图片不能超过 ${formatFileSize(MAX_IMAGE_BYTES)}。`);
+      notify.warning(`单张图片不能超过 ${formatFileSize(MAX_IMAGE_BYTES)}。`);
       return;
     }
     if (type === "carousel" && node.resourceRefs.length >= MAX_CAROUSEL_IMAGES) {
-      setAssetError(`轮播图最多绑定 ${MAX_CAROUSEL_IMAGES} 张图片。`);
+      notify.warning(`轮播图最多绑定 ${MAX_CAROUSEL_IMAGES} 张图片。`);
       return;
     }
 
     setUploading(true);
-    setAssetError(null);
+    let uploaded = false;
     try {
       const result = await request<ImageAssetUploadResponse>(
         `${imageAssetsPath(projectId)}?filename=${encodeURIComponent(file.name)}`,
         { method: "POST", body: file, headers: { "content-type": file.type || "application/octet-stream" } },
       );
+      uploaded = true;
       setImageAssets((current) => [
         result.imageAsset,
         ...current.filter((asset) => asset.id !== result.imageAsset.id),
@@ -143,8 +146,10 @@ export function BasicNodeInspector({
         ? [result.imageAsset.id]
         : [...node.resourceRefs, result.imageAsset.id];
       onNodeChange({ ...node, resourceRefs });
+      notify.success("图片已上传并绑定，保存画布后生效。");
     } catch (reason) {
-      setAssetError(errorMessage(reason));
+      if (uploaded) notify.warning("图片已上传，但组件绑定未完成，请从资源列表重新选择。");
+      notify.error(reason);
     } finally {
       setUploading(false);
     }

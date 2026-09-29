@@ -4,8 +4,19 @@
 
 ## 产品定位
 
+### 2026-09-27 独立后端与四项场景扩展
+
+- Owner 已确认后端在 `NoahWorld/factory-digital-twin-backend/main` 开发，平台前端/共享契约在本仓库 `main` 配套；原 `newpower` 持续目标仍暂停。本轮先同步已存在的 Java 能力，再仅增加房间变量报警、参数化植物/河面、静态 JSON 地图和轻量军事外形。Owner 已授权将本轮改动提交并推送到两个仓库的 `main`；不包含外部部署。
+- `apps/backend` 只保留历史参考，Java 修改、构建和契约生成写向独立后端；默认兄弟目录，可用绝对路径 `TWIN_BACKEND_DIR` 配置。不得再形成两个活跃 Java writer。
+- 三项场景字段 `decorations`、`roomAlarms`、`staticMap` 与原场景共享 revision 事务、发布和封面链；省略保留，显式清空才删除，settings-only 必须保留原流体和扩展。新字段不得塞入 2D 节点 props。历史 Worker 必须明确拒绝不支持的扩展，不能忽略后报成功。
+- 报警仅观察标准化指标，目标是实例/资源/唯一房间子节点；每项指标保留自身来源及采样时间，禁止使用另一慢源的时间替代。缺值、失联、陈旧不能假解除；克隆和释放只作用自己的房间材质。正式引用在保存、资产改名和绑定变更时受保护。
+- 参数化装饰、地图与旧模型共享 renderer/帧循环并计入同一性能预算；不增加外部模型包或改写旧资源 ID。具体操作、输入范围及验收入口见 [场景扩展](docs/scene-extensions.md)。
+- 独立 3D 编辑器的植物、水景和军事对象统一从左侧分类模型库创建；右侧场景扩展保留属性、房间报警及地图配置。分类同时覆盖原工业、上传和背景模型，列表复用静态缩略图或明确的类别图标，不新增列表 WebGL。已保存对象继续使用原 `decorations` ID 和 schema，不转为伪造的上传模型。
+- 参数化对象与模型实例共享选中、移动 W／缩放 R 操作轴及显式保存流程，但沿用各自契约边界（装饰坐标 ±10000、缩放 0.001–100；模型坐标 ±1000000、缩放 0.001–1000）。拖动提交须更新场景草稿与右侧参数；未完成参数输入时禁止视窗变换。隐藏、删除、取消、失焦及进入预览须释放操作轴并恢复相机控制。装饰仅变换、名称或显隐变化不得重建几何；异常须记录项目、场景与装饰 ID。
+
 - 产品是面向交付人员的工厂数字孪生项目生成器，不是通用低代码/SaaS 大屏产品。
 - 前端展示名称的唯一配置入口是 `VITE_PRODUCT_NAME`；未配置时由 `apps/web/product.config.ts` 使用默认值 `Kingdom 3D vision`。宣传页、工作台导航、浏览器标题与 SEO 元信息必须统一读取该配置；显式配置空字符串属于错误，必须让启动或构建失败，不能静默回退。
+- 浏览器端 UUID 统一使用 `apps/web/src/uuid.ts` 的 `createUuid()`，直接使用 `crypto.getRandomValues` 生成标准 UUID v4，兼容客户 HTTP 部署；不能直接依赖仅安全上下文可用的 `crypto.randomUUID()`，不得使用 `Math.random` 或静默降级。随机源缺失或失败必须明确抛错。修改后运行 `pnpm test:uuid`，覆盖无 `randomUUID` 的登录模块初始化与模板实例化；发布必须另用真实非 localhost HTTP 浏览器验证首页、登录及组件创建，接口/资源 HTTP 200 不能替代浏览器执行验收。
 - 目标是以行业模板、标准 glTF 2.x 模型、资产台账和数据契约，快速交付两类一等项目：保留原有 **2D + 3D 组件组合大屏**，并新增可独立搭建、漫游和展示的 **大型 3D 场景项目**。
 - 首期运行态是只读大屏；配置能力只向交付人员开放。
 - 公开产品宣传页只保留 3D 工业交付展示版：`#/` 是默认入口，`#/industrial` 保留为兼容入口。首屏以可辨认、可交互的工厂模型解释场景、资产与数据联动；后续有滚动交付分镜、机械臂精密取放动作演示和行业宣传画面切换。演示仅使用本地内置模型、公开静态模型和明确标注的模拟数据，复用现有场景运行时，不得请求客户资源或业务 API。“进入平台”统一跳转到受身份验证保护的 `#/projects`。宣传页不得发起项目、用户或客户数据请求，也不得把尚未实现的能力、性能数字或数据连接状态写成既成事实。
@@ -164,6 +175,8 @@
 
 ### 身份与权限基础
 
+- 平台临时操作提示统一使用 `apps/web/src/components/NotificationProvider.tsx` 的 `useNotifications()`；成功提示 4 秒、失败和提醒 8 秒，可关闭、悬停或聚焦暂停计时，同类同文案在队列内去重，跨路由、原生模态弹窗与全屏可见。通知由操作入口负责，通用 `request()` 不自动通知，避免正常鉴权检查、批量请求和父子组件重复报错；同一操作成功与失败可用 `key` 替换旧提示。加载失败、连接状态、未保存修改和字段校验是持久状态，可就地显示简单提示。
+- 错误用户文案统一由 `errors.ts`（通过 `api.ts` 导出）按稳定错误码生成，账号密码错误、会话失效、访问地址被拒、限流、连接失败和服务异常不得混淆。界面不展示错误码、请求编号、原始异常或任何折叠错误详情；未知中英文后端消息都不能直接透传。只有经过审查的本地可操作校验才使用 `UserFacingError`，不得用它包装任意响应文本。`ApiRequestError` 的类型、code、cause 与原始异常仍保留供程序判断；`reportError()` 向开发者控制台去重输出安全元数据（错误类别、HTTP 状态、去除查询参数的接口、请求编号、白名单项目/节点/操作标识和仅含文件名与行列号的位置），不输出正文、认证头、原始异常文本或分享令牌。未知失败不能假成功，取消不得误报网络故障。修改后运行 `pnpm test:api-errors`、`node scripts/test-notifications-browser.mjs` 和 `DTWIN_ERROR_TEST_ORIGIN=<本地预览地址> pnpm test:error-notice-browser`，发布还须真实服务验证错误登录和成功登录。
 - 登录页的品牌展示使用 `apps/web/src/auth/LoginShowcase.tsx` 和公开内置模型，复用共享 3D 运行层；不读取客户项目或资源。展示区禁用原生拖拽、选中与右键保存菜单（不等于资源防下载），保留暂停/播放控制并响应系统减少动态效果设置。模型加载错误必须可见，展示失败不得阻塞账号密码表单。
 - 所有 `/api/v1/projects` 及后续配置和数据源接口默认需要已验证的服务端会话。Java 后端的项目公开发布是明确例外：项目编辑者或管理员通过登录接口创建/取消发布；持有签名分享令牌的访客只能读取 `/api/v1/publications` 下发布范围内的当前保存项目，以及只读点位 WebSocket。每次读取和推送都校验发布状态与项目范围；取消发布或重新发布立即废止旧令牌。链接范围最多 32 个关联项目，发布者必须对每个项目有编辑权限。公开资源接口只提供当前文档引用的资源；已签出的对象存储下载 URL 最多仍可用 5 分钟。此功能只在 Java 后端实现，Worker 验证环境不支持。除健康检查、首次初始化、登录和上述受控公开读取外，禁止匿名访问。
 - 首个管理员只能在 `users` 表为空时，通过服务端 `BOOTSTRAP_TOKEN` 初始化；其唯一登录名固定为 `admin`，密码仍由初始化人员设置。不得提供公开注册、默认密码或把初始化令牌下发进构建产物。
@@ -177,6 +190,19 @@
 - 前端和 API 的认证交互默认同源，以 HttpOnly、`SameSite=Lax` Cookie 维持会话；本地开发通过 Vite `/api` 代理。跨站部署必须先完成 Cookie、CSRF 与反向代理设计，不能临时放开任意 CORS。
 
 ## 安全与交付
+
+- 2026-09-28 服务器部署配置位于 `deploy/server`，以 Codeup 前后端 `main` 为应用基线。用户要求仅修改本项目，数据放 `/data/dtwin`，前端使用独立 Nginx；现有业务 Docker/Nginx、容器与数据不得修改或重启。用户已明确批准并执行独立 Docker/containerd 与 Nginx 19080 部署：7 个本项目容器运行，5 个带健康检查的容器均 healthy，storage/Nginx 已通过实际请求验证；本机 10 项业务验收、专用 Docker 重启恢复及原业务基线对照通过，两个专用 unit 已启用自启动，专用日志轮转已安装。2026-09-29 用户确认放行 TCP 19080 后，从本地 en0 直接访问真实公网地址 `http://8.136.35.33:19080` 的首页与健康接口均为 200，10 项公网接口与资源验收全部通过，临时项目已删除且测试会话已撤销。实际版本、路径、证据与历史阻塞记录见 [部署记录](deploy/server/DEPLOYMENT.md)，操作约定见 [数据盘部署](deploy/server/README.md)。
+- 该服务器的 CentOS 7 / kernel 3.10、runc 1.1.12、libseccomp 2.3.1 组合下，PostgreSQL 17.11 Alpine 的 `initdb` 实测因 `pwritev2(RWF_NOAPPEND)` 返回 `EPERM` 失败；保留 strace 诊断，部署改用 PostgreSQL 17 Bookworm 系列镜像，已在默认 seccomp 下完成初始化并健康。不得为此升级宿主机共用运行组件或放宽 seccomp；数据库健康不代表整套部署验收通过。Valkey 健康检查的 `valkey-cli` 通过 `REDISCLI_AUTH` 读取凭据，不得改成跳过认证检查。
+- 同一服务器上 `nginx:stable-alpine` 虽通过 `nginx -t`，实际启动却在写 `/tmp/nginx.pid` 时报告 `pwrite()` 返回 `EPERM`；未取得 Nginx strace，不得直接套用 PostgreSQL 的系统调用结论。改用 `nginx:stable-bookworm` 后，同配置和默认 seccomp 下启动成功，本机经 19080 请求前端 `/` 与 `/health` 均返回 200，随后本机业务验收通过；2026-09-29 另行通过真实公网的接口与资源验收。Nginx 兼容性必须验证真实启动，不能只检查配置语法。
+- 2026-09-29 普通 HTTP 白屏根因是模块初始化调用 `crypto.randomUUID`；此前接口/资源验收未执行浏览器 JavaScript。此前修复发布到 `/data/dtwin/releases/dtwin-ui-20260929-http-uuid-365896d8`，发布时前端为首次部署的 `b5bd9deaf3d48295cc7b44c115ed4a80c2defa4b` 基线加当时尚未提交的 UUID 补丁；后端不变。该版本真实公网浏览器 6 项检查（首页、登录、拖拽组件生成 UUID 并保存刷新、清理和注销）及 10 项接口/资源检查均通过。该次仅本项目 Nginx 重建，原 16 个业务容器及本项目其余 6 个容器未重启。发布验收同时运行 `deploy/server/verify.mjs` 和 `verify-browser.mjs`，按部署说明指定真实 HTTP 地址与受限凭据。
+- 此前前端于 `2026-09-29T02:28:15Z` 切换至 `/data/dtwin/releases/dtwin-ui-20260929-errors-dcaquuqx`，包含 HTTP UUID 修复与公共 API 中文错误提示、登录/初始化折叠详情；当时补丁尚未提交或推送。该版本 7 项真实公网浏览器与 10 项接口/资源检查通过，只有本项目 Nginx 重建，审计保留于 `/data/dtwin/audit/error-notice-20260929-dcaquuqx`。折叠详情已由下述统一通知版本移除，不能作为当前界面约定。
+- 此前统一通知前端于 `2026-09-29T03:18:22.412472Z` 切换至 `/data/dtwin/releases/dtwin-ui-20260929-notifications-d-dxotyt`，入口 `/assets/index-D-dXOtyt.js`；以 `main` 的 `69af24ef41b914b44d8a36163f50d4992a26047f` 为基线加入统一通知改动，后端仍为 `ecd3f476812bcc87a85b692a9040cc9b9a514285`。119 个 web 与 37 个 source 文件核验通过；本地 API 错误 57/57、通知浏览器 30/30、登录模拟浏览器 14/14、前端检查和构建通过。该轮 7 项真实公网浏览器与 10 项接口/资源验收均通过，临时项目已删除、测试会话已撤销；UI 发布只重建本项目 Nginx。审计目录为 `/data/dtwin/audit/dtwin-ui-20260929-notifications-d-dxotyt`，当时前端回滚目标为上述 `errors-dcaquuqx` release；只切本项目 `RELEASE_DIR` 并重建自己的 Nginx。release 中通知测试脚本未包含最后追加的模态窗口用例，最终测试源码与报告共 5 个文件已归档到该轮审计目录的 `notifications-final-evidence/`，服务器端哈希核对通过；不能将两者视为同一测试快照。版本证据及历史检查限制见 [部署记录](deploy/server/DEPLOYMENT.md)。
+- 当前前端于 `2026-09-29T06:38:25.493284Z` 切换至 `/data/dtwin/releases/dtwin-ui-20260929-model-library-b0csanop-063700286494`，入口 `/assets/index-B0CsANOp.js`；在上述 main 基线及统一通知改动上加入分类模型库与参数化对象移动、缩放，后端不变。119 个 web、54 个 source 文件及源码补丁哈希通过，10 个 web 文件增量发布、109 个复用；包 SHA-256 为 `1154aa54c1601a65a7d1b06cc034a38d93f336e5b7c2f30497a25003319b3757`。本地前端检查、生产构建、57 项 API 错误测试、`scene-runtime`、`scene-extensions`、`standalone-3d` 回归与隔离浏览器 7 组检查通过；真实线上专项浏览器 7 组也通过，页面异常、HTTP 错误和越界请求均为 0。最终运行 `model-library-browser-0651ca9b-41fe-40e9-8842-42cff4aaa2cc` 验证 7 种对象创建保存及 API 回读、乔木真实鼠标移动 X `0→0.4272` 和缩放 X `1→1.2576` 后保存刷新一致、原有 GLB 添加保存刷新；临时项目 `48b11571-e021-453d-a838-84a2b419fc82` 已精确删除，会话已撤销。只重建本项目 Nginx，其他 6 个本项目服务及公共 Docker 中 25 个容器的 ID、启动时间、状态一致；Compose、Nginx、Valkey 配置不变，`.env` 仅修改 `RELEASE_DIR`。当前回滚目标为上述 `notifications-d-dxotyt` release，仅切本项目 `RELEASE_DIR` 并重建自己的 Nginx，随后重新验收；不回滚此前独立完成的业务迁移。发布源码按 `release.json` 的 `baseCommit` 加完整 `source.patch`、新增文件所在 `source/` 重建，不得仅用基线提交代表现网。
+- 本次模型库发布的最终证据目录为 `/data/dtwin/audit/dtwin-ui-20260929-model-library-b0csanop-063700286494/final-evidence/`，报告为 `production-results.json`，同目录包含最终验收脚本、截图及文档；服务器收据路径为审计根目录下的 `final-verified.json`、`impact-final.json`、`completed.json`。发布包保留打包时快照，后补验收脚本与文档以 `final-evidence/` 为准。生产专项入口为 `deploy/server/verify-model-library-browser.mjs`，使用 `DTWIN_ORIGIN`、受限 `DTWIN_ADMIN_FILE` 及可选 `DTWIN_PLAYWRIGHT_MODULE`；每次只创建唯一临时项目，并按本轮精确项目 ID 清理和撤销会话，不得修改既有项目。初次沙箱启动失败未创建项目；空场景和 `scene-` 前缀 ID 的后续调整属于验收断言修正，不是业务代码修复，失败轮已清理，详见部署记录。
+- 2026-09-29 用户另行授权的本地业务导入已完成验收；首次部署“不迁移本地业务数据”的限制不再代表本轮授权范围。数据库于 `2026-09-29T03:34:26.425Z` 导入并通过全表 postverify：18 个项目、18 份文档、357 项内容、39 个资产、4 个暂停数据源、184 个绑定、70 个资源、18 个封面、1 个 TwinDrive。70 个 S3 对象于 `03:33:26Z` 上传完成、`03:34:13Z` 全部 SHA-256 复核通过。公网 API 已核对全部项目内容、资源元数据与封面以及 2 个代表签名下载；真实浏览器 10/10 通过，覆盖全部项目列表及代表 2D/3D、模板与资源，零页面/请求错误、文档和 revision 未变化、测试会话已撤销。4 个本机模拟数据源保持暂停，不扩大生产采集白名单；代表浏览器检查不等于全部项目交互或压力测试。
+- 本轮迁移 storage 原 768 MiB 上限在约 87.8 MB 对象上传时触发两次 OOM（`03:23:42Z`、`03:25:03Z`），不是单纯传输超时；已于 `2026-09-29T03:31:36.505724Z` 仅将本项目 storage 上限提高至 2 GiB 并重建它，其他服务限额不变。此前失败对象在 33 秒内完成上传，新 storage 无重启，已观测峰值约 1.217 GiB。七容器内存限额合计现为 4800 MiB（约 4.69 GiB），首次部署为 3520 MiB（约 3.44 GiB）；当时宿主机可用内存约 7557 MiB，不代表资源预占或隔离，daemon、I/O 等仍共享。`03:39:35.378012Z` 影响核对确认全部 25 个其他容器、既有用户及原会话不变，本项目 PostgreSQL/Valkey 未重启；7 个容器运行，5 个带健康检查均 healthy，storage/Nginx 有真实请求证据。完整本轮中 API/collector/worker/storage 为备份在 `03:08:06Z` 至 `03:08:22Z` 暂停恢复，Nginx 因发布更新，storage 随后 OOM 并重建，不能将某一步只重建一个容器的表述扩展为整个迁移。
+- 迁移审计根目录 `/data/dtwin/audit/local-import-20260929/` 的 `core/` 已归档 16 个文件并核验服务器哈希，`core-verified.json` 绑定 runId、文件与归档哈希，`impact-verified.json` 记录最终影响核对；`backup/` 保留 `postgres.dump`、`objects.tar.gz`、受限 `config.env` 及已通过的恢复演练收据 `verified.json`。前端 release 回滚不会撤销业务导入，数据回滚必须核对备份及迁移基线，不能覆盖其他业务。浏览器报告、7 张截图、API 报告、脚本、Compose 与影响/清理/OOM 证据共 16 个文件已归档至 `final/`，服务器权限和 SHA-256 均通过，记录于 `final-verified.json`。仅本轮 2 个临时验证数据库已于 `2026-09-29T03:39:57.908496Z` 清理，备份保留。审计根目录 `completed.json` 已于 `2026-09-29T03:42:03.778252Z` 生成，状态为 `complete`，绑定 core/final 校验、其他 25 个容器不变及修复后 storage 无重启证据。身份映射、模拟源暂停、回滚与验收范围见 [本地到生产迁移](docs/local-to-production-migration.md)。
+- 本次部署管理员凭据已按用户授权导出至本仓库 `deploy/server/.local/admin.json`，文件权限 0600，目录已加入 Git ignore。凭据不得写入部署记录、日志、构建产物或提交；后续验收使用受限文件读取，不能重新初始化或重置已有管理员来绕过登录问题。
 
 - 密钥、私钥、证书、真实客户模型、真实接口样本和生产数据不得提交。使用本地 `.env`、受控密钥存储和脱敏样本；新增环境变量必须写入 `.env.example` 与部署文档。
 - 客户内网部署优先使用服务端数据网关/采集器与 Docker 化交付。网络拓扑、白名单、证书、数据访问权限和日志留存属于上线前验收项。

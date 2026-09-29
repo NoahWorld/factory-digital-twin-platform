@@ -1,3 +1,5 @@
+import { useNotifications } from "../components/NotificationProvider";
+import { createUuid } from "../uuid";
 import {
   useCallback,
   useEffect,
@@ -20,7 +22,7 @@ import {
 import type { TwinAction } from "../../../../shared/twin-actions";
 import { parseFluids, type FluidDefinition, type FluidKind } from "../../../../shared/fluids";
 import { FluidEditor, FluidLayers, useFluidEditor } from "../scene/FluidEditor";
-import { errorMessage, request } from "../api";
+import { errorMessage, request, reportError } from "../api";
 import { findBuiltinModel, latestBuiltinModel } from "../../../../shared/builtin-models";
 import { Select } from "../components/Select";
 import { SceneTemplateDialog } from "../scene/SceneTemplateDialog";
@@ -29,7 +31,6 @@ import { projectAssetsPath, type ProjectAsset, type ProjectAssetListResponse } f
 import { Model3DNode } from "../canvas/Model3DNode";
 import { CanvasSurface } from "../canvas/CanvasSurface";
 import { canvasRoutePath, projectCanvasPath } from "../canvas/routes";
-import { ModelAssetThumbnail } from "../canvas/ModelAssetThumbnail";
 import { ModelAssetPreviewDialog } from "../canvas/ModelAssetPreviewDialog";
 import { standaloneRendererNode } from "../canvas/standalone-renderer-node";
 import { ThemeToggle } from "../theme/ThemeToggle";
@@ -63,6 +64,15 @@ import { TwinDriveConsole } from "../twin/TwinDriveConsole";
 import { TwinDriveStatus } from "../twin/TwinDriveStatus";
 import { withTwinDriveEnabled } from "../twin/twin-config-state";
 import type { TwinDriveDiagnostics, TwinNodeCatalogEntry } from "../scene/twin-drive-runtime";
+import { SceneExtrasEditor } from "../scene/SceneExtrasEditor";
+import { SceneModelLibrary } from "../scene/SceneModelLibrary";
+import { decorationLibraryItems } from "../scene/model-library";
+import { RoomAlarmStatusPanel } from "../scene/RoomAlarmStatusPanel";
+import type { RoomAlarmStatus } from "../scene/room-alarm-runtime";
+import { useRoomAlarmData } from "../twin/useRoomAlarmData";
+import { createSceneDecoration, parseSceneDecorations, SCENE_DECORATION_LIMITS, sceneDecorationBudget, type DecorationKind, type SceneDecoration } from "../../../../shared/scene-decorations";
+import { parseRoomAlarms, type RoomAlarmRule } from "../../../../shared/room-alarms";
+import { parseStaticMap, staticMapBudget, type StaticMapDefinition } from "../../../../shared/static-map";
 
 type ProjectSummary = {
   id: string;
@@ -71,6 +81,7 @@ type ProjectSummary = {
 };
 
 type SceneResponse = {
+  sceneExtensionsVersion?: number;
   editable: boolean;
   limits: typeof STANDALONE_3D_LIMITS;
   project: ProjectSummary;
@@ -84,6 +95,9 @@ type ProjectsResponse = {
 };
 
 type ScenePatch = {
+  decorations?: SceneDecoration[];
+  roomAlarms?: RoomAlarmRule[];
+  staticMap?: StaticMapDefinition | null;
   deleteInstanceIds: string[];
   expectedRevision: number;
   linked2dProjectId?: string | null;
@@ -100,7 +114,7 @@ type Standalone3DProjectPageProps = {
 };
 
 type LibraryView = "layers" | "models";
-type InspectorView = "model" | "scene" | "fluid";
+type InspectorView = "model" | "scene" | "fluid" | "extras";
 
 const MAX_MODEL_BYTES = 25 * 1024 * 1024;
 const axisLabels = ["X", "Y", "Z"] as const;
@@ -111,9 +125,6 @@ const modelName = (asset: ModelAsset): string => {
   return latestBuiltinModel(asset.id)?.id !== asset.id && findBuiltinModel(asset.id) ? `${name}（旧版）` : name;
 };
 
-const modelSourceText = (source: ModelAsset["source"]): string =>
-  source === "system" ? "系统模型" : source === "scene-background" ? "背景模型" : "上传模型";
-
 const sameJson = (left: unknown, right: unknown): boolean =>
   JSON.stringify(left) === JSON.stringify(right);
 
@@ -121,6 +132,22 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
   const [projectName, setProjectName] = useState("");
   const [savedScene, setSavedScene] = useState<StandaloneSceneDocument | null>(null);
   const [draftScene, setDraftScene] = useState<StandaloneSceneDocument | null>(null);
+  const [extrasSupported, setExtrasSupported] = useState(false);
+  const [extrasPending, setExtrasPending] = useState(false);
+  const [testingRoomAlarms, setTestingRoomAlarms] = useState(false);
+  const [roomStatuses, setRoomStatuses] = useState<RoomAlarmStatus[]>([]);
+  const [extrasSelection, setExtrasSelection] = useState<{ kind: "decoration" | "map"; id: string } | null>(null);
+  const [extrasFocus, setExtrasFocus] = useState<{ kind: "decoration" | "map"; id: string; requestId: number }>();
+  const renderExtras = useRef<{ projectId: string; decorations: SceneDecoration[]; roomAlarms: RoomAlarmRule[]; staticMap: StaticMapDefinition | null }>({ projectId, decorations: [], roomAlarms: [], staticMap: null });
+  if (renderExtras.current.projectId !== projectId) renderExtras.current = { projectId, decorations: [], roomAlarms: [], staticMap: null };
+  const parsedDecorations = useMemo(() => parseSceneDecorations(draftScene?.decorations === undefined ? [] : draftScene.decorations), [draftScene?.decorations]);
+  const parsedRoomAlarms = useMemo(() => parseRoomAlarms(draftScene?.roomAlarms === undefined ? [] : draftScene.roomAlarms), [draftScene?.roomAlarms]);
+  const parsedMap = useMemo(() => parseStaticMap(draftScene?.staticMap === undefined ? null : draftScene.staticMap), [draftScene?.staticMap]);
+  const extraParsers = useMemo(() => ({ decorations: parsedDecorations, roomAlarms: parsedRoomAlarms, staticMap: parsedMap }), [parsedDecorations, parsedRoomAlarms, parsedMap]);
+  for (const key of ["decorations", "roomAlarms", "staticMap"] as const) {
+    const parsed = extraParsers[key];
+    if (parsed.ok) Object.assign(renderExtras.current, { [key]: parsed.value });
+  }
   const [editable, setEditable] = useState(false);
   const [limits, setLimits] = useState<typeof STANDALONE_3D_LIMITS>(STANDALONE_3D_LIMITS);
   const [models, setModels] = useState<ModelAsset[]>([]);
@@ -146,10 +173,10 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  const notify = useNotifications();
   const updateFluids = useCallback((fluids: FluidDefinition[]) => {
     setDraftScene((current) => current ? { ...current, fluids } : current);
-    setError(null); setNotice(null);
+
   }, []);
   const fluidEditor = useFluidEditor({ fluids: draftScene?.fluids, onChange: updateFluids, enabled: editable && mode === "edit" && !saving });
   const draftSceneRef = useRef<StandaloneSceneDocument | null>(null);
@@ -178,6 +205,7 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
     setLoading(true);
     setPreviewModel(null);
     setError(null);
+
     void Promise.all([
       request<SceneResponse>(standaloneScenePath(projectId)),
       request<ModelAssetListResponse>(modelAssetsPath(projectId)),
@@ -187,6 +215,8 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
       setProjectName(sceneResult.project.name);
       setSavedScene(sceneResult.scene);
       setDraftScene(sceneResult.scene);
+      setExtrasSupported(sceneResult.sceneExtensionsVersion === 1);
+      setExtrasPending(false); setTestingRoomAlarms(false); setExtrasSelection(null); setExtrasFocus(undefined);
       setEditable(sceneResult.editable);
       setLimits(sceneResult.limits);
       setModels(modelResult.modelAssets);
@@ -236,7 +266,7 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
     void request<CanvasResponse>(projectCanvasPath(linkedProjectId)).then((result) => {
       if (active) setLinkedCanvas(result.canvas);
     }).catch((reason) => {
-      console.error("Failed to load linked 2D overlay", { projectId, linkedProjectId, reason });
+      reportError(reason, { operation: "scene.linked-canvas.load", projectId, linkedProjectId });
       if (active) setLinkedCanvasError(`关联 2D 画布加载失败：${errorMessage(reason)}`);
     }).finally(() => { if (active) setLinkedCanvasLoading(false); });
     return () => { active = false; };
@@ -250,7 +280,7 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
     setPreviewModel(null);
     fluidEditor.reset();
     setInspectorView("scene");
-    setNotice(null);
+
   }, [mode, fluidEditor.reset]);
 
   useEffect(() => {
@@ -272,7 +302,7 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
   }, [mode, libraryView, fluidEditor.selectedId]);
 
   useEffect(() => {
-    if (mode !== "edit" || previewModel || showTemplates || showTwinEditor || fluidEditor.selectedId || fluidEditor.session) return;
+    if (mode !== "edit" || !editable || saving || extrasPending || previewModel || showTemplates || showTwinEditor || fluidEditor.selectedId || fluidEditor.session || extrasSelection?.kind === "map") return;
     const handleShortcut = (event: KeyboardEvent) => {
       if (event.defaultPrevented || event.isComposing || event.altKey || event.ctrlKey || event.metaKey) return;
       const target = event.target;
@@ -282,9 +312,9 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
     };
     window.addEventListener("keydown", handleShortcut);
     return () => window.removeEventListener("keydown", handleShortcut);
-  }, [mode, previewModel, showTemplates, showTwinEditor, fluidEditor.selectedId, fluidEditor.session]);
+  }, [mode, editable, saving, extrasPending, extrasSelection?.kind, previewModel, showTemplates, showTwinEditor, fluidEditor.selectedId, fluidEditor.session]);
 
-  const dirty = !!fluidEditor.session || (savedScene !== null && draftScene !== null && !sameJson(savedScene, draftScene));
+  const dirty = extrasPending || !!fluidEditor.session || (savedScene !== null && draftScene !== null && !sameJson(savedScene, draftScene));
   useEffect(() => {
     if (!dirty || mode !== "edit") return;
     const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ""; };
@@ -292,20 +322,41 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
     return () => window.removeEventListener("beforeunload", warn);
   }, [dirty, mode]);
   const selectFluid = useCallback((id: string | null) => {
-    if (mode !== "edit" || !fluidEditor.select(id)) return;
+    if (mode !== "edit") return;
+    if (extrasPending) { notify.warning("请先修正或放弃右侧尚未完成的输入，再选择其他对象。"); setInspectorView("extras"); return; }
+    if (!fluidEditor.select(id)) return;
+    setExtrasSelection(null);
     setSelectedInstanceId(null);
     setLibraryView("layers");
     setInspectorView(id ? "fluid" : "scene");
-    setNotice(null);
-  }, [mode, fluidEditor.select]);
+
+  }, [mode, fluidEditor.select, extrasPending, notify]);
   const startFluid = (kind: FluidKind) => {
+    if (extrasPending) { notify.warning("请先修正或放弃右侧尚未完成的输入，再添加流体。"); setInspectorView("extras"); return; }
     if (!fluidEditor.start(kind)) return;
-    setSelectedInstanceId(null); setLibraryView("layers"); setInspectorView("fluid"); setError(null); setNotice(null);
+    setExtrasSelection(null);
+    setSelectedInstanceId(null); setLibraryView("layers"); setInspectorView("fluid");
   };
   const selectScene = () => {
+    if (extrasPending) { notify.warning("请先修正或放弃右侧尚未完成的输入，再选择其他对象。"); setInspectorView("extras"); return; }
     if (!fluidEditor.select(null)) { setInspectorView("fluid"); return; }
+    setExtrasSelection(null);
     setSelectedInstanceId(null); setInspectorView("scene");
   };
+  const selectExtras = useCallback((selection: { kind: "decoration" | "map"; id: string } | null) => {
+    if (mode !== "edit") return;
+    if (extrasPending && (selection?.id !== extrasSelection?.id || selection?.kind !== extrasSelection?.kind)) { notify.warning("请先修正或放弃右侧尚未完成的输入，再选择其他对象。"); setInspectorView("extras"); return; }
+    if (!selection) { setExtrasSelection(null); return; }
+    if (!fluidEditor.select(null)) { setInspectorView("fluid"); return; }
+    setSelectedInstanceId(null); setExtrasSelection(selection); setInspectorView("extras");
+    setExtrasFocus({ ...selection, requestId: Date.now() });
+  }, [mode, fluidEditor.select, extrasPending, extrasSelection, notify]);
+  const onExtrasSelectionChange = useCallback((selection: { kind: "decoration" | "map"; id: string } | null) => {
+    if (inspectorView !== "extras") return;
+    setExtrasSelection(previous => previous?.id === selection?.id && previous?.kind === selection?.kind ? previous : selection);
+    if (selection) setSelectedInstanceId(null);
+  }, [inspectorView]);
+  const selectedDecoration = extrasSelection?.kind === "decoration" ? draftScene?.decorations?.find((item) => item.id === extrasSelection.id) : null;
   const selectedInstance = draftScene?.instances.find((item) => item.id === selectedInstanceId) ?? null;
   const selectedModelAsset = selectedInstance
     ? models.find((model) => model.id === selectedInstance.modelAssetId) ?? null
@@ -320,10 +371,11 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
       draftScene?.instances.flatMap((instance) => instance.assetId ? [instance.assetId] : []) ?? [],
     );
     if (selectedRuntimeAssetId) boundAssetIds.add(selectedRuntimeAssetId);
+    for (const rule of draftScene?.roomAlarms ?? []) if (rule.enabled && rule.source.projectId === draftScene?.linked2dProjectId) boundAssetIds.add(rule.source.assetId);
     return linkedAssets.filter((asset) => boundAssetIds.has(asset.assetId));
-  }, [draftScene?.instances, linkedAssets, selectedRuntimeAssetId]);
+  }, [draftScene?.instances, draftScene?.roomAlarms, draftScene?.linked2dProjectId, linkedAssets, selectedRuntimeAssetId]);
   const runtimeSetupError = useMemo(() => {
-    if (mode !== "preview" || linkedAssetsLoading) return null;
+    if ((mode !== "preview" && !testingRoomAlarms) || linkedAssetsLoading) return null;
     if (linkedAssetLoadError) return `资产台账加载失败：${linkedAssetLoadError}`;
     if (draftScene?.linked2dProjectId) {
       const availableAssetIds = new Set(linkedAssets.map((asset) => asset.assetId));
@@ -336,16 +388,29 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
       return `当前绑定 ${boundRuntimeAssets.length} 台设备；本地直连轮询上限为 50，请使用服务端批量采集器。`;
     }
     return null;
-  }, [boundRuntimeAssets.length, draftScene, linkedAssetLoadError, linkedAssets, linkedAssetsLoading, mode]);
+  }, [boundRuntimeAssets.length, draftScene, linkedAssetLoadError, linkedAssets, linkedAssetsLoading, mode, testingRoomAlarms]);
   const runtimeConnections = useAssetRuntimeConnections({
     assets: boundRuntimeAssets,
     blockedReason: runtimeSetupError,
-    enabled: mode === "preview" && !linkedAssetsLoading,
+    enabled: (mode === "preview" || testingRoomAlarms) && !linkedAssetsLoading,
     projectId: draftScene?.linked2dProjectId ?? null,
+    stopOnAccessDenied: true,
   });
+  const roomData = useRoomAlarmData({
+    projectId, linkedProjectId: draftScene?.linked2dProjectId ?? null, rules: renderExtras.current.roomAlarms,
+    enabled: mode === "preview" || testingRoomAlarms, loadEditableAssets: inspectorView === "extras",
+    linkedData: draftScene?.linked2dProjectId ? { projectId: draftScene.linked2dProjectId, label: "关联 2D 项目", assets: linkedAssets, loading: linkedAssetsLoading, error: linkedAssetLoadError ?? runtimeSetupError, connections: runtimeConnections } : undefined,
+  });
+  const extrasCost = useMemo(() => {
+    const a = sceneDecorationBudget(renderExtras.current.decorations), b = staticMapBudget(renderExtras.current.staticMap);
+    return { instances: a.instances + b.instances, meshes: a.meshes + b.meshes, animatedInstances: a.animatedInstances + b.animatedInstances };
+  }, [extraParsers]);
   const scenePerformance = useMemo(
-    () => measureScenePerformance(draftScene?.instances ?? [], models),
-    [draftScene?.instances, models],
+    () => {
+      const cost = measureScenePerformance(draftScene?.instances ?? [], models);
+      return { ...cost, estimatedMeshInstances: cost.estimatedMeshInstances + extrasCost.meshes, animatedInstances: cost.animatedInstances + extrasCost.animatedInstances };
+    },
+    [draftScene?.instances, models, extrasCost],
   );
 
   const rendererNode = useMemo(
@@ -361,7 +426,7 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
   const focusActionModel = useCallback((targetProjectId: string, instanceId: string) => {
     if (targetProjectId !== projectId) return; // The validated remote target is dispatched through the project-scoped bus.
     setSelectedInstanceId(instanceId);
-    setModelFocusRequest({ instanceId, requestId: crypto.randomUUID() });
+    setModelFocusRequest({ instanceId, requestId: createUuid() });
   }, [projectId]);
   const selectActionAsset = useCallback((assetId: string) => {
     setSelectedRuntimeAssetId(assetId);
@@ -386,7 +451,7 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
         publishTwinActions({ originProjectId, targetProjectId, actions: actions.filter((action) => action.type === "focus-model" && action.projectId === targetProjectId) });
       }
     } catch (reason) {
-      console.error("Failed to synchronize linked project actions", { projectId, originProjectId, source, reason });
+      reportError(reason, { operation: "scene.actions.publish", projectId, originProjectId });
       setInteractionTransportError(`当前页面已执行交互，但跨页面同步失败：${errorMessage(reason)}`);
     }
   }, [interactions.execute, draftScene?.linked2dProjectId, projectId]);
@@ -413,15 +478,14 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
       key === "playAnimations" && value === true
       && scenePerformance.animatedInstances > limits.maximumAnimatedInstances
     ) {
-      setError(`当前有 ${scenePerformance.animatedInstances} 个动画模型，超过 ${limits.maximumAnimatedInstances} 个的播放预算。请先减少动画模型。`);
+      notify.warning(`当前有 ${scenePerformance.animatedInstances} 个动画模型，超过 ${limits.maximumAnimatedInstances} 个的播放预算。请先减少动画模型。`);
       return;
     }
     setDraftScene((current) => current ? {
       ...current,
       settings: { ...current.settings, [key]: value },
     } : current);
-    setError(null);
-    setNotice(null);
+
   };
 
   const updateInstance = (id: string, patch: Partial<StandaloneSceneInstance>) => {
@@ -431,8 +495,7 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
         ? { ...instance, ...patch }
         : instance),
     } : current);
-    setError(null);
-    setNotice(null);
+
   };
 
   const updateInstanceAnimation = (
@@ -451,7 +514,7 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
       : candidate);
     const cost = measureScenePerformance(instances, models);
     if (currentScene.settings.playAnimations && cost.animatedInstances > limits.maximumAnimatedInstances) {
-      setError(`启用后将有 ${cost.animatedInstances} 个动画模型，超过 ${limits.maximumAnimatedInstances} 个的播放预算。`);
+      notify.warning(`启用后将有 ${cost.animatedInstances} 个动画模型，超过 ${limits.maximumAnimatedInstances} 个的播放预算。`);
       return;
     }
     updateInstance(instance.id, { animation });
@@ -465,9 +528,80 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
         ? { ...instance, transform }
         : instance),
     } : current);
-    setError(null);
-    setNotice(null);
+
   }, [editable, mode]);
+
+  const commitDecorationTransform = useCallback((_nodeId: string, decorationId: string, transform: ModelNodeTransform) => {
+    if (mode !== "edit" || !editable || !extrasSupported || saving || extrasPending || fluidEditor.session) {
+      throw new Error(`Cannot transform decoration ${decorationId}: scene editing is unavailable or has pending input`);
+    }
+    const current = draftSceneRef.current;
+    const target = current?.decorations?.find((item) => item.id === decorationId);
+    if (!current || !target || !target.visible) throw new Error(`Cannot transform missing or hidden decoration ${decorationId}`);
+    const decorations = current.decorations!.map((item) => item.id === decorationId ? { ...item, transform } : item);
+    const parsed = parseSceneDecorations(decorations);
+    if (!parsed.ok) throw new Error(`Cannot transform decoration ${decorationId}: ${parsed.message}`);
+    const next = { ...current, decorations: parsed.value };
+    draftSceneRef.current = next;
+    setDraftScene(next);
+  }, [mode, editable, extrasSupported, saving, extrasPending, fluidEditor.session]);
+
+  const prepareLibraryEdit = (): StandaloneSceneDocument | null => {
+    if (mode !== "edit" || !editable || saving) { notify.warning("当前场景暂不能编辑，请稍后重试。"); return null; }
+    if (fluidEditor.session) { notify.warning("请先应用或取消流体路径，再添加模型。"); setInspectorView("fluid"); return null; }
+    if (extrasPending || Object.values(extraParsers).some((parsed) => !parsed.ok)) {
+      notify.warning("请先修正或放弃场景扩展中尚未完成的输入，再添加模型。"); setInspectorView("extras"); return null;
+    }
+    const current = draftSceneRef.current;
+    if (!current) { notify.warning("场景尚未加载完成。"); return null; }
+    return current;
+  };
+
+  const libraryBudgetViolation = (scene: StandaloneSceneDocument, availableModels = models): string | null => {
+    const decorations = parseSceneDecorations(scene.decorations ?? []);
+    const map = parseStaticMap(scene.staticMap ?? null);
+    if (!decorations.ok || !map.ok) throw new Error(`Cannot calculate scene library budget: ${!decorations.ok ? decorations.message : !map.ok ? map.message : "invalid extras"}`);
+    const a = sceneDecorationBudget(decorations.value), b = staticMapBudget(map.value);
+    if (scene.instances.length + a.instances + b.instances > limits.maximumInstances) return `模型、装饰和地图合计最多 ${limits.maximumInstances} 个实例。`;
+    const cost = measureScenePerformance(scene.instances, availableModels);
+    return sceneBudgetViolation({ ...cost, estimatedMeshInstances: cost.estimatedMeshInstances + a.meshes + b.meshes, animatedInstances: cost.animatedInstances + a.animatedInstances + b.animatedInstances }, limits, scene.settings.playAnimations);
+  };
+
+  const updateDecorations = (decorations: SceneDecoration[]): boolean => {
+    const current = draftSceneRef.current;
+    if (!current || mode !== "edit" || !editable || !extrasSupported || saving || fluidEditor.session) return false;
+    const next = { ...current, decorations };
+    if (decorations.length > (current.decorations?.length ?? 0)) {
+      if (!prepareLibraryEdit()) return false;
+      const parsed = parseSceneDecorations(decorations);
+      if (!parsed.ok) { reportError(new Error(parsed.message), { operation: "scene.decoration.copy", projectId }); notify.warning("无法复制对象，请检查当前参数和数量限制。"); return false; }
+      const violation = libraryBudgetViolation(next);
+      if (violation) { notify.warning(violation); return false; }
+    }
+    draftSceneRef.current = next;
+    setDraftScene(next);
+    return true;
+  };
+
+  const addDecoration = (kind: DecorationKind) => {
+    if (!extrasSupported) { notify.warning("当前服务暂不支持添加此类模型。"); return; }
+    const current = prepareLibraryEdit();
+    if (!current) return;
+    if ((current.decorations?.length ?? 0) >= SCENE_DECORATION_LIMITS.maximumDecorations) { notify.warning(`植物、水景和军事模型合计最多 ${SCENE_DECORATION_LIMITS.maximumDecorations} 个。`); return; }
+    const item = createSceneDecoration(createUuid(), kind);
+    const index = current.instances.length + (current.decorations?.length ?? 0);
+    item.transform.position = [(index % 6) * 3, 0, Math.floor(index / 6) * 3];
+    const parsed = parseSceneDecorations([...(current.decorations ?? []), item]);
+    if (!parsed.ok) throw new Error(`Cannot create decoration ${kind}: ${parsed.message}`);
+    const next = { ...current, decorations: parsed.value };
+    const violation = libraryBudgetViolation(next);
+    if (violation) { notify.warning(violation); return; }
+    if (!fluidEditor.select(null)) { setInspectorView("fluid"); return; }
+    draftSceneRef.current = next;
+    setDraftScene(next);
+    selectExtras({ kind: "decoration", id: item.id });
+    notify.info(`已把“${item.label}”加入场景，可拖动操作轴调整，保存后生效。`);
+  };
 
   const updateVector = (
     instance: StandaloneSceneInstance,
@@ -484,10 +618,10 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
   };
 
   const addModel = (asset: ModelAsset) => {
-    const currentScene = draftSceneRef.current;
+    const currentScene = prepareLibraryEdit();
     if (!currentScene) return;
     if (currentScene.instances.length >= limits.maximumInstances) {
-      setError(`当前场景最多允许 ${limits.maximumInstances} 个模型实例。`);
+      notify.warning(`当前场景最多允许 ${limits.maximumInstances} 个模型实例。`);
       return;
     }
     const index = currentScene.instances.length;
@@ -495,7 +629,7 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
       animation: defaultStandaloneSceneInstanceAnimation(),
       appearance: defaultStandaloneSceneInstanceAppearance(),
       assetId: null,
-      id: `scene-${crypto.randomUUID()}`,
+      id: `scene-${createUuid()}`,
       label: `${modelName(asset)} ${index + 1}`,
       modelAssetId: asset.id,
       renderMode: asset.source === "scene-background" ? "background" : "interactive",
@@ -511,22 +645,20 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
     const availableModels = models.some((model) => model.id === asset.id)
       ? models
       : [asset, ...models];
-    const violation = sceneBudgetViolation(
-      measureScenePerformance(nextInstances, availableModels),
-      limits,
-      currentScene.settings.playAnimations,
-    );
+    const violation = libraryBudgetViolation({ ...currentScene, instances: nextInstances }, availableModels);
     if (violation) {
-      setError(violation);
+      notify.warning(violation);
       return;
     }
     if (!fluidEditor.select(null)) { setInspectorView("fluid"); return; }
-    setDraftScene({ ...currentScene, instances: nextInstances });
+    const next = { ...currentScene, instances: nextInstances };
+    draftSceneRef.current = next;
+    setDraftScene(next);
+    setExtrasSelection(null);
     setSelectedInstanceId(instance.id);
-    setLibraryView("layers");
     setInspectorView("model");
-    setError(null);
-    setNotice(`已把“${modelName(asset)}”加入场景，保存后生效。`);
+
+    notify.info(`已把“${modelName(asset)}”加入场景，保存后生效。`);
   };
 
   const applySceneTemplate = useCallback((templateId: SceneTemplateId, requireNewProject = false) => {
@@ -545,14 +677,12 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
       setLibraryView("layers");
       setInspectorView("scene");
       setTemplateError(null);
-      setError(null);
+
       setShowTemplates(false);
-      setNotice(`“${getSceneTemplate(templateId).name}”已载入草稿，保存场景后生效。${(next.fluids?.length ?? 0) > 0 ? "现有流体配置及路径已保留。" : ""}`);
+      notify.info(`“${getSceneTemplate(templateId).name}”已载入草稿，保存场景后生效。${(next.fluids?.length ?? 0) > 0 ? "现有流体配置及路径已保留。" : ""}`);
     } catch (reason) {
-      console.error("Scene template application failed", { projectId, templateId, requireNewProject, reason });
-      const message = errorMessage(reason);
-      setTemplateError(message);
-      setError(message);
+      reportError(reason, { operation: "scene.template.apply", projectId, templateId });
+      notify.error(reason);
     }
   }, [editable, limits, mode, models, projectId, savedScene, fluidEditor.session, fluidEditor.reset]);
 
@@ -572,15 +702,15 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
       return latest && latest.id !== instance.modelAssetId ? { ...instance, modelAssetId: latest.id } : instance;
     });
     const missing = instances.filter(instance => !models.some(model => model.id === instance.modelAssetId));
-    if (missing.length) { setError(`更新后的模型未就绪：${missing.map(instance => instance.label).join("、")}。请刷新后重试。`); return; }
+    if (missing.length) { notify.warning(`更新后的模型未就绪：${missing.map(instance => instance.label).join("、")}。请刷新后重试。`); return; }
     const violation = sceneBudgetViolation(measureScenePerformance(instances, models), limits, current.settings.playAnimations);
     const changes = instances.filter(instance => !savedScene.instances.some(saved => saved.id === instance.id && sameJson(saved, instance))).length
       + savedScene.instances.filter(saved => !instances.some(instance => instance.id === saved.id)).length;
-    if (violation || changes > limits.maximumPatchInstances) { setError(violation ?? "模型更新超过单次保存预算，请先保存当前修改。"); return; }
+    if (violation || changes > limits.maximumPatchInstances) { notify.warning(violation ?? "模型更新超过单次保存预算，请先保存当前修改。"); return; }
     const count = instances.filter((instance, i) => instance !== current.instances[i]).length;
     setDraftScene({ ...current, instances });
-    setError(null);
-    setNotice(`已将 ${count} 个实例切换到最新内置模型资源，请保存场景。位置、缩放、名称和业务绑定保持原值。`);
+
+    notify.info(`已将 ${count} 个实例切换到最新内置模型资源，请保存场景。位置、缩放、名称和业务绑定保持原值。`);
   };
 
   const removeSelected = () => {
@@ -591,13 +721,22 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
     });
     setSelectedInstanceId(null);
     setInspectorView("scene");
-    setNotice(`已从草稿中移除“${selectedInstance.label}”。`);
+    notify.info(`已从草稿中移除“${selectedInstance.label}”。`);
   };
 
   const save = async () => {
-    if (fluidEditor.hasInvalidFields) { setError("请修正流体属性中标红的参数后再保存。"); setInspectorView("fluid"); return; }
-    if (fluidEditor.session) { setError("当前流体路径尚未应用。请在流体属性中点击“应用流体”或“取消路径修改”，再保存场景。"); setInspectorView("fluid"); return; }
+    if (extrasPending) { notify.warning("请先应用或放弃场景扩展中尚未完成的输入。"); setInspectorView("extras"); return; }
+    if (fluidEditor.hasInvalidFields) { notify.warning("请修正流体属性中标红的参数后再保存。"); setInspectorView("fluid"); return; }
+    if (fluidEditor.session) { notify.warning("当前流体路径尚未应用。请在流体属性中点击“应用流体”或“取消路径修改”，再保存场景。"); setInspectorView("fluid"); return; }
     if (!savedScene || !draftScene || !dirty) return;
+    for (const parsed of Object.values(extraParsers)) if (!parsed.ok) { notify.warning(`场景扩展无法保存：${parsed.message}`); setInspectorView("extras"); return; }
+    if (draftScene.instances.length + extrasCost.instances > limits.maximumInstances) { notify.warning(`模型、装饰和地图合计最多 ${limits.maximumInstances} 个实例。`); return; }
+    const budgetError = sceneBudgetViolation(scenePerformance, limits, draftScene.settings.playAnimations);
+    if (budgetError) { notify.warning(budgetError); return; }
+    for (const rule of draftScene.roomAlarms ?? []) {
+      const entry = twinCatalog.find(node => node.instanceId === rule.target.instanceId && node.modelAssetId === rule.target.modelAssetId && node.nodeName === rule.target.nodeName);
+      if (!entry?.unique || !entry.drivable) { notify.warning(`报警“${rule.label}”的房间节点不存在、重名或尚未加载，请重新选择。`); setInspectorView("extras"); return; }
+    }
     const savedById = new Map(savedScene.instances.map((instance) => [instance.id, instance]));
     const draftIds = new Set(draftScene.instances.map((instance) => instance.id));
     const upsertInstances = draftScene.instances.filter((instance) =>
@@ -606,7 +745,7 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
       .filter((instance) => !draftIds.has(instance.id))
       .map((instance) => instance.id);
     if (upsertInstances.length + deleteInstanceIds.length > limits.maximumPatchInstances) {
-      setError(`一次最多保存 ${limits.maximumPatchInstances} 个实例变更，请分批保存。`);
+      notify.warning(`一次最多保存 ${limits.maximumPatchInstances} 个实例变更，请分批保存。`);
       return;
     }
     const patch: ScenePatch = {
@@ -614,9 +753,12 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
       expectedRevision: savedScene.revision,
       upsertInstances,
     };
+    if (!sameJson(savedScene.decorations ?? [], draftScene.decorations ?? []) && extraParsers.decorations.ok) patch.decorations = extraParsers.decorations.value;
+    if (!sameJson(savedScene.roomAlarms ?? [], draftScene.roomAlarms ?? []) && extraParsers.roomAlarms.ok) patch.roomAlarms = extraParsers.roomAlarms.value;
+    if (!sameJson(savedScene.staticMap ?? null, draftScene.staticMap ?? null) && extraParsers.staticMap.ok) patch.staticMap = extraParsers.staticMap.value;
     if (!sameJson(savedScene.fluids ?? [], draftScene.fluids ?? [])) {
       const parsed = parseFluids(draftScene.fluids ?? []);
-      if (!parsed.ok) { setError(`流体无法保存：${parsed.message}`); return; }
+      if (!parsed.ok) { notify.warning(`流体无法保存：${parsed.message}`); return; }
       patch.fluids = parsed.value;
     }
     if (!sameJson(savedScene.settings, draftScene.settings)) patch.settings = draftScene.settings;
@@ -624,8 +766,7 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
       patch.linked2dProjectId = draftScene.linked2dProjectId;
     }
     setSaving(true);
-    setError(null);
-    setNotice(null);
+
     try {
       const result = await request<SceneResponse>(standaloneScenePath(projectId), {
         method: "PATCH",
@@ -633,9 +774,9 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
       });
       setSavedScene(result.scene);
       setDraftScene(result.scene);
-      setNotice("场景已保存。");
+      notify.success("场景已保存。");
     } catch (reason) {
-      setError(errorMessage(reason));
+      notify.error(reason);
     } finally {
       setSaving(false);
     }
@@ -647,15 +788,15 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
     if (!file) return;
     const extension = file.name.split(".").at(-1)?.toLowerCase();
     if (extension !== "glb" && extension !== "gltf") {
-      setError("只支持 .glb 和 .gltf 模型文件。");
+      notify.warning("只支持 .glb 和 .gltf 模型文件。");
       return;
     }
     if (file.size === 0 || file.size > MAX_MODEL_BYTES) {
-      setError(`单个模型必须大于 0 B 且不超过 ${formatFileSize(MAX_MODEL_BYTES)}。`);
+      notify.warning(`单个模型必须大于 0 B 且不超过 ${formatFileSize(MAX_MODEL_BYTES)}。`);
       return;
     }
     setUploading(true);
-    setError(null);
+
     try {
       const result = await request<ModelAssetUploadResponse>(
         `${modelAssetsPath(projectId)}?filename=${encodeURIComponent(file.name)}`,
@@ -670,16 +811,18 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
       setModels((current) => [result.modelAsset, ...current]);
       addModel(result.modelAsset);
     } catch (reason) {
-      setError(errorMessage(reason));
+      notify.error(reason);
     } finally {
       setUploading(false);
     }
   };
 
   const selectModelInstance = useCallback((_nodeId: string, instanceId: string | null) => {
+    if (mode === "edit" && extrasPending) { notify.warning("请先修正或放弃右侧尚未完成的输入，再选择其他对象。"); setInspectorView("extras"); return; }
+    setExtrasSelection(null);
     if (mode === "edit" && !fluidEditor.select(null)) { setInspectorView("fluid"); return; }
     setSelectedInstanceId(instanceId);
-    setNotice(null);
+
     if (mode === "edit") {
       setLibraryView("layers");
       setInspectorView(instanceId ? "model" : "scene");
@@ -690,7 +833,7 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
     if (!instance || instance.renderMode === "background") return;
     const actions: TwinAction[] = instance.clickActions ?? (instance.assetId && draftScene?.linked2dProjectId ? [{ type: "select-asset", assetId: instance.assetId }] : []);
     if (actions.length) executeAndPublish(actions, `模型 ${instance.label}`);
-  }, [draftScene?.instances, draftScene?.linked2dProjectId, mode, executeAndPublish, fluidEditor.select]);
+  }, [draftScene?.instances, draftScene?.linked2dProjectId, mode, executeAndPublish, fluidEditor.select, extrasPending, notify]);
 
   if (loading) {
     return <main className="canvas-page-state"><p className="eyebrow">3D workspace</p><h1>正在加载独立 3D 场景…</h1></main>;
@@ -698,14 +841,21 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
   if (error && !draftScene) {
     return <main className="canvas-page-state error-state"><p className="eyebrow">3D workspace</p><h1>3D 项目加载失败</h1><p>{error}</p>{!publicView ? <a className="secondary-button" href="#/projects">返回项目</a> : null}</main>;
   }
-  if (!draftScene || !rendererNode) return null;
+  if (!draftScene || draftScene.projectId !== projectId || !rendererNode) return null;
 
   const sceneView = (
     <Model3DNode
+      decorations={renderExtras.current.decorations}
+      roomAlarms={renderExtras.current.roomAlarms}
+      staticMap={renderExtras.current.staticMap}
+      extrasSelection={mode === "edit" ? extrasSelection : null}
+      onExtrasSelect={selectExtras}
+      roomAlarmObservations={roomData.observations}
+      onRoomAlarmStatuses={setRoomStatuses}
       cameraControlsEnabled
       editable={false}
       interactive
-      instanceTransformMode={mode === "edit" && editable && !fluidEditor.selectedId && !fluidEditor.session ? instanceTransformMode : null}
+      instanceTransformMode={mode === "edit" && editable && !saving && !extrasPending && extrasSelection?.kind !== "map" && !fluidEditor.selectedId && !fluidEditor.session ? instanceTransformMode : null}
       fluids={mode === "edit" ? fluidEditor.previewFluids : draftScene.fluids}
       selectedFluidId={mode === "edit" ? fluidEditor.selectedId : null}
       fluidEditor={mode === "edit" ? fluidEditor.rendererEditor : null}
@@ -716,6 +866,7 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
       node={rendererNode}
       onModelInstanceSelect={selectModelInstance}
       onModelInstanceTransform={commitInstanceTransform}
+      onDecorationTransform={commitDecorationTransform}
       onSceneNodeSelect={ignoreSceneNodeSelection}
       projectId={projectId}
       runtimeControlsEnabled={false}
@@ -744,6 +895,7 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
         </header>
         <section className="standalone-3d-preview-stage" data-canvas-fullscreen-root>
           {sceneView}
+          <RoomAlarmStatusPanel rules={renderExtras.current.roomAlarms} statuses={roomStatuses} />
           {linkedCanvas ? <CanvasSurface
             document={linkedCanvas} editable={false} presentation="overlay"
             selectedNodeId={null} selectedModelSceneNodePath={null}
@@ -772,18 +924,19 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
   return (
     <main className={`standalone-3d-editor${twinEditor ? " is-configuring-twin" : ""}`}>
       <header className="standalone-3d-toolbar">
-        <a className="secondary-button compact-button" href="#/projects" onClick={(event) => { if (fluidEditor.session) { event.preventDefault(); setError("请先应用并保存或取消当前流体路径，再离开编辑器。"); setInspectorView("fluid"); } }}>返回项目</a>
+        <a className="secondary-button compact-button" href="#/projects" onClick={(event) => { if (fluidEditor.session) { event.preventDefault(); notify.warning("请先应用并保存或取消当前流体路径，再离开编辑器。"); setInspectorView("fluid"); } }}>返回项目</a>
         <div className="standalone-3d-title"><span>3D SCENE BUILDER</span><strong>{projectName}</strong></div>
         <div className="standalone-3d-budget" title="通过明确预算阻止浏览器无上限加载">
-          <span>{draftScene.instances.length}/{limits.maximumInstances} 实例</span>
+          <span>{draftScene.instances.length + extrasCost.instances}/{limits.maximumInstances} 实例</span>
           <span>{scenePerformance.estimatedMeshInstances}/{limits.maximumEstimatedMeshInstances} 网格</span>
           <span>{formatFileSize(scenePerformance.uniqueModelBytes)}/{formatFileSize(limits.maximumUniqueModelBytes)}</span>
           {draftScene.settings.playAnimations ? <span>{scenePerformance.animatedInstances}/{limits.maximumAnimatedInstances} 动画实例</span> : null}
         </div>
         <ThemeToggle />
+        {extrasSupported ? <button className="secondary-button compact-button" disabled={saving || !!fluidEditor.session} onClick={() => setInspectorView("extras")} type="button">场景扩展</button> : null}
         <button className="secondary-button compact-button" type="button" disabled={twin.loading || saving} onClick={() => {
           if (twin.error || !twin.document) { twin.reload(); return; }
-          if (dirty) { setError("请先保存场景，再进入数据与模型配置。部件绑定需要使用已保存的模型。"); return; }
+          if (dirty) { notify.warning("请先保存场景，再进入数据与模型配置。部件绑定需要使用已保存的模型。"); return; }
           setShowTwinEditor(true);
         }}>{twin.loading ? "加载数据配置…" : twin.error ? "重试数据配置" : "数据与模型"}</button>
         {editable ? <button className="secondary-button compact-button" disabled={saving || !!fluidEditor.session} title="替换模型与场景设置，保留现有流体路径" onClick={() => { setTemplateError(null); setShowTemplates(true); }} type="button">模板</button> : null}
@@ -791,17 +944,17 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
           const latest = latestBuiltinModel(instance.modelAssetId);
           return latest && latest.id !== instance.modelAssetId;
         }) ? <button className="secondary-button compact-button" disabled={saving} onClick={updateBuiltinModels} title="仅更新内置模型资源版本，保留当前布局与设置，保存后生效" type="button">更新内置模型</button> : null}
-        <a className="secondary-button compact-button" href={standaloneSceneRoutePath(projectId, "preview")} onClick={(event) => { if (dirty) { event.preventDefault(); setError(fluidEditor.session ? "请先应用流体路径并保存场景，再进入预览。" : "请先保存场景，再预览已保存的配置。"); if (fluidEditor.session) setInspectorView("fluid"); } }}>预览</a>
+        <a className="secondary-button compact-button" href={standaloneSceneRoutePath(projectId, "preview")} onClick={(event) => { if (dirty) { event.preventDefault(); notify.warning(fluidEditor.session ? "请先应用流体路径并保存场景，再进入预览。" : "请先保存场景，再预览已保存的配置。"); if (fluidEditor.session) setInspectorView("fluid"); } }}>预览</a>
         <PublicationPanel projectId={projectId} canEdit={editable} disabled={dirty || saving || !!fluidEditor.session} />
-        <button className="primary-button compact-button" disabled={!dirty || saving || !editable} onClick={() => void save()} type="button">
+        <button className="primary-button compact-button" disabled={!dirty || saving || !editable || extrasPending} onClick={() => void save()} type="button">
           {saving ? "保存中…" : dirty ? "保存场景" : "已保存"}
         </button>
       </header>
 
       <aside className="standalone-3d-library">
         <nav aria-label="场景内容" className="standalone-panel-tabs">
-          <button aria-pressed={libraryView === "layers"} className={libraryView === "layers" ? "is-active" : ""} onClick={() => setLibraryView("layers")} type="button">图层 <span>{draftScene.instances.length + (draftScene.fluids?.length ?? 0)}</span></button>
-          <button aria-pressed={libraryView === "models"} className={libraryView === "models" ? "is-active" : ""} onClick={() => setLibraryView("models")} type="button">模型库 <span>{models.length}</span></button>
+          <button aria-pressed={libraryView === "layers"} className={libraryView === "layers" ? "is-active" : ""} onClick={() => setLibraryView("layers")} type="button">图层 <span>{draftScene.instances.length + (draftScene.fluids?.length ?? 0) + (draftScene.decorations?.length ?? 0) + (draftScene.staticMap ? 1 : 0)}</span></button>
+          <button aria-pressed={libraryView === "models"} className={libraryView === "models" ? "is-active" : ""} onClick={() => setLibraryView("models")} type="button">模型库 <span>{models.length + decorationLibraryItems.length}</span></button>
         </nav>
         {libraryView === "layers" ? (
           <>
@@ -848,8 +1001,22 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
                 );
               })}
             </div>
-            {draftScene.instances.length === 0 ? <p className="standalone-layer-empty">打开“模型库”添加模型，或在下方添加可沿路径流动的流体。</p> : null}
+            {draftScene.instances.length === 0 && !(draftScene.decorations?.length) && !draftScene.staticMap ? <p className="standalone-layer-empty">打开“模型库”添加模型，或在下方添加可沿路径流动的流体。</p> : null}
             <div ref={fluidLayerRef}><FluidLayers editor={fluidEditor} onSelect={selectFluid} onAdd={startFluid} /></div>
+            {extrasSupported ? <section className="standalone-layer-tree" aria-label="场景扩展图层">
+              {(draftScene.decorations ?? []).map(item => <article key={item.id} data-decoration-id={item.id} className={extrasSelection?.id === item.id ? "is-selected" : ""}>
+                <span className="standalone-layer-branch" aria-hidden="true">└</span>
+                <button type="button" className="standalone-layer-main" onClick={() => selectExtras({ kind: "decoration", id: item.id })}>
+                  <span className="standalone-layer-icon">◇</span><span><strong>{item.label}</strong><small>{item.kind === "river" ? "河流" : item.kind.startsWith("military-") ? "军事模型" : "植物"}</small></span>
+                </button>
+              </article>)}
+              {draftScene.staticMap ? <article className={extrasSelection?.kind === "map" ? "is-selected" : ""}>
+                <span className="standalone-layer-branch" aria-hidden="true">└</span>
+                <button className="standalone-layer-main" type="button" onClick={() => selectExtras({ kind: "map", id: draftScene.staticMap!.id })}>
+                  <span className="standalone-layer-icon">▱</span><span><strong>{draftScene.staticMap.label}</strong><small>{draftScene.staticMap.features.length} 个地图区域</small></span>
+                </button>
+              </article> : null}
+            </section> : null}
           </>
         ) : (
           <>
@@ -857,19 +1024,13 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
               <div><span>MODEL LIBRARY</span><strong>模型积木</strong></div>
               <label className={`secondary-button compact-button${uploading ? " is-disabled" : ""}`}>
                 {uploading ? "上传中…" : "上传模型"}
-                <input accept=".glb,.gltf,model/gltf-binary,model/gltf+json" disabled={uploading || !editable || !!fluidEditor.session} onChange={(event) => void upload(event)} type="file" />
+                <input accept=".glb,.gltf,model/gltf-binary,model/gltf+json" disabled={uploading || !editable || saving || extrasPending || !!fluidEditor.session} onChange={(event) => void upload(event)} type="file" />
               </label>
             </div>
-            <p className="standalone-panel-copy">点击缩略图查看模型，点击 ＋ 加入场景。</p>
-            <div className="standalone-model-list">
-              {models.map((asset) => (
-                <article key={asset.id}>
-                  <ModelAssetThumbnail asset={asset} name={modelName(asset)} onPreview={() => setPreviewModel(asset)} />
-                  <div><strong title={modelName(asset)}>{modelName(asset)}</strong><span>{modelSourceText(asset.source)} · {formatFileSize(asset.byteSize)}</span></div>
-                  <button aria-label={`加入场景 ${modelName(asset)}`} className="icon-button" disabled={!editable || !!fluidEditor.session || draftScene.instances.length >= limits.maximumInstances} onClick={() => addModel(asset)} title="加入场景" type="button">＋</button>
-                </article>
-              ))}
-            </div>
+            <SceneModelLibrary models={models} modelName={modelName} onPreview={setPreviewModel}
+              disabled={!editable || saving || extrasPending || !!fluidEditor.session || draftScene.instances.length + extrasCost.instances >= limits.maximumInstances}
+              decorationsDisabled={(draftScene.decorations?.length ?? 0) >= SCENE_DECORATION_LIMITS.maximumDecorations}
+              extrasSupported={extrasSupported} onAddModel={addModel} onAddDecoration={addDecoration} />
           </>
         )}
       </aside>
@@ -880,7 +1041,7 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
           <strong>{fluidEditor.session.active ? "正在绘制流体" : "流体拾取已暂停"}</strong>
           <span>{fluidEditor.session.selectedPointIndex === null ? "左键单击添加点" : `左键单击移动第 ${fluidEditor.session.selectedPointIndex + 1} 点`} · 拖动旋转 · 滚轮缩放 · {fluidEditor.session.fluid.points.length} 个点</span>
           <button className="inspector-action-button" type="button" onClick={() => setInspectorView("fluid")}>路径属性</button>
-        </div> : editable && !fluidEditor.selectedId ? (
+        </div> : editable && extrasSelection?.kind === "map" ? <div className="standalone-transform-tools" role="status">已选中地图，在右侧调整位置、旋转与缩放。</div> : editable && !fluidEditor.selectedId ? (
           <div
             aria-label="模型变换工具"
             className="standalone-transform-tools"
@@ -893,6 +1054,7 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
                 aria-pressed={instanceTransformMode === "translate"}
                 className={instanceTransformMode === "translate" ? "is-active" : ""}
                 onClick={() => setInstanceTransformMode("translate")}
+                disabled={saving || extrasPending}
                 title="移动模型（快捷键 W）"
                 type="button"
               >移动 <kbd>W</kbd></button>
@@ -900,12 +1062,13 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
                 aria-pressed={instanceTransformMode === "scale"}
                 className={instanceTransformMode === "scale" ? "is-active" : ""}
                 onClick={() => setInstanceTransformMode("scale")}
+                disabled={saving || extrasPending}
                 title="缩放模型（快捷键 R）"
                 type="button"
               >缩放 <kbd>R</kbd></button>
             </div>
             <span className="standalone-transform-hint">
-              {selectedInstance
+              {extrasPending ? "请先修正或放弃右侧尚未完成的输入" : selectedInstance || selectedDecoration
                 ? instanceTransformMode === "translate"
                   ? "拖动箭头沿单轴移动，拖动色块沿平面移动"
                   : "拖动轴端方块缩放，拖动中心方块等比缩放"
@@ -914,12 +1077,10 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
             <span className="standalone-axis-legend" aria-hidden="true"><i className="is-x" />X <i className="is-y" />Y <i className="is-z" />Z</span>
           </div>
         ) : null}
-        {notice ? <div className="standalone-3d-toast" role="status">{notice}</div> : null}
-        {error ? <div className="standalone-3d-toast is-error" role="alert">{error}</div> : null}
       </section>
 
       <aside className="standalone-3d-inspector">
-        <nav aria-label="属性对象" className="standalone-panel-tabs standalone-inspector-tabs has-fluid">
+        <nav aria-label="属性对象" className={`standalone-panel-tabs standalone-inspector-tabs has-fluid${extrasSupported ? " has-extras" : ""}`}>
           <button
             aria-pressed={inspectorView === "model"}
             className={inspectorView === "model" ? "is-active" : ""}
@@ -935,9 +1096,10 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
           >场景属性</button>
           <button aria-pressed={inspectorView === "fluid"} className={inspectorView === "fluid" ? "is-active" : ""} disabled={!fluidEditor.selected}
             onClick={() => setInspectorView("fluid")} type="button">流体属性</button>
+          {extrasSupported ? <button aria-pressed={inspectorView === "extras"} className={inspectorView === "extras" ? "is-active" : ""} disabled={!!fluidEditor.session} onClick={() => setInspectorView("extras")} type="button">扩展属性</button> : null}
         </nav>
 
-        {inspectorView === "fluid" ? <FluidEditor editor={fluidEditor} sceneAnimationsEnabled={draftScene.settings.playAnimations} sceneAnimationSpeed={draftScene.settings.animationSpeed} /> : inspectorView === "model" && selectedInstance ? (
+        {inspectorView === "extras" ? null : inspectorView === "fluid" ? <FluidEditor editor={fluidEditor} sceneAnimationsEnabled={draftScene.settings.playAnimations} sceneAnimationSpeed={draftScene.settings.animationSpeed} /> : inspectorView === "model" && selectedInstance ? (
           <>
             <div className="standalone-inspector-title">
               <div><span>SELECTED MODEL</span><strong>{selectedInstance.label}</strong><small>{selectedModelAsset ? modelName(selectedModelAsset) : selectedInstance.modelAssetId}</small></div>
@@ -1051,6 +1213,19 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
             </section>
           </>
         )}
+        {extrasSupported ? <div hidden={inspectorView !== "extras"}>
+          <div className="standalone-property-actions">
+            <button className="inspector-action-button" disabled={!draftScene.roomAlarms?.length || saving} type="button" onClick={() => setTestingRoomAlarms(value => !value)}>{testingRoomAlarms ? "停止报警数据预览" : "预览报警数据"}</button>
+          </div>
+          <SceneExtrasEditor disabled={!editable || saving || !!fluidEditor.session} scene={draftScene}
+            decorations={draftScene.decorations ?? []} roomAlarms={draftScene.roomAlarms ?? []} staticMap={draftScene.staticMap ?? null}
+            catalog={twinCatalog} sources={roomData.sources} alarmStatuses={roomStatuses}
+            onDecorationsChange={updateDecorations}
+            onRoomAlarmsChange={roomAlarms => setDraftScene(current => current ? { ...current, roomAlarms } : current)}
+            onStaticMapChange={staticMap => setDraftScene(current => current ? { ...current, staticMap } : current)}
+            onPendingChange={setExtrasPending} focusRequest={extrasFocus} onSelectionChange={onExtrasSelectionChange} selection={extrasSelection}
+          />
+        </div> : null}
       </aside>
       {previewModel ? <ModelAssetPreviewDialog asset={previewModel} key={previewModel.id} name={modelName(previewModel)} onClose={() => setPreviewModel(null)} projectId={projectId} /> : null}
       {showTemplates ? <SceneTemplateDialog editable={editable && !saving} error={templateError} onApply={applySceneTemplate} onClose={() => setShowTemplates(false)} /> : null}

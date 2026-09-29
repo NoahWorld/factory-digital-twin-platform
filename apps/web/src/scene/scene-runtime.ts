@@ -1,3 +1,4 @@
+import { errorMessage, reportError } from "../errors";
 import * as THREE from "three";
 import { sceneCameraClipping } from "./camera-clipping";
 import { applyOrbitViewLimits } from "./orbit-view-limits";
@@ -18,12 +19,20 @@ import { FluidManager } from "./fluid-manager";
 import { SceneFrameClock } from "./frame-clock";
 import { FluidPathGuide, fluidPointOnPlane, type FluidEditorState } from "./fluid-path-editor";
 import type { FluidDefinition } from "../../../../shared/fluids";
+import { DecorationManager } from "./decoration-manager";
+import { RoomAlarmRuntime, type RoomAlarmObservation, type RoomAlarmStatus } from "./room-alarm-runtime";
+import type { SceneDecoration } from "../../../../shared/scene-decorations";
+import type { RoomAlarmRule } from "../../../../shared/room-alarms";
+import { StaticMapManager } from "./static-map-manager";
+import type { StaticMapDefinition } from "../../../../shared/static-map";
 import { createWalkPhysics, type WalkPhysics, type WalkSceneConfig } from "./walk-physics";
 import { createWalkControls } from "./walk-controls";
 import { TwinDriveRuntime, type TwinDriveAttachment } from "./twin-drive-runtime";
 import { createNativePlayback, type AnimationProgress, type NativePlaybackMode } from "./native-playback";
 import {
+  constrainEditableDecorationScale,
   constrainEditableInstanceScale,
+  readEditableDecorationTransform,
   readEditableInstanceTransform,
   type InstanceTransformMode,
 } from "./instance-transform";
@@ -34,6 +43,10 @@ export type NavigationStatus = { mode: "orbit" | "loading" | "walk"; message?: s
 export type SceneSnapshot = { scene: ModelSceneSnapshot; animationCount: number };
 export type SceneSelectionStyle = "editor" | "runtime" | "none";
 export type SceneInput = {
+  staticMap?: StaticMapDefinition | null;
+  extrasSelection?: { kind: "decoration" | "map"; id: string } | null;
+  decorations?: SceneDecoration[];
+  roomAlarms?: RoomAlarmRule[];
   fluids?: FluidDefinition[];
   selectedFluidId?: string | null;
   fluidEditor?: FluidEditorState | null;
@@ -48,6 +61,8 @@ export type SceneInput = {
   modelFocusRequest?: { instanceId: string; requestId: string } | null;
 };
 export type SceneDiagnostics = {
+  staticMap: ReturnType<StaticMapManager["diagnostics"]>;
+  decorations: ReturnType<DecorationManager["diagnostics"]>;
   fluids: ReturnType<FluidManager["diagnostics"]>;
   activeLoads: number; queuedLoads: number; resources: number; instanceCount: number;
   cameraPosition: number[]; cameraTarget: number[];
@@ -57,11 +72,13 @@ export type SceneDiagnostics = {
 export type SceneRuntime = ReturnType<typeof createSceneRuntime>;
 
 /** Owns one renderer per scene. React passes configuration, never Three.js objects. */
-export function createSceneRuntime({ container, projectId, canvasNodeId, initial, onStatus, onSnapshot, onDiagnostics, onNavigation, onInstanceTransform, onTransformDragging, resolveModelUrl, nativePlayback }: {
+export function createSceneRuntime({ container, projectId, canvasNodeId, initial, onStatus, onSnapshot, onDiagnostics, onNavigation, onInstanceTransform, onDecorationTransform, onTransformDragging, resolveModelUrl, nativePlayback, getRoomAlarmObservations, onRoomAlarmStatuses }: {
   container: HTMLElement;
   projectId: string;
   canvasNodeId: string;
   initial: SceneInput;
+  getRoomAlarmObservations?: () => Record<string, RoomAlarmObservation>;
+  onRoomAlarmStatuses?: (statuses: RoomAlarmStatus[]) => void;
   // Trusted host options. They are never read from saved scene configuration.
   resolveModelUrl?: (assetId: string) => string;
   nativePlayback?: { mode: NativePlaybackMode; onProgress: (progress: AnimationProgress) => void };
@@ -70,6 +87,7 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
   onDiagnostics?: (diagnostics: SceneDiagnostics) => void;
   onNavigation?: (status: NavigationStatus) => void;
   onInstanceTransform?: (instanceId: string, transform: ModelNodeTransform) => void;
+  onDecorationTransform?: (decorationId: string, transform: ModelNodeTransform) => void;
   onTransformDragging?: (dragging: boolean) => void;
 }) {
   const constructionCleanup: Array<() => void> = [];
@@ -121,7 +139,6 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
       transformControls.dispose();
     });
 
-
     let environmentTarget: ReturnType<InstanceType<typeof THREE.PMREMGenerator>["fromScene"]> | null = null;
     const ensureStudio = () => {
       if (environmentTarget) return;
@@ -140,6 +157,13 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
     constructionCleanup.push(() => manager.dispose());
     const fluids = new FluidManager(contentOffset);
     constructionCleanup.push(() => fluids.dispose());
+    const decorations = new DecorationManager(contentOffset);
+    constructionCleanup.push(() => decorations.dispose());
+    const staticMap = new StaticMapManager(contentOffset);
+    constructionCleanup.push(() => staticMap.dispose());
+    const roomAlarms = new RoomAlarmRuntime();
+    constructionCleanup.push(() => roomAlarms.dispose());
+    let roomStatusSignature = "";
     const fluidGuide = new FluidPathGuide(contentOffset);
     constructionCleanup.push(() => fluidGuide.dispose());
     let records: InstanceRecord[] = [];
@@ -153,8 +177,8 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
       if (!twinAttachment || !twinReady) return;
       try { twinRuntime = new TwinDriveRuntime(records, twinAttachment); }
       catch (reason) {
-        const message = `点位绑定失败：${reason instanceof Error ? reason.message : String(reason)}`;
-        console.error("Failed to bind twin-drive scene", { projectId, canvasNodeId, reason });
+        reportError(reason, { operation: "scene.twin.bind", projectId, canvasNodeId });
+        const message = `点位绑定失败：${errorMessage(reason)}`;
         twinAttachment.onDiagnostics?.({ status: "error", message, sequence: null, boundNodes: 0, activeCollisions: [], events: [] });
       }
     };
@@ -189,8 +213,9 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
     const selectionBounds = new THREE.Box3();
     const selectionSize = new THREE.Vector3();
     const selectionCenter = new THREE.Vector3();
-    let transformRecord: InstanceRecord | null = null;
+    let transformTarget: { kind: "instance" | "decoration"; id: string; object: Object3D } | null = null;
     let transformDragging = false;
+    let transformPointerId: number | null = null;
     let modelRadius: number | null = null;
     let visible = true;
     const frameClock = new SceneFrameClock();
@@ -219,8 +244,8 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
     };
     const navigationError = (reason: unknown) => {
       exitWalk();
-      console.error("Rapier scene navigation failed.", { projectId, canvasNodeId, reason });
-      notifyNavigation({ mode: "error", message: `行走失败：${reason instanceof Error ? reason.message : String(reason)}` });
+      reportError(reason, { operation: "scene.navigation", projectId, canvasNodeId });
+      notifyNavigation({ mode: "error", message: `行走失败：${errorMessage(reason)}` });
     };
     const enterWalk = async (input: WalkSceneConfig) => {
       if (disposed) throw new Error("场景运行层已释放");
@@ -289,67 +314,105 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
       selectionTarget = null;
     };
 
+    const cancelTransformDrag = () => {
+      if (!transformControls.dragging) return;
+      const pointerId = transformPointerId;
+      // Cancel rather than commit when focus, selection or edit permission is
+      // lost. Three.js detach() alone leaves dragging and pointer capture set.
+      transformControls.reset();
+      transformControls.dragging = false;
+      transformControls.axis = null;
+      if (pointerId !== null && renderer.domElement.hasPointerCapture(pointerId)) renderer.domElement.releasePointerCapture(pointerId);
+      transformControls.disconnect();
+      transformControls.connect(renderer.domElement);
+      updateSceneBounds();
+    };
+
     const detachTransformControl = () => {
+      cancelTransformDrag();
       transformControls.detach();
       transformControls.enabled = false;
-      transformRecord = null;
+      transformTarget = null;
     };
 
     function syncTransformControl(input: SceneInput) {
-      if (transformControls.dragging) return;
-      const record = input.selectedPath === null && input.selectedInstanceId !== null
+      const record = !input.extrasSelection && input.selectedPath === null && input.selectedInstanceId !== null
         ? records.find((candidate) => candidate.id === input.selectedInstanceId)
         : undefined;
-      if (!input.instanceTransformMode || !record?.wrapper.visible || walk || input.fluidEditor?.active) {
+      const decoration = input.extrasSelection?.kind === "decoration" ? decorations.getRoot(input.extrasSelection.id) : undefined;
+      const target = decoration ? { kind: "decoration" as const, id: input.extrasSelection!.id, object: decoration }
+        : record ? { kind: "instance" as const, id: record.id, object: record.wrapper } : null;
+      if (disposed || contextLost || input.selectionStyle !== "editor" || !input.controlsEnabled || !input.instanceTransformMode || !target?.object.visible || walk || input.fluidEditor?.active) {
         detachTransformControl();
         return;
+      }
+      if (transformControls.dragging) {
+        if (transformTarget?.object === target.object && transformControls.mode === input.instanceTransformMode) return;
+        cancelTransformDrag();
       }
       transformControls.enabled = true;
       transformControls.setMode(input.instanceTransformMode);
       transformControls.setSpace(input.instanceTransformMode === "translate" ? "world" : "local");
-      if (transformRecord !== record) {
-        transformControls.attach(record.wrapper);
-        transformRecord = record;
+      if (transformTarget?.object !== target.object) {
+        transformControls.attach(target.object);
+        transformTarget = target;
       }
     }
 
     const reportTransformError = (reason: unknown) => {
-      console.error("Failed to edit a 3D model instance with transform controls.", {
-        projectId,
-        canvasNodeId,
-        instanceId: transformRecord?.id ?? null,
-        reason,
-      });
-      notifyStatus({ status: "error", message: `模型拖拽失败：${reason instanceof Error ? reason.message : String(reason)}` });
+      reportError(reason, { operation: "scene.transform", projectId, canvasNodeId,
+        instanceId: transformTarget?.kind === "instance" ? transformTarget.id : undefined,
+        decorationId: transformTarget?.kind === "decoration" ? transformTarget.id : undefined });
+      notifyStatus({ status: "error", message: `模型拖拽失败：${errorMessage(reason)}` });
     };
 
+    const constrainTransform = () => {
+      if (!transformTarget) return;
+      if (transformTarget.kind === "decoration") constrainEditableDecorationScale(transformTarget.object);
+      else constrainEditableInstanceScale(transformTarget.object);
+    };
     transformControls.addEventListener("objectChange", () => {
-      if (!transformRecord) return;
+      if (!transformTarget) return;
       try {
-        constrainEditableInstanceScale(transformRecord.wrapper);
+        constrainTransform();
       } catch (reason) {
-        transformControls.reset();
+        cancelTransformDrag();
         reportTransformError(reason);
       }
     });
     transformControls.addEventListener("mouseUp", () => {
-      if (!transformRecord) return;
+      if (!transformTarget) return;
       try {
-        constrainEditableInstanceScale(transformRecord.wrapper);
-        const transform = readEditableInstanceTransform(transformRecord.wrapper);
+        constrainTransform();
+        const transform = transformTarget.kind === "decoration"
+          ? readEditableDecorationTransform(transformTarget.object)
+          : readEditableInstanceTransform(transformTarget.object);
         updateSceneBounds();
-        onInstanceTransform?.(transformRecord.id, transform);
+        if (transformTarget.kind === "decoration") onDecorationTransform?.(transformTarget.id, transform);
+        else onInstanceTransform?.(transformTarget.id, transform);
       } catch (reason) {
-        transformControls.reset();
-        updateSceneBounds();
+        cancelTransformDrag();
         reportTransformError(reason);
       }
     });
     transformControls.addEventListener("dragging-changed", (event) => {
       transformDragging = event.value === true;
+      if (!transformDragging) transformPointerId = null;
       controls.enabled = desired.controlsEnabled && !walk && !transformDragging;
       onTransformDragging?.(transformDragging);
     });
+    const captureTransformPointer = (event: PointerEvent) => {
+      if (transformControls.enabled) transformPointerId = event.pointerId;
+    };
+    renderer.domElement.addEventListener("pointerdown", captureTransformPointer, true);
+    renderer.domElement.addEventListener("pointercancel", cancelTransformDrag);
+    window.addEventListener("blur", cancelTransformDrag);
+    const removeTransformListeners = () => {
+      renderer.domElement.removeEventListener("pointerdown", captureTransformPointer, true);
+      renderer.domElement.removeEventListener("pointercancel", cancelTransformDrag);
+      window.removeEventListener("blur", cancelTransformDrag);
+    };
+    constructionCleanup.push(removeTransformListeners);
 
     const disposeRuntime = () => {
       if (disposed) return;
@@ -362,6 +425,7 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
       intersectionObserver?.disconnect();
       renderer.domElement.removeEventListener("webglcontextlost", handleContextLost);
       controls.dispose();
+      removeTransformListeners();
       scene.remove(transformHelper);
       transformControls.dispose();
       clearSelection();
@@ -369,6 +433,9 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
       twinRuntime?.dispose(); twinRuntime = null;
       fluidGuide.dispose();
       fluids.dispose();
+      decorations.dispose();
+      staticMap.dispose();
+      roomAlarms.dispose();
       manager.dispose();
       resources.dispose();
       modelLoader.dispose();
@@ -431,6 +498,10 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
       }
       const fluidBounds = fluids.getBounds();
       if (!fluidBounds.isEmpty()) { box.union(fluidBounds); hasVisibleGeometry = true; }
+      const decorationBounds = decorations.getBounds();
+      if (!decorationBounds.isEmpty()) { box.union(decorationBounds); hasVisibleGeometry = true; }
+      const mapBounds = staticMap.getBounds();
+      if (!mapBounds.isEmpty()) { box.union(mapBounds); hasVisibleGeometry = true; }
       if (!hasVisibleGeometry) {
         rotationPivot.rotation.y = priorRotation;
         if (modelRadius !== null) emptyCameraInitialized = false;
@@ -582,6 +653,7 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
     };
 
     const applyModelState = (settings: Model3DProps) => {
+      roomAlarms.beforeModelStateChange();
       records.forEach(restoreRecord);
       const primary = records[0];
       if (!primary) return;
@@ -664,7 +736,12 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
     const applySelection = (path: string | null, instanceId: string | null, style: SceneSelectionStyle) => {
       clearSelection();
       let selected: Object3D | undefined;
-      if (path !== null) {
+      if (desired.extrasSelection && style === "editor") {
+        selected = desired.extrasSelection.kind === "decoration"
+          ? decorations.getPickObjects().find(root => root.userData.sceneDecorationId === desired.extrasSelection!.id)
+          : staticMap.getPickObjects().find(root => root.userData.staticMapId === desired.extrasSelection!.id);
+        if (desired.extrasSelection.kind === "map" && selected?.parent?.userData.staticMapId === desired.extrasSelection.id) selected = selected.parent;
+      } else if (path !== null) {
         selected = primaryObjectsByPath.get(path);
         if (!selected) throw new Error(`主模型中找不到当前选择路径：${path}`);
       } else if (instanceId !== null) {
@@ -703,7 +780,7 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
     };
 
     const pick = createSceneObjectPickingService(camera, renderer.domElement);
-    const pickSceneObject = (x: number, y: number) => pick(x, y, records, primaryPathsByObject, fluids);
+    const pickSceneObject = (x: number, y: number) => pick(x, y, records, primaryPathsByObject, fluids, [...decorations.getPickObjects(), ...staticMap.getPickObjects()]);
     const pickSceneTarget = (x: number, y: number) => {
       const target = pickSceneObject(x, y);
       return target && "instanceId" in target ? target : null;
@@ -773,6 +850,10 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
         lastPlaybackReport = now;
       }
       fluids.update(deltaSeconds, settings.playAnimations, settings.animationSpeed);
+      decorations.update(deltaSeconds, settings.playAnimations, settings.animationSpeed);
+      const roomStatuses = roomAlarms.update(getRoomAlarmObservations?.() ?? {});
+      const roomSignature = JSON.stringify(roomStatuses);
+      if (roomSignature !== roomStatusSignature) { roomStatusSignature = roomSignature; onRoomAlarmStatuses?.(roomStatuses); }
       if (settings.autoRotate && !desired.fluidEditor?.active) rotationPivot.rotation.y += deltaSeconds * settings.rotationSpeed;
       const animationConflict = settings.playAnimations && records.some(record => twinRuntime?.drivenInstances.has(record.id) && record.animationCount > 0 && desiredInstancesById.get(record.id)?.animation?.enabled !== false);
       twinRuntime?.tick(Date.now(), animationConflict);
@@ -787,7 +868,7 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
       frameTotal += frameMs;
       if (now - sampleAt >= 2000) {
         lastDiagnostics = {
-          ...resources.stats, instanceCount: records.length, fluids: fluids.diagnostics(),
+          ...resources.stats, instanceCount: records.length, fluids: fluids.diagnostics(), decorations: decorations.diagnostics(), staticMap: staticMap.diagnostics(),
           cameraPosition: camera.position.toArray(), cameraTarget: walk ? camera.position.clone().add(camera.getWorldDirection(new THREE.Vector3())).toArray() : controls.target.toArray(),
           navigation, physics: walk?.physics.diagnostics() ?? null,
           frameMs: frameTotal / frameCount,
@@ -801,6 +882,7 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
     function updateLoop() {
       if (disposed || contextLost) return;
       const running = visible && !document.hidden;
+      if (!running) cancelTransformDrag();
       walk?.controls.pause();
       frameClock.reset();
       frameCount = 0; frameTotal = 0; sampleAt = null;
@@ -825,8 +907,14 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
       const graph = JSON.stringify(next.instances.map(({ id, assetId }) => [id, assetId]));
       try {
         if (contextLost) throw new Error("WebGL 上下文已丢失，请重新打开场景");
+        // Restore a drag before reconciling objects that may be hidden, replaced
+        // or removed. A completed mouseUp has already emitted its draft change.
+        if (transformControls.dragging && (JSON.stringify(appliedInput?.instances) !== JSON.stringify(next.instances)
+          || JSON.stringify(appliedInput?.decorations) !== JSON.stringify(next.decorations))) cancelTransformDrag();
+        syncTransformControl(next);
         const graphChanged = graph !== appliedGraph;
         if (graphChanged) {
+          roomAlarms.beforeModelStateChange();
           twinRuntime?.dispose(); twinRuntime = null; twinReady = false;
           detachTransformControl();
           notifyStatus({ status: "loading" });
@@ -867,9 +955,13 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
         ]);
         const modelChanged = graphChanged || modelKey(appliedInput) !== modelKey(next);
         const fluidsChanged = JSON.stringify(appliedInput?.fluids) !== JSON.stringify(next.fluids);
+        const decorationsChanged = JSON.stringify(appliedInput?.decorations) !== JSON.stringify(next.decorations);
+        const mapChanged = JSON.stringify(appliedInput?.staticMap) !== JSON.stringify(next.staticMap);
+        if (mapChanged) staticMap.reconcile(next.staticMap ?? null);
+        if (decorationsChanged) decorations.reconcile(next.decorations ?? []);
         if (fluidsChanged) fluids.reconcile(next.fluids ?? []);
         if (instancesChanged) applyInstances(next.instances);
-        else if (fluidsChanged) updateSceneBounds();
+        else if (fluidsChanged || decorationsChanged || mapChanged) updateSceneBounds();
         if (fluidsChanged || JSON.stringify(appliedInput?.fluidEditor) !== JSON.stringify(next.fluidEditor) || appliedInput?.selectedFluidId !== next.selectedFluidId || appliedInput?.selectionStyle !== next.selectionStyle) {
           const selected = next.fluids?.find(fluid => fluid.id === next.selectedFluidId && fluid.visible);
           const selectedPoints = selected?.direction === "reverse" ? [...selected.points].reverse() : selected?.points;
@@ -878,10 +970,13 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
         }
         if (settingsChanged) applySceneSettings(next.settings);
         if (modelChanged) applyModelState(next.settings);
+        if (modelChanged || JSON.stringify(appliedInput?.roomAlarms) !== JSON.stringify(next.roomAlarms)) {
+          roomAlarms.reconcile(records, next.roomAlarms ?? []);
+        }
         if (graphChanged || appliedInput?.settings.playAnimations !== next.settings.playAnimations || JSON.stringify(appliedInput?.instances.map(i => i.animation)) !== JSON.stringify(next.instances.map(i => i.animation))) {
           twinReady = true; rebuildTwin();
         }
-        if (instancesChanged || modelChanged || appliedInput?.selectedPath !== next.selectedPath || appliedInput?.selectedInstanceId !== next.selectedInstanceId || appliedInput?.selectionStyle !== next.selectionStyle) {
+        if (instancesChanged || modelChanged || decorationsChanged || mapChanged || JSON.stringify(appliedInput?.extrasSelection) !== JSON.stringify(next.extrasSelection) || appliedInput?.selectedPath !== next.selectedPath || appliedInput?.selectedInstanceId !== next.selectedInstanceId || appliedInput?.selectionStyle !== next.selectionStyle) {
           applySelection(next.selectedPath, next.selectedInstanceId, next.selectionStyle);
         }
         syncTransformControl(next);
@@ -894,12 +989,12 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
           appliedFocusRequestId = next.modelFocusRequest.requestId;
         }
         appliedInput = next;
-        notifyStatus({ status: records.length || fluids.diagnostics().fluidCount ? "ready" : "empty" });
+        notifyStatus({ status: records.length || fluids.diagnostics().fluidCount || decorations.diagnostics().decorationCount || staticMap.diagnostics().featureCount ? "ready" : "empty" });
       } catch (reason) {
         if (disposed || version !== revision) return;
         appliedInput = null;
-        console.error("Failed to update 3D scene runtime.", { projectId, canvasNodeId, revision: version, graph, reason });
-        notifyStatus({ status: "error", message: `3D 场景更新失败：${reason instanceof Error ? reason.message : String(reason)}` });
+        reportError(reason, { operation: "scene.update", projectId, canvasNodeId, revision: version });
+        notifyStatus({ status: "error", message: `3D 场景更新失败：${errorMessage(reason)}` });
       }
     };
     const seekAnimation = (seconds: number) => {

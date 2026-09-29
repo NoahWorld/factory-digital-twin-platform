@@ -1,0 +1,85 @@
+import assert from 'node:assert/strict';
+import * as THREE from 'three';
+import { createSceneDecoration, parseSceneDecorations, sceneDecorationBudget, SCENE_DECORATION_LIMITS } from '../../../shared/scene-decorations';
+import { DecorationManager } from '../src/scene/decoration-manager';
+const kinds=['tree','shrub','river','military-truck','military-tent','military-radar','military-armored'];
+const defs=kinds.map((kind,i)=>createSceneDecoration(`d${i}`,kind));
+assert.equal(parseSceneDecorations([]).ok,true);
+assert.equal(parseSceneDecorations(defs).ok,true);
+const invalid=(value)=>assert.equal(parseSceneDecorations(value).ok,false);
+invalid([defs[0],defs[0]]); invalid([{...defs[0],extra:1}]); invalid([{...defs[0],color:'#bad'}]);
+invalid([{...defs[0],id:'bad\n'}]);invalid([{...defs[0],color:'#aabbcc\n'}]);invalid([{...defs[0],accentColor:'#aabbcc\n'}]);
+invalid([{...defs[0],river:defs[2].river}]);invalid([{...defs[2],river:{...defs[2].river,points:[[0,0,0],[0,1,0]]}}]);
+invalid([{...defs[2],river:{...defs[2].river,points:[[0,0,0],[2,0,0],[1,0,0]]}}]);
+invalid([{...defs[2],river:{...defs[2].river,points:[[0,0,0],[2,0,2],[4,0,0],[2,0,-2],[0,0,0]]}}]);
+invalid([{...defs[0],transform:{...defs[0].transform,scale:[0,1,1]}}]);
+invalid([{...defs[0],transform:{...defs[0].transform,scale:[0.0009,1,1]}}]);
+assert.equal(SCENE_DECORATION_LIMITS.minimumScale,0.001);
+assert.equal(parseSceneDecorations([{...defs[0],transform:{...defs[0].transform,scale:[0.001,1,1]}}]).ok,true);
+invalid([{...defs[0],seed:2**32}]);
+const bend=(points,width=1)=>({...defs[2],river:{...defs[2].river,points,width}});
+assert.equal(parseSceneDecorations([bend([[0,0,0],[5,0,0],[5,0,5]])]).ok,true,'right angle is valid');
+invalid([bend([[0,0,0],[5,0,0],[4,0,0.1]])]);
+invalid([bend([[0,0,0],[1,0,0],[1,0,1]],5)]);
+invalid([bend([[0,0,0],[5,0,0],[5,0,5],[0,0,5]],6)]);
+const parentA=new THREE.Group(), parentB=new THREE.Group();
+const a=new DecorationManager(parentA),b=new DecorationManager(parentB);
+a.reconcile(defs);b.reconcile(defs);
+const budget=sceneDecorationBudget(defs),stats=a.diagnostics();
+assert.equal(stats.decorationCount,defs.length);assert.ok(stats.meshCount<=budget.meshes);assert.ok(stats.triangleCount<=budget.triangles);
+assert.equal(budget.animatedInstances,1);
+// Every library kind must retain the actual gizmo target and GPU resources when
+// a transform, label or visibility edit is reconciled after dragging.
+{
+  const parent=new THREE.Group();const manager=new DecorationManager(parent);
+  manager.reconcile(defs);
+  const roots=defs.map(d=>manager.getRoot(d.id));
+  const geometries=roots.map(root=>root.children[0].geometry);
+  const materials=roots.map(root=>root.children[0].material);
+  let released=0;geometries.forEach(geometry=>geometry.addEventListener('dispose',()=>released++));
+  const moved=defs.map(d=>({...d,label:`${d.label} 2`,transform:{position:[10,2,-5],rotation:[0,90,0],scale:[2,3,4]}}));
+  manager.update(1,true,1);
+  const riverPhase=roots[2].children[0].material.uniforms.uPhase.value;
+  manager.reconcile(moved);
+  for(let i=0;i<defs.length;i++) {
+    const root=manager.getRoot(defs[i].id);
+    assert.equal(root,roots[i],`${defs[i].kind}: transform retains selected root`);
+    assert.equal(root.children[0].geometry,geometries[i]);assert.equal(root.children[0].material,materials[i]);
+    assert.deepEqual(root.position.toArray(),[10,2,-5]);assert.deepEqual(root.scale.toArray(),[2,3,4]);
+    assert.equal(root.rotation.y,Math.PI/2);assert.equal(root.name,moved[i].label);
+  }
+  assert.equal(released,0);assert.equal(roots[2].children[0].material.uniforms.uPhase.value,riverPhase);
+  assert.throws(()=>manager.reconcile([{...moved[0],transform:{...moved[0].transform,position:[3,4,5]}},{...moved[1],seed:-1}]),/无效/);
+  assert.deepEqual(roots[0].position.toArray(),[10,2,-5],'invalid sibling never partially commits a transform');
+  manager.reconcile(moved.map(d=>({...d,visible:false})));
+  assert.equal(manager.getPickObjects().length,0);assert.ok(manager.getBounds().isEmpty());
+  for(let i=0;i<defs.length;i++) assert.equal(manager.getRoot(defs[i].id),roots[i],'hidden objects retain identity');
+  manager.reconcile(moved);assert.equal(manager.getPickObjects().length,defs.length);
+  manager.reconcile([{...moved[0],color:'#336699'},...moved.slice(1)]);
+  assert.notEqual(manager.getRoot(defs[0].id),roots[0],'structural/material changes replace their owned resources');
+  assert.equal(released,1);assert.equal(roots[0].parent,null);
+  for(let i=1;i<defs.length;i++) assert.equal(manager.getRoot(defs[i].id),roots[i],'unmodified siblings retain identity');
+  manager.reconcile([]);assert.equal(manager.getRoot(defs[0].id),undefined);assert.equal(parent.children.length,0);
+  assert.equal(released,defs.length);manager.dispose();assert.throws(()=>manager.getRoot(defs[0].id),/已释放/);
+}
+for(const d of defs){const manager=new DecorationManager(new THREE.Group());manager.reconcile([d]);const actual=manager.diagnostics(),limit=sceneDecorationBudget([d]);assert.ok(actual.meshCount<=limit.meshes,`${d.kind}: mesh budget`);assert.ok(actual.triangleCount<=limit.triangles,`${d.kind}: triangle budget ${actual.triangleCount}/${limit.triangles}`);manager.dispose();}
+assert.deepEqual(a.getPickObjects().map(o=>o.userData.sceneDecorationId),defs.map(d=>d.id));
+const first=a.getPickObjects()[0],second=b.getPickObjects()[0];
+assert.notEqual(first.children[0].material,second.children[0].material);
+const geo=first.children[0].geometry;const position=Array.from(geo.getAttribute('position').array);
+assert.deepEqual(position,Array.from(second.children[0].geometry.getAttribute('position').array),'seed produces deterministic geometry');
+a.reconcile(structuredClone(defs));assert.equal(a.getPickObjects()[0],first,'unchanged definition retains root');
+let disposed=0;const oldDispose=geo.dispose.bind(geo);geo.dispose=()=>{disposed++;oldDispose();};
+assert.throws(()=>a.reconcile([...defs,{...defs[0],id:'invalid',river:defs[2].river}]),/无效/);
+assert.equal(a.getPickObjects()[0],first);assert.equal(disposed,0);
+const river=a.getPickObjects()[2],riverSurface=river.children[0];
+const tent=a.getPickObjects()[4];const tentRoof=tent.getObjectByName('tent');
+assert.equal(tentRoof.rotation.y,0);assert.equal(tentRoof.position.z,-1.5);
+const bounds=a.getBounds();assert.ok(bounds.max.x>=5 && bounds.min.z<=-0.9 && bounds.max.z>=0.9);
+const phase=riverSurface.material.uniforms.uPhase.value;
+a.update(1,false,1);assert.equal(riverSurface.material.uniforms.uPhase.value,phase);
+a.update(1,true,1);assert.notEqual(riverSurface.material.uniforms.uPhase.value,phase);
+a.reconcile([defs[2]]);assert.equal(disposed,1);assert.equal(parentA.children.length,1);
+a.dispose();b.dispose();assert.equal(parentA.children.length,0);assert.equal(parentB.children.length,0);
+assert.throws(()=>a.reconcile([]),/已释放/);
+console.log('Scene decorations tests passed: parser, budgets, deterministic geometry, isolation, incremental reconcile, rollback, disposal, river bounds and pause.');

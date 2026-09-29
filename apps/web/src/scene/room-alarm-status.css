@@ -1,0 +1,5 @@
+.scene-room-status{position:absolute;z-index:12;top:14px;right:14px;max-width:min(320px,calc(100% - 28px));max-height:45%;overflow:auto;padding:9px 12px;border:1px solid #4a8d80;border-radius:8px;color:#e9f7f4;background:#152924ed;font-size:12px;pointer-events:auto;box-shadow:0 3px 16px #0003}
+.scene-room-status.is-alarm{border-color:#e5796a;background:#421e1deb}.scene-room-status.is-unknown{border-color:#be984d;background:#342c1aed}
+.standalone-3d-preview-stage > .scene-room-status{top:88px}
+.standalone-panel-tabs.standalone-inspector-tabs.has-extras{grid-template-columns:repeat(4,minmax(0,1fr))}
+.scene-room-status summary{cursor:pointer;font-weight:600}.scene-room-status ul{list-style:none;margin:10px 0 0;padding:0;display:grid;gap:8px}.scene-room-status li{display:grid;gap:3px;overflow-wrap:anywhere}.scene-room-status li span{opacity:.82;line-height:1.5}

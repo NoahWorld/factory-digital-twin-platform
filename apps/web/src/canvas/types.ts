@@ -1,3 +1,4 @@
+import { createUuid } from "../uuid";
 import { defaultModelPresentation, parseModelPresentation, type ModelPresentation } from "../../../../shared/model-presentation";
 import { isOrnamentNodeType, ornamentDefaults, ornamentDefaultSizes, ornamentMinimumSizes, type OrnamentNodeType } from "../../../../shared/canvas-ornaments";
 import type { StandaloneSceneInstanceAnimation, StandaloneSceneInstanceAppearance } from "../../../../shared/standalone-3d";
@@ -1217,7 +1218,7 @@ export const createCanvasNode = (
                 : { ...assetDetailDefaults[type] };
 
   return {
-    id: crypto.randomUUID(),
+    id: createUuid(),
     type,
     x,
     y,

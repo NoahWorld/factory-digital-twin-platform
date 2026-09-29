@@ -8,7 +8,7 @@
 apps/
   web/       React + Vite 的配置台与运行态前端
   api/       现有 Cloudflare Worker API，绑定 D1 项目配置库
-  backend/   Java 21 + Spring Boot，独立部署后端
+  backend/   历史 Java 快照，仅作参考；运行目标为独立后端仓库
 deploy/local/ Docker Compose：API、采集、任务、PostgreSQL、Valkey、S3
 ```
 
@@ -21,6 +21,8 @@ deploy/local/ Docker Compose：API、采集、任务、PostgreSQL、Valkey、S3
 - R2 目标绑定配置：`PROJECT_FILES` → `factory-digital-twin-project-files`。2026-09-18 迁移核对时该账号尚未启用 R2，D1 也没有用户上传资源记录，因此本次没有 R2 对象需要迁移。
 
 ## Java 后端本地启动（2026-09-17 新增）
+
+2026-09-27 起，Java 开发及构建使用 [factory-digital-twin-backend/main](https://github.com/NoahWorld/factory-digital-twin-backend)。将它与本平台仓库放在同一父目录，或设置绝对路径 `TWIN_BACKEND_DIR`。`backend:contracts`、`backend:verify` 与 Compose 均指向独立仓库；不要继续修改这里的 `apps/backend` 快照。房间报警、植物/河流、静态地图与轻量军事对象的使用及验证见 [场景扩展](docs/scene-extensions.md)。
 
 本地首版已实现并验证，完整命令、接口、限制与备份方法见 [Java 后端说明](./apps/backend/README.md)。2026-09-18 已将 Cloudflare D1 的云端业务快照，以及旧 Wrangler 本地状态中的 3D 工厂、组合大屏和资源，迁入本地 PostgreSQL/SeaweedFS；迁移结果与边界见 [Cloudflare 到本地迁移记录](./docs/cloudflare-to-local-migration.md)。下方原有能力说明仍包含 Worker 特有功能，不能当作 Java 全量迁移清单。
 

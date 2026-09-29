@@ -1,0 +1,19 @@
+{
+  "data-root": "/data/dtwin/docker",
+  "exec-root": "/run/dtwin-docker",
+  "pidfile": "/run/dtwin-docker/dockerd.pid",
+  "hosts": ["unix:///run/dtwin-docker/docker.sock"],
+  "containerd": "/run/dtwin-containerd/containerd.sock",
+  "containerd-namespace": "dtwin",
+  "containerd-plugins-namespace": "dtwin-plugins",
+  "storage-driver": "overlay2",
+  "bridge": "none",
+  "iptables": false,
+  "ip6tables": false,
+  "ip-forward": false,
+  "ip-masq": false,
+  "userland-proxy": false,
+  "max-concurrent-downloads": 2,
+  "log-driver": "json-file",
+  "log-opts": {"max-size": "10m", "max-file": "3"}
+}

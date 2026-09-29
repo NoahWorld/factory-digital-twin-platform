@@ -1,3 +1,4 @@
+import { errorMessage, reportError } from "../api";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { findBuiltinModel } from "../../../../shared/builtin-models";
 import { createCanvasNode, type Model3DProps, type ModelCameraView } from "../canvas/types";
@@ -87,8 +88,8 @@ export function PublicShowcaseModel({ model, playing, view }: {
       return created.update(latestInput.current);
     }).catch((reason: unknown) => {
       if (disposed) return;
-      console.error("public.delivery-story.failed", { assetId: latestInput.current.instances[0].assetId, reason });
-      setStatus({ status: "error", message: reason instanceof Error ? reason.message : String(reason) });
+      reportError(reason, { operation: "public.delivery-story", assetId: latestInput.current.instances[0].assetId });
+      setStatus({ status: "error", message: errorMessage(reason) });
       created?.dispose();
       runtime.current = null;
     });

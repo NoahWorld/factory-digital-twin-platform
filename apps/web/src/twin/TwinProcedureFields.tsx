@@ -1,10 +1,11 @@
+import { createUuid } from "../uuid";
 import { useState } from "react";
 import {
   TWIN_DRIVE_LIMITS, type TwinDriveConfig, type TwinProcedure, type TwinProcedureStep, type TwinSetpoint,
 } from "../../../../shared/twin-drive";
 import { Select } from "../components/Select";
 
-const id = (prefix: string) => `${prefix}-${crypto.randomUUID().slice(0, 8)}`;
+const id = (prefix: string) => `${prefix}-${createUuid().slice(0, 8)}`;
 const numeric = (value: string) => value.trim() === "" ? NaN : Number(value);
 
 function NumberField({ label, value, onChange, min, max, step = "any" }: {

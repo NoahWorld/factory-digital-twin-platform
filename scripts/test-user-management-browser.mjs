@@ -13,10 +13,12 @@ const fixture = `
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { UsersPage } from '/src/pages/UsersPage.tsx';
+import { NotificationProvider } from '/src/components/NotificationProvider.tsx';
 import '/src/styles.css';
 import '/src/theme/theme-palette.css';
 document.documentElement.dataset.uiTheme = 'light';
-createRoot(document.getElementById('root')).render(React.createElement(UsersPage, { currentUserId: 'admin' }));
+createRoot(document.getElementById('root')).render(React.createElement(NotificationProvider, null,
+  React.createElement(UsersPage, { currentUserId: 'admin' })));
 `;
 const server = await createServer({
   configFile: false,
