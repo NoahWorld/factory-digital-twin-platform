@@ -1,3 +1,4 @@
+import { createUuid } from "../uuid";
 import { Select } from "../components/Select";
 import { builtinModels, findBuiltinModel } from "../../../../shared/builtin-models";
 import { ModelPresentationPanel } from "./ModelPresentationPanel";
@@ -321,7 +322,7 @@ export function Model3DInspector({
     saveModelInstances([
       ...modelInstances,
       {
-        id: `model-${crypto.randomUUID()}`,
+        id: `model-${createUuid()}`,
         assetId,
         label: `${preferredLabel ?? modelAssetLabel(assetId)} ${instanceNumber}`,
         transform: {

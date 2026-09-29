@@ -1,0 +1,10 @@
+#!/bin/bash
+set -euo pipefail
+/data/dtwin/bin/check-mount
+readonly socket=unix:///run/dtwin-docker/docker.sock
+actual_root=$(/usr/bin/docker --host "$socket" info --format '{{.DockerRootDir}}')
+if [[ "$actual_root" != /data/dtwin/docker ]]; then
+  echo "Refusing Docker command: unexpected data root: $actual_root" >&2
+  exit 1
+fi
+exec /usr/bin/docker --host "$socket" "$@"

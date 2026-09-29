@@ -1,0 +1,9 @@
+#!/bin/bash
+set -euo pipefail
+mountpoint -q /data || { echo 'DTwin: /data is not mounted; refusing to start.' >&2; exit 1; }
+expected=$(cat /data/dtwin/config/data-disk.uuid)
+actual=$(findmnt -n -o UUID /data)
+if [[ -z "$expected" || "$actual" != "$expected" ]]; then
+  echo "DTwin: data disk UUID mismatch; expected $expected, found $actual" >&2
+  exit 1
+fi

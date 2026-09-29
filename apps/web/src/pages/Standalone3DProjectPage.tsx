@@ -1,3 +1,4 @@
+import { createUuid } from "../uuid";
 import {
   useCallback,
   useEffect,
@@ -417,7 +418,7 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
   const focusActionModel = useCallback((targetProjectId: string, instanceId: string) => {
     if (targetProjectId !== projectId) return; // The validated remote target is dispatched through the project-scoped bus.
     setSelectedInstanceId(instanceId);
-    setModelFocusRequest({ instanceId, requestId: crypto.randomUUID() });
+    setModelFocusRequest({ instanceId, requestId: createUuid() });
   }, [projectId]);
   const selectActionAsset = useCallback((assetId: string) => {
     setSelectedRuntimeAssetId(assetId);
@@ -551,7 +552,7 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
       animation: defaultStandaloneSceneInstanceAnimation(),
       appearance: defaultStandaloneSceneInstanceAppearance(),
       assetId: null,
-      id: `scene-${crypto.randomUUID()}`,
+      id: `scene-${createUuid()}`,
       label: `${modelName(asset)} ${index + 1}`,
       modelAssetId: asset.id,
       renderMode: asset.source === "scene-background" ? "background" : "interactive",

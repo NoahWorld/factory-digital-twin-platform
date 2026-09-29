@@ -1,3 +1,4 @@
+import { createUuid } from "../uuid";
 import { useEffect, useMemo, useState } from "react";
 import { Select } from "../components/Select";
 import { errorMessage, request } from "../api";
@@ -96,7 +97,7 @@ export function SceneExtrasEditor({ disabled, scene, decorations, roomAlarms, st
   const changeRule = (patch: Partial<RoomAlarmRule>) => { if (rule && !disabled) onRoomAlarmsChange(roomAlarms.map((item) => item.id === rule.id ? { ...item, ...patch } : item)); };
   const selectDecoration = (id: string) => { setDecorationId(id); onSelectionChange?.({ id, kind: "decoration" }); };
   const selectMap = (id: string) => { setDecorationId(null); setTab("map"); onSelectionChange?.({ id, kind: "map" }); };
-  const addDecoration = (kind: DecorationKind) => { if (disabled || decorations.length >= SCENE_DECORATION_LIMITS.maximumDecorations) return; const item = createSceneDecoration(crypto.randomUUID(), kind); onDecorationsChange([...decorations, item]); selectDecoration(item.id); };
+  const addDecoration = (kind: DecorationKind) => { if (disabled || decorations.length >= SCENE_DECORATION_LIMITS.maximumDecorations) return; const item = createSceneDecoration(createUuid(), kind); onDecorationsChange([...decorations, item]); selectDecoration(item.id); };
   const changeTab = (next: Tab) => {
     setTab(next);
     const selected = decorations.find((item) => item.id === decorationId);
@@ -151,7 +152,7 @@ export function SceneExtrasEditor({ disabled, scene, decorations, roomAlarms, st
 </div>
 </details> : null}
       <div className="scene-extras-actions">
-<button type="button" disabled={decorations.length >= SCENE_DECORATION_LIMITS.maximumDecorations} onClick={() => { const copy: SceneDecoration = { ...decoration, id: crypto.randomUUID(), label: (decoration.label + " 副本").slice(0, 80), transform: { position: [...decoration.transform.position], rotation: [...decoration.transform.rotation], scale: [...decoration.transform.scale] }, ...(decoration.river ? { river: { ...decoration.river, points: decoration.river.points.map((point) => [...point] as Vec3) } } : {}) }; onDecorationsChange([...decorations, copy]); selectDecoration(copy.id); }}>复制</button>
+<button type="button" disabled={decorations.length >= SCENE_DECORATION_LIMITS.maximumDecorations} onClick={() => { const copy: SceneDecoration = { ...decoration, id: createUuid(), label: (decoration.label + " 副本").slice(0, 80), transform: { position: [...decoration.transform.position], rotation: [...decoration.transform.rotation], scale: [...decoration.transform.scale] }, ...(decoration.river ? { river: { ...decoration.river, points: decoration.river.points.map((point) => [...point] as Vec3) } } : {}) }; onDecorationsChange([...decorations, copy]); selectDecoration(copy.id); }}>复制</button>
 <button type="button" className="is-danger" onClick={() => { onDecorationsChange(decorations.filter((item) => item.id !== decoration.id)); setDecorationId(null); onSelectionChange?.(null); }}>删除</button>
 </div>
     </fieldset> : null}
@@ -164,7 +165,7 @@ export function SceneExtrasEditor({ disabled, scene, decorations, roomAlarms, st
 <p className="scene-extras-note">数据来自已授权项目；状态只依据运行观察。修改后点击“保存场景”。</p>
 <fieldset disabled={disabled}>
 <legend>报警规则</legend>
-<button type="button" disabled={roomAlarms.length >= ROOM_ALARM_LIMITS.maximumRules} onClick={() => { const firstInstance = scene.instances[0]; const firstSource = sources[0]; const next: RoomAlarmRule = { id: crypto.randomUUID(), label: "新报警", enabled: false, source: { projectId: firstSource?.projectId ?? "", assetId: firstSource?.assets[0]?.assetId ?? "", metricKey: "" }, target: { instanceId: firstInstance?.id ?? "", modelAssetId: firstInstance?.modelAssetId ?? "", nodeName: "" }, condition: { operator: "gt", value: 0 }, color: "#ff4d4f" }; onRoomAlarmsChange([...roomAlarms, next]); setRuleId(next.id); }}>+ 添加规则</button>
+<button type="button" disabled={roomAlarms.length >= ROOM_ALARM_LIMITS.maximumRules} onClick={() => { const firstInstance = scene.instances[0]; const firstSource = sources[0]; const next: RoomAlarmRule = { id: createUuid(), label: "新报警", enabled: false, source: { projectId: firstSource?.projectId ?? "", assetId: firstSource?.assets[0]?.assetId ?? "", metricKey: "" }, target: { instanceId: firstInstance?.id ?? "", modelAssetId: firstInstance?.modelAssetId ?? "", nodeName: "" }, condition: { operator: "gt", value: 0 }, color: "#ff4d4f" }; onRoomAlarmsChange([...roomAlarms, next]); setRuleId(next.id); }}>+ 添加规则</button>
 </fieldset>
 <div className="scene-extras-list" role="group" aria-label="报警规则">{roomAlarms.map((item) => <button key={item.id} type="button" aria-pressed={ruleId === item.id} onClick={() => setRuleId(item.id)}>
 <span>{item.label}</span>
@@ -271,7 +272,7 @@ export function SceneExtrasEditor({ disabled, scene, decorations, roomAlarms, st
 <textarea rows={6} value={geoText} onChange={(event) => { setGeoText(event.target.value); setGeoError(null); }} placeholder="粘贴 FeatureCollection 或载入样例" />
 </label>{geoError ? <p className="scene-extras-error" role="alert">{geoError}</p> : null}<div className="scene-extras-actions">
 <button type="button" onClick={() => { setGeoText(JSON.stringify(STATIC_MAP_EXAMPLE, null, 2)); setGeoError(null); }}>载入样例</button>
-<button type="button" disabled={!geoText.trim() || Object.values(bad).some(Boolean)} onClick={() => { const result = importGeoJson(geoText, { id: staticMap?.id ?? crypto.randomUUID(), ...geoOptions }); if (!result.ok) { setGeoError(result.message); return; } onStaticMapChange(result.value); if (result.value) selectMap(result.value.id); setGeoText(""); setGeoError(null); }}>生成地图</button>
+<button type="button" disabled={!geoText.trim() || Object.values(bad).some(Boolean)} onClick={() => { const result = importGeoJson(geoText, { id: staticMap?.id ?? createUuid(), ...geoOptions }); if (!result.ok) { setGeoError(result.message); return; } onStaticMapChange(result.value); if (result.value) selectMap(result.value.id); setGeoText(""); setGeoError(null); }}>生成地图</button>
 <button type="button" onClick={() => { setGeoText(""); setGeoError(null); }}>放弃输入</button>
 </div>
 </fieldset>

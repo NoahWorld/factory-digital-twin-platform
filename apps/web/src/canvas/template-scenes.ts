@@ -1,3 +1,4 @@
+import { createUuid } from "../uuid";
 import { ornamentDefaults, type CardTitleProps } from "../../../../shared/canvas-ornaments";
 import type { IconId } from "../../../../shared/icon-catalog";
 import type { CanvasNode, CanvasNodeType, DashboardBaseProps, DecorationProps, PanelFrameProps } from "./types";
@@ -91,7 +92,7 @@ const scenes: Record<SceneKind, Scene> = {
 export function templateScene(kind: SceneKind, box: Box, palette: DashboardBaseProps): CanvasNode[] {
   const scene = scenes[kind];
   const make = (type: CanvasNodeType, bounds: Box, props: Record<string, unknown>, zIndex: number): CanvasNode => ({
-    id: crypto.randomUUID(), type, ...bounds, props, zIndex, resourceRefs: [], dataBindingRefs: [],
+    id: createUuid(), type, ...bounds, props, zIndex, resourceRefs: [], dataBindingRefs: [],
   });
   const decoration = (accent = palette.accentColor): DecorationProps => ({
     text: "", subtitle: "", textColor: palette.textColor, accentColor: accent, fillColor: palette.fillColor,

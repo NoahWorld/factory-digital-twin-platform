@@ -1,3 +1,4 @@
+import { createUuid } from "./uuid";
 import { useEffect, useMemo, useState } from "react";
 import type { StandaloneSceneDocument } from "../../../shared/standalone-3d";
 import type { TwinAction } from "../../../shared/twin-actions";
@@ -180,7 +181,7 @@ export function PublicationRunPage({ projectId, versionId }: { projectId: string
       setEmbeddedSelection(null);
       setSelectedAssetId(asset.id);
     },
-    onFocusModel: (sceneProjectId, instanceId) => setFocus({ projectId: sceneProjectId, instanceId, requestId: crypto.randomUUID() }),
+    onFocusModel: (sceneProjectId, instanceId) => setFocus({ projectId: sceneProjectId, instanceId, requestId: createUuid() }),
   });
   const selectedAsset = assets.find((asset) => asset.id === selectedAssetId) ?? null;
   const execute = (steps: readonly TwinAction[], source: string) => {

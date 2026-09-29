@@ -1,0 +1,19 @@
+[Unit]
+Description=DTwin dedicated containerd on the data disk
+After=local-fs.target
+RequiresMountsFor=/data/dtwin
+
+[Service]
+Type=simple
+ExecStartPre=/data/dtwin/bin/check-mount
+ExecStart=/bin/sh -c 'exec /usr/bin/containerd --config /data/dtwin/config/containerd.toml >>/data/dtwin/logs/containerd.log 2>&1'
+Restart=on-failure
+RestartSec=10
+Delegate=yes
+KillMode=process
+LimitNOFILE=1048576
+LimitNPROC=infinity
+LimitCORE=0
+
+[Install]
+WantedBy=multi-user.target

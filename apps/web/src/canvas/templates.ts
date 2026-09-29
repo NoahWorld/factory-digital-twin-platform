@@ -1,3 +1,4 @@
+import { createUuid } from "../uuid";
 import type {
   AlarmListItem,
   CanvasNode,
@@ -131,7 +132,7 @@ const makeNode = (
   props: Record<string, unknown>,
   zIndex = 10,
 ): CanvasNode => ({
-  id: crypto.randomUUID(),
+  id: createUuid(),
   type,
   ...box,
   zIndex,

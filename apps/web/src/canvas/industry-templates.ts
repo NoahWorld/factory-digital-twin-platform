@@ -1,3 +1,4 @@
+import { createUuid } from "../uuid";
 import { ornamentDefaults, type CardTitleProps } from "../../../../shared/canvas-ornaments";
 import type { IconId } from "../../../../shared/icon-catalog";
 import type { CanvasNode, CanvasNodeType, DashboardBaseProps, PanelFrameProps } from "./types";
@@ -16,7 +17,7 @@ function composer(p: Palette) {
   const nodes: CanvasNode[] = [];
   const base: DashboardBaseProps = { title: "", textColor: p.text, accentColor: p.accent, fillColor: p.fill, borderColor: p.border, sample: true };
   const add = (type: CanvasNodeType, [x, y, width, height]: Box, props: Record<string, unknown>, zIndex = 10) => {
-    const node: CanvasNode = { id: crypto.randomUUID(), type, x, y, width, height, props, zIndex, resourceRefs: [], dataBindingRefs: [] };
+    const node: CanvasNode = { id: createUuid(), type, x, y, width, height, props, zIndex, resourceRefs: [], dataBindingRefs: [] };
     nodes.push(node);
     return node;
   };

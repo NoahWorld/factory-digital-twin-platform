@@ -1,3 +1,4 @@
+import { createUuid } from "../uuid";
 import { parseTwinActions, type TwinAction } from "../../../../shared/twin-actions";
 
 export const TWIN_ACTION_EVENT_NAME = "factory-twin:actions:v1";
@@ -99,7 +100,7 @@ export function publishTwinActions({ originProjectId, targetProjectId, actions }
   targetProjectId: string;
   actions: readonly TwinAction[];
 }): TwinActionEvent {
-  const event = parseTwinActionEvent({ type: "twin-actions", version: 1, originProjectId, targetProjectId, actions, correlationId: crypto.randomUUID(), timestamp: new Date().toISOString() });
+  const event = parseTwinActionEvent({ type: "twin-actions", version: 1, originProjectId, targetProjectId, actions, correlationId: createUuid(), timestamp: new Date().toISOString() });
   remember(localPublished, event.correlationId, Date.now());
   window.dispatchEvent(new CustomEvent(TWIN_ACTION_EVENT_NAME, { detail: event }));
   let channel: BroadcastChannel | undefined;

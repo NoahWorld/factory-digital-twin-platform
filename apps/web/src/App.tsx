@@ -3,6 +3,7 @@ import { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH } from "../../../shared/auth-c
 import { standaloneSceneRoutePath, type ProjectType } from "../../../shared/standalone-3d";
 import { apiUrl, ApiRequestError, errorMessage, publicShareToken, request } from "./api";
 import { LoginShowcase } from "./auth/LoginShowcase";
+import { ErrorNotice } from "./components/ErrorNotice";
 import { canvasRoutePath, projectTemplateCanvasPath, projectTemplateScenePath } from "./canvas/routes";
 import { getSceneTemplate, isSceneTemplateId, type SceneTemplateId, type ProjectTemplate } from "./scene/scene-templates";
 import {
@@ -177,7 +178,7 @@ type LoginFormProps = {
 function LoginForm({ onSuccess }: LoginFormProps) {
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<unknown>(null);
   const [submitting, setSubmitting] = useState(false);
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
@@ -193,7 +194,7 @@ function LoginForm({ onSuccess }: LoginFormProps) {
       setPassword("");
       onSuccess(result.user);
     } catch (reason) {
-      setError(errorMessage(reason));
+      setError(reason);
     } finally {
       setSubmitting(false);
     }
@@ -226,7 +227,7 @@ function LoginForm({ onSuccess }: LoginFormProps) {
           value={password}
         />
       </label>
-      <FormNotice error={error} />
+      <ErrorNotice error={error} />
       <button className="primary-button" disabled={submitting} type="submit">
         {submitting ? "正在登录…" : "登录平台"}
       </button>
@@ -244,7 +245,7 @@ function BootstrapForm({ onSuccess }: BootstrapFormProps) {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [bootstrapToken, setBootstrapToken] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<unknown>(null);
   const [submitting, setSubmitting] = useState(false);
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
@@ -269,7 +270,7 @@ function BootstrapForm({ onSuccess }: BootstrapFormProps) {
       setBootstrapToken("");
       onSuccess(result.user);
     } catch (reason) {
-      setError(errorMessage(reason));
+      setError(reason);
     } finally {
       setSubmitting(false);
     }
@@ -341,7 +342,7 @@ function BootstrapForm({ onSuccess }: BootstrapFormProps) {
           value={bootstrapToken}
         />
       </label>
-      <FormNotice error={error} />
+      <ErrorNotice error={error} />
       <button className="primary-button" disabled={submitting} type="submit">
         {submitting ? "正在初始化…" : "创建首个管理员"}
       </button>

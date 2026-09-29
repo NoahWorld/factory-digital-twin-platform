@@ -1,0 +1,164 @@
+name: dtwin
+
+x-service: &service
+  restart: unless-stopped
+  network_mode: host
+  security_opt: ["no-new-privileges:true"]
+  logging:
+    driver: json-file
+    options: {max-size: "10m", max-file: "3"}
+
+x-app: &app
+  <<: *service
+  image: ${BACKEND_IMAGE:?Set BACKEND_IMAGE to the verified build}
+  env_file: /data/dtwin/config/.env
+  environment: &app-env
+    SERVER_ADDRESS: 127.0.0.1
+    DATABASE_URL: jdbc:postgresql://127.0.0.1:15432/factory_twin
+    VALKEY_HOST: 127.0.0.1
+    VALKEY_PORT: 16379
+    S3_ENDPOINT: http://127.0.0.1:18333
+    S3_PUBLIC_ENDPOINT: ${PUBLIC_ORIGIN:?Set the exact public origin}
+    DB_POOL_SIZE: 4
+  read_only: true
+  cap_drop: [ALL]
+  tmpfs: ["/tmp:size=256m,mode=1777"]
+  mem_limit: 768m
+  cpus: 1.0
+  depends_on:
+    postgres: {condition: service_healthy}
+    valkey: {condition: service_healthy}
+    storage: {condition: service_started}
+  healthcheck:
+    test: ["CMD", "node", "-e", "require('http').get('http://127.0.0.1:'+process.env.PORT+'/health',r=>{r.resume();process.exitCode=r.statusCode===200?0:1}).on('error',()=>process.exit(1))"]
+    interval: 30s
+    timeout: 10s
+    retries: 5
+    start_period: 60s
+
+services:
+  postgres:
+    <<: *service
+    image: ${POSTGRES_IMAGE:?Set POSTGRES_IMAGE}
+    environment:
+      POSTGRES_DB: factory_twin
+      POSTGRES_USER: ${DATABASE_USER:?Set DATABASE_USER}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD:?Set DATABASE_PASSWORD}
+    command: ["postgres", "-p", "15432", "-c", "listen_addresses=127.0.0.1", "-c", "max_connections=60", "-c", "shared_buffers=128MB"]
+    volumes: ["/data/dtwin/data/postgres:/var/lib/postgresql/data"]
+    mem_limit: 512m
+    cpus: 1.0
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 15432 -U $$POSTGRES_USER -d factory_twin"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  valkey:
+    <<: *service
+    image: ${VALKEY_IMAGE:?Set VALKEY_IMAGE}
+    user: "10001:10001"
+    command: ["valkey-server", "/etc/valkey.conf"]
+    environment:
+      REDISCLI_AUTH: ${VALKEY_PASSWORD:?Set VALKEY_PASSWORD}
+    read_only: true
+    cap_drop: [ALL]
+    volumes:
+      - /data/dtwin/config/valkey.conf:/etc/valkey.conf:ro
+      - /data/dtwin/data/valkey:/data
+    mem_limit: 192m
+    cpus: 0.5
+    healthcheck:
+      test: ["CMD-SHELL", "test \"$$(valkey-cli -h 127.0.0.1 -p 16379 ping)\" = PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  storage:
+    <<: *service
+    image: ${STORAGE_IMAGE:?Set STORAGE_IMAGE}
+    user: "10002:10002"
+    entrypoint: ["weed"]
+    command:
+      - -logtostderr=true
+      - -config_dir=/etc/seaweedfs
+      - server
+      - -dir=/data/volumes
+      - -master.dir=/data/master
+      - -master.peers=none
+      - -ip=127.0.0.1
+      - -ip.bind=127.0.0.1
+      - -master.port=19333
+      - -master.port.grpc=29333
+      - -volume.port=18088
+      - -volume.port.grpc=28088
+      - -volume.port.public=0
+      - -volume.max=32
+      - -master.volumeSizeLimitMB=16384
+      - -filer
+      - -filer.port=18888
+      - -filer.port.grpc=28888
+      - -filer.port.public=0
+      - -s3
+      - -s3.ip.bind=127.0.0.1
+      - -s3.port=18333
+      - -s3.port.grpc=28333
+      - -s3.port.https=0
+      - -s3.iam=false
+      - -s3.config=/etc/seaweedfs/s3.json
+      - -s3.port.iceberg=0
+      - -s3.port.lance=0
+      - -metricsPort=0
+      - -debug=false
+      - -master.telemetry=false
+      - -sftp=false
+      - -iam=false
+      - -webdav=false
+      - -mq.broker=false
+      - -mq.agent=false
+    read_only: true
+    cap_drop: [ALL]
+    tmpfs: ["/tmp:size=64m,mode=1777"]
+    volumes:
+      - /data/dtwin/data/storage:/data
+      - /data/dtwin/config/seaweedfs:/etc/seaweedfs:ro
+    mem_limit: 768m
+    cpus: 1.0
+
+  api:
+    <<: *app
+    environment:
+      <<: *app-env
+      TWIN_MODE: api
+      PORT: 21080
+  collector:
+    <<: *app
+    mem_limit: 384m
+    cpus: 0.5
+    environment:
+      <<: *app-env
+      TWIN_MODE: collector
+      PORT: 21081
+  worker:
+    <<: *app
+    environment:
+      <<: *app-env
+      TWIN_MODE: worker
+      PORT: 21082
+
+  nginx:
+    <<: *service
+    image: ${NGINX_IMAGE:?Set NGINX_IMAGE}
+    user: "101:101"
+    entrypoint: ["nginx"]
+    command: ["-g", "daemon off;"]
+    read_only: true
+    cap_drop: [ALL]
+    tmpfs: ["/tmp:size=128m,mode=1777", "/var/cache/nginx:size=32m,mode=1777"]
+    volumes:
+      - /data/dtwin/config/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ${RELEASE_DIR:?Set RELEASE_DIR}/web:/usr/share/nginx/html:ro
+    mem_limit: 128m
+    cpus: 0.5
+    depends_on:
+      api: {condition: service_healthy}

@@ -1,3 +1,4 @@
+import { createUuid } from "../uuid";
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import { errorMessage, request } from "../api";
 import { ComponentPalette } from "../canvas/ComponentPalette";
@@ -87,7 +88,7 @@ export function CanvasPage({ initialAssetId, initialTemplateId, mode, projectId,
     setRuntimeSelectionMessage(null);
   }, [projectAssets]);
   const focusActionModel = useCallback((sceneProjectId: string, instanceId: string) => {
-    setModelFocusRequest({ projectId: sceneProjectId, instanceId, requestId: crypto.randomUUID() });
+    setModelFocusRequest({ projectId: sceneProjectId, instanceId, requestId: createUuid() });
   }, []);
   const actionRuntime = useTwinActions({ canvasDocument: document, assets: projectAssets, scenes: actionCatalog.scenes, contextKey: `${projectId}:${mode}`, onSelectAsset: selectActionAsset, onFocusModel: focusActionModel });
   const executeActions = useCallback((actions: readonly TwinAction[], source: string, originProjectId = projectId) => {

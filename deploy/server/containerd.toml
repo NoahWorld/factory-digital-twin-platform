@@ -1,0 +1,10 @@
+version = 2
+root = "/data/dtwin/containerd"
+state = "/run/dtwin-containerd"
+disabled_plugins = ["io.containerd.grpc.v1.cri"]
+[grpc]
+  address = "/run/dtwin-containerd/containerd.sock"
+  uid = 0
+  gid = 0
+[plugins."io.containerd.internal.v1.opt"]
+  path = "/data/dtwin/containerd-opt"

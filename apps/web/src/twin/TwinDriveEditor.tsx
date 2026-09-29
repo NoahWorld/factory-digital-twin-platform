@@ -1,3 +1,4 @@
+import { createUuid } from "../uuid";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { TWIN_DRIVE_LIMITS, twinDriveErrors, twinDrivePath, type TwinDriveConfig, type TwinDriveDocument, type TwinTarget, type TwinVector, type TwinMotionBinding, type TwinCollider } from "../../../../shared/twin-drive";
 import type { StandaloneSceneDocument } from "../../../../shared/standalone-3d";
@@ -13,7 +14,7 @@ import { TwinPoseFields } from "./TwinPoseFields";
 import { TwinProcedureFields } from "./TwinProcedureFields";
 import "./twin-drive.css";
 
-const id = (prefix: string) => `${prefix}-${crypto.randomUUID().slice(0, 8)}`;
+const id = (prefix: string) => `${prefix}-${createUuid().slice(0, 8)}`;
 const emptyTarget = (): TwinTarget => ({ instanceId: "", modelAssetId: "", nodeName: "" });
 const numeric = (value: string) => value.trim() === "" ? NaN : Number(value);
 const NumberField = ({ label, value, onChange, min, max }: { label: string; value: number; onChange: (value: number) => void; min?: number; max?: number }) => <label><span>{label}</span><input type="number" step="any" min={Number.isFinite(min) ? min : undefined} max={Number.isFinite(max) ? max : undefined} value={Number.isFinite(value) ? value : ""} onChange={(event) => onChange(numeric(event.target.value))} /></label>;
