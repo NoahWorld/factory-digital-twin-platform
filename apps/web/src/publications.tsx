@@ -1,8 +1,9 @@
+import { useNotifications } from "./components/NotificationProvider";
 import { createUuid } from "./uuid";
 import { useEffect, useMemo, useState } from "react";
 import type { StandaloneSceneDocument } from "../../../shared/standalone-3d";
 import type { TwinAction } from "../../../shared/twin-actions";
-import { errorMessage, request } from "./api";
+import { errorMessage, request, reportError } from "./api";
 import { CanvasSurface } from "./canvas/CanvasSurface";
 import { RoomAlarmSceneNode } from "./scene/RoomAlarmSceneNode";
 import { standaloneRendererNode } from "./canvas/standalone-renderer-node";
@@ -33,6 +34,7 @@ type PublicationList = {
 type DraftResponse = { draftHash: string; documentRevision: number; projectCount: number; resourceCount: number; pointerRevision: number };
 
 export function PublicationPanel({ projectId, canEdit, disabled }: { projectId: string; canEdit: boolean; disabled: boolean }) {
+  const notify = useNotifications();
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState<DraftResponse | null>(null);
   const [list, setList] = useState<PublicationList | null>(null);
@@ -72,8 +74,9 @@ export function PublicationPanel({ projectId, canEdit, disabled }: { projectId: 
       });
       setTitle("");
       await refresh();
+      notify.success("发布版本已更新。");
     } catch (reason) {
-      setError(errorMessage(reason));
+      notify.error(reason);
     } finally { setBusy(false); }
   };
 
@@ -87,9 +90,10 @@ export function PublicationPanel({ projectId, canEdit, disabled }: { projectId: 
         body: JSON.stringify({ expectedPointerRevision: list.pointerRevision }),
       });
       await refresh();
+      notify.success("发布版本已更新。");
     } catch (reason) {
-      setError(errorMessage(reason));
-      try { await refresh(); } catch (refreshReason) { console.error("Failed to refresh publication state", { projectId, refreshReason }); }
+      notify.error(reason);
+      try { await refresh(); } catch (refreshReason) { reportError(refreshReason); setError("发布状态刷新失败，请重新打开。"); }
     } finally { setBusy(false); }
   };
 

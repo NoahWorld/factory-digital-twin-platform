@@ -1,3 +1,4 @@
+import { errorMessage, reportError } from "../errors";
 import * as THREE from "three";
 import { sceneCameraClipping } from "./camera-clipping";
 import { applyOrbitViewLimits } from "./orbit-view-limits";
@@ -29,7 +30,9 @@ import { createWalkControls } from "./walk-controls";
 import { TwinDriveRuntime, type TwinDriveAttachment } from "./twin-drive-runtime";
 import { createNativePlayback, type AnimationProgress, type NativePlaybackMode } from "./native-playback";
 import {
+  constrainEditableDecorationScale,
   constrainEditableInstanceScale,
+  readEditableDecorationTransform,
   readEditableInstanceTransform,
   type InstanceTransformMode,
 } from "./instance-transform";
@@ -69,7 +72,7 @@ export type SceneDiagnostics = {
 export type SceneRuntime = ReturnType<typeof createSceneRuntime>;
 
 /** Owns one renderer per scene. React passes configuration, never Three.js objects. */
-export function createSceneRuntime({ container, projectId, canvasNodeId, initial, onStatus, onSnapshot, onDiagnostics, onNavigation, onInstanceTransform, onTransformDragging, resolveModelUrl, nativePlayback, getRoomAlarmObservations, onRoomAlarmStatuses }: {
+export function createSceneRuntime({ container, projectId, canvasNodeId, initial, onStatus, onSnapshot, onDiagnostics, onNavigation, onInstanceTransform, onDecorationTransform, onTransformDragging, resolveModelUrl, nativePlayback, getRoomAlarmObservations, onRoomAlarmStatuses }: {
   container: HTMLElement;
   projectId: string;
   canvasNodeId: string;
@@ -84,6 +87,7 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
   onDiagnostics?: (diagnostics: SceneDiagnostics) => void;
   onNavigation?: (status: NavigationStatus) => void;
   onInstanceTransform?: (instanceId: string, transform: ModelNodeTransform) => void;
+  onDecorationTransform?: (decorationId: string, transform: ModelNodeTransform) => void;
   onTransformDragging?: (dragging: boolean) => void;
 }) {
   const constructionCleanup: Array<() => void> = [];
@@ -135,7 +139,6 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
       transformControls.dispose();
     });
 
-
     let environmentTarget: ReturnType<InstanceType<typeof THREE.PMREMGenerator>["fromScene"]> | null = null;
     const ensureStudio = () => {
       if (environmentTarget) return;
@@ -174,8 +177,8 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
       if (!twinAttachment || !twinReady) return;
       try { twinRuntime = new TwinDriveRuntime(records, twinAttachment); }
       catch (reason) {
-        const message = `点位绑定失败：${reason instanceof Error ? reason.message : String(reason)}`;
-        console.error("Failed to bind twin-drive scene", { projectId, canvasNodeId, reason });
+        reportError(reason, { operation: "scene.twin.bind", projectId, canvasNodeId });
+        const message = `点位绑定失败：${errorMessage(reason)}`;
         twinAttachment.onDiagnostics?.({ status: "error", message, sequence: null, boundNodes: 0, activeCollisions: [], events: [] });
       }
     };
@@ -210,8 +213,9 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
     const selectionBounds = new THREE.Box3();
     const selectionSize = new THREE.Vector3();
     const selectionCenter = new THREE.Vector3();
-    let transformRecord: InstanceRecord | null = null;
+    let transformTarget: { kind: "instance" | "decoration"; id: string; object: Object3D } | null = null;
     let transformDragging = false;
+    let transformPointerId: number | null = null;
     let modelRadius: number | null = null;
     let visible = true;
     const frameClock = new SceneFrameClock();
@@ -240,8 +244,8 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
     };
     const navigationError = (reason: unknown) => {
       exitWalk();
-      console.error("Rapier scene navigation failed.", { projectId, canvasNodeId, reason });
-      notifyNavigation({ mode: "error", message: `行走失败：${reason instanceof Error ? reason.message : String(reason)}` });
+      reportError(reason, { operation: "scene.navigation", projectId, canvasNodeId });
+      notifyNavigation({ mode: "error", message: `行走失败：${errorMessage(reason)}` });
     };
     const enterWalk = async (input: WalkSceneConfig) => {
       if (disposed) throw new Error("场景运行层已释放");
@@ -310,67 +314,105 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
       selectionTarget = null;
     };
 
+    const cancelTransformDrag = () => {
+      if (!transformControls.dragging) return;
+      const pointerId = transformPointerId;
+      // Cancel rather than commit when focus, selection or edit permission is
+      // lost. Three.js detach() alone leaves dragging and pointer capture set.
+      transformControls.reset();
+      transformControls.dragging = false;
+      transformControls.axis = null;
+      if (pointerId !== null && renderer.domElement.hasPointerCapture(pointerId)) renderer.domElement.releasePointerCapture(pointerId);
+      transformControls.disconnect();
+      transformControls.connect(renderer.domElement);
+      updateSceneBounds();
+    };
+
     const detachTransformControl = () => {
+      cancelTransformDrag();
       transformControls.detach();
       transformControls.enabled = false;
-      transformRecord = null;
+      transformTarget = null;
     };
 
     function syncTransformControl(input: SceneInput) {
-      if (transformControls.dragging) return;
-      const record = input.selectedPath === null && input.selectedInstanceId !== null
+      const record = !input.extrasSelection && input.selectedPath === null && input.selectedInstanceId !== null
         ? records.find((candidate) => candidate.id === input.selectedInstanceId)
         : undefined;
-      if (!input.instanceTransformMode || !record?.wrapper.visible || walk || input.fluidEditor?.active) {
+      const decoration = input.extrasSelection?.kind === "decoration" ? decorations.getRoot(input.extrasSelection.id) : undefined;
+      const target = decoration ? { kind: "decoration" as const, id: input.extrasSelection!.id, object: decoration }
+        : record ? { kind: "instance" as const, id: record.id, object: record.wrapper } : null;
+      if (disposed || contextLost || input.selectionStyle !== "editor" || !input.controlsEnabled || !input.instanceTransformMode || !target?.object.visible || walk || input.fluidEditor?.active) {
         detachTransformControl();
         return;
+      }
+      if (transformControls.dragging) {
+        if (transformTarget?.object === target.object && transformControls.mode === input.instanceTransformMode) return;
+        cancelTransformDrag();
       }
       transformControls.enabled = true;
       transformControls.setMode(input.instanceTransformMode);
       transformControls.setSpace(input.instanceTransformMode === "translate" ? "world" : "local");
-      if (transformRecord !== record) {
-        transformControls.attach(record.wrapper);
-        transformRecord = record;
+      if (transformTarget?.object !== target.object) {
+        transformControls.attach(target.object);
+        transformTarget = target;
       }
     }
 
     const reportTransformError = (reason: unknown) => {
-      console.error("Failed to edit a 3D model instance with transform controls.", {
-        projectId,
-        canvasNodeId,
-        instanceId: transformRecord?.id ?? null,
-        reason,
-      });
-      notifyStatus({ status: "error", message: `模型拖拽失败：${reason instanceof Error ? reason.message : String(reason)}` });
+      reportError(reason, { operation: "scene.transform", projectId, canvasNodeId,
+        instanceId: transformTarget?.kind === "instance" ? transformTarget.id : undefined,
+        decorationId: transformTarget?.kind === "decoration" ? transformTarget.id : undefined });
+      notifyStatus({ status: "error", message: `模型拖拽失败：${errorMessage(reason)}` });
     };
 
+    const constrainTransform = () => {
+      if (!transformTarget) return;
+      if (transformTarget.kind === "decoration") constrainEditableDecorationScale(transformTarget.object);
+      else constrainEditableInstanceScale(transformTarget.object);
+    };
     transformControls.addEventListener("objectChange", () => {
-      if (!transformRecord) return;
+      if (!transformTarget) return;
       try {
-        constrainEditableInstanceScale(transformRecord.wrapper);
+        constrainTransform();
       } catch (reason) {
-        transformControls.reset();
+        cancelTransformDrag();
         reportTransformError(reason);
       }
     });
     transformControls.addEventListener("mouseUp", () => {
-      if (!transformRecord) return;
+      if (!transformTarget) return;
       try {
-        constrainEditableInstanceScale(transformRecord.wrapper);
-        const transform = readEditableInstanceTransform(transformRecord.wrapper);
+        constrainTransform();
+        const transform = transformTarget.kind === "decoration"
+          ? readEditableDecorationTransform(transformTarget.object)
+          : readEditableInstanceTransform(transformTarget.object);
         updateSceneBounds();
-        onInstanceTransform?.(transformRecord.id, transform);
+        if (transformTarget.kind === "decoration") onDecorationTransform?.(transformTarget.id, transform);
+        else onInstanceTransform?.(transformTarget.id, transform);
       } catch (reason) {
-        transformControls.reset();
-        updateSceneBounds();
+        cancelTransformDrag();
         reportTransformError(reason);
       }
     });
     transformControls.addEventListener("dragging-changed", (event) => {
       transformDragging = event.value === true;
+      if (!transformDragging) transformPointerId = null;
       controls.enabled = desired.controlsEnabled && !walk && !transformDragging;
       onTransformDragging?.(transformDragging);
     });
+    const captureTransformPointer = (event: PointerEvent) => {
+      if (transformControls.enabled) transformPointerId = event.pointerId;
+    };
+    renderer.domElement.addEventListener("pointerdown", captureTransformPointer, true);
+    renderer.domElement.addEventListener("pointercancel", cancelTransformDrag);
+    window.addEventListener("blur", cancelTransformDrag);
+    const removeTransformListeners = () => {
+      renderer.domElement.removeEventListener("pointerdown", captureTransformPointer, true);
+      renderer.domElement.removeEventListener("pointercancel", cancelTransformDrag);
+      window.removeEventListener("blur", cancelTransformDrag);
+    };
+    constructionCleanup.push(removeTransformListeners);
 
     const disposeRuntime = () => {
       if (disposed) return;
@@ -383,6 +425,7 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
       intersectionObserver?.disconnect();
       renderer.domElement.removeEventListener("webglcontextlost", handleContextLost);
       controls.dispose();
+      removeTransformListeners();
       scene.remove(transformHelper);
       transformControls.dispose();
       clearSelection();
@@ -839,6 +882,7 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
     function updateLoop() {
       if (disposed || contextLost) return;
       const running = visible && !document.hidden;
+      if (!running) cancelTransformDrag();
       walk?.controls.pause();
       frameClock.reset();
       frameCount = 0; frameTotal = 0; sampleAt = null;
@@ -863,6 +907,11 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
       const graph = JSON.stringify(next.instances.map(({ id, assetId }) => [id, assetId]));
       try {
         if (contextLost) throw new Error("WebGL 上下文已丢失，请重新打开场景");
+        // Restore a drag before reconciling objects that may be hidden, replaced
+        // or removed. A completed mouseUp has already emitted its draft change.
+        if (transformControls.dragging && (JSON.stringify(appliedInput?.instances) !== JSON.stringify(next.instances)
+          || JSON.stringify(appliedInput?.decorations) !== JSON.stringify(next.decorations))) cancelTransformDrag();
+        syncTransformControl(next);
         const graphChanged = graph !== appliedGraph;
         if (graphChanged) {
           roomAlarms.beforeModelStateChange();
@@ -944,8 +993,8 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
       } catch (reason) {
         if (disposed || version !== revision) return;
         appliedInput = null;
-        console.error("Failed to update 3D scene runtime.", { projectId, canvasNodeId, revision: version, graph, reason });
-        notifyStatus({ status: "error", message: `3D 场景更新失败：${reason instanceof Error ? reason.message : String(reason)}` });
+        reportError(reason, { operation: "scene.update", projectId, canvasNodeId, revision: version });
+        notifyStatus({ status: "error", message: `3D 场景更新失败：${errorMessage(reason)}` });
       }
     };
     const seekAnimation = (seconds: number) => {

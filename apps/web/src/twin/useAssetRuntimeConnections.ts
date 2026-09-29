@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ApiRequestError, errorMessage, request } from "../api";
+import { ApiRequestError, errorMessage, reportError, request } from "../api";
 import type { ProjectAsset } from "../canvas/assets";
 import {
   assetRuntimeStatePath,
@@ -66,16 +66,7 @@ export const useAssetRuntimeConnections = ({
         } catch (reason) {
           const failureCount = (failureCounts.get(asset.id) ?? 0) + 1;
           failureCounts.set(asset.id, failureCount);
-          const apiError = reason instanceof ApiRequestError ? reason : null;
-          console.error("Asset runtime polling failed.", {
-            assetId: asset.assetId,
-            assetRecordId: asset.id,
-            errorCode: apiError?.code ?? "runtime_request_failed",
-            failureCount,
-            projectId,
-            reason,
-            requestId: apiError?.requestId,
-          });
+          reportError(reason, { operation: "asset-runtime.poll", projectId, assetId: asset.assetId, assetRecordId: asset.id, failureCount });
           return { asset, failureCount, kind: "failure", reason } as const;
         }
       }));

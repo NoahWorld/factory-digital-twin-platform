@@ -3,7 +3,8 @@ import { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH } from "../../../shared/auth-c
 import { standaloneSceneRoutePath, type ProjectType } from "../../../shared/standalone-3d";
 import { apiUrl, ApiRequestError, errorMessage, publicShareToken, request } from "./api";
 import { LoginShowcase } from "./auth/LoginShowcase";
-import { ErrorNotice } from "./components/ErrorNotice";
+import { useNotifications } from "./components/NotificationProvider";
+import { reportError, UserFacingError } from "./api";
 import { canvasRoutePath, projectTemplateCanvasPath, projectTemplateScenePath } from "./canvas/routes";
 import { getSceneTemplate, isSceneTemplateId, type SceneTemplateId, type ProjectTemplate } from "./scene/scene-templates";
 import {
@@ -178,13 +179,12 @@ type LoginFormProps = {
 function LoginForm({ onSuccess }: LoginFormProps) {
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState<unknown>(null);
+  const notify = useNotifications();
   const [submitting, setSubmitting] = useState(false);
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setSubmitting(true);
-    setError(null);
 
     try {
       const result = await request<UserResponse>("/api/v1/auth/login", {
@@ -192,9 +192,10 @@ function LoginForm({ onSuccess }: LoginFormProps) {
         body: JSON.stringify({ identifier, password }),
       });
       setPassword("");
+      notify.success("登录成功。", { key: "auth" });
       onSuccess(result.user);
     } catch (reason) {
-      setError(reason);
+      notify.error(reason, { key: "auth" });
     } finally {
       setSubmitting(false);
     }
@@ -227,7 +228,6 @@ function LoginForm({ onSuccess }: LoginFormProps) {
           value={password}
         />
       </label>
-      <ErrorNotice error={error} />
       <button className="primary-button" disabled={submitting} type="submit">
         {submitting ? "正在登录…" : "登录平台"}
       </button>
@@ -245,15 +245,14 @@ function BootstrapForm({ onSuccess }: BootstrapFormProps) {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [bootstrapToken, setBootstrapToken] = useState("");
-  const [error, setError] = useState<unknown>(null);
+  const notify = useNotifications();
   const [submitting, setSubmitting] = useState(false);
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    setError(null);
 
     if (password !== confirmPassword) {
-      setError("两次输入的密码不一致。");
+      notify.warning("两次输入的密码不一致。", { key: "auth" });
       return;
     }
 
@@ -268,9 +267,10 @@ function BootstrapForm({ onSuccess }: BootstrapFormProps) {
       setPassword("");
       setConfirmPassword("");
       setBootstrapToken("");
+      notify.success("管理员已创建。", { key: "auth" });
       onSuccess(result.user);
     } catch (reason) {
-      setError(reason);
+      notify.error(reason, { key: "auth" });
     } finally {
       setSubmitting(false);
     }
@@ -342,7 +342,6 @@ function BootstrapForm({ onSuccess }: BootstrapFormProps) {
           value={bootstrapToken}
         />
       </label>
-      <ErrorNotice error={error} />
       <button className="primary-button" disabled={submitting} type="submit">
         {submitting ? "正在初始化…" : "创建首个管理员"}
       </button>
@@ -403,22 +402,22 @@ function CreateProjectDialog({
   const template = templateId ? templateId.projectType === "2d" ? getCanvasTemplate(templateId.id) : getSceneTemplate(templateId.id) : null;
   const [name, setName] = useState(() => template ? `${template.name}项目` : "");
   const [projectType, setProjectType] = useState<ProjectType>(initialProjectType);
-  const [error, setError] = useState<string | null>(null);
+  const notify = useNotifications();
   const [submitting, setSubmitting] = useState(false);
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setSubmitting(true);
-    setError(null);
 
     try {
       const result = await request<ProjectResponse>("/api/v1/projects", {
         method: "POST",
         body: JSON.stringify({ name, projectType: templateId?.projectType ?? projectType }),
       });
+      notify.success("项目已创建。");
       onCreated(result.project, templateId);
     } catch (reason) {
-      setError(errorMessage(reason));
+      notify.error(reason);
     } finally {
       setSubmitting(false);
     }
@@ -465,7 +464,6 @@ function CreateProjectDialog({
             value={name}
           />
         </label>
-        <FormNotice error={error} />
         <div className="dialog-actions">
           <button className="secondary-button" disabled={submitting} onClick={onClose} type="button">
             取消
@@ -491,13 +489,12 @@ function RenameProjectDialog({
   project,
 }: RenameProjectDialogProps) {
   const [name, setName] = useState(project.name);
-  const [error, setError] = useState<string | null>(null);
+  const notify = useNotifications();
   const [submitting, setSubmitting] = useState(false);
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setSubmitting(true);
-    setError(null);
 
     try {
       const result = await request<ProjectResponse>(
@@ -509,7 +506,7 @@ function RenameProjectDialog({
       );
       onRenamed(result.project);
     } catch (reason) {
-      setError(errorMessage(reason));
+      notify.error(reason);
     } finally {
       setSubmitting(false);
     }
@@ -534,7 +531,6 @@ function RenameProjectDialog({
             value={name}
           />
         </label>
-        <FormNotice error={error} />
         <div className="dialog-actions">
           <button className="secondary-button" disabled={submitting} onClick={onClose} type="button">取消</button>
           <button className="primary-button" disabled={submitting || name.trim() === project.name} type="submit">
@@ -557,13 +553,12 @@ function DeleteProjectDialog({
   onDeleted,
   project,
 }: DeleteProjectDialogProps) {
-  const [error, setError] = useState<string | null>(null);
+  const notify = useNotifications();
   const [submitting, setSubmitting] = useState(false);
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setSubmitting(true);
-    setError(null);
 
     try {
       const result = await request<DeleteProjectResponse>(
@@ -572,7 +567,7 @@ function DeleteProjectDialog({
       );
       onDeleted(result.deletedProjectId, result.warning);
     } catch (reason) {
-      setError(errorMessage(reason));
+      notify.error(reason);
     } finally {
       setSubmitting(false);
     }
@@ -585,7 +580,6 @@ function DeleteProjectDialog({
         <p className="eyebrow">Delete project</p>
         <h2>删除“{project.name}”？</h2>
         <p>项目场景、模型元数据、资产、数据源和成员关系都会被永久删除，此操作不可撤销。</p>
-        <FormNotice error={error} />
         <div className="dialog-actions">
           <button className="secondary-button" disabled={submitting} onClick={onClose} type="button">取消</button>
           <button className="danger-button" disabled={submitting} type="submit">
@@ -602,6 +596,7 @@ function PublicationDialog({ project, onClose, onChanged }: {
   onClose: () => void;
   onChanged: (result: PublicationResponse) => void;
 }) {
+  const notify = useNotifications();
   const [publication, setPublication] = useState<PublicationResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -632,7 +627,7 @@ function PublicationDialog({ project, onClose, onChanged }: {
       setCopied(false);
       onChanged(result);
     } catch (reason) {
-      setError(errorMessage(reason));
+      notify.error(reason);
     } finally {
       setBusy(false);
     }
@@ -643,9 +638,11 @@ function PublicationDialog({ project, onClose, onChanged }: {
     try {
       await navigator.clipboard.writeText(shareUrl);
       setCopied(true);
+      notify.success("链接已复制。");
       setError(null);
     } catch (reason) {
-      setError(`复制链接失败：${errorMessage(reason)}`);
+      reportError(reason);
+      notify.error(new UserFacingError("复制失败，请手动选择并复制链接。"));
     }
   };
 
@@ -766,6 +763,7 @@ const currentWorkspaceRoute = (): WorkspaceRoute => {
 };
 
 function Workspace({ user, onLogout }: WorkspaceProps) {
+  const notify = useNotifications();
   const [route, setRoute] = useState<WorkspaceRoute>(currentWorkspaceRoute);
   const [projects, setProjects] = useState<Project[]>([]);
   const [projectTypeFilter, setProjectTypeFilter] = useState<ProjectType>(() => user.modules.includes("2d") ? "2d" : "3d");
@@ -776,7 +774,6 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
   const [renamingProject, setRenamingProject] = useState<Project | null>(null);
   const [deletingProject, setDeletingProject] = useState<Project | null>(null);
   const [publishingProject, setPublishingProject] = useState<Project | null>(null);
-  const [projectNotice, setProjectNotice] = useState<string | null>(null);
   const [loggingOut, setLoggingOut] = useState(false);
 
   useEffect(() => {
@@ -818,6 +815,9 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
 
     try {
       await onLogout();
+      notify.success("已退出登录。", { key: "auth" });
+    } catch (reason) {
+      notify.error(reason, { key: "auth" });
     } finally {
       setLoggingOut(false);
     }
@@ -852,22 +852,21 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
       ...current.filter((candidate) => candidate.id !== project.id),
     ]);
     setRenamingProject(null);
-    setProjectNotice(`项目已重命名为“${project.name}”。`);
+    notify.success("项目名称已保存。");
   };
 
   const deletedProject = (projectId: string, warning: string | null) => {
     setProjects((current) => current.filter((project) => project.id !== projectId));
     setDeletingProject(null);
-    setProjectNotice(
-      warning
-        ? `项目已删除，但对象存储清理需要处理：${warning}`
-        : "项目已永久删除。",
-    );
+    if (warning) {
+      reportError(new ApiRequestError("storage_cleanup_pending", undefined, warning));
+      notify.warning("项目已删除，部分文件清理未完成，请联系管理员。");
+    } else notify.success("项目已永久删除。");
   };
 
   const changedPublication = (result: PublicationResponse) => {
     setProjects((current) => current.map((project) => project.id === result.project.id ? result.project : project));
-    setProjectNotice(result.published ? "项目已发布，公开链接可以访问。" : "项目已取消发布，公开链接已失效。");
+    notify.success(result.published ? "项目已发布。" : "项目已取消发布。");
     if ((result.revokedCount ?? 0) > 1) {
       void request<ProjectsResponse>("/api/v1/projects")
         .then((response) => setProjects(response.projects))
@@ -1055,12 +1054,7 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
           </div>
         </div>
 
-        {projectNotice ? (
-          <div className="project-notice" role="status">
-            <span>{projectNotice}</span>
-            <button aria-label="关闭项目提示" onClick={() => setProjectNotice(null)} type="button">×</button>
-          </div>
-        ) : null}
+
 
         {!loadingProjects && !projectError ? <Suspense fallback={null}>
           <ProjectCoverQueue projects={projects} isAdmin={isPlatformAdmin}
@@ -1363,12 +1357,8 @@ export function App() {
   };
 
   const logout = async () => {
-    try {
-      await request<null>("/api/v1/auth/logout", { method: "POST" });
-      setUser(null);
-    } catch (reason) {
-      throw new Error(`无法退出登录：${errorMessage(reason)}`);
-    }
+    await request<null>("/api/v1/auth/logout", { method: "POST" });
+    setUser(null);
   };
 
   if (showProductLanding) {

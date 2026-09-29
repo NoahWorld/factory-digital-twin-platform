@@ -1,3 +1,4 @@
+import { errorMessage, reportError } from "../errors";
 import type { Material, Object3D } from "three";
 import type { RoomAlarmRule } from "../../../../shared/room-alarms";
 import { ROOM_ALARM_LIMITS, parseRoomAlarms } from "../../../../shared/room-alarms";
@@ -86,7 +87,8 @@ export class RoomAlarmRuntime {
         clones.forEach((clone) => clone.dispose());
       });
       entry.overlays.clear();
-      entry.error = `报警材质创建失败：${error instanceof Error ? error.message : String(error)}`;
+      reportError(error, { operation: "room-alarm.paint", instanceId: entry.record?.id, ruleId: entry.rule.id });
+      entry.error = `报警材质创建失败：${errorMessage(error)}`;
     }
   }
 

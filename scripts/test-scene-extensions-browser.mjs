@@ -43,7 +43,7 @@ try{
  const panel=page.getByRole('region',{name:'场景扩展属性'});
  await panel.getByRole('tab',{name:'军事',exact:true}).click();
  await panel.getByRole('group',{name:'军事对象'}).getByRole('button',{name:/运输车/}).click();
- await panel.getByText('外观与位置',{exact:true}).click();
+ await panel.getByLabel('位置 X',{exact:true}).waitFor();
  const truck=original.decorations.find(item=>item.kind==='military-truck');
  await panel.getByLabel('位置 X',{exact:true}).fill('');
  await panel.getByText('有未应用地图输入或未完成的数值；请修正或放弃后保存。',{exact:true}).waitFor();
@@ -56,11 +56,13 @@ try{
  await page.getByRole('button',{name:'场景扩展',exact:true}).click();
  await panel.getByRole('tab',{name:'军事',exact:true}).click();
  await panel.getByRole('group',{name:'军事对象'}).getByRole('button',{name:/运输车/}).click();
- await panel.getByText('外观与位置',{exact:true}).click();
+ await panel.getByLabel('位置 X',{exact:true}).waitFor();
  await panel.getByLabel('位置 X',{exact:true}).fill(String(truck.transform.position[0]));await save();
  mark('military transform saved, reloaded and restored; empty input never stored as zero');
  await panel.getByRole('tab',{name:'环境',exact:true}).click();
- await panel.getByRole('button',{name:'+ 灌木',exact:true}).click();
+ await page.getByRole('button',{name:/^模型库/}).click();
+ await page.getByRole('button',{name:/^植物\s*\d+$/}).click();
+ await page.getByRole('button',{name:'加入场景 灌木',exact:true}).click();
  await panel.getByLabel('名称',{exact:true}).fill('浏览器新增灌木');await save();
  let changed=await current();assert.equal(changed.decorations.length,original.decorations.length+1);assert.ok(changed.decorations.some(item=>item.label==='浏览器新增灌木'));
  await panel.getByRole('button',{name:'删除',exact:true}).click();await save();assert.equal((await current()).decorations.length,original.decorations.length);

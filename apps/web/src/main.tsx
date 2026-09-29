@@ -1,5 +1,6 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
+import { NotificationProvider } from "./components/NotificationProvider";
 import { App } from "./App";
 import { ThemeProvider } from "./theme/ThemeProvider";
 import { initializeUiTheme } from "./theme/ui-theme";
@@ -11,7 +12,7 @@ const initialUiTheme = initializeUiTheme();
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <ThemeProvider initialState={initialUiTheme}>
-      <App />
+      <NotificationProvider><App /></NotificationProvider>
     </ThemeProvider>
   </StrictMode>,
 );

@@ -1,5 +1,6 @@
 import { createUuid } from "../uuid";
 import { Select } from "../components/Select";
+import { useNotifications } from "../components/NotificationProvider";
 import { builtinModels, findBuiltinModel } from "../../../../shared/builtin-models";
 import { ModelPresentationPanel } from "./ModelPresentationPanel";
 import {
@@ -117,6 +118,7 @@ export function Model3DInspector({
   projectId,
   selectedSceneNodePath,
 }: Model3DInspectorProps) {
+  const notify = useNotifications();
   const parsed = parseModel3DProps(node.props);
   const [modelAssets, setModelAssets] = useState<ModelAsset[]>([]);
   const [loadingAssets, setLoadingAssets] = useState(true);
@@ -125,8 +127,6 @@ export function Model3DInspector({
   const [projectAssets, setProjectAssets] = useState<ProjectAsset[]>([]);
   const [loadingProjectAssets, setLoadingProjectAssets] = useState(true);
   const [projectAssetLoadError, setProjectAssetLoadError] = useState<string | null>(null);
-  const [assetBindingError, setAssetBindingError] = useState<string | null>(null);
-  const [assetBindingNotice, setAssetBindingNotice] = useState<string | null>(null);
   const [savingAssetBinding, setSavingAssetBinding] = useState(false);
   const [assetBindingChoice, setAssetBindingChoice] = useState("new");
   const [assetBindingDraft, setAssetBindingDraft] = useState<AssetBindingDraft>(
@@ -229,11 +229,6 @@ export function Model3DInspector({
   }, [activeScene, onSceneNodeSelect, selectedSceneNode, selectedSceneNodePath]);
 
   useEffect(() => {
-    setAssetBindingError(null);
-    setAssetBindingNotice(null);
-  }, [selectedModelNodeName]);
-
-  useEffect(() => {
     if (boundProjectAsset) {
       setAssetBindingChoice(boundProjectAsset.id);
       setAssetBindingDraft({
@@ -315,7 +310,7 @@ export function Model3DInspector({
   const addModelInstance = (assetId: string, preferredLabel?: string) => {
     if (!assetId) return;
     if (modelInstances.length >= MAX_MODEL_INSTANCES) {
-      setAssetError(`单个 3D 场景最多支持 ${MAX_MODEL_INSTANCES} 个模型实例。`);
+      notify.warning(`单个 3D 场景最多支持 ${MAX_MODEL_INSTANCES} 个模型实例。`);
       return;
     }
     const instanceNumber = modelInstances.length + 1;
@@ -332,7 +327,6 @@ export function Model3DInspector({
         visible: true,
       },
     ]);
-    setAssetError(null);
   };
 
   const updateModelInstance = (
@@ -469,8 +463,6 @@ export function Model3DInspector({
 
   const chooseAssetBinding = (recordId: string) => {
     setAssetBindingChoice(recordId);
-    setAssetBindingError(null);
-    setAssetBindingNotice(null);
     if (recordId === "new") {
       setAssetBindingDraft(newAssetBindingDraft(selectedModelNodeName));
       return;
@@ -478,7 +470,7 @@ export function Model3DInspector({
 
     const existing = projectAssets.find((asset) => asset.id === recordId);
     if (!existing) {
-      setAssetBindingError("所选资产已不在当前资产列表中，请重新加载页面。");
+      notify.warning("所选资产已不在当前资产列表中，请重新加载页面。");
       return;
     }
     setAssetBindingDraft({
@@ -491,18 +483,16 @@ export function Model3DInspector({
   const saveAssetBinding = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!canConfigureSelectedNode) return;
+    const existing = assetBindingChoice === "new"
+      ? null
+      : projectAssets.find((asset) => asset.id === assetBindingChoice) ?? null;
+    if (assetBindingChoice !== "new" && !existing) {
+      notify.warning("所选资产已不存在，请刷新页面后重试。");
+      return;
+    }
 
     setSavingAssetBinding(true);
-    setAssetBindingError(null);
-    setAssetBindingNotice(null);
     try {
-      const existing = assetBindingChoice === "new"
-        ? null
-        : projectAssets.find((asset) => asset.id === assetBindingChoice) ?? null;
-      if (assetBindingChoice !== "new" && !existing) {
-        throw new Error("所选资产已不存在，请刷新页面后重试。");
-      }
-
       const payload = {
         assetId: assetBindingDraft.assetId,
         assetType: assetBindingDraft.assetType,
@@ -520,11 +510,11 @@ export function Model3DInspector({
       );
       replaceProjectAsset(result.asset);
       setAssetBindingChoice(result.asset.id);
-      setAssetBindingNotice(
+      notify.success(
         existing ? "资产信息与模型节点绑定已保存。" : "资产已创建并绑定到当前模型节点。",
       );
     } catch (reason) {
-      setAssetBindingError(errorMessage(reason));
+      notify.error(reason);
     } finally {
       setSavingAssetBinding(false);
     }
@@ -534,8 +524,6 @@ export function Model3DInspector({
     if (!canConfigureSelectedNode || !boundProjectAsset) return;
 
     setSavingAssetBinding(true);
-    setAssetBindingError(null);
-    setAssetBindingNotice(null);
     try {
       const result = await request<ProjectAssetResponse>(
         projectAssetPath(projectId, boundProjectAsset.id),
@@ -545,9 +533,9 @@ export function Model3DInspector({
         },
       );
       replaceProjectAsset(result.asset);
-      setAssetBindingNotice("已解除模型节点绑定，资产台账记录仍然保留。");
+      notify.success("已解除模型节点绑定，资产台账记录仍然保留。");
     } catch (reason) {
-      setAssetBindingError(errorMessage(reason));
+      notify.error(reason);
     } finally {
       setSavingAssetBinding(false);
     }
@@ -593,20 +581,24 @@ export function Model3DInspector({
 
     const extension = file.name.split(".").at(-1)?.toLowerCase();
     if (extension !== "glb" && extension !== "gltf") {
-      setAssetError("只支持 .glb 和 .gltf 模型文件。");
+      notify.warning("只支持 .glb 和 .gltf 模型文件。");
       return;
     }
     if (file.size === 0) {
-      setAssetError("不能上传空模型文件。");
+      notify.warning("不能上传空模型文件。");
       return;
     }
     if (file.size > MAX_MODEL_BYTES) {
-      setAssetError(`模型不能超过 ${formatFileSize(MAX_MODEL_BYTES)}。`);
+      notify.warning(`模型不能超过 ${formatFileSize(MAX_MODEL_BYTES)}。`);
+      return;
+    }
+    if (modelInstances.length >= MAX_MODEL_INSTANCES) {
+      notify.warning(`单个 3D 场景最多支持 ${MAX_MODEL_INSTANCES} 个模型实例。`);
       return;
     }
 
     setUploading(true);
-    setAssetError(null);
+    let uploaded = false;
     try {
       const result = await request<ModelAssetUploadResponse>(
         `${modelAssetsPath(projectId)}?filename=${encodeURIComponent(file.name)}`,
@@ -618,6 +610,7 @@ export function Model3DInspector({
           },
         },
       );
+      uploaded = true;
       setModelAssets((current) => [
         result.modelAsset,
         ...current.filter((asset) => asset.id !== result.modelAsset.id),
@@ -626,8 +619,10 @@ export function Model3DInspector({
         result.modelAsset.id,
         findBuiltinModel(result.modelAsset.id)?.name ?? result.modelAsset.originalFilename,
       );
+      notify.success("模型已上传并添加到场景，保存画布后生效。");
     } catch (reason) {
-      setAssetError(errorMessage(reason));
+      if (uploaded) notify.warning("模型已上传，但场景添加未完成，请从资源列表重新选择。");
+      notify.error(reason);
     } finally {
       setUploading(false);
     }
@@ -1016,14 +1011,6 @@ export function Model3DInspector({
                 </button>
               </div>
             </form>
-          ) : null}
-          {assetBindingError ? (
-            <p className="inspector-inline-error" role="alert">
-              资产绑定错误：{assetBindingError}
-            </p>
-          ) : null}
-          {assetBindingNotice ? (
-            <p className="model-asset-binding-notice" role="status">{assetBindingNotice}</p>
           ) : null}
         </section>
       ) : null}

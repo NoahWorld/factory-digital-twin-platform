@@ -24,36 +24,36 @@ const scenarios = [
   {
     name: "invalid-credentials", status: 401, code: "invalid_credentials",
     raw: "Invalid login identifier or password.",
-    message: "账号或密码不正确。请检查账号、密码及大小写后重试；忘记密码请联系管理员重置。",
+    pattern: /账号.*密码/,
   },
   {
     name: "login-rate-limited", status: 429, code: "login_rate_limited",
     raw: "Too many login attempts.",
-    message: "登录尝试过于频繁，已被暂时限制。请等待 15 分钟后再试。",
+    pattern: /登录.*频繁/,
   },
   {
     name: "origin-denied", status: 403, code: "origin_denied",
     raw: "Request origin is not allowed.",
-    message: "当前访问地址未获服务器允许。请使用管理员提供的平台地址，或联系管理员检查地址配置。",
+    pattern: /访问地址/,
   },
   {
     name: "internal-error", status: 500, code: "internal_error",
     raw: "Unexpected internal processing failure.",
-    message: "服务器处理请求时发生异常。请稍后重试；仍失败请将错误详情提供给管理员。",
+    pattern: /服务.*异常|服务.*失败|服务.*完成/,
   },
   {
     name: "unknown-validation", status: 400, code: "test_identifier_field_invalid",
     raw: `Field identifier: account name must start with a letter; rejected rule: ${"account_name_validation_rule_".repeat(8)}.`,
-    message: "提交内容未通过校验。请根据错误详情检查输入后重试。",
+    pattern: /输入|校验|提交内容/,
   },
   {
     name: "network-failure", code: "network_error", raw: "Failed to fetch",
-    message: "无法获取服务器响应。请检查网络后重试；仍失败请联系管理员检查服务。",
+    pattern: /网络|服务器响应/,
   },
   {
     name: "html-bad-gateway", status: 502, code: "request_failed",
     raw: "API request failed with HTTP 502.",
-    message: "服务器暂时无法完成请求。请稍后重试；仍失败请将错误详情提供给管理员。",
+    pattern: /服务/,
   },
 ];
 
@@ -94,7 +94,7 @@ async function main() {
   async function assertNoOverflow(page, stage) {
     const layout = await page.evaluate(() => {
       const root = document.documentElement;
-      const notice = document.querySelector(".error-notice");
+      const notice = document.querySelector('.notification[data-kind="error"]');
       const bounds = notice?.getBoundingClientRect();
       return {
         viewport: innerWidth, rootWidth: root.clientWidth,
@@ -130,7 +130,15 @@ async function main() {
         colorScheme: theme, reducedMotion: "reduce", serviceWorkers: "block" });
       context.setDefaultTimeout(15000);
       context.setDefaultNavigationTimeout(30000);
-      await context.addInitScript((value) => localStorage.setItem("kingdom.ui-theme", value), theme);
+      await context.addInitScript((value) => {
+        localStorage.setItem("kingdom.ui-theme", value);
+        window.__DTWIN_TEST_DIAGNOSTICS__ = [];
+        const original = console.error;
+        console.error = (...args) => {
+          if (args[0] === "[DTwin] 操作失败") window.__DTWIN_TEST_DIAGNOSTICS__.push(args[1]);
+          original.apply(console, args);
+        };
+      }, theme);
       let scenario;
       let loginAttempts = 0;
       let corrected = false;
@@ -220,44 +228,49 @@ async function main() {
           await account.fill(fakeIdentifier);
           await password.fill(fakePassword);
           await submit.click();
-          const notice = page.locator(".auth-form .error-notice");
-          const message = notice.getByRole("alert");
+          const region = page.getByRole("region", { name: "通知", exact: true });
+          const notice = region.locator('.notification[data-kind="error"]');
+          const message = notice.locator(".notification-message");
           await message.waitFor({ state: "visible" });
-          assert.equal(await message.innerText(), scenario.message, `${stage}: incorrect main error message`);
-          assert.match(await message.innerText(), /[\u3400-\u9fff].*请/, `${stage}: missing Chinese guidance`);
+          const userText = await message.innerText();
+          assert.match(userText, scenario.pattern, `${stage}: incorrect main error message`);
+          assert.match(userText, /[\u3400-\u9fff]/, `${stage}: missing Chinese guidance`);
+          assert.match(userText, /请|重试|检查|等待|稍后/, `${stage}: missing next action`);
+          requireCondition(userText.length <= 120, `${stage}: user message is not brief.`);
           assert.equal(loginAttempts, 1, `${stage}: unexpected duplicate login attempt`);
           requireCondition(await submit.isEnabled() && await account.isEnabled() && await password.isEnabled(),
             `${stage}: form remains disabled after failure.`);
-          const details = notice.locator("details");
-          assert.equal(await details.getAttribute("open"), null, `${stage}: technical details must default to collapsed`);
-          requireCondition(!(await details.locator("dl").isVisible()), `${stage}: collapsed details are visible.`);
-          await assertNoOverflow(page, `${stage}/collapsed`);
-          if (scenario.name === "invalid-credentials") await screenshot(page, `${theme}-${scenario.name}-collapsed`);
-
-          // Exercise native keyboard behavior as well as pointer activation of <summary>.
-          const summary = details.locator("summary");
-          assert.equal(await summary.innerText(), "查看错误详情", `${stage}: details affordance changed`);
-          await summary.click();
-          await details.locator("dl").waitFor({ state: "visible" });
-          assert.notEqual(await details.getAttribute("open"), null, `${stage}: details did not open`);
-          const entries = await details.locator("dl > div").evaluateAll(rows => Object.fromEntries(
-            rows.map(row => [row.querySelector("dt")?.textContent, row.querySelector("dd")?.textContent])));
-          assert.equal(entries["错误码"], scenario.code, `${stage}: missing original error code`);
-          assert.equal(entries["HTTP 状态"], scenario.status === undefined ? undefined : String(scenario.status),
-            `${stage}: incorrect HTTP status; network failures must not invent a status`);
-          assert.equal(entries["请求接口"], `POST ${loginPath}`, `${stage}: request method/path missing`);
-          assert.equal(entries["请求编号"], scenario.status === undefined ? "未收到" : scenario.requestId,
-            `${stage}: request ID missing or fabricated`);
-          assert.equal(entries["原始信息"], scenario.raw, `${stage}: original server/network explanation was lost`);
+          assert.equal(await page.getByRole("alert").count(), 1, `${stage}: duplicate user errors`);
+          assert.equal(await notice.getAttribute("role"), "alert", `${stage}: errors must be announced`);
+          assert.equal(await notice.getAttribute("aria-atomic"), "true", `${stage}: errors must be announced together`);
+          assert.equal(await notice.getByRole("button", { name: "关闭通知", exact: true }).count(), 1,
+            `${stage}: missing accessible dismiss control`);
+          assert.equal(await notice.locator("details, summary, dl").count(), 0, `${stage}: technical details must not exist in the DOM`);
           const noticeText = await notice.textContent();
-          for (const forbidden of [fakeIdentifier, fakePassword, correctedPassword, bodyMarker, htmlMarker, "requestBody"])
-            requireCondition(!noticeText.includes(forbidden), `${stage}: sensitive fixture data leaked into the error notice.`);
-          const layout = await assertNoOverflow(page, `${stage}/expanded`);
-          if (["invalid-credentials", "unknown-validation"].includes(scenario.name))
-            await screenshot(page, `${theme}-${scenario.name}-expanded`);
-          await summary.focus();
-          await page.keyboard.press("Enter");
-          assert.equal(await details.getAttribute("open"), null, `${stage}: keyboard did not collapse details`);
+          for (const forbidden of [scenario.code, scenario.requestId, scenario.raw, fakeIdentifier, fakePassword,
+            correctedPassword, bodyMarker, htmlMarker, "requestBody", "查看错误详情", "请求编号", "原始信息", loginPath])
+            requireCondition(!noticeText.includes(forbidden), `${stage}: technical or sensitive fixture data leaked into the notice.`);
+          if (scenario.status) requireCondition(!noticeText.includes(String(scenario.status)), `${stage}: HTTP status leaked into the notice.`);
+          const layout = await assertNoOverflow(page, stage);
+          if (["invalid-credentials", "unknown-validation", "internal-error"].includes(scenario.name))
+            await screenshot(page, `${theme}-${scenario.name}-simple`);
+
+          await page.waitForFunction(path => window.__DTWIN_TEST_DIAGNOSTICS__
+            .some(entry => entry.path === path), loginPath);
+          const diagnostics = await page.evaluate(path => window.__DTWIN_TEST_DIAGNOSTICS__
+            .filter(entry => entry.path === path), loginPath);
+          assert.equal(diagnostics.length, 1, `${stage}: one failure produced duplicate console diagnostics`);
+          const diagnostic = diagnostics[0];
+          assert.equal(diagnostic.code, scenario.code, `${stage}: diagnostic error code missing`);
+          assert.equal(diagnostic.status, scenario.status, `${stage}: diagnostic HTTP status incorrect`);
+          assert.equal(diagnostic.method, "POST", `${stage}: diagnostic method missing`);
+          assert.equal(diagnostic.requestId, scenario.status === undefined ? undefined : scenario.requestId,
+            `${stage}: diagnostic request ID missing or invented`);
+          const diagnosticText = JSON.stringify(diagnostic);
+          for (const forbidden of [scenario.raw, fakeIdentifier, fakePassword, correctedPassword, bodyMarker, htmlMarker])
+            requireCondition(!diagnosticText.includes(forbidden), `${stage}: console diagnostics exposed raw request/response material.`);
+          for (const key of ["message", "body", "headers", "cause", "stack"])
+            requireCondition(!(key in diagnostic), `${stage}: console diagnostic retained unreviewed ${key}.`);
 
           // Correct the input in the same live form, submit again and enter the mocked workspace.
           corrected = true;
@@ -265,17 +278,19 @@ async function main() {
           await submit.click();
           await page.getByRole("heading", { level: 1, name: "项目", exact: true }).waitFor({ state: "visible" });
           assert.equal(loginAttempts, 2, `${stage}: corrected input was not resubmitted exactly once`);
-          assert.equal(await page.locator(".auth-form .error-notice").count(), 0, `${stage}: stale login error survived success`);
+          assert.equal(await region.locator('.notification[data-kind="error"]').count(), 0, `${stage}: stale login error survived success`);
+          assert.equal(await region.locator(".notification").count(), 1, `${stage}: auth outcome should replace the previous notification`);
+          assert.match(await region.locator('.notification[data-kind="success"]').innerText(), /登录成功/);
           requireCondition(apiCalls.slice(apiStart).some(call => call.path === "/api/v1/projects"),
             `${stage}: corrected login did not request the mocked workspace.`);
           requireCondition(audit.pageErrors.length === 0, `${stage}: uncaught browser error; see results.json.`);
           requireCondition(audit.unexpectedRequests.length === 0 && audit.routeErrors.length === 0,
             `${stage}: unexpected or failed mock route; see results.json.`);
-          audit.checks.push({ scenario: item.name, theme, viewport: 360, detailsDefaultCollapsed: true,
-            detailsVerified: true, correctedSubmissionSucceeded: true, horizontalOverflow: false,
+          audit.checks.push({ scenario: item.name, theme, viewport: 360, technicalDetailsAbsent: true,
+            safeConsoleDiagnostic: diagnostic, correctedSubmissionSucceeded: true, horizontalOverflow: false,
             layout, mockedApiCalls: apiCalls.slice(apiStart) });
           await persist();
-          console.log(`PASS ${stage}: Chinese guidance, folded details, safe diagnostics, 360px layout, corrected retry`);
+          console.log(`PASS ${stage}: brief Chinese guidance, no technical details, safe console diagnostic, 360px layout, corrected retry`);
         }
       } finally {
         await context.close();

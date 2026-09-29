@@ -1,3 +1,5 @@
+import { errorMessage, reportError, UserFacingError } from "../api";
+import { useNotifications } from "../components/NotificationProvider";
 import { Select } from "../components/Select";
 import { memo, useEffect, useState, useSyncExternalStore, type CSSProperties, type MouseEvent } from "react";
 import { imageAssetContentUrl } from "./image-assets";
@@ -250,6 +252,7 @@ function FullscreenIcon({ active }: { active: boolean }) {
 }
 
 function FullscreenToggleNode({ editable, node, props }: { editable: boolean; node: CanvasNode; props: FullscreenToggleProps }) {
+  const notify = useNotifications();
   const fullscreen = useSyncExternalStore(subscribeFullscreen, getFullscreenSnapshot, getFullscreenServerSnapshot);
   const [error, setError] = useState<string | null>(null);
 
@@ -266,7 +269,7 @@ function FullscreenToggleNode({ editable, node, props }: { editable: boolean; no
         return;
       }
       if (!document.fullscreenEnabled) {
-        throw new Error("当前浏览器或页面策略未开放全屏权限");
+        throw new UserFacingError("无法进入全屏，请检查浏览器全屏权限。");
       }
       const target = event.currentTarget.closest<HTMLElement>("[data-canvas-fullscreen-root]");
       if (!target) {
@@ -274,11 +277,9 @@ function FullscreenToggleNode({ editable, node, props }: { editable: boolean; no
       }
       await target.requestFullscreen();
     } catch (reason) {
-      const message = reason instanceof Error && reason.message
-        ? `全屏切换失败：${reason.message}`
-        : "全屏切换失败：浏览器拒绝了请求";
-      setError(message);
-      console.error("[fullscreen-toggle] Fullscreen API request failed.", { nodeId: node.id, reason });
+      reportError(reason, { operation: "canvas.fullscreen", canvasNodeId: node.id });
+      setError(errorMessage(reason));
+      notify.error(reason);
     }
   };
 

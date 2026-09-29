@@ -61,6 +61,7 @@
     "backend:recover:wrangler:verify": "node --no-warnings scripts/import-wrangler-local.mjs --verify-only",
     "test:scene-extensions": "node scripts/test-scene-decorations.mjs && node scripts/test-room-alarms.mjs && node scripts/test-room-alarm-data.mjs && node scripts/test-static-map.mjs",
     "test:scene-extensions:api": "node scripts/test-scene-extensions-api.mjs",
-    "test:scene-extensions:browser": "node scripts/test-scene-extensions-browser.mjs"
+    "test:scene-extensions:browser": "node scripts/test-scene-extensions-browser.mjs",
+    "test:model-library:browser": "node scripts/test-model-library-browser.mjs"
   }
 }

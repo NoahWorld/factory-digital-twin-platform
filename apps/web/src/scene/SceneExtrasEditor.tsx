@@ -5,7 +5,7 @@ import { errorMessage, request } from "../api";
 import { assetDataBindingsPath, type AssetDataBindingListResponse } from "../canvas/asset-data-bindings";
 import type { ProjectAsset } from "../canvas/assets";
 import type { StandaloneSceneDocument } from "../../../../shared/standalone-3d";
-import { createSceneDecoration, SCENE_DECORATION_LIMITS, type DecorationKind, type SceneDecoration } from "../../../../shared/scene-decorations";
+import { SCENE_DECORATION_LIMITS, type DecorationKind, type SceneDecoration } from "../../../../shared/scene-decorations";
 import { ROOM_ALARM_LIMITS, type RoomAlarmRule } from "../../../../shared/room-alarms";
 import { importGeoJson, STATIC_MAP_EXAMPLE, STATIC_MAP_LIMITS, type StaticMapDefinition } from "../../../../shared/static-map";
 import type { TwinNodeCatalogEntry } from "./twin-drive-runtime";
@@ -17,7 +17,7 @@ type SceneExtrasSelection = { id: string; kind: "decoration" | "map" };
 export type SceneExtrasEditorProps = {
   disabled: boolean; scene: StandaloneSceneDocument; decorations: SceneDecoration[]; roomAlarms: RoomAlarmRule[];
   staticMap: StaticMapDefinition | null; catalog: TwinNodeCatalogEntry[]; sources: Source[]; alarmStatuses?: RoomAlarmStatus[];
-  onDecorationsChange: (items: SceneDecoration[]) => void; onRoomAlarmsChange: (items: RoomAlarmRule[]) => void;
+  onDecorationsChange: (items: SceneDecoration[]) => boolean | void; onRoomAlarmsChange: (items: RoomAlarmRule[]) => void;
   onStaticMapChange: (map: StaticMapDefinition | null) => void; onPendingChange?: (pending: boolean) => void;
   focusRequest?: SceneExtrasSelection & { requestId: number };
   onSelectionChange?: (selection: SceneExtrasSelection | null) => void;
@@ -27,7 +27,6 @@ type Vec3 = [number, number, number];
 type Tab = "environment" | "military" | "alarms" | "map";
 const tabs: { id: Tab; label: string }[] = [{ id: "environment", label: "环境" }, { id: "military", label: "军事" }, { id: "alarms", label: "房间报警" }, { id: "map", label: "地图" }];
 const labels: Record<DecorationKind, string> = { tree: "乔木", shrub: "灌木", river: "河流", "military-truck": "运输车", "military-tent": "帐篷", "military-radar": "雷达", "military-armored": "装甲车" };
-const militaryKinds: DecorationKind[] = ["military-truck", "military-tent", "military-radar", "military-armored"];
 const alarmLabels: Record<RoomAlarmStatus["state"], string> = { normal: "正常", alarm: "报警", waiting: "等待数据", stale: "数据陈旧", offline: "失联", error: "错误" };
 function Numeric({ name, value, min, max, disabled, onChange, onInvalid, integer = false, exclusiveMin = false }: { name: string; value: number; min: number; max: number; disabled: boolean; onChange: (value: number) => void; onInvalid: (name: string, bad: boolean) => void; integer?: boolean; exclusiveMin?: boolean }) {
   const [text, setText] = useState(String(value));
@@ -97,7 +96,6 @@ export function SceneExtrasEditor({ disabled, scene, decorations, roomAlarms, st
   const changeRule = (patch: Partial<RoomAlarmRule>) => { if (rule && !disabled) onRoomAlarmsChange(roomAlarms.map((item) => item.id === rule.id ? { ...item, ...patch } : item)); };
   const selectDecoration = (id: string) => { setDecorationId(id); onSelectionChange?.({ id, kind: "decoration" }); };
   const selectMap = (id: string) => { setDecorationId(null); setTab("map"); onSelectionChange?.({ id, kind: "map" }); };
-  const addDecoration = (kind: DecorationKind) => { if (disabled || decorations.length >= SCENE_DECORATION_LIMITS.maximumDecorations) return; const item = createSceneDecoration(createUuid(), kind); onDecorationsChange([...decorations, item]); selectDecoration(item.id); };
   const changeTab = (next: Tab) => {
     setTab(next);
     const selected = decorations.find((item) => item.id === decorationId);
@@ -112,12 +110,8 @@ export function SceneExtrasEditor({ disabled, scene, decorations, roomAlarms, st
   const status = alarmStatuses?.find((item) => item.id === ruleId);
   const changeMap = (patch: Partial<StaticMapDefinition>) => { if (staticMap && !disabled) onStaticMapChange({ ...staticMap, ...patch }); };
   const renderDecorations = (military: boolean) => <>
-    <p className="scene-extras-note">选择对象，调整外观与位置后点击上方“保存场景”。</p>
-    <fieldset disabled={disabled}>
-<legend>添加对象</legend>
-<div className="scene-extras-actions">{(military ? militaryKinds : ["tree", "shrub", "river"] as DecorationKind[]).map((kind) => <button key={kind} type="button" disabled={decorations.length >= SCENE_DECORATION_LIMITS.maximumDecorations} onClick={() => addDecoration(kind)}>+ {labels[kind]}</button>)}</div>
-</fieldset>
-    <div className="scene-extras-list" role="group" aria-label={military ? "军事对象" : "环境对象"}>{decorations.filter((item) => item.kind.startsWith("military-") === military).map((item) => <button key={item.id} type="button" aria-pressed={decorationId === item.id} onClick={() => selectDecoration(item.id)}>
+    <p className="scene-extras-note">在左侧“模型库”添加对象。选中后可在画布中移动、缩放，也可在这里调整参数。</p>
+    <div className="scene-extras-list" role="group" aria-label={military ? "军事对象" : "环境对象"}>{decorations.filter((item) => item.kind.startsWith("military-") === military).map((item) => <button key={item.id} type="button" aria-pressed={decorationId === item.id} disabled={pending && decorationId !== item.id} onClick={() => selectDecoration(item.id)}>
 <span>{item.label}</span>
 <small>{labels[item.kind]} · {item.visible ? "显示" : "隐藏"}</small>
 </button>)}</div>
@@ -129,7 +123,7 @@ export function SceneExtrasEditor({ disabled, scene, decorations, roomAlarms, st
 </label>
       <label className="scene-extras-check">
 <input type="checkbox" checked={decoration.visible} onChange={(event) => changeDecoration({ visible: event.target.checked })} />显示</label>
-      <details>
+      <details open>
 <summary>外观与位置</summary>
 <div className="scene-extras-fields">
 <Color name="主色" value={decoration.color} disabled={disabled} onChange={(color) => changeDecoration({ color })} />
@@ -152,13 +146,13 @@ export function SceneExtrasEditor({ disabled, scene, decorations, roomAlarms, st
 </div>
 </details> : null}
       <div className="scene-extras-actions">
-<button type="button" disabled={decorations.length >= SCENE_DECORATION_LIMITS.maximumDecorations} onClick={() => { const copy: SceneDecoration = { ...decoration, id: createUuid(), label: (decoration.label + " 副本").slice(0, 80), transform: { position: [...decoration.transform.position], rotation: [...decoration.transform.rotation], scale: [...decoration.transform.scale] }, ...(decoration.river ? { river: { ...decoration.river, points: decoration.river.points.map((point) => [...point] as Vec3) } } : {}) }; onDecorationsChange([...decorations, copy]); selectDecoration(copy.id); }}>复制</button>
+<button type="button" disabled={pending || decorations.length >= SCENE_DECORATION_LIMITS.maximumDecorations} onClick={() => { const copy: SceneDecoration = { ...decoration, id: createUuid(), label: (decoration.label + " 副本").slice(0, 80), transform: { position: [...decoration.transform.position], rotation: [...decoration.transform.rotation], scale: [...decoration.transform.scale] }, ...(decoration.river ? { river: { ...decoration.river, points: decoration.river.points.map((point) => [...point] as Vec3) } } : {}) }; if (onDecorationsChange([...decorations, copy]) !== false) selectDecoration(copy.id); }}>复制</button>
 <button type="button" className="is-danger" onClick={() => { onDecorationsChange(decorations.filter((item) => item.id !== decoration.id)); setDecorationId(null); onSelectionChange?.(null); }}>删除</button>
 </div>
     </fieldset> : null}
   </>;
   return <section className="scene-extras" aria-label="场景扩展属性">
-<div className="scene-extras-tabs" role="tablist" aria-label="扩展类别">{tabs.map((item) => <button key={item.id} type="button" role="tab" aria-selected={tab === item.id} aria-controls={"scene-extras-" + item.id} onClick={() => changeTab(item.id)}>{item.label}</button>)}</div>
+<div className="scene-extras-tabs" role="tablist" aria-label="扩展类别">{tabs.map((item) => <button key={item.id} type="button" role="tab" aria-selected={tab === item.id} aria-controls={"scene-extras-" + item.id} disabled={pending && tab !== item.id} onClick={() => changeTab(item.id)}>{item.label}</button>)}</div>
 <div id={"scene-extras-" + tab} role="tabpanel" tabIndex={0}>
     {tab === "environment" ? renderDecorations(false) : null}{tab === "military" ? renderDecorations(true) : null}
     {tab === "alarms" ? <>

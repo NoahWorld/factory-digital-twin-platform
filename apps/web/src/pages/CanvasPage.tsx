@@ -1,6 +1,7 @@
+import { useNotifications } from "../components/NotificationProvider";
 import { createUuid } from "../uuid";
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from "react";
-import { errorMessage, request } from "../api";
+import { errorMessage, request, reportError } from "../api";
 import { ComponentPalette } from "../canvas/ComponentPalette";
 import { ComponentInspector } from "../canvas/ComponentInspector";
 import { CanvasSurface } from "../canvas/CanvasSurface";
@@ -53,7 +54,7 @@ export function CanvasPage({ initialAssetId, initialTemplateId, mode, projectId,
   const [selectedModelSceneNodePath, setSelectedModelSceneNodePath] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [saveError, setSaveError] = useState<string | null>(null);
+  const notify = useNotifications();
   const [configurationError, setConfigurationError] = useState<string | null>(null);
   const [showDataSources, setShowDataSources] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
@@ -101,7 +102,7 @@ export function CanvasPage({ initialAssetId, initialTemplateId, mode, projectId,
         publishTwinActions({ originProjectId, targetProjectId, actions: actions.filter((action) => action.type === "focus-model" && action.projectId === targetProjectId) });
       }
     } catch (reason) {
-      console.error("[twin-actions] Failed to publish canvas actions.", { projectId, originProjectId, reason });
+      reportError(reason, { operation: "canvas.actions.publish", projectId, originProjectId });
       setRuntimeSelectionMessage(`跨页面联动发送失败：${errorMessage(reason)}`);
     }
   }, [actionRuntime.execute, mode, projectId]);
@@ -126,7 +127,7 @@ export function CanvasPage({ initialAssetId, initialTemplateId, mode, projectId,
           : action.type === "focus-model" && action.projectId === event.targetProjectId);
         if (actions.length) actionRuntime.execute(actions, `来自项目 ${event.originProjectId} 的联动`);
       },
-      onError: (reason) => setRuntimeSelectionMessage(reason.message),
+      onError: (reason) => setRuntimeSelectionMessage(errorMessage(reason)),
     });
   }, [actionCatalog.scenes, actionRuntime.execute, embeddedSceneProjectIds, mode, projectId]);
   const dirtyNodeIdsRef = useRef(new Set<string>());
@@ -259,7 +260,7 @@ export function CanvasPage({ initialAssetId, initialTemplateId, mode, projectId,
         if (event.data && typeof event.data === "object") selectAsset(event.data as TwinInteractionEvent);
       };
     } catch (reason) {
-      console.error("Failed to subscribe to cross-tab twin interactions.", { projectId, reason });
+      reportError(reason, { operation: "canvas.interactions.subscribe", projectId });
       setRuntimeSelectionMessage(`旧版跨页面设备联动订阅失败：${errorMessage(reason)}`);
     }
     return () => {
@@ -362,7 +363,6 @@ export function CanvasPage({ initialAssetId, initialTemplateId, mode, projectId,
     dirtyNodeIdsRef.current.add(nodeId);
     deletedNodeIdsRef.current.delete(nodeId);
     setDirty(true);
-    setSaveError(null);
   }, []);
 
   const selectCanvasNode = useCallback((nodeId: string | null) => {
@@ -442,12 +442,11 @@ export function CanvasPage({ initialAssetId, initialTemplateId, mode, projectId,
     deletedNodeIdsRef.current.add(selectedNodeId);
     selectCanvasNode(null);
     setDirty(true);
-    setSaveError(null);
   };
 
   const save = async (): Promise<boolean> => {
     if (configurationError) {
-      setSaveError(`组件配置无效：${configurationError}`);
+      notify.warning(`组件配置无效：${configurationError}`);
       return false;
     }
     if (!document || !dirty || saving || !canEdit) return !dirty;
@@ -455,12 +454,11 @@ export function CanvasPage({ initialAssetId, initialTemplateId, mode, projectId,
       if (node.interaction === undefined) continue;
       const parsed = parseCanvasNodeInteraction(node.interaction);
       if (!parsed.ok) {
-        setSaveError(`组件 ${node.id} 的交互配置无效：${parsed.message}`);
+        notify.warning(`组件 ${node.id} 的交互配置无效：${parsed.message}`);
         return false;
       }
     }
     setSaving(true);
-    setSaveError(null);
     const dirtyNodeIds = new Set(dirtyNodeIdsRef.current);
     try {
       const result = await request<CanvasPatchResponse>(projectCanvasPath(projectId), {
@@ -476,9 +474,10 @@ export function CanvasPage({ initialAssetId, initialTemplateId, mode, projectId,
       dirtyNodeIdsRef.current.clear();
       deletedNodeIdsRef.current.clear();
       setDirty(false);
+      notify.success("画布已保存。");
       return true;
     } catch (reason) {
-      setSaveError(errorMessage(reason));
+      notify.error(reason);
       return false;
     } finally {
       setSaving(false);
@@ -507,7 +506,7 @@ export function CanvasPage({ initialAssetId, initialTemplateId, mode, projectId,
     const template = getCanvasTemplate(templateId);
     const patchNodeCount = document.nodes.length + nextNodes.length;
     if (patchNodeCount > 100) {
-      setSaveError(`无法套用模板：替换操作包含 ${patchNodeCount} 个节点，超过单次保存上限 100。请先保存并删除部分旧组件。`);
+      notify.warning(`无法套用模板：替换操作包含 ${patchNodeCount} 个节点，超过单次保存上限 100。请先保存并删除部分旧组件。`);
       return;
     }
 
@@ -518,7 +517,6 @@ export function CanvasPage({ initialAssetId, initialTemplateId, mode, projectId,
     setDocument({ ...document, nodes: nextNodes, theme: template.canvasTheme });
     selectCanvasNode(null);
     setConfigurationError(null);
-    setSaveError(null);
     setThemeNotice(`已应用“${template.name}”配色；模板中的 3D 组件沿用原有 3D 配置。`);
     setDirty(true);
     setShowTemplates(false);
@@ -530,7 +528,6 @@ export function CanvasPage({ initialAssetId, initialTemplateId, mode, projectId,
     const themedNodes = nextNodes.filter((node) => !isModel3DNodeType(node.type));
     themedNodes.forEach((node) => dirtyNodeIdsRef.current.add(node.id));
     setDocument({ ...document, nodes: nextNodes, theme });
-    setSaveError(null);
     setThemeNotice(
       `已切换为${canvasThemePresetLabels[theme.presetId]}主题，联动更新 ${themedNodes.length} 个非 3D 组件；3D 组件保持不变。`,
     );
@@ -543,9 +540,9 @@ export function CanvasPage({ initialAssetId, initialTemplateId, mode, projectId,
     initialTemplateAppliedRef.current = true;
 
     if (mode !== "edit") {
-      setSaveError("模板只能在 2D 画布编辑模式中套用。");
+      notify.warning("模板只能在 2D 画布编辑模式中套用。");
     } else if (!canEdit) {
-      setSaveError("当前项目是只读项目，不能套用模板。");
+      notify.warning("当前项目是只读项目，不能套用模板。");
     } else {
       applyTemplate(initialTemplateId);
     }
@@ -596,9 +593,8 @@ export function CanvasPage({ initialAssetId, initialTemplateId, mode, projectId,
           </> : !publicView ? <div aria-label="预览操作" className="canvas-toolbar-group" role="group"><span className="canvas-toolbar-group-label">预览操作</span><div className="canvas-toolbar-group-buttons"><a className="secondary-button compact-button" href={canvasRoutePath(projectId, "canvas")}>返回编辑</a></div></div> : null}
         </div>
       </header>
-      {saveError || themeNotice || (mode === "edit" && !canEdit) ? (
+      {themeNotice || (mode === "edit" && !canEdit) ? (
         <div className="canvas-message-stack">
-          {saveError ? <div className="canvas-save-error" role="alert">保存失败：{saveError}</div> : null}
           {themeNotice ? <div className="canvas-theme-notice" role="status"><span>{themeNotice}</span><button aria-label="关闭主题提示" onClick={() => setThemeNotice(null)} type="button">×</button></div> : null}
           {mode === "edit" && !canEdit ? <div className="canvas-readonly-notice">当前项目权限为只读，不能移动或保存组件。</div> : null}
         </div>

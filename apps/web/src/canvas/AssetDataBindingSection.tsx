@@ -1,4 +1,5 @@
 import { Select } from "../components/Select";
+import { useNotifications } from "../components/NotificationProvider";
 import { useEffect, useState, type FormEvent } from "react";
 import { errorMessage, request } from "../api";
 import {
@@ -66,34 +67,23 @@ const valueTypeLabels: Record<MetricValueType, string> = {
   timestamp: "时间戳",
 };
 
-const requiredInteger = (value: string, label: string): number => {
-  const parsed = Number(value);
-  if (!Number.isInteger(parsed)) {
-    throw new Error(`${label}必须是整数。`);
-  }
-  return parsed;
-};
-
 export function AssetDataBindingSection({
   asset,
   editable,
   projectId,
 }: AssetDataBindingSectionProps) {
+  const notify = useNotifications();
   const [dataSources, setDataSources] = useState<ProjectDataSource[]>([]);
   const [dataBindings, setDataBindings] = useState<AssetDataBinding[]>([]);
   const [draft, setDraft] = useState<AssetDataBindingDraft>(newDraft);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [saveError, setSaveError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     let active = true;
     setLoading(true);
     setLoadError(null);
-    setSaveError(null);
-    setNotice(null);
     setDataBindings([]);
     setDataSources([]);
     setDraft(newDraft());
@@ -128,14 +118,10 @@ export function AssetDataBindingSection({
 
   const selectBinding = (binding: AssetDataBinding) => {
     setDraft(draftFromBinding(binding));
-    setSaveError(null);
-    setNotice(null);
   };
 
   const startNewBinding = () => {
     setDraft(newDraft(dataSources[0]?.id ?? ""));
-    setSaveError(null);
-    setNotice(null);
   };
 
   const replaceBinding = (binding: AssetDataBinding) => {
@@ -148,10 +134,13 @@ export function AssetDataBindingSection({
   const save = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!editable || saving || loading || loadError || dataSources.length === 0) return;
+    const staleAfterSeconds = Number(draft.staleAfterSeconds);
+    if (!Number.isInteger(staleAfterSeconds)) {
+      notify.warning("数据过期时间必须是整数。");
+      return;
+    }
 
     setSaving(true);
-    setSaveError(null);
-    setNotice(null);
     try {
       const payload = {
         dataSourceId: draft.dataSourceId,
@@ -159,10 +148,7 @@ export function AssetDataBindingSection({
         sourcePath: draft.sourcePath,
         valueType: draft.valueType,
         unit: draft.unit.trim() || null,
-        staleAfterSeconds: requiredInteger(
-          draft.staleAfterSeconds,
-          "数据过期时间",
-        ),
+        staleAfterSeconds,
       };
       const result = await request<AssetDataBindingResponse>(
         draft.id
@@ -175,9 +161,9 @@ export function AssetDataBindingSection({
       );
       replaceBinding(result.dataBinding);
       setDraft(draftFromBinding(result.dataBinding));
-      setNotice(draft.id ? "指标映射已更新。" : "指标映射已创建。");
+      notify.success(draft.id ? "指标映射已更新。" : "指标映射已创建。");
     } catch (reason) {
-      setSaveError(errorMessage(reason));
+      notify.error(reason);
     } finally {
       setSaving(false);
     }
@@ -187,14 +173,12 @@ export function AssetDataBindingSection({
     if (!editable || saving || !draft.id) return;
     const current = dataBindings.find((binding) => binding.id === draft.id);
     if (!current) {
-      setSaveError("当前指标映射已不在列表中，请重新打开该资产。");
+      notify.warning("当前指标映射已不在列表中，请重新打开该资产。");
       return;
     }
     if (!window.confirm(`确定删除指标映射“${current.metricKey}”吗？`)) return;
 
     setSaving(true);
-    setSaveError(null);
-    setNotice(null);
     try {
       await request<void>(
         assetDataBindingPath(projectId, asset.id, current.id),
@@ -202,9 +186,9 @@ export function AssetDataBindingSection({
       );
       setDataBindings((items) => items.filter((item) => item.id !== current.id));
       setDraft(newDraft(dataSources[0]?.id ?? ""));
-      setNotice(`指标映射“${current.metricKey}”已删除。`);
+      notify.success("指标映射已删除。");
     } catch (reason) {
-      setSaveError(errorMessage(reason));
+      notify.error(reason);
     } finally {
       setSaving(false);
     }
@@ -400,14 +384,6 @@ export function AssetDataBindingSection({
               </div>
             </form>
           )}
-          {saveError ? (
-            <p className="inspector-inline-error" role="alert">
-              指标映射错误：{saveError}
-            </p>
-          ) : null}
-          {notice ? (
-            <p className="model-asset-binding-notice" role="status">{notice}</p>
-          ) : null}
         </>
       ) : null}
     </section>

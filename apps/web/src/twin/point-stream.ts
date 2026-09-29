@@ -1,3 +1,4 @@
+import { errorMessage, reportError } from "../errors";
 import { createUuid } from "../uuid";
 import type { TwinDriveCommand, TwinDriveSnapshot, TwinPoint } from "../../../../shared/twin-drive";
 
@@ -170,7 +171,8 @@ export class TwinPointStream implements TwinDriveLiveSource {
           throw new Error(`未知点位消息类型：${String(message.type)}`);
         }
       } catch (reason) {
-        this.update({ connected: false, phase: "error", error: reason instanceof Error ? reason.message : String(reason) });
+        reportError(reason, { operation: "twin-stream.message", projectId: this.projectId, revision: this.revision });
+        this.update({ connected: false, phase: "error", error: errorMessage(reason) });
         socket.close(4002, "invalid point message");
       }
     };

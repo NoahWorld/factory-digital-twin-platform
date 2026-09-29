@@ -1,9 +1,10 @@
+import { useNotifications } from "../components/NotificationProvider";
 import { createUuid } from "../uuid";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { TWIN_DRIVE_LIMITS, twinDriveErrors, twinDrivePath, type TwinDriveConfig, type TwinDriveDocument, type TwinTarget, type TwinVector, type TwinMotionBinding, type TwinCollider } from "../../../../shared/twin-drive";
 import type { StandaloneSceneDocument } from "../../../../shared/standalone-3d";
 import type { TwinNodeCatalogEntry } from "../scene/twin-drive-runtime";
-import { errorMessage, request } from "../api";
+import { errorMessage, request, reportError } from "../api";
 import { projectAssetsPath, type ProjectAsset, type ProjectAssetListResponse } from "../canvas/assets";
 import { Select } from "../components/Select";
 import { ThemeToggle } from "../theme/ThemeToggle";
@@ -64,7 +65,7 @@ function JsonEditor({ value, onApply, onDraftChange }: { value: unknown; onApply
     {conflict ? <p className="twin-error" role="alert">表单已经变化。JSON 草稿仍保留，请复制需要保留的内容，再重新载入当前表单。</p> : null}
     <div className="twin-row"><button type="button" className="secondary-button compact-button" disabled={conflict || !dirty} onClick={() => {
       try { const next = JSON.parse(text); onApply(next); const formatted = JSON.stringify(next, null, 2); setText(formatted); setBaseline(formatted); setError(null); }
-      catch (reason) { setError(errorMessage(reason)); }
+      catch (reason) { reportError(reason); setError("配置格式无效，请检查 JSON 后重试。"); }
     }}>应用 JSON 到草稿</button>{dirty ? <button type="button" className="secondary-button compact-button" onClick={() => { setText(source); setBaseline(source); setError(null); }}>放弃 JSON 修改并载入表单</button> : null}</div>
     {error ? <p className="twin-error" role="alert">{error}</p> : null}
   </section>;
@@ -119,8 +120,7 @@ export function TwinDriveEditor({ document, scene, catalog, projectName, onSaved
   const [assetsError, setAssetsError] = useState<string | null>(null);
   const [assetRequest, setAssetRequest] = useState(0);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  const notify = useNotifications();
   const [confirmLeave, setConfirmLeave] = useState(false);
   const [jsonDirty, setJsonDirty] = useState(false);
   const [jsonGeneration, setJsonGeneration] = useState(0);
@@ -172,12 +172,12 @@ export function TwinDriveEditor({ document, scene, catalog, projectName, onSaved
   }, [document.projectId, assetRequest]);
   const save = async () => {
     if (saving || errors.length || conflict || nativeConflict || jsonDirty || !document.editable) return;
-    setSaving(true); setError(null); setNotice(null);
+    setSaving(true);
     try {
       const result = await request<TwinDriveDocument>(twinDrivePath(document.projectId), { method: "PUT", body: JSON.stringify({ expectedRevision: baseRevision, config }) });
       setConfig(structuredClone(result.config)); setBaseRevision(result.revision); setBaseline(JSON.stringify(result.config)); setConfirmLeave(false); onSaved(result);
-      setNotice(`已保存${result.config.simulation?.enabled ? "，自动模拟已启用。" : "。"}`);
-    } catch (reason) { setError(errorMessage(reason)); }
+      notify.success(`已保存${result.config.simulation?.enabled ? "，自动模拟已启用。" : "。"}`);
+    } catch (reason) { notify.error(reason); }
     finally { setSaving(false); }
   };
   return <section className="twin-workspace" aria-label="数据与模型配置">
@@ -250,10 +250,9 @@ export function TwinDriveEditor({ document, scene, catalog, projectName, onSaved
       <div className="twin-workspace-messages">
       {confirmLeave && dirty ? <div className="twin-exit-confirm" role="alert"><span>还有未保存的修改，离开后将丢失。</span><button className="secondary-button compact-button" type="button" onClick={() => setConfirmLeave(false)}>继续编辑</button><button className="secondary-button compact-button twin-danger" type="button" onClick={onClose}>放弃修改并返回</button></div> : null}
       {nativeConflict ? <p role="alert" className="twin-error">模型还在播放自带动画。请返回模型，关闭对应模型动画并保存场景，再启用数据驱动。</p> : null}
-      {conflict ? <div role="alert" className="twin-error">配置已被其他操作更新，当前修改已保留。请先载入最新配置。<button className="secondary-button compact-button" type="button" disabled={saving} onClick={() => { setConfig(structuredClone(document.config)); setBaseRevision(document.revision); setBaseline(JSON.stringify(document.config)); setJsonDirty(false); setJsonGeneration((value) => value + 1); setError(null); setNotice(null); }}>放弃草稿并载入最新配置</button></div> : null}
+      {conflict ? <div role="alert" className="twin-error">配置已被其他操作更新，当前修改已保留。请先载入最新配置。<button className="secondary-button compact-button" type="button" disabled={saving} onClick={() => { setConfig(structuredClone(document.config)); setBaseRevision(document.revision); setBaseline(JSON.stringify(document.config)); setJsonDirty(false); setJsonGeneration((value) => value + 1);   }}>放弃草稿并载入最新配置</button></div> : null}
       {jsonDirty ? <p className="twin-error">还有未应用的 JSON 修改，请在高级配置中应用或放弃后保存。</p> : null}
-      {errors.length ? <details className="twin-validation"><summary>{errors.length} 项配置需要修正</summary><ul>{errors.map((message, index) => <li key={index}>{message}</li>)}</ul></details> : null}
-      {error ? <p className="twin-error" role="alert">{error}</p> : null}{notice && !dirty ? <p className="twin-success" role="status">{notice}</p> : null}
+      {errors.length ? <div className="twin-validation"><p>{errors.length} 项配置需要修正</p><ul>{errors.map((message, index) => <li key={index}>{message}</li>)}</ul></div> : null}
       </div>
       <div className="twin-row twin-workspace-actions"><span className="twin-footer-note">{!document.editable ? "当前账号只能查看配置" : "修改后保存，才会用于模型运行。"}</span><div className="twin-footer-actions">
         {stepIndex > 0 ? <button type="button" className="secondary-button compact-button" onClick={() => changeTab(primarySteps[stepIndex - 1]!.id)}>上一步</button> : null}

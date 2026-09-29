@@ -1,0 +1,13 @@
+.standalone-library-categories { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+.standalone-library-categories button { display: inline-flex; align-items: center; gap: 5px; padding: 6px 8px; border: 1px solid var(--ui-border); border-radius: 7px; background: var(--ui-surface); color: var(--ui-text-subtle); font: inherit; font-size: 0.65rem; cursor: pointer; }
+.standalone-library-categories button:hover { border-color: var(--ui-border-strong); color: var(--ui-text-strong); }
+.standalone-library-categories button[aria-pressed="true"] { border-color: var(--ui-accent); color: var(--ui-text-strong); box-shadow: inset 0 -2px var(--ui-accent); }
+.standalone-library-categories button:focus-visible { outline: 2px solid var(--ui-accent); outline-offset: 2px; }
+.standalone-library-categories button span, .standalone-library-group h3 span { color: var(--ui-text-subtle); font-size: 0.6rem; font-weight: 400; }
+.standalone-library-group { margin-top: 16px; }
+.standalone-library-group h3 { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; color: var(--ui-text-strong); font-size: 0.69rem; font-weight: 600; }
+.standalone-model-list .standalone-procedural-icon { display: grid; flex: 0 0 64px; width: 64px; height: 54px; place-items: center; border: 1px solid var(--ui-border); border-radius: 6px; background: var(--ui-hover); color: var(--ui-text-subtle); font-size: 2rem; }
+.standalone-model-list .standalone-procedural-icon.is-plants { color: #4c8b53; }
+.standalone-model-list .standalone-procedural-icon.is-water { color: #2688a8; }
+.standalone-model-list .standalone-procedural-icon.is-military { color: #7b8960; }
+.standalone-library-empty { padding: 12px; border: 1px dashed var(--ui-border); border-radius: 8px; color: var(--ui-text-subtle); font-size: 0.65rem; line-height: 1.6; }

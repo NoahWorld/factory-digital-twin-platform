@@ -28,6 +28,40 @@ a.reconcile(defs);b.reconcile(defs);
 const budget=sceneDecorationBudget(defs),stats=a.diagnostics();
 assert.equal(stats.decorationCount,defs.length);assert.ok(stats.meshCount<=budget.meshes);assert.ok(stats.triangleCount<=budget.triangles);
 assert.equal(budget.animatedInstances,1);
+// Every library kind must retain the actual gizmo target and GPU resources when
+// a transform, label or visibility edit is reconciled after dragging.
+{
+  const parent=new THREE.Group();const manager=new DecorationManager(parent);
+  manager.reconcile(defs);
+  const roots=defs.map(d=>manager.getRoot(d.id));
+  const geometries=roots.map(root=>root.children[0].geometry);
+  const materials=roots.map(root=>root.children[0].material);
+  let released=0;geometries.forEach(geometry=>geometry.addEventListener('dispose',()=>released++));
+  const moved=defs.map(d=>({...d,label:`${d.label} 2`,transform:{position:[10,2,-5],rotation:[0,90,0],scale:[2,3,4]}}));
+  manager.update(1,true,1);
+  const riverPhase=roots[2].children[0].material.uniforms.uPhase.value;
+  manager.reconcile(moved);
+  for(let i=0;i<defs.length;i++) {
+    const root=manager.getRoot(defs[i].id);
+    assert.equal(root,roots[i],`${defs[i].kind}: transform retains selected root`);
+    assert.equal(root.children[0].geometry,geometries[i]);assert.equal(root.children[0].material,materials[i]);
+    assert.deepEqual(root.position.toArray(),[10,2,-5]);assert.deepEqual(root.scale.toArray(),[2,3,4]);
+    assert.equal(root.rotation.y,Math.PI/2);assert.equal(root.name,moved[i].label);
+  }
+  assert.equal(released,0);assert.equal(roots[2].children[0].material.uniforms.uPhase.value,riverPhase);
+  assert.throws(()=>manager.reconcile([{...moved[0],transform:{...moved[0].transform,position:[3,4,5]}},{...moved[1],seed:-1}]),/无效/);
+  assert.deepEqual(roots[0].position.toArray(),[10,2,-5],'invalid sibling never partially commits a transform');
+  manager.reconcile(moved.map(d=>({...d,visible:false})));
+  assert.equal(manager.getPickObjects().length,0);assert.ok(manager.getBounds().isEmpty());
+  for(let i=0;i<defs.length;i++) assert.equal(manager.getRoot(defs[i].id),roots[i],'hidden objects retain identity');
+  manager.reconcile(moved);assert.equal(manager.getPickObjects().length,defs.length);
+  manager.reconcile([{...moved[0],color:'#336699'},...moved.slice(1)]);
+  assert.notEqual(manager.getRoot(defs[0].id),roots[0],'structural/material changes replace their owned resources');
+  assert.equal(released,1);assert.equal(roots[0].parent,null);
+  for(let i=1;i<defs.length;i++) assert.equal(manager.getRoot(defs[i].id),roots[i],'unmodified siblings retain identity');
+  manager.reconcile([]);assert.equal(manager.getRoot(defs[0].id),undefined);assert.equal(parent.children.length,0);
+  assert.equal(released,defs.length);manager.dispose();assert.throws(()=>manager.getRoot(defs[0].id),/已释放/);
+}
 for(const d of defs){const manager=new DecorationManager(new THREE.Group());manager.reconcile([d]);const actual=manager.diagnostics(),limit=sceneDecorationBudget([d]);assert.ok(actual.meshCount<=limit.meshes,`${d.kind}: mesh budget`);assert.ok(actual.triangleCount<=limit.triangles,`${d.kind}: triangle budget ${actual.triangleCount}/${limit.triangles}`);manager.dispose();}
 assert.deepEqual(a.getPickObjects().map(o=>o.userData.sceneDecorationId),defs.map(d=>d.id));
 const first=a.getPickObjects()[0],second=b.getPickObjects()[0];

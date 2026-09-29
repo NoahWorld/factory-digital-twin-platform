@@ -123,8 +123,9 @@ async function main() {
     await page.getByLabel('账号', { exact: true }).fill(identifier);
     await page.getByLabel('密码', { exact: true }).fill(`invalid-browser-${randomUUID()}`);
     loginAttempted = true;
-    const [rejectedLogin] = await Promise.all([
+    const [rejectedLogin, rejectedDiagnostic] = await Promise.all([
       page.waitForResponse(response => isResponse(response, '/api/v1/auth/login', 'POST')),
+      page.waitForEvent('console', { predicate: message => message.type() === 'error' && message.text().startsWith('[DTwin] 操作失败') }),
       page.getByRole('button', { name: '登录平台', exact: true }).click(),
     ]);
     requireCondition(rejectedLogin.status() === 401, 'An incorrect password must return HTTP 401.');
@@ -133,23 +134,32 @@ async function main() {
       'Incorrect login must retain the authentication error code and a request ID.');
     audit.loginFailure = { code: rejection.error, status: rejectedLogin.status(), requestId: rejection.requestId };
     persist();
-    const notice = page.locator('.error-notice');
-    await notice.getByRole('alert').waitFor({ state: 'visible' });
-    const userMessage = await notice.getByRole('alert').innerText();
-    requireCondition(userMessage.includes('账号或密码不正确') && userMessage.includes('重试'),
+    const notice = page.getByRole('region', { name: '通知', exact: true }).locator('.notification[data-kind="error"]');
+    await notice.waitFor({ state: 'visible' });
+    const userMessage = await notice.locator('.notification-message').innerText();
+    requireCondition(await notice.getAttribute('role') === 'alert' && await notice.getByRole('button', { name: '关闭通知', exact: true }).count() === 1,
+      'The login notification must be announced and have an accessible dismiss control.');
+    requireCondition(userMessage.includes('账号或密码不正确') && /重试|重新输入/.test(userMessage),
       'Incorrect login must explain the cause and next action in Chinese.');
     requireCondition(!userMessage.includes(rejection.requestId) && !userMessage.includes(rejection.message),
       'Technical diagnostics must not be mixed into the main login message.');
-    const details = notice.locator('details');
-    requireCondition(await details.getAttribute('open') === null, 'Login diagnostics must be collapsed initially.');
-    await notice.locator('summary').click();
-    const diagnostics = await details.innerText();
-    for (const value of [rejection.error, rejection.requestId, rejection.message, '401', 'POST /api/v1/auth/login']) {
-      requireCondition(diagnostics.includes(value), `Login diagnostics are missing a required field.`);
+    requireCondition(userMessage.length <= 120, 'Login error must stay brief.');
+    requireCondition(await notice.locator('details, summary, dl').count() === 0,
+      'Technical login details must not be present in the user interface.');
+    const noticeText = await notice.textContent();
+    for (const value of [rejection.error, rejection.requestId, rejection.message, '401', 'POST /api/v1/auth/login', admin.password]) {
+      requireCondition(typeof value !== 'string' || !value || !noticeText.includes(value),
+        'Login notice exposed technical or sensitive information.');
     }
-    requireCondition(!diagnostics.includes(admin.password), 'Login diagnostics must not contain the administrator password.');
+    const diagnostic = await rejectedDiagnostic.args()[1]?.jsonValue();
+    requireCondition(diagnostic?.code === rejection.error && diagnostic.status === 401
+      && diagnostic.requestId === rejection.requestId && diagnostic.method === 'POST'
+      && diagnostic.path === '/api/v1/auth/login', 'Safe console diagnostics must retain the login trace context.');
+    requireCondition(!['message', 'body', 'headers', 'cause', 'stack'].some(key => key in diagnostic),
+      'Console diagnostics must omit raw request/response material.');
+    requireCondition(!JSON.stringify(diagnostic).includes(admin.password), 'Console diagnostics exposed a password.');
     noPageErrors('Incorrect login rendering');
-    passed('real rejected login shows Chinese guidance with expandable diagnostic details');
+    passed('real rejected login shows brief Chinese guidance and keeps safe trace diagnostics in the console');
     await page.getByLabel('密码', { exact: true }).fill(admin.password);
     const [login] = await Promise.all([
       page.waitForResponse(response => isResponse(response, '/api/v1/auth/login', 'POST')),

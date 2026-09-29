@@ -1,3 +1,4 @@
+import { errorMessage, reportError } from "../api";
 import { memo, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import type { Model3DNodeProps } from "./Model3DNode";
 import { ModelPresentationPanel } from "./ModelPresentationPanel";
@@ -7,7 +8,7 @@ import type { NavigationStatus, SceneInput, SceneRuntime, SceneStatus } from "..
 
 import "../scene/walk-navigation.css";
 
-const errorText = (reason: unknown) => reason instanceof Error ? reason.message : String(reason);
+const errorText = errorMessage;
 
 export const BatchModel3DNode = memo(function BatchModel3DNode({
   decorations, roomAlarms, roomAlarmObservations, onRoomAlarmStatuses,
@@ -25,6 +26,7 @@ export const BatchModel3DNode = memo(function BatchModel3DNode({
   node,
   onModelInstanceSelect,
   onModelInstanceTransform,
+  onDecorationTransform,
   onSceneChange,
   onSceneNodeSelect,
   projectId,
@@ -60,6 +62,8 @@ export const BatchModel3DNode = memo(function BatchModel3DNode({
   sceneCallbackRef.current = onSceneChange;
   const instanceTransformCallbackRef = useRef(onModelInstanceTransform);
   instanceTransformCallbackRef.current = onModelInstanceTransform;
+  const decorationTransformCallbackRef = useRef(onDecorationTransform);
+  decorationTransformCallbackRef.current = onDecorationTransform;
   const suppressNextPickRef = useRef(false);
   const pointerStartRef = useRef<{
     clientX: number;
@@ -127,6 +131,9 @@ export const BatchModel3DNode = memo(function BatchModel3DNode({
         onInstanceTransform: (instanceId, transform) => {
           if (!cancelled) instanceTransformCallbackRef.current?.(node.id, instanceId, transform);
         },
+        onDecorationTransform: (decorationId, transform) => {
+          if (!cancelled) decorationTransformCallbackRef.current?.(node.id, decorationId, transform);
+        },
         onTransformDragging: (dragging) => {
           if (dragging) suppressNextPickRef.current = true;
         },
@@ -136,7 +143,7 @@ export const BatchModel3DNode = memo(function BatchModel3DNode({
       return runtime.update(inputRef.current);
     }).catch((reason) => {
       if (cancelled) return;
-      console.error("Failed to initialize 3D scene runtime.", { projectId, canvasNodeId: node.id, reason });
+      reportError(reason, { operation: "scene.initialize", projectId, canvasNodeId: node.id });
       setLoadState({ status: "error", message: `3D 场景初始化失败：${errorText(reason)}` });
       runtime?.dispose();
       runtimeRef.current = null;
@@ -195,7 +202,7 @@ export const BatchModel3DNode = memo(function BatchModel3DNode({
       onExtrasSelect?.(picked && "decorationId" in picked ? { kind: "decoration", id: picked.decorationId }
         : picked && "staticMapId" in picked ? { kind: "map", id: picked.staticMapId } : null);
     } catch (reason) {
-      console.error("Failed to pick an item in the batched model scene.", { canvasNodeId: node.id, reason });
+      reportError(reason, { operation: "scene.pick", projectId, canvasNodeId: node.id });
       setInteractionError(`节点选择失败：${errorText(reason)}`);
     }
   };

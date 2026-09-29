@@ -5,7 +5,17 @@ type RecordEntry = { definition: SceneDecoration; signature: string; root: THREE
 const vertex = /* glsl */ `varying vec2 vUv; void main(){vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`;
 const fragment = /* glsl */ `uniform vec3 uColor; uniform vec3 uAccent; uniform float uPhase; uniform float uOpacity; varying vec2 vUv;
 void main(){float wave=sin((vUv.y*7.0-uPhase)*6.2831853+sin(vUv.x*16.0)*0.35); float foam=pow(max(0.0,wave),8.0)*0.45; vec3 c=mix(uColor,uAccent,0.12+foam); gl_FragColor=vec4(c,uOpacity);\n#include <tonemapping_fragment>\n#include <colorspace_fragment>}`;
-const signature = (d: SceneDecoration) => JSON.stringify(d);
+// Placement, naming and visibility do not own geometry. Keep the root attached to
+// TransformControls stable when a completed drag is reconciled into the draft.
+const signature = (d: SceneDecoration) => JSON.stringify([d.kind, d.color, d.accentColor, d.seed, d.river]);
+function applyDefinition(record: RecordEntry, definition: SceneDecoration) {
+  record.definition = definition;
+  record.root.name = definition.label;
+  record.root.position.set(...definition.transform.position);
+  record.root.rotation.set(...definition.transform.rotation.map(THREE.MathUtils.degToRad) as [number, number, number]);
+  record.root.scale.set(...definition.transform.scale);
+  record.root.visible = definition.visible;
+}
 function release(record: RecordEntry) {
   record.root.removeFromParent();
   record.geometries.forEach(g=>g.dispose());
@@ -80,6 +90,9 @@ export class DecorationManager {
     try {for(const d of parsed.value){const old=this.records.get(d.id);if(old?.signature===signature(d)) next.set(d.id,old);else {const entry=build(d);entry.phase=old?.phase??0;if(entry.flow)entry.flow.uniforms.uPhase.value=entry.phase;next.set(d.id,entry);added.push(entry);}}}
     catch(error){added.forEach(release);throw error;}
     this.records.forEach((r,id)=>{if(next.get(id)!==r)release(r);});
+    // Apply non-structural updates only after every new geometry has built
+    // successfully, so an invalid sibling never partially mutates the scene.
+    for (const definition of parsed.value) applyDefinition(next.get(definition.id)!, definition);
     added.forEach(r=>this.parent.add(r.root));this.records=next;
   }
   getBounds():THREE.Box3 {this.active();this.parent.updateWorldMatrix(true,true);const box=new THREE.Box3();for(const r of this.records.values())if(r.definition.visible)box.union(new THREE.Box3().setFromObject(r.root));return box;}
@@ -90,5 +103,6 @@ export class DecorationManager {
   }
   diagnostics(){this.active();const records=[...this.records.values()];return {decorationCount:records.length,meshCount:records.reduce((n,r)=>n+r.meshCount,0),triangleCount:records.reduce((n,r)=>n+r.triangleCount,0)};}
   getPickObjects():THREE.Object3D[]{this.active();return [...this.records.values()].filter(r=>r.definition.visible).map(r=>r.root);}
+  getRoot(id:string):THREE.Group|undefined {this.active();return this.records.get(id)?.root;}
   dispose():void {if(this.disposed)return;this.disposed=true;this.records.forEach(release);this.records.clear();}
 }

@@ -122,7 +122,8 @@ services:
     volumes:
       - /data/dtwin/data/storage:/data
       - /data/dtwin/config/seaweedfs:/etc/seaweedfs:ro
-    mem_limit: 768m
+    # Large model PUTs caused OOM at 768 MiB; keep a bounded 2 GiB budget.
+    mem_limit: 2g
     cpus: 1.0
 
   api:

@@ -2,6 +2,7 @@ import { Select } from "../components/Select";
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { findBuiltinModel } from "../../../../shared/builtin-models";
 import { ApiRequestError, errorMessage, request } from "../api";
+import { useNotifications } from "../components/NotificationProvider";
 import {
   formatFileSize,
   modelAssetContentUrl,
@@ -64,6 +65,19 @@ type ResourceItem =
   | { kind: "model"; asset: ModelAsset }
   | { kind: "image"; asset: ImageAsset }
   | { kind: "video" | "audio"; asset: MediaAsset };
+
+const readResourceItems = async (projectId: string): Promise<ResourceItem[]> => {
+  const [models, images, media] = await Promise.all([
+    request<ModelAssetListResponse>(modelAssetsPath(projectId)),
+    request<ImageAssetListResponse>(imageAssetsPath(projectId)),
+    request<MediaAssetListResponse>(mediaAssetsPath(projectId)),
+  ]);
+  return [
+    ...models.modelAssets.map((asset): ResourceItem => ({ kind: "model", asset })),
+    ...images.imageAssets.map((asset): ResourceItem => ({ kind: "image", asset })),
+    ...media.mediaAssets.map((asset): ResourceItem => ({ kind: asset.mediaType, asset })),
+  ];
+};
 
 const filterLabels: Array<{ id: ResourceFilter; label: string }> = [
   { id: "all", label: "全部" },
@@ -247,12 +261,12 @@ export function ResourcesPage({
   projectError,
   projects,
 }: ResourcesPageProps) {
+  const notify = useNotifications();
   const [selectedProjectId, setSelectedProjectId] = useState("");
   const [filter, setFilter] = useState<ResourceFilter>("all");
   const [items, setItems] = useState<ResourceItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
   const [previewItem, setPreviewItem] = useState<ResourceItem | null>(null);
   const [deleteItem, setDeleteItem] = useState<ResourceItem | null>(null);
   const [backgroundWizardOpen, setBackgroundWizardOpen] = useState(false);
@@ -262,6 +276,9 @@ export function ResourcesPage({
   const [uploadingKind, setUploadingKind] = useState<ResourceKind | null>(null);
   const [reloadVersion, setReloadVersion] = useState(0);
   const importedWizardImages = useRef(new WeakMap<File, ImageAsset>());
+  const resourceLoadId = useRef(0);
+  const currentProjectId = useRef(selectedProjectId);
+  currentProjectId.current = selectedProjectId;
 
   useEffect(() => {
     if (projects.length === 0) {
@@ -279,23 +296,18 @@ export function ResourcesPage({
       return;
     }
     let active = true;
+    const loadId = ++resourceLoadId.current;
     setLoading(true);
     setLoadError(null);
-    void Promise.all([
-      request<ModelAssetListResponse>(modelAssetsPath(selectedProjectId)),
-      request<ImageAssetListResponse>(imageAssetsPath(selectedProjectId)),
-      request<MediaAssetListResponse>(mediaAssetsPath(selectedProjectId)),
-    ]).then(([models, images, media]) => {
-      if (!active) return;
-      setItems([
-        ...models.modelAssets.map((asset): ResourceItem => ({ kind: "model", asset })),
-        ...images.imageAssets.map((asset): ResourceItem => ({ kind: "image", asset })),
-        ...media.mediaAssets.map((asset): ResourceItem => ({ kind: asset.mediaType, asset })),
-      ]);
+    void readResourceItems(selectedProjectId).then((resources) => {
+      if (!active || loadId !== resourceLoadId.current) return;
+      setItems(resources);
     }).catch((reason) => {
-      if (active) setLoadError(errorMessage(reason));
+      if (active && loadId === resourceLoadId.current) {
+        setLoadError(errorMessage(reason));
+      }
     }).finally(() => {
-      if (active) setLoading(false);
+      if (active && loadId === resourceLoadId.current) setLoading(false);
     });
     return () => { active = false; };
   }, [reloadVersion, selectedProjectId]);
@@ -308,20 +320,37 @@ export function ResourcesPage({
   );
   const filteredItems = filter === "all" ? items : items.filter((item) => item.kind === filter);
 
+  const refreshAfterMutation = async (message: string, tone: "success" | "warning" = "success") => {
+    const loadId = currentProjectId.current === selectedProjectId ? ++resourceLoadId.current : null;
+    const isCurrentLoad = () => loadId !== null && currentProjectId.current === selectedProjectId && loadId === resourceLoadId.current;
+    if (isCurrentLoad()) setLoading(true);
+    try {
+      const resources = await readResourceItems(selectedProjectId);
+      if (isCurrentLoad()) {
+        setItems(resources);
+        setLoadError(null);
+      }
+      notify[tone](message);
+    } catch (reason) {
+      if (isCurrentLoad()) setLoadError(errorMessage(reason));
+      notify.warning(`${message}资源列表刷新失败，请刷新页面查看最新结果。`);
+      notify.error(reason);
+    } finally {
+      if (isCurrentLoad()) setLoading(false);
+    }
+  };
+
   const generateMeshopt = async (asset: ModelAsset): Promise<void> => {
     if (!selectedProjectId || !canEdit) return;
     setCompressingModelAssetId(asset.id);
-    setLoadError(null);
-    setNotice(null);
     try {
       const result = await request<ModelAssetUploadResponse>(
         `${modelAssetsPath(selectedProjectId)}/${encodeURIComponent(asset.id)}/meshopt-versions`,
         { method: "POST" },
       );
-      setNotice(`已生成 Meshopt 压缩版本“${result.modelAsset.originalFilename}”。原模型保留，可在场景中选择新版本。`);
-      setReloadVersion((value) => value + 1);
+      await refreshAfterMutation(`已生成 Meshopt 压缩版本“${result.modelAsset.originalFilename}”。原模型保留，可在场景中选择新版本。`);
     } catch (reason) {
-      setLoadError(errorMessage(reason));
+      notify.error(reason);
     } finally {
       setCompressingModelAssetId(null);
     }
@@ -360,14 +389,11 @@ export function ResourcesPage({
     event.target.value = "";
     if (!file || !selectedProjectId || !canEdit) return;
     setUploadingKind(kind);
-    setNotice(null);
-    setLoadError(null);
     try {
       await uploadAssetFile(kind, file);
-      setNotice(`${kindLabels[kind]}“${file.name}”已上传。`);
-      setReloadVersion((value) => value + 1);
+      await refreshAfterMutation(`${kindLabels[kind]}“${file.name}”已上传。`);
     } catch (reason) {
-      setLoadError(errorMessage(reason));
+      notify.error(reason);
     } finally {
       setUploadingKind(null);
     }
@@ -398,8 +424,6 @@ export function ResourcesPage({
     if (input.mode === "single-image") {
       const file = input.files[0];
       setUploadingKind("image");
-      setNotice(null);
-      setLoadError(null);
       let sourceImage = importedWizardImages.current.get(file) ?? null;
       try {
         if (!sourceImage) {
@@ -413,14 +437,13 @@ export function ResourcesPage({
           quality: input.quality,
         });
         setFilter("model");
-        setNotice(`原图“${file.name}”已入库，并生成背景模型“${response.modelAsset.originalFilename}”。`);
-        setReloadVersion((value) => value + 1);
+        await refreshAfterMutation(`原图“${file.name}”已入库，并生成背景模型“${response.modelAsset.originalFilename}”。`);
       } catch (reason) {
         if (sourceImage) {
           setReloadVersion((value) => value + 1);
-          throw new Error(`原图已入库（资源 ID：${sourceImage.id}），但背景模型生成失败：${errorMessage(reason)}`);
+          notify.warning("原图已入库，但背景模型尚未生成。可保留素材并重试生成。");
         }
-        throw new Error(`原图上传失败：${errorMessage(reason)}`);
+        throw reason;
       } finally {
         setUploadingKind(null);
       }
@@ -430,36 +453,31 @@ export function ResourcesPage({
     const kinds = input.files.map((file) => sceneBackgroundResourceKind(file.name));
     const imported: string[] = [];
     setUploadingKind(kinds[0]);
-    setNotice(null);
-    setLoadError(null);
     try {
       for (let index = 0; index < input.files.length; index += 1) {
         await uploadAssetFile(kinds[index], input.files[index]);
         imported.push(input.files[index].name);
       }
     } catch (reason) {
-      if (imported.length > 0) setReloadVersion((value) => value + 1);
-      const context = imported.length > 0
-        ? `已成功导入 ${imported.length}/${input.files.length} 个文件；后续文件未完成。`
-        : "尚未导入任何文件。";
-      throw new Error(`${context} ${errorMessage(reason)}`);
+      if (imported.length > 0) {
+        setReloadVersion((value) => value + 1);
+        notify.warning(`已导入 ${imported.length}/${input.files.length} 个文件，其余文件未完成。重试前请检查已入库素材，避免重复导入。`);
+      }
+      throw reason;
     } finally {
       setUploadingKind(null);
     }
 
     setFilter(kinds.every((kind) => kind === kinds[0]) ? kinds[0] : "all");
-    setNotice(input.files.length === 1
+    await refreshAfterMutation(input.files.length === 1
       ? `写实漫游原始素材“${input.files[0].name}”已导入；GPU 重建服务尚未接入。`
       : `${input.files.length} 个写实漫游原始素材已导入；GPU 重建服务尚未接入。`);
-    setReloadVersion((value) => value + 1);
   };
 
   const generateFromExistingImage = async (asset: ImageAsset) => {
     if (!selectedProjectId || !canEdit || generatingImageAssetId) return;
     const baseName = asset.originalFilename.replace(/\.[^.]+$/u, "").trim();
     setGeneratingImageAssetId(asset.id);
-    setNotice(null);
-    setLoadError(null);
     try {
       const response = await requestSceneBackground(asset.id, {
         knownScaleMeters: null,
@@ -468,10 +486,9 @@ export function ResourcesPage({
         quality: "balanced",
       });
       setFilter("model");
-      setNotice(`已从“${asset.originalFilename}”生成“${response.modelAsset.originalFilename}”。`);
-      setReloadVersion((value) => value + 1);
+      await refreshAfterMutation(`已从“${asset.originalFilename}”生成“${response.modelAsset.originalFilename}”。`);
     } catch (reason) {
-      setLoadError(`背景模型生成失败：${errorMessage(reason)}`);
+      notify.error(reason);
     } finally {
       setGeneratingImageAssetId(null);
     }
@@ -480,7 +497,6 @@ export function ResourcesPage({
   const confirmDelete = async () => {
     if (!deleteItem || !selectedProjectId) return;
     setDeleting(true);
-    setLoadError(null);
     try {
       const confirmation = deleteItem.asset.usage.count > 0 ? "?confirmReferenced=true" : "";
       const path = `${deletePath(selectedProjectId, deleteItem)}${confirmation}`;
@@ -488,19 +504,16 @@ export function ResourcesPage({
       if (deleteItem.kind === "model") result = await request<ModelAssetDeletionResponse>(path, { method: "DELETE" });
       else if (deleteItem.kind === "image") result = await request<ImageAssetDeletionResponse>(path, { method: "DELETE" });
       else result = await request<MediaAssetDeletionResponse>(path, { method: "DELETE" });
-      setNotice(result.warning
-        ? `资源已删除，但对象存储清理需要处理：${result.warning}`
-        : `资源“${itemName(deleteItem)}”已永久删除。`);
       setDeleteItem(null);
-      setReloadVersion((value) => value + 1);
+      await refreshAfterMutation(result.warning
+        ? "资源记录已删除，但存储文件未完全清理，请联系管理员处理。"
+        : `资源“${itemName(deleteItem)}”已永久删除。`, result.warning ? "warning" : "success");
     } catch (reason) {
       if (reason instanceof ApiRequestError && reason.code === "resource_in_use") {
         setDeleteItem(null);
-        setNotice("资源引用状态刚刚发生变化，请查看最新引用数量后重新确认删除。");
         setReloadVersion((value) => value + 1);
-      } else {
-        setLoadError(errorMessage(reason));
       }
+      notify.error(reason);
     } finally {
       setDeleting(false);
     }
@@ -526,7 +539,6 @@ export function ResourcesPage({
               setPreviewItem(null);
               setDeleteItem(null);
               setBackgroundWizardOpen(false);
-              setNotice(null);
             }}>
               {projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
             </Select>
@@ -591,8 +603,7 @@ export function ResourcesPage({
           </div>
 
           {!canEdit ? <p className="resource-readonly-note">当前项目为只读权限，可以浏览和预览资源，但不能上传或删除。</p> : null}
-          {notice ? <div className="project-notice" role="status"><span>{notice}</span><button aria-label="关闭资源提示" onClick={() => setNotice(null)} type="button">×</button></div> : null}
-          {loadError ? <section className="state-card error-state"><h2>资源操作失败</h2><p>{loadError}</p></section> : null}
+          {loadError ? <section className="state-card error-state"><h2>资源加载失败</h2><p>{loadError}</p></section> : null}
           {loading ? <section className="state-card"><p className="eyebrow">Loading</p><h2>正在加载资源…</h2></section> : null}
 
           {!loading && !loadError && filteredItems.length === 0 ? (

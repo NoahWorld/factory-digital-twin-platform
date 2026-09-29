@@ -1,3 +1,4 @@
+import { reportError } from "../errors";
 import { createUuid } from "../uuid";
 import { parseTwinActions, type TwinAction } from "../../../../shared/twin-actions";
 
@@ -88,7 +89,7 @@ export function createTwinActionReceiver({ targetProjectIds, allowedOriginProjec
       onActions(event);
     } catch (reason) {
       const error = reason instanceof Error ? reason : new Error(String(reason));
-      console.error("Twin action event rejected", { targetProjectIds, allowedOriginProjectIds, originProjectId: event?.originProjectId, correlationId: event?.correlationId, reason });
+      reportError(reason, { operation: "twin-actions.receive", targetProjectIds, allowedOriginProjectIds, originProjectId: event?.originProjectId, correlationId: event?.correlationId });
       onError(error);
     }
   };
@@ -109,7 +110,7 @@ export function publishTwinActions({ originProjectId, targetProjectId, actions }
     channel = new BroadcastChannel(TWIN_ACTION_EVENT_NAME);
     channel.postMessage(event);
   } catch (reason) {
-    console.error("Twin action broadcast failed", { originProjectId, targetProjectId, correlationId: event.correlationId, reason });
+    reportError(reason, { operation: "twin-actions.broadcast", originProjectId, targetProjectId, correlationId: event.correlationId });
     throw new Error(`本页交互已执行，但无法同步其他页面：${reason instanceof Error ? reason.message : String(reason)}`);
   } finally {
     channel?.close();
@@ -130,12 +131,12 @@ export function subscribeTwinActions(options: TwinActionSubscription): () => voi
     channel.onmessage = (event: MessageEvent<unknown>) => receive(event.data);
     channel.onmessageerror = () => {
       const error = new Error("无法解码跨页面交互消息，消息未执行。");
-      console.error("Twin action message could not be decoded", { targetProjectIds: options.targetProjectIds });
+      reportError(error, { operation: "twin-actions.decode", targetProjectIds: options.targetProjectIds });
       options.onError(error);
     };
   } catch (reason) {
     const error = new Error(`无法接收跨页面交互：${reason instanceof Error ? reason.message : String(reason)}`);
-    console.error("Twin action subscription failed", { targetProjectIds: options.targetProjectIds, reason });
+    reportError(reason, { operation: "twin-actions.subscribe", targetProjectIds: options.targetProjectIds });
     options.onError(error);
   }
   return () => {

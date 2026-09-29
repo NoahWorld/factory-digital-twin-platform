@@ -1,3 +1,4 @@
+import { errorMessage, reportError } from "../errors";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { parseTwinActions, type TwinAction } from "../../../../shared/twin-actions";
 import type { ProjectAsset } from "../canvas/assets";
@@ -101,8 +102,8 @@ export function useTwinActions({ canvasDocument, assets, scenes, contextKey, onS
       setError(null);
       return true;
     } catch (reason) {
-      const message = `${source}：${reason instanceof Error ? reason.message : String(reason)}`;
-      console.error("Twin action execution failed", { contextKey, source, actions, reason });
+      reportError(reason, { operation: "twin-actions.execute", projectId: canvasDocument?.projectId });
+      const message = errorMessage(reason);
       setError(message);
       return false;
     }
