@@ -30,18 +30,7 @@ export function TemplatesPage({
     .map((template) => template.id);
 
   return (
-    <section className="workspace-content templates-content" id="templates">
-      <div className="page-heading">
-        <div>
-          <p className="eyebrow">Industry template library</p>
-          <h1>行业模板库</h1>
-          <p>从完整业务画面开始，创建属于你的 2D 看板与 3D 场景。</p>
-        </div>
-        <div className="template-page-summary">
-          <span>可放大查看，创建项目后自由编辑。</span>
-        </div>
-      </div>
-
+    <section aria-label="模板" className="workspace-content templates-content" id="templates">
       {!canCreateProject ? (
         <section className="state-card template-permission-note">
           <h2>当前账号不能创建项目</h2>

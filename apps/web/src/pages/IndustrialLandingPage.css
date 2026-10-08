@@ -94,8 +94,6 @@
 .delivery-header-actions { display: flex; align-items: center; flex-shrink: 0; gap: 12px; }
 .delivery-brand { display: inline-flex; align-items: center; gap: 12px; font-size: 20px; font-weight: 750; letter-spacing: -.6px; line-height: 1.15; white-space: nowrap; }
 .delivery-brand small { display: block; font-weight: 500; font-size: 10px; letter-spacing: 2px; margin-top: 7px; color: var(--delivery-muted); }
-.delivery-brand-symbol { width: 39px; height: 42px; color: var(--delivery-blue); filter: drop-shadow(0 8px 12px #225be72c); transition: transform .35s ease, filter .35s ease; }
-.delivery-brand-symbol svg { width: 100%; height: 100%; }
 .delivery-header nav { display: flex; align-items: center; gap: 22px; }
 .delivery-header nav button { position: relative; color: var(--ui-text); background: none; border: 0; padding: 10px 0; font-size: 14px; white-space: nowrap; transition: color .2s ease; }
 .delivery-header nav button::after { content: ""; position: absolute; left: 50%; bottom: 3px; width: 0; height: 2px; border-radius: 2px; background: linear-gradient(90deg, var(--delivery-blue), var(--delivery-cyan)); transform: translateX(-50%); transition: width .25s ease; }
@@ -281,14 +279,14 @@
 .delivery-cta-flow::after { animation-delay: -11s; }
 .delivery-footer { display: flex; justify-content: space-between; align-items: center; gap: 24px; padding: 30px 0 38px; border-top: 1px solid var(--ui-border); }
 .delivery-footer .delivery-brand { font-size: 15px; gap: 9px; }
-.delivery-footer .delivery-brand-symbol { height: 32px; width: 29px; }
+.delivery-footer .product-logo { width: 68px; }
 .delivery-footer .delivery-brand small { font-size: 8px; letter-spacing: 1px; }
 .delivery-footer > p { color: var(--ui-text-muted); font-size: 11px; letter-spacing: 2px; }
 .delivery-footer > span { color: var(--ui-text-muted); font-size: 10px; }
 @media (hover: hover) {
   .delivery-landing :is(.delivery-button, .delivery-nav-cta):hover .delivery-action-arrow { background: var(--delivery-arrow-hover); }
   .delivery-landing :is(.delivery-button, .delivery-nav-cta):hover .delivery-action-arrow > svg { transform: translate(var(--delivery-arrow-x), var(--delivery-arrow-y)); }
-  .delivery-header-inner > a:first-child:hover .delivery-brand-symbol { transform: rotate(-8deg) scale(1.06); filter: drop-shadow(0 10px 16px #225be74a); }
+  .delivery-header-inner > a:first-child:hover { border-radius: 10px; background: var(--ui-hover); }
   .delivery-nav-cta:hover { transform: translateY(-2px); box-shadow: 0 15px 32px #14244238; }
   .delivery-demo:hover { border-color: var(--ui-accent-border); box-shadow: 0 40px 90px -34px #183b7680, 0 0 0 1px var(--ui-border) inset; }
   .delivery-advantage:hover { transform: translateY(-8px); border-color: var(--ui-accent-border); box-shadow: 0 25px 55px #224d8921; }
@@ -342,7 +340,7 @@
   .delivery-header-actions { margin-left: auto; gap: 8px; }
   .delivery-brand { font-size: 17px; }
   .delivery-brand small { font-size: 8px; letter-spacing: 1.5px; }
-  .delivery-brand-symbol { width: 31px; height: 35px; }
+  .delivery-brand .product-logo { width: 72px; }
   .delivery-header nav { display: none; }
   .delivery-nav-cta { padding: 10px 12px; gap: 10px; font-size: 11px; }
   .delivery-hero-copy { grid-template-columns: 1fr; gap: 22px; margin-bottom: 27px; }

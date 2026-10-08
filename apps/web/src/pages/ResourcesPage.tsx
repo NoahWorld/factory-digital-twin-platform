@@ -520,18 +520,13 @@ export function ResourcesPage({
   };
 
   if (loadingProjects) {
-    return <section className="workspace-content"><section className="state-card"><p className="eyebrow">Loading</p><h2>正在加载资源范围…</h2></section></section>;
+    return <section aria-label="资源库" className="workspace-content"><section className="state-card"><p className="eyebrow">Loading</p><h2>正在加载资源范围…</h2></section></section>;
   }
 
   return (
-    <section className="workspace-content resource-library" id="resources">
-      <div className="page-heading resource-page-heading">
-        <div>
-          <p className="eyebrow">Asset library</p>
-          <h1>资源库</h1>
-          <p>集中管理系统模型与项目上传的模型、图片、视频和音频。</p>
-        </div>
-        {projects.length > 0 ? (
+    <section aria-label="资源库" className="workspace-content resource-library" id="resources">
+      {projects.length > 0 ? (
+        <div className="resource-scope-toolbar">
           <label className="resource-project-select">
             <span>资源所属项目</span>
             <Select value={selectedProjectId} onValueChange={(value) => {
@@ -543,8 +538,8 @@ export function ResourcesPage({
               {projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
             </Select>
           </label>
-        ) : null}
-      </div>
+        </div>
+      ) : null}
 
       {projectError ? <section className="state-card error-state"><h2>项目范围加载失败</h2><p>{projectError}</p></section> : null}
       {!projectError && projects.length === 0 ? (

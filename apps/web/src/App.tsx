@@ -19,6 +19,7 @@ import { PublicationRunPage } from "./publications";
 import { TemplatesPage } from "./pages/TemplatesPage";
 import { UsersPage } from "./pages/UsersPage";
 import { PRODUCT_NAME } from "./product-config";
+import { ProductLogo } from "./components/ProductLogo";
 import { ThemeToggle } from "./theme/ThemeToggle";
 import type { CoverProject } from "./covers/ProjectCoverQueue";
 
@@ -947,18 +948,33 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
     <main className="workspace-shell">
       <header className="topbar">
         <div className="topbar-main">
-          <a className="brand" href="#/projects">
-            <span className="brand-mark" aria-hidden="true">◫</span>
+          <a
+            aria-label={`${PRODUCT_NAME} 产品宣传页（在新标签页打开）`}
+            className="brand"
+            href="#/"
+            rel="noopener noreferrer"
+            target="_blank"
+            title="查看产品宣传页（在新标签页打开）"
+          >
+            <ProductLogo />
             <span className="brand-name"><strong>{PRODUCT_NAME}</strong><small>交付工作台</small></span>
           </a>
           <nav aria-label="主导航" className="topbar-nav">
             <a aria-current={route.kind === "projects" ? "page" : undefined} href="#/projects">项目</a>
             {user.modules.length > 0 ? <a aria-current={route.kind === "templates" ? "page" : undefined} href="#/templates">模板</a> : null}
             {user.modules.length > 0 ? <a aria-current={route.kind === "resources" ? "page" : undefined} href="#/resources">资源库</a> : null}
-            {user.capabilities.canManageUsers ? <a aria-current={route.kind === "users" ? "page" : undefined} href="#/users">用户管理</a> : null}
           </nav>
         </div>
         <div className="user-menu">
+          {user.capabilities.canManageUsers ? (
+            <a aria-current={route.kind === "users" ? "page" : undefined} className="user-management-link" href="#/users">
+              <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none">
+                <circle cx="9" cy="8" r="3" />
+                <path d="M3 20v-2a6 6 0 0 1 12 0v2M16 5a3 3 0 0 1 0 6m2 3a5 5 0 0 1 3 4v2" />
+              </svg>
+              <span>用户管理</span>
+            </a>
+          ) : null}
           <ThemeToggle />
           <AccountMenu
             key={route.kind}
@@ -990,35 +1006,13 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
           projects={projects}
         />
       ) : user.modules.length === 0 ? (
-        <section className="workspace-content" id="projects">
-          <div className="page-heading"><div><p className="eyebrow">Projects</p><h1>项目</h1></div></div>
+        <section aria-label="项目" className="workspace-content" id="projects">
           <div className="state-card error-state"><h2>尚未获得模块权限</h2><p>请联系平台管理员授予 2D 看板或 3D 场景权限。</p></div>
         </section>
       ) : (
-      <section className="workspace-content" id="projects">
-        <div className="page-heading">
-          <div>
-            <p className="eyebrow">Projects</p>
-            <h1>项目</h1>
-          </div>
-          {user.capabilities.canCreateProject ? (
-            <button
-              aria-label="新建项目"
-              className="primary-button icon-button"
-              onClick={openBlankProjectDialog}
-              title="新建项目"
-              type="button"
-            >
-              <ActionIcon name="add" />
-            </button>
-          ) : null}
-        </div>
-
+      <section aria-label="项目" className="workspace-content" id="projects">
         <div className="project-type-tabs-shell">
-          <div className="project-type-tabs-copy">
-            <strong>交付类型</strong>
-          </div>
-          <div aria-label="项目交付类型" className="project-type-tabs" role="tablist">
+          <div aria-label="项目类型" className="project-type-tabs" role="tablist">
             {user.modules.includes("2d") ? <button
               aria-controls="project-list-panel"
               aria-selected={projectTypeFilter === "2d"}
@@ -1030,8 +1024,7 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
               tabIndex={projectTypeFilter === "2d" ? 0 : -1}
               type="button"
             >
-              <span aria-hidden="true" className="project-type-tab-mark is-2d">2D</span>
-              <span>看板项目</span>
+              <span>2D 看板</span>
               <small>{projectCounts["2d"]}</small>
             </button> : null}
             {user.modules.includes("3d") ? <button
@@ -1045,11 +1038,21 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
               tabIndex={projectTypeFilter === "3d" ? 0 : -1}
               type="button"
             >
-              <span aria-hidden="true" className="project-type-tab-mark is-3d">3D</span>
-              <span>场景项目</span>
+              <span>3D 场景</span>
               <small>{projectCounts["3d"]}</small>
             </button> : null}
           </div>
+          {user.capabilities.canCreateProject ? (
+            <button
+              aria-label="新建项目"
+              className="primary-button icon-button project-create-button"
+              onClick={openBlankProjectDialog}
+              title="新建项目"
+              type="button"
+            >
+              <ActionIcon name="add" />
+            </button>
+          ) : null}
         </div>
 
 
@@ -1168,7 +1171,7 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
                       <span className={`project-type-tag is-${project.projectType}`}>{project.projectType.toUpperCase()}</span>
                       {project.projectRole ? <span>{projectRoleText[project.projectRole]}</span> : null}
                     </div>
-                    <h2>{project.name}</h2>
+                    <h2 title={project.name}>{project.name}</h2>
                     <footer>
                       <span>更新于 {formatDate(project.updatedAt)}</span>
                       <div className="project-card-actions">
@@ -1223,6 +1226,14 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
         ) : null}
       </section>
       )}
+
+      <footer className="workspace-footer">
+        <div className="workspace-footer-brand">
+          <ProductLogo className="workspace-footer-logo" />
+          <div><strong>{PRODUCT_NAME}</strong><span>数字孪生 · 交付工作台</span></div>
+        </div>
+        <span className="workspace-footer-caption">2D 看板<span aria-hidden="true"> / </span>3D 场景</span>
+      </footer>
 
       {showCreateProject ? (
         <CreateProjectDialog

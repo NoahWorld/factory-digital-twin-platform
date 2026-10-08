@@ -1,0 +1,7 @@
+.product-logo {
+  display: block;
+  width: 84px;
+  height: auto;
+  flex-shrink: 0;
+  object-fit: contain;
+}

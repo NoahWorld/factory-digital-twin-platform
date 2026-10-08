@@ -3,6 +3,7 @@ import { BatchModel3DNode } from "../canvas/BatchModel3DNode";
 import { LocalIcon } from "../canvas/LocalIcon";
 import type { ModelCameraView } from "../canvas/types";
 import { PRODUCT_NAME } from "../product-config";
+import { ProductLogo } from "../components/ProductLogo";
 import { ThemeToggle } from "../theme/ThemeToggle";
 import { demoDevices, getDemoSelection, industrialDemoNode } from "./industrial-demo-scene";
 import { PrecisionMotionDemo } from "./PrecisionMotionDemo";
@@ -20,7 +21,7 @@ function Arrow({ direction = "right", framed = false }: { direction?: "right" | 
 }
 
 function Brand() {
-  return <span className="delivery-brand"><span className="delivery-brand-symbol" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none"><path d="m16 3 12 7v13l-12 7-12-7V10L16 3Z" stroke="currentColor" strokeWidth="2" /><path d="m4 10 12 7 12-7M16 17v13M10 6.5l12 7V20" stroke="currentColor" strokeWidth="2" /></svg></span><span>{PRODUCT_NAME}<small>3D 数字孪生交付平台</small></span></span>;
+  return <span className="delivery-brand"><ProductLogo /><span>{PRODUCT_NAME}<small>3D 数字孪生交付平台</small></span></span>;
 }
 
 function scrollToSection(id: string) {

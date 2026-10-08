@@ -276,7 +276,7 @@ async function main() {
           corrected = true;
           await password.fill(correctedPassword);
           await submit.click();
-          await page.getByRole("heading", { level: 1, name: "项目", exact: true }).waitFor({ state: "visible" });
+          await page.getByRole("region", { name: "项目", exact: true }).waitFor({ state: "visible" });
           assert.equal(loginAttempts, 2, `${stage}: corrected input was not resubmitted exactly once`);
           assert.equal(await region.locator('.notification[data-kind="error"]').count(), 0, `${stage}: stale login error survived success`);
           assert.equal(await region.locator(".notification").count(), 1, `${stage}: auth outcome should replace the previous notification`);
