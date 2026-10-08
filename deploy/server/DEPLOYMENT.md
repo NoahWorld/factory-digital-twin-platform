@@ -1,8 +1,8 @@
 # DTwin 服务器部署记录
 
-首次部署：2026-09-28；公网验收及记录更新：2026-09-29。服务器：`8.136.35.33`。
+首次部署：2026-09-28；最新发布及记录更新：2026-10-08。服务器：`8.136.35.33`。
 
-**当前前端已于 `2026-09-29T06:38:25.493284Z` 切换为分类模型库及移动、缩放版本；发布文件校验、服务影响核对及线上专项浏览器 7 组验收均通过。** 乔木、灌木、河流、运输车、帐篷、雷达和装甲车统一从左侧分类模型库添加，选中后可移动、缩放并保存；右侧保留参数编辑、地图和报警配置。此次真实线上检查未出现页面异常、HTTP 错误或越界请求，临时项目已删除、测试会话已撤销。此前统一通知及普通 HTTP UUID 修复保留，后端不变。此前通知版本的公网验收与本轮专项验收使用各自证据，不能相互替代。
+当前前端于 `2026-10-08T05:46:44.262816Z` 切换至 `/data/dtwin/releases/dtwin-ui-20261008-account-menu-c56f334`，源码为 Codeup `main` 已提交的 `c56f3343271648f8362803e5ecedf139d3211b53`，入口 `/assets/index-CZ1SlaM0.js`。顶部账号区改为头像下拉菜单，名称、角色和“退出登录”在展开后显示。119 个 web 文件全部通过 SHA-256 校验（9 个增量上传、110 个复用）；10 项公网接口/资源检查与 8 项真实 HTTP 浏览器检查通过，包括菜单退出、会话失效和画布保存刷新，零页面异常，临时项目与测试会话均已清理。只重建本项目 Nginx，其余 6 个本项目容器和公共 Docker 中 23 个容器的 ID、启动时间、状态不变；除 `.env` 的 `RELEASE_DIR` 外，运行配置不变。回滚目标为 `/data/dtwin/releases/dtwin-ui-20260929-model-library-b0csanop-063700286494`；审计位于 `/data/dtwin/audit/dtwin-ui-20261008-account-menu-c56f334/`。
 
 用户另行授权的 18 个项目、70 个资源迁移已完成数据库、对象、公网 API、浏览器和同机服务影响验收；4 个本地模拟数据源保持暂停，最终验收证据已归档并核对服务器权限与哈希。迁移有独立验收证据，范围及限制见 [本地到生产迁移](../../docs/local-to-production-migration.md)。历史发布记录继续保留，各版本使用各自的验收证据。
 
@@ -10,11 +10,11 @@
 
 | 项目 | 本次部署内容 |
 | --- | --- |
-| 前端源码 | Codeup `DTwin_UI` 的 `main` 基线：`69af24ef41b914b44d8a36163f50d4992a26047f`，加 2026-09-29 统一通知、分类模型库及移动缩放改动；发布源码快照与校验和随 release 留档 |
+| 前端源码 | Codeup `DTwin_UI/main`：`c56f3343271648f8362803e5ecedf139d3211b53`；工作区干净；GitHub `noah_code` 对应改动提交 `cd18a6d` |
 | 后端源码 | Codeup `DTwin_Cloud` 的 `main`：`ecd3f476812bcc87a85b692a9040cc9b9a514285` |
-| 当前前端发布目录 | `/data/dtwin/releases/dtwin-ui-20260929-model-library-b0csanop-063700286494` |
-| 当前前端入口 | `/assets/index-B0CsANOp.js` |
-| 前端回滚目标 | `/data/dtwin/releases/dtwin-ui-20260929-notifications-d-dxotyt` |
+| 当前前端发布目录 | `/data/dtwin/releases/dtwin-ui-20261008-account-menu-c56f334` |
+| 当前前端入口 | `/assets/index-CZ1SlaM0.js` |
+| 前端回滚目标 | `/data/dtwin/releases/dtwin-ui-20260929-model-library-b0csanop-063700286494` |
 | 原完整发布与后端构建目录 | `/data/dtwin/releases/dtwin-release-20260928-b5bd9de-ecd3f47`，保留历史构建与诊断记录 |
 | 活动配置 | `/data/dtwin/config` |
 | 业务数据 | `/data/dtwin/data/postgres`、`/data/dtwin/data/valkey`、`/data/dtwin/data/storage` |
@@ -22,11 +22,11 @@
 | 独立运行服务临时状态 | `/run/dtwin-docker`、`/run/dtwin-containerd` |
 | 运维入口 | `/data/dtwin/bin/docker-dtwin`；先检查数据盘挂载与实际 Docker root，再操作本项目 socket |
 | 运行日志 | `/data/dtwin/logs`；容器日志位于本项目 Docker 数据目录并按配置轮转 |
-| 当前前端发布审计目录 | `/data/dtwin/audit/dtwin-ui-20260929-model-library-b0csanop-063700286494` |
+| 当前前端发布审计目录 | `/data/dtwin/audit/dtwin-ui-20261008-account-menu-c56f334` |
 | 首次部署审计目录 | `/data/dtwin/audit/deploy-20260928` |
-| 公开地址 | [DTwin](http://8.136.35.33:19080)，当前版本已激活，线上专项浏览器 7 组验收通过 |
+| 公开地址 | [DTwin](http://8.136.35.33:19080)，10 项公网接口/资源与 8 项真实浏览器检查通过 |
 
-前端以 `VITE_API_BASE_URL=/` 构建；首次后端构建使用 JDK 21 执行 `mvn -B verify`，94 项测试通过。后端源码与镜像保持不变；当前前端为上述 main 基线加统一通知、分类模型库及移动缩放改动，不能仅凭基线提交复现现网。发布源码及其 SHA-256 位于新 release 的 `source/`、`source.patch` 与 `release.json`：`source.patch` 包含相对基线的完整已跟踪文件差异，`source/` 包含改动文件及新增前端文件；构建产物逐文件校验和同样记录在 `release.json`。
+前端以 `VITE_API_BASE_URL=/ pnpm --filter @factory-twin/web build` 从已推送提交 `c56f3343271648f8362803e5ecedf139d3211b53` 构建，包含 TypeScript 检查；构建通过，Vite 仍提示既有大体积 chunk。可直接检出该提交复现源码，或检出 `release.json` 的 `sourceBaseCommit` 后应用 `source.patch`；完整产物校验和同样记录在 `release.json`。首次后端构建使用 JDK 21 执行 `mvn -B verify`，94 项测试通过；本轮后端源码与镜像不变。
 
 | 运行组件 | 本次采用的版本系列或构建基线 |
 | --- | --- |
@@ -40,7 +40,17 @@
 
 CentOS 7 / kernel 3.10、runc 1.1.12、libseccomp 2.3.1 环境下，PostgreSQL Alpine 初始化和 Nginx Alpine 实际启动曾出现写入 `EPERM`。本项目分别改用 Bookworm 镜像后通过实际验证，未升级公共运行组件或放宽默认 seccomp。PostgreSQL 有 strace 证据，Nginx 仅有启动错误日志，不能将二者的底层系统调用原因混同。详情见 [兼容性记录](README.md#宿主机兼容性记录)。
 
-## 2026-09-29 分类模型库与移动缩放发布（当前版本）
+## 2026-10-08 账号下拉菜单发布（当前版本）
+
+发布时间 `2026-10-08T05:46:44.262816Z`（北京时间 13:46）。提交已推送至 Codeup `main`（`c56f334`）和 GitHub `noah_code`（`cd18a6d`）；构建使用 Codeup 已提交源码。发布包 SHA-256：`e807e237ad8c39f809ebec9fb66c2b0b304bb75d80bd77de7ea4e2011ce99999`。新目录内全部 119 个 web 文件及源码补丁通过校验；旧 release 保留。
+
+真实公网验收使用本轮 `verify.mjs` 和更新后的 `verify-browser.mjs`：10 项接口/资源检查通过；8 项浏览器检查通过，覆盖普通 HTTP 首页、错误与正确登录、菜单打开/Escape 关闭、真实菜单退出并验证 401、拖拽组件保存刷新、精确删除临时项目与撤销测试会话。浏览器无 pageerror。此验收不等于全部业务项目或负载测试。
+
+证据位于 `/data/dtwin/audit/dtwin-ui-20261008-account-menu-c56f334/evidence/`：`acceptance-api.json` 对应 `dtwin-verify-d81de7be-e681-461f-8be8-d8a410a510fa`；`acceptance-browser.json` 对应 `dtwin-browser-9c35d62c-c91c-4f3b-860f-d5e2c1930035`；同目录保存实际验收脚本、三份更新后的工程/部署文档及 SHA-256 清单。审计根目录保存受限配置备份 `previous.env`、`before.json`、`activation.json`、`impact-final.json`、最终 `completed.json`。发布包保持构建时快照，部署后文档以证据目录为准。
+
+只有本项目 Nginx 重建；其余 6 个本项目容器和当前公共 Docker 中全部 23 个容器的 ID、启动时间、状态与本轮发布前一致，7 个本项目容器运行、5 个带健康检查均 healthy。所有其他运行配置哈希不变，`.env` 仅改变 `RELEASE_DIR`。回滚时仅恢复 `/data/dtwin/releases/dtwin-ui-20260929-model-library-b0csanop-063700286494` 并重建本项目 Nginx，重新验收；不更改后端或业务数据。
+
+## 2026-09-29 分类模型库与移动缩放发布（此前版本）
 
 于 `2026-09-29T06:38:25.493284Z` 切换至 `/data/dtwin/releases/dtwin-ui-20260929-model-library-b0csanop-063700286494`，入口为 `/assets/index-B0CsANOp.js`。部署包 SHA-256 为 `1154aa54c1601a65a7d1b06cc034a38d93f336e5b7c2f30497a25003319b3757`。119 个 web 文件、54 个 source 文件及源码补丁哈希核验通过；相对通知版本上传 10 个变化 web 文件，其余 109 个从旧 release 复制后逐一核验，多余旧文件按 manifest 清理，旧 release 保留。
 
@@ -52,7 +62,7 @@ CentOS 7 / kernel 3.10、runc 1.1.12、libseccomp 2.3.1 环境下，PostgreSQL A
 
 最终证据目录为 `/data/dtwin/audit/dtwin-ui-20260929-model-library-b0csanop-063700286494/final-evidence/`，报告路径为 `production-results.json`，同目录保留最终验收脚本、截图及文档；审计根目录的服务器收据路径为 `final-verified.json`、`impact-final.json` 和 `completed.json`。发布包保持打包时的源码与文档快照，后补的验收脚本及文档以 `final-evidence/` 为准，不改写已校验的发布包。
 
-本次发布只重建本项目 Nginx。本项目其他 6 个服务与公共 Docker 中全部 25 个容器的 ID、启动时间及状态均与发布前一致；Compose、Nginx、Valkey 配置未变，`.env` 仅修改 `RELEASE_DIR`。后端、数据和其他项目服务未变更。当前回滚目标为 `/data/dtwin/releases/dtwin-ui-20260929-notifications-d-dxotyt`；仅恢复本项目 `RELEASE_DIR` 并重建自己的 Nginx，随后重新验收。前端回滚不会撤销此前独立完成的业务数据迁移。
+本次发布只重建本项目 Nginx。本项目其他 6 个服务与公共 Docker 中全部 25 个容器的 ID、启动时间及状态均与发布前一致；Compose、Nginx、Valkey 配置未变，`.env` 仅修改 `RELEASE_DIR`。后端、数据和其他项目服务未变更。当时回滚目标为 `/data/dtwin/releases/dtwin-ui-20260929-notifications-d-dxotyt`；仅恢复本项目 `RELEASE_DIR` 并重建自己的 Nginx，随后重新验收。前端回滚不会撤销此前独立完成的业务数据迁移。
 
 ## 2026-09-29 统一通知发布（此前版本）
 
