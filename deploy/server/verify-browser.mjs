@@ -169,7 +169,7 @@ async function main() {
     const loginResult = await login.json();
     requireCondition(Array.isArray(loginResult.user?.roles) && loginResult.user.roles.includes('platform_admin'),
       'Browser acceptance requires the existing platform administrator.');
-    await page.getByRole('heading', { level: 1, name: '项目', exact: true }).waitFor({ state: 'visible' });
+    await page.getByRole('region', { name: '项目', exact: true }).waitFor({ state: 'visible' });
     await page.getByRole('button', { name: '新建项目', exact: true }).waitFor({ state: 'visible' });
     const accountMenu = page.getByRole('button', { name: /^账号菜单：/ });
     await accountMenu.waitFor({ state: 'visible' });

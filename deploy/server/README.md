@@ -114,7 +114,9 @@ node deploy/server/verify-model-library-browser.mjs
 
 仅前端升级时，将验证后的 `web/` 放入新的 release 目录，保留旧目录，备份受限 `.env` 并只更新 `RELEASE_DIR`；使用专用 wrapper 的 `compose ... up -d --no-deps nginx` 切换挂载。此变量只用于 Nginx 静态目录，后端镜像和数据不变。前端回滚同样只恢复此前的 `RELEASE_DIR` 并重建自己的 Nginx，随后重新验收；无需停止其他 DTwin 服务或公共 Docker。
 
-当前发布 `dtwin-ui-20261008-account-menu-c56f334` 的前端回滚目标为 `/data/dtwin/releases/dtwin-ui-20260929-model-library-b0csanop-063700286494`。本轮审计目录 `/data/dtwin/audit/dtwin-ui-20261008-account-menu-c56f334` 保存 `activation.json`、`impact-final.json`、`completed.json`；`evidence/` 保存验收报告、实际脚本及发布后的文档。
+当前发布 `dtwin-ui-20261008-workspace-61472f6` 的前端回滚目标为 `/data/dtwin/releases/dtwin-ui-20261008-account-menu-c56f334`。本轮只更新前端；审计目录 `/data/dtwin/audit/dtwin-ui-20261008-workspace-61472f6/` 保留配置备份、`activation.json`、`impact-final.json` 和 `completed.json`，`evidence/` 保存接口、浏览器与工作台专项报告、实际验收脚本、截图和文档。应用代码提交为 `61472f61ae5bd3914710ac417e2372fdc5a01b7a`，源码已同步 GitHub 与 Codeup `main`；后续验收脚本与记录提交不改变已发布前端产物。
+
+此前发布 `dtwin-ui-20261008-account-menu-c56f334` 的前端回滚目标为 `/data/dtwin/releases/dtwin-ui-20260929-model-library-b0csanop-063700286494`。本轮审计目录 `/data/dtwin/audit/dtwin-ui-20261008-account-menu-c56f334` 保存 `activation.json`、`impact-final.json`、`completed.json`；`evidence/` 保存验收报告、实际脚本及发布后的文档。
 
 此前发布 `dtwin-ui-20260929-model-library-b0csanop-063700286494` 当时的前端回滚目标为 `/data/dtwin/releases/dtwin-ui-20260929-notifications-d-dxotyt`；原始完整 release 继续作为首次部署历史与后端构建记录保留。本轮审计目录为 `/data/dtwin/audit/dtwin-ui-20260929-model-library-b0csanop-063700286494`，线上专项运行 `model-library-browser-0651ca9b-41fe-40e9-8842-42cff4aaa2cc` 的 7 组检查通过。最终证据路径为 `final-evidence/production-results.json`，同目录包含最终脚本、截图和文档；服务器收据路径为审计根目录下的 `final-verified.json`、`impact-final.json`、`completed.json`。发布包保持当时快照，后补验收脚本和文档以 `final-evidence/` 为准。各项验收须使用本轮证据，不把此前版本的通过结果当作当前版本已通过。
 

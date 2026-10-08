@@ -2,7 +2,7 @@
 
 首次部署：2026-09-28；最新发布及记录更新：2026-10-08。服务器：`8.136.35.33`。
 
-当前前端于 `2026-10-08T05:46:44.262816Z` 切换至 `/data/dtwin/releases/dtwin-ui-20261008-account-menu-c56f334`，源码为 Codeup `main` 已提交的 `c56f3343271648f8362803e5ecedf139d3211b53`，入口 `/assets/index-CZ1SlaM0.js`。顶部账号区改为头像下拉菜单，名称、角色和“退出登录”在展开后显示。119 个 web 文件全部通过 SHA-256 校验（9 个增量上传、110 个复用）；10 项公网接口/资源检查与 8 项真实 HTTP 浏览器检查通过，包括菜单退出、会话失效和画布保存刷新，零页面异常，临时项目与测试会话均已清理。只重建本项目 Nginx，其余 6 个本项目容器和公共 Docker 中 23 个容器的 ID、启动时间、状态不变；除 `.env` 的 `RELEASE_DIR` 外，运行配置不变。回滚目标为 `/data/dtwin/releases/dtwin-ui-20260929-model-library-b0csanop-063700286494`；审计位于 `/data/dtwin/audit/dtwin-ui-20261008-account-menu-c56f334/`。
+当前前端于 `2026-10-08T07:58:36.859251Z` 切换至 `/data/dtwin/releases/dtwin-ui-20261008-workspace-61472f6`，应用源码为 GitHub 与 Codeup `main` 同一提交 `61472f61ae5bd3914710ac417e2372fdc5a01b7a`，入口 `/assets/index-DELsoXwy.js`。包含用户卡片与设置弹窗、紧凑导航和项目类型切换、列表标题整理、工作台纹理及页脚、统一 Kingdom Logo 与页签图标；顶部品牌在新标签页打开宣传页。120 个 web 文件 SHA-256 校验通过（11 个增量上传、109 个复用）。10 项公网接口/资源检查、8 项真实 HTTP 浏览器检查及 6 组深浅主题工作台检查通过，临时项目已删除、测试会话已撤销。只重建本项目 Nginx，另外 6 个本项目容器和 23 个其他业务容器的 ID、启动时间、状态不变；5 个健康检查均 healthy，运行配置仅改变 `RELEASE_DIR`。回滚目标为 `/data/dtwin/releases/dtwin-ui-20261008-account-menu-c56f334`，审计位于 `/data/dtwin/audit/dtwin-ui-20261008-workspace-61472f6/`。
 
 用户另行授权的 18 个项目、70 个资源迁移已完成数据库、对象、公网 API、浏览器和同机服务影响验收；4 个本地模拟数据源保持暂停，最终验收证据已归档并核对服务器权限与哈希。迁移有独立验收证据，范围及限制见 [本地到生产迁移](../../docs/local-to-production-migration.md)。历史发布记录继续保留，各版本使用各自的验收证据。
 
@@ -10,11 +10,11 @@
 
 | 项目 | 本次部署内容 |
 | --- | --- |
-| 前端源码 | Codeup `DTwin_UI/main`：`c56f3343271648f8362803e5ecedf139d3211b53`；工作区干净；GitHub `noah_code` 对应改动提交 `cd18a6d` |
+| 前端源码 | GitHub `main` 与 Codeup `DTwin_UI/main`：`61472f61ae5bd3914710ac417e2372fdc5a01b7a` |
 | 后端源码 | Codeup `DTwin_Cloud` 的 `main`：`ecd3f476812bcc87a85b692a9040cc9b9a514285` |
-| 当前前端发布目录 | `/data/dtwin/releases/dtwin-ui-20261008-account-menu-c56f334` |
-| 当前前端入口 | `/assets/index-CZ1SlaM0.js` |
-| 前端回滚目标 | `/data/dtwin/releases/dtwin-ui-20260929-model-library-b0csanop-063700286494` |
+| 当前前端发布目录 | `/data/dtwin/releases/dtwin-ui-20261008-workspace-61472f6` |
+| 当前前端入口 | `/assets/index-DELsoXwy.js` |
+| 前端回滚目标 | `/data/dtwin/releases/dtwin-ui-20261008-account-menu-c56f334` |
 | 原完整发布与后端构建目录 | `/data/dtwin/releases/dtwin-release-20260928-b5bd9de-ecd3f47`，保留历史构建与诊断记录 |
 | 活动配置 | `/data/dtwin/config` |
 | 业务数据 | `/data/dtwin/data/postgres`、`/data/dtwin/data/valkey`、`/data/dtwin/data/storage` |
@@ -22,11 +22,11 @@
 | 独立运行服务临时状态 | `/run/dtwin-docker`、`/run/dtwin-containerd` |
 | 运维入口 | `/data/dtwin/bin/docker-dtwin`；先检查数据盘挂载与实际 Docker root，再操作本项目 socket |
 | 运行日志 | `/data/dtwin/logs`；容器日志位于本项目 Docker 数据目录并按配置轮转 |
-| 当前前端发布审计目录 | `/data/dtwin/audit/dtwin-ui-20261008-account-menu-c56f334` |
+| 当前前端发布审计目录 | `/data/dtwin/audit/dtwin-ui-20261008-workspace-61472f6` |
 | 首次部署审计目录 | `/data/dtwin/audit/deploy-20260928` |
-| 公开地址 | [DTwin](http://8.136.35.33:19080)，10 项公网接口/资源与 8 项真实浏览器检查通过 |
+| 公开地址 | [DTwin](http://8.136.35.33:19080)，10 项公网接口/资源、8 项真实浏览器及 6 组工作台专项检查通过 |
 
-前端以 `VITE_API_BASE_URL=/ pnpm --filter @factory-twin/web build` 从已推送提交 `c56f3343271648f8362803e5ecedf139d3211b53` 构建，包含 TypeScript 检查；构建通过，Vite 仍提示既有大体积 chunk。可直接检出该提交复现源码，或检出 `release.json` 的 `sourceBaseCommit` 后应用 `source.patch`；完整产物校验和同样记录在 `release.json`。首次后端构建使用 JDK 21 执行 `mvn -B verify`，94 项测试通过；本轮后端源码与镜像不变。
+前端以 `VITE_API_BASE_URL=/ pnpm --filter @factory-twin/web build` 从已推送提交 `61472f61ae5bd3914710ac417e2372fdc5a01b7a` 构建，包含 TypeScript 检查；构建通过，Vite 仍提示既有大体积 chunk。可直接检出该提交复现源码，或检出 `release.json` 的 `sourceBaseCommit` 后应用 `source.patch`；完整产物校验和同样记录在 `release.json`。首次后端构建使用 JDK 21 执行 `mvn -B verify`，94 项测试通过；本轮后端源码与镜像不变。
 
 | 运行组件 | 本次采用的版本系列或构建基线 |
 | --- | --- |
@@ -40,7 +40,21 @@
 
 CentOS 7 / kernel 3.10、runc 1.1.12、libseccomp 2.3.1 环境下，PostgreSQL Alpine 初始化和 Nginx Alpine 实际启动曾出现写入 `EPERM`。本项目分别改用 Bookworm 镜像后通过实际验证，未升级公共运行组件或放宽默认 seccomp。PostgreSQL 有 strace 证据，Nginx 仅有启动错误日志，不能将二者的底层系统调用原因混同。详情见 [兼容性记录](README.md#宿主机兼容性记录)。
 
-## 2026-10-08 账号下拉菜单发布（当前版本）
+## 2026-10-08 工作台与品牌界面发布（当前版本）
+
+北京时间 15:58 发布。应用提交 `61472f61ae5bd3914710ac417e2372fdc5a01b7a` 已推送至 GitHub 与 Codeup `main`。生产包 SHA-256：`1c1113e3e24fc0da6b6a3364180ac9bfb5b5da573fbb0bf0050e930ff16e69e9`；120 个 web 文件逐一核验，11 个增量上传、109 个从旧版本复制，旧目录保留。后端镜像、数据库与对象存储无需迁移。
+
+发布前用户管理浏览器回归、模块权限回归、15 组主题检查、14 项错误通知浏览器用例及生产构建通过。正式发布使用已提交源码；验收脚本 `verify-browser.mjs` 随后将项目定位从已删除的大标题改为有名称的页面区域，该调整和本文记录在后续提交中。
+
+真实公网 `verify.mjs` 10 项通过（运行 `dtwin-verify-bb0b7739-c193-4bd2-b7b9-82cd391b3708`），`verify-browser.mjs` 8 项通过（运行 `dtwin-browser-5875fa9c-5d4a-43a5-808e-5ac4b229e21d`），含普通 HTTP 首页、错误/正确登录、画布组件保存刷新、账号菜单退出及会话失效。只清理本轮临时项目并撤销测试会话。
+
+工作台专项在深浅主题验证原始 Logo 文件哈希、页签图标、键盘打开独立宣传页并保留工作台、用户卡片打开设置/取消/焦点恢复、独立用户管理入口、项目类型键盘切换、新建弹窗和取消，以及四个列表页在 1280/390/320px 的布局、标题与页脚。6 组通过，无页面异常，两轮主题会话均撤销；此只读专项未修改既有用户或项目配置，不代表全部项目交互或负载测试。
+
+本轮证据位于 `/data/dtwin/audit/dtwin-ui-20261008-workspace-61472f6/evidence/`，包含 `acceptance-api.json`、`acceptance-browser.json`、`acceptance-workspace.json`、实际脚本、截图、工程与部署文档，以及 SHA-256 清单。审计根目录保留受限 `previous.env`、`before.json`、`activation.json`、`impact-final.json`、`completed.json`。应用产物按 release 内 `release.json` / `source.patch` 复现，部署后文档以证据目录为准。
+
+回滚只将本项目 `RELEASE_DIR` 恢复为 `/data/dtwin/releases/dtwin-ui-20261008-account-menu-c56f334`，再用专用 wrapper 重建 Nginx 并重新验收；不回滚已有数据迁移。
+
+## 2026-10-08 账号下拉菜单发布（此前版本）
 
 发布时间 `2026-10-08T05:46:44.262816Z`（北京时间 13:46）。提交已推送至 Codeup `main`（`c56f334`）和 GitHub `noah_code`（`cd18a6d`）；构建使用 Codeup 已提交源码。发布包 SHA-256：`e807e237ad8c39f809ebec9fb66c2b0b304bb75d80bd77de7ea4e2011ce99999`。新目录内全部 119 个 web 文件及源码补丁通过校验；旧 release 保留。
 
