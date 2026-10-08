@@ -171,7 +171,12 @@ async function main() {
       'Browser acceptance requires the existing platform administrator.');
     await page.getByRole('heading', { level: 1, name: '项目', exact: true }).waitFor({ state: 'visible' });
     await page.getByRole('button', { name: '新建项目', exact: true }).waitFor({ state: 'visible' });
-    await page.getByRole('button', { name: '退出', exact: true }).waitFor({ state: 'visible' });
+    const accountMenu = page.getByRole('button', { name: /^账号菜单：/ });
+    await accountMenu.waitFor({ state: 'visible' });
+    await accountMenu.click();
+    await page.getByRole('menuitem', { name: '退出登录', exact: true }).waitFor({ state: 'visible' });
+    await page.keyboard.press('Escape');
+    requireCondition(await accountMenu.getAttribute('aria-expanded') === 'false', 'Escape must close the account menu.');
     noPageErrors('Authenticated workspace');
     passed('administrator login reaches the project workspace');
 
@@ -210,6 +215,19 @@ async function main() {
     await ensureHttpContext(page, 'canvas');
     noPageErrors('Canvas creation/save/reload');
     passed('real palette drag creates a UUID v4 node and saves/reloads it over public HTTP');
+
+    await page.goto(`${origin.origin}/#/projects`, { waitUntil: 'domcontentloaded' });
+    await page.getByRole('button', { name: /^账号菜单：/ }).click();
+    const [logout] = await Promise.all([
+      page.waitForResponse(response => isResponse(response, '/api/v1/auth/logout', 'POST')),
+      page.getByRole('menuitem', { name: '退出登录', exact: true }).click(),
+    ]);
+    requireCondition(logout.status() === 204, `Menu logout expected 204, received ${logout.status()}.`);
+    await page.getByLabel('账号', { exact: true }).waitFor({ state: 'visible' });
+    await api(page, '/api/v1/auth/me', { status: 401 });
+    passed('account dropdown logs out and restores the login form');
+    // Re-authenticate this test session solely to remove its temporary project in finally.
+    await api(page, '/api/v1/auth/login', { method: 'POST', body: { identifier, password: admin.password } });
   } catch (error) {
     failed('verification', error);
   } finally {

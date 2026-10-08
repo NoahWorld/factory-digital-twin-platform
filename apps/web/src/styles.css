@@ -424,7 +424,7 @@ input:focus {
 }
 
 .topbar-nav a:focus-visible,
-.topbar-logout:focus-visible,
+.account-menu button:focus-visible,
 .canvas-toolbar a:focus-visible,
 .canvas-toolbar button:focus-visible {
   outline: 2px solid var(--ui-accent);
@@ -438,19 +438,49 @@ input:focus {
   margin-left: auto;
 }
 
-.user-identity {
-  display: flex;
+.account-menu {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.account-menu-trigger {
+  display: inline-flex;
   align-items: center;
-  gap: 9px;
-  padding: 0 0 0 14px;
-  border-left: 1px solid var(--ui-border);
+  gap: 5px;
+  min-height: 40px;
+  padding: 4px 7px 4px 4px;
+  border: 1px solid var(--ui-border);
+  border-radius: 24px;
+  color: var(--ui-text-muted);
+  background: var(--ui-surface);
+  cursor: pointer;
+}
+
+.account-menu-trigger:hover,
+.account-menu-trigger[aria-expanded="true"] {
+  border-color: var(--ui-accent-border);
+  background: var(--ui-hover);
+}
+
+.account-menu-chevron {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.account-menu-trigger[aria-expanded="true"] .account-menu-chevron {
+  transform: rotate(180deg);
 }
 
 .user-avatar {
   display: grid;
-  width: 34px;
-  height: 34px;
-  flex: 0 0 34px;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
   place-items: center;
   border: 1px solid var(--ui-accent-border);
   border-radius: 50%;
@@ -460,29 +490,75 @@ input:focus {
   font-weight: 800;
 }
 
-.user-identity-text {
+.account-menu-popup {
+  position: absolute;
+  z-index: 100;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 200px;
+  max-width: calc(100vw - 32px);
+  padding: 6px;
+  border: 1px solid var(--ui-border);
+  border-radius: 12px;
+  background: var(--ui-surface-raised);
+  box-shadow: 0 8px 28px rgba(var(--ui-shadow-rgb), calc(0.2 * var(--ui-shadow-strength)));
+}
+
+.account-menu-identity {
   display: grid;
-  gap: 2px;
-  min-width: 0;
+  gap: 4px;
+  margin-bottom: 5px;
+  padding: 8px 10px 12px;
+  border-bottom: 1px solid var(--ui-border);
+  overflow-wrap: anywhere;
 }
 
-.user-identity-text strong {
-  max-width: 124px;
-  overflow: hidden;
+.account-menu-identity strong {
+  color: var(--ui-text-strong);
   font-size: 0.8rem;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
-.user-identity-text span {
+.account-menu-identity span {
   color: var(--ui-text-subtle);
-  font-size: 0.66rem;
+  font-size: 0.72rem;
 }
 
-.topbar-logout {
+.account-menu-logout {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
   min-height: 36px;
-  padding: 7px 13px;
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--ui-danger);
+  text-align: left;
+  font: inherit;
   font-size: 0.79rem;
+  cursor: pointer;
+}
+
+.account-menu-logout:hover:not([aria-disabled="true"]) {
+  border-color: var(--ui-danger-border);
+  background: var(--ui-danger-soft);
+}
+
+.account-menu-logout[aria-disabled="true"] {
+  color: var(--ui-text-subtle);
+  background: var(--ui-readonly-bg);
+  cursor: wait;
+}
+
+.account-menu-logout svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .workspace-content {
@@ -7036,21 +7112,12 @@ input:focus {
     padding: 10px 16px;
   }
 
-  .brand small,
-  .user-identity-text {
+  .brand small {
     display: none;
-  }
-
-  .user-identity {
-    padding-left: 8px;
   }
 
   .user-menu {
     gap: 7px;
-  }
-
-  .topbar-logout {
-    padding: 7px 9px;
   }
 
   .page-heading {

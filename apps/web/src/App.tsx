@@ -4,6 +4,7 @@ import { standaloneSceneRoutePath, type ProjectType } from "../../../shared/stan
 import { apiUrl, ApiRequestError, errorMessage, publicShareToken, request } from "./api";
 import { LoginShowcase } from "./auth/LoginShowcase";
 import { useNotifications } from "./components/NotificationProvider";
+import { AccountMenu } from "./components/AccountMenu";
 import { reportError, UserFacingError } from "./api";
 import { canvasRoutePath, projectTemplateCanvasPath, projectTemplateScenePath } from "./canvas/routes";
 import { getSceneTemplate, isSceneTemplateId, type SceneTemplateId, type ProjectTemplate } from "./scene/scene-templates";
@@ -959,16 +960,13 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
         </div>
         <div className="user-menu">
           <ThemeToggle />
-          <div className="user-identity">
-            <span className="user-avatar" aria-hidden="true">{user.displayName.trim().slice(0, 1)}</span>
-            <div className="user-identity-text">
-              <strong>{user.displayName}</strong>
-              <span>{user.roles.includes("platform_admin") ? "平台管理员" : "交付账号"}</span>
-            </div>
-          </div>
-          <button className="secondary-button topbar-logout" disabled={loggingOut} onClick={() => void logout()} type="button">
-            {loggingOut ? "退出中…" : "退出"}
-          </button>
+          <AccountMenu
+            key={route.kind}
+            displayName={user.displayName}
+            roleLabel={isPlatformAdmin ? "平台管理员" : "交付账号"}
+            loggingOut={loggingOut}
+            onLogout={() => void logout()}
+          />
         </div>
       </header>
 
