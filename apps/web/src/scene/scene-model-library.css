@@ -11,3 +11,5 @@
 .standalone-model-list .standalone-procedural-icon.is-water { color: #2688a8; }
 .standalone-model-list .standalone-procedural-icon.is-military { color: #7b8960; }
 .standalone-library-empty { padding: 12px; border: 1px dashed var(--ui-border); border-radius: 8px; color: var(--ui-text-subtle); font-size: 0.65rem; line-height: 1.6; }
+
+.standalone-model-list .standalone-procedural-icon.is-fluid { color: var(--ui-accent); }

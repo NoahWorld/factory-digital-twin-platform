@@ -60,7 +60,6 @@ type ResourcesPageProps = {
 };
 
 type ResourceKind = "model" | "image" | "video" | "audio";
-type ResourceFilter = "all" | ResourceKind;
 type ResourceItem =
   | { kind: "model"; asset: ModelAsset }
   | { kind: "image"; asset: ImageAsset }
@@ -79,8 +78,7 @@ const readResourceItems = async (projectId: string): Promise<ResourceItem[]> => 
   ];
 };
 
-const filterLabels: Array<{ id: ResourceFilter; label: string }> = [
-  { id: "all", label: "全部" },
+const filterLabels: Array<{ id: ResourceKind; label: string }> = [
   { id: "model", label: "3D 模型" },
   { id: "image", label: "图片" },
   { id: "video", label: "视频" },
@@ -263,7 +261,7 @@ export function ResourcesPage({
 }: ResourcesPageProps) {
   const notify = useNotifications();
   const [selectedProjectId, setSelectedProjectId] = useState("");
-  const [filter, setFilter] = useState<ResourceFilter>("all");
+  const [filter, setFilter] = useState<ResourceKind>("model");
   const [items, setItems] = useState<ResourceItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -318,7 +316,7 @@ export function ResourcesPage({
     || selectedProject?.projectRole === "owner"
     || selectedProject?.projectRole === "editor"
   );
-  const filteredItems = filter === "all" ? items : items.filter((item) => item.kind === filter);
+  const filteredItems = items.filter((item) => item.kind === filter);
 
   const refreshAfterMutation = async (message: string, tone: "success" | "warning" = "success") => {
     const loadId = currentProjectId.current === selectedProjectId ? ++resourceLoadId.current : null;
@@ -391,6 +389,7 @@ export function ResourcesPage({
     setUploadingKind(kind);
     try {
       await uploadAssetFile(kind, file);
+      setFilter(kind);
       await refreshAfterMutation(`${kindLabels[kind]}“${file.name}”已上传。`);
     } catch (reason) {
       notify.error(reason);
@@ -468,7 +467,7 @@ export function ResourcesPage({
       setUploadingKind(null);
     }
 
-    setFilter(kinds.every((kind) => kind === kinds[0]) ? kinds[0] : "all");
+    setFilter(kinds[0]);
     await refreshAfterMutation(input.files.length === 1
       ? `写实漫游原始素材“${input.files[0].name}”已导入；GPU 重建服务尚未接入。`
       : `${input.files.length} 个写实漫游原始素材已导入；GPU 重建服务尚未接入。`);
@@ -559,7 +558,7 @@ export function ResourcesPage({
                   type="button"
                 >
                   {option.label}
-                  <span>{option.id === "all" ? items.length : items.filter((item) => item.kind === option.id).length}</span>
+                  <span>{items.filter((item) => item.kind === option.id).length}</span>
                 </button>
               ))}
             </div>

@@ -18,7 +18,7 @@ import { createSceneObjectPickingService } from "./picking-service";
 import { FluidManager } from "./fluid-manager";
 import { SceneFrameClock } from "./frame-clock";
 import { FluidPathGuide, fluidPointOnPlane, type FluidEditorState } from "./fluid-path-editor";
-import type { FluidDefinition } from "../../../../shared/fluids";
+import type { FluidDefinition, FluidPoint } from "../../../../shared/fluids";
 import { DecorationManager } from "./decoration-manager";
 import { RoomAlarmRuntime, type RoomAlarmObservation, type RoomAlarmStatus } from "./room-alarm-runtime";
 import type { SceneDecoration } from "../../../../shared/scene-decorations";
@@ -795,6 +795,7 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
       raycaster.setFromCamera(new THREE.Vector2((x - viewport.left) / viewport.width * 2 - 1, -(y - viewport.top) / viewport.height * 2 + 1), camera);
       return fluidPointOnPlane(raycaster.ray, contentOffset.matrixWorld, desired.fluidEditor);
     };
+    const setFluidCursor = (point: FluidPoint | null) => fluidGuide.setCursor(point);
 
     const resize = () => {
       const width = Math.max(container.clientWidth, 1);
@@ -1004,7 +1005,7 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
       nativePlayback.onProgress(playback.progress());
       renderSceneFrame();
     };
-    return { update, setTwinDrive, seekAnimation, resetCamera: fitCameraToScene, pickSceneTarget, pickSceneObject, pickFluidPoint, enterWalk, exitWalk, navigationStatus: () => navigation, dispose: disposeRuntime, diagnostics: () => lastDiagnostics };
+    return { update, setTwinDrive, seekAnimation, resetCamera: fitCameraToScene, pickSceneTarget, pickSceneObject, pickFluidPoint, setFluidCursor, enterWalk, exitWalk, navigationStatus: () => navigation, dispose: disposeRuntime, diagnostics: () => lastDiagnostics };
   } catch (reason) {
     for (const cleanup of constructionCleanup.reverse()) cleanup();
     throw reason;

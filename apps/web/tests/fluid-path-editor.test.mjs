@@ -69,3 +69,36 @@ test('draft flow arrows and the source marker follow reverse flow without changi
   }
   guide.dispose();
 });
+
+test('grid snapping affects only the two drawing axes and preserves exact plane depth', () => {
+  const matrix = new THREE.Matrix4().compose(new THREE.Vector3(12, -3, 4), new THREE.Quaternion().setFromEuler(new THREE.Euler(.2, 1.1, -.3)), new THREE.Vector3(2, 2, 2));
+  for (const [plane, origin, direction, expected] of [
+    ['xz', [1.13, 8, -2.37], [0, -1, 0], [1.25, 2.1234, -2.25]],
+    ['xy', [1.13, -2.37, 8], [0, 0, -1], [1.25, -2.25, 2.1234]],
+    ['yz', [8, 1.13, -2.37], [-1, 0, 0], [2.1234, 1.25, -2.25]],
+  ]) {
+    const ray = new THREE.Ray(new THREE.Vector3(...origin), new THREE.Vector3(...direction)).applyMatrix4(matrix);
+    assert.deepEqual(fluidPointOnPlane(ray, matrix, { plane, offset: 2.1234, snapStep: .25 }), expected);
+    for (const snapStep of [-1, NaN, Infinity, 101]) assert.throws(() => fluidPointOnPlane(ray, matrix, { plane, offset: 2, snapStep }), /吸附/);
+  }
+  assert.throws(() => fluidPointOnPlane(new THREE.Ray(new THREE.Vector3(0, 5, 0), new THREE.Vector3(1, -.01, 0).normalize()), new THREE.Matrix4(), { plane: 'xz', offset: 0 }), /太贴近/);
+});
+
+test('placement preview reuses GPU objects, hides on pause and is disposed with the guide', () => {
+  const parent = new THREE.Group(), guide = new FluidPathGuide(parent);
+  const editor = { points: [[0, 0, 0]], plane: 'xz', offset: 0, snapStep: .25, active: true, direction: 'forward', selectedPointIndex: null };
+  guide.update(editor);
+  const cursor = parent.getObjectByName('fluid-placement-cursor');
+  const resources = new Set(), released = new Set();
+  parent.traverse(o => { if(o.geometry) resources.add(o.geometry); if(o.material) (Array.isArray(o.material)?o.material:[o.material]).forEach(m=>resources.add(m)); });
+  for(const r of resources) r.addEventListener('dispose',()=>released.add(r));
+  for(let i=0;i<100;i++) guide.setCursor([i*.25, 0, 2]);
+  assert.equal(parent.getObjectByName('fluid-placement-cursor'),cursor);
+  assert.deepEqual(cursor.position.toArray(),[24.75,0,2]);
+  assert.equal(released.size,0);
+  guide.setCursor(null); assert.equal(cursor.visible,false);
+  guide.update({...editor, active:false});
+  assert.equal(released.size,resources.size);
+  assert.equal(parent.getObjectByName('fluid-placement-cursor'),undefined);
+  guide.dispose(); assert.equal(parent.children.length,0);
+});

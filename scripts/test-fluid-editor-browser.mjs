@@ -12,6 +12,7 @@ const cacheDir = await mkdtemp(join(tmpdir(), 'fluid-editor-browser-'));
 const fixture = `
 import React, { useState } from 'react';
 import { createRoot } from 'react-dom/client';
+import { SceneModelLibrary } from '/src/scene/SceneModelLibrary.tsx';
 import { FluidEditor, FluidLayers, useFluidEditor } from '/src/scene/FluidEditor.tsx';
 import '/src/styles.css';
 import '/src/theme/theme-palette.css';
@@ -21,11 +22,14 @@ function App() {
   const [enabled, setEnabled] = useState(true);
   const editor = useFluidEditor({ fluids, onChange: setFluids, enabled });
   return h('main', { className: 'fixture' },
-    h('aside', { className: 'standalone-3d-library' }, h(FluidLayers, { editor, onAdd: editor.start, onSelect: editor.select })),
+    h('aside', { className: 'standalone-3d-library' }, h(SceneModelLibrary, {models: [], disabled: !enabled, decorationsDisabled: true, fluidsDisabled: !enabled || !!editor.session, extrasSupported: false, modelName: a => a.id, onPreview: () => {}, onAddModel: () => {}, onAddDecoration: () => {}, onAddFluid: editor.start}), h('div', {className: 'standalone-layer-tree'}, h(FluidLayers, { editor, onSelect: editor.select }))),
     h('section', { className: 'fixture-canvas' },
       h('button', { id: 'point-surface', onClick: event => {
         const bounds = event.currentTarget.getBoundingClientRect();
-        editor.onPoint([Number(((event.clientX - bounds.left) / 10).toFixed(2)), editor.session?.offset ?? 0, Number(((event.clientY - bounds.top) / 10).toFixed(2))]);
+        const u = Number(((event.clientX - bounds.left) / 10).toFixed(2));
+        const v = Number(((event.clientY - bounds.top) / 10).toFixed(2));
+        const { plane, offset } = editor.session;
+        editor.onPoint(plane === 'xz' ? [u, offset, v] : plane === 'xy' ? [u, v, offset] : [offset, u, v]);
       } }, '鼠标路径回调测试平面'),
       h('button', { id: 'permission', onClick: () => setEnabled(value => !value) }, 'Toggle editing permission'),
       h('pre', { id: 'saved' }, JSON.stringify(fluids)),
@@ -78,7 +82,7 @@ try {
   const point = (x, y) => page.locator('#point-surface').click({ position: { x, y } });
   const apply = () => page.getByRole('button', { name: '应用流体', exact: true }).click();
 
-  await page.getByRole('button', { name: '＋ 气体', exact: true }).click();
+  await page.getByRole('button', { name: '加入场景 气体', exact: true }).click();
   assert.equal((await draft()).fluid.kind, 'gas');
   assert.equal((await saved()).length, 0);
   assert.equal((await preview()).length, 0);
@@ -96,7 +100,7 @@ try {
   console.log('Fluid editor: independent zero/one-point state, live preview and cancellation passed');
 
   for (const [kind, name, color] of [['gas', '气体', '#aabbee'], ['liquid', '液体', '#1177ee'], ['molten', '熔融体', '#ee7722']]) {
-    await page.getByRole('button', { name: `＋ ${name}`, exact: true }).click();
+    await page.getByRole('button', { name: `加入场景 ${name}`, exact: true }).click();
     await point(20, 30); await point(120, 60); await point(170, 130);
     await select('表现形态', '扩散流 · 沿流向扩散');
     await select('流动方向', '反向：末点 → 首点');
@@ -114,17 +118,28 @@ try {
 
   const original = (await saved()).at(-1);
   await page.getByRole('button', { name: '编辑路径', exact: true }).click();
+  assert.equal(await page.locator('.fluid-editor .standalone-property-group h3').first().innerText(), '流向路径');
   await select('鼠标绘制平面', 'XY 竖直面（固定 Z）');
   await page.getByLabel('平面位置 Z', { exact: true }).fill('3');
   await page.getByLabel('平面位置 Z', { exact: true }).press('Tab');
   assert.equal((await draft()).plane, 'xy');
   assert.equal((await draft()).offset, 3);
   await page.getByRole('button', { name: /^1 · 首点/ }).click();
+  assert.equal((await draft()).offset, original.points[0][2], 'Selecting a point keeps its own depth on the active plane');
+  await page.getByLabel('网格吸附', { exact: true }).check();
+  assert.equal((await draft()).snapStep, 0.25);
+  await page.getByLabel('吸附间距', { exact: true }).fill('0.5');
+  await page.getByLabel('吸附间距', { exact: true }).press('Tab');
+  assert.equal((await draft()).snapStep, 0.5);
   await page.getByLabel('X', { exact: true }).fill('7.5');
   await page.getByLabel('X', { exact: true }).press('Tab');
   assert.equal((await draft()).fluid.points[0][0], 7.5);
+  await page.getByLabel('Z', { exact: true }).fill('4.125');
+  await page.getByLabel('Z', { exact: true }).press('Tab');
+  assert.equal((await draft()).offset, 4.125, 'Typing the fixed-axis coordinate moves the drawing plane with the selected point');
   await point(80, 70);
   assert.equal((await draft()).fluid.points.length, 3, 'Selected point callback replaces instead of appending');
+  assert.equal((await draft()).fluid.points[0][2], 4.125, 'Mouse placement must preserve the manually entered depth');
   await page.getByRole('button', { name: '删除此点', exact: true }).click();
   assert.equal((await draft()).fluid.points.length, 2);
   await page.getByRole('button', { name: '撤销上一点', exact: true }).click();
@@ -175,7 +190,7 @@ try {
   assert.equal(await page.locator('.standalone-3d-inspector').evaluate(element => element.scrollWidth <= element.clientWidth + 1), true, 'Narrow inspector must not overflow horizontally');
   await page.locator('#permission').click();
   assert.equal(await page.getByLabel('流体名称', { exact: true }).isDisabled(), true);
-  assert.equal(await page.getByRole('button', { name: '＋ 气体', exact: true }).isDisabled(), true);
+  assert.equal(await page.getByRole('button', { name: '加入场景 气体', exact: true }).isDisabled(), true);
   assert.equal(await page.locator('select').count(), 0, 'Use the shared Select component');
   assert.deepEqual(errors, []);
   assert.deepEqual(apiRequests, [], 'Isolated test must not access project/customer APIs');

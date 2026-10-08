@@ -20,7 +20,7 @@ import {
   type StandaloneSceneSettings,
 } from "../../../../shared/standalone-3d";
 import type { TwinAction } from "../../../../shared/twin-actions";
-import { parseFluids, type FluidDefinition, type FluidKind } from "../../../../shared/fluids";
+import { FLUID_LIMITS, parseFluids, type FluidDefinition, type FluidKind } from "../../../../shared/fluids";
 import { FluidEditor, FluidLayers, useFluidEditor } from "../scene/FluidEditor";
 import { errorMessage, request, reportError } from "../api";
 import { findBuiltinModel, latestBuiltinModel } from "../../../../shared/builtin-models";
@@ -66,7 +66,7 @@ import { withTwinDriveEnabled } from "../twin/twin-config-state";
 import type { TwinDriveDiagnostics, TwinNodeCatalogEntry } from "../scene/twin-drive-runtime";
 import { SceneExtrasEditor } from "../scene/SceneExtrasEditor";
 import { SceneModelLibrary } from "../scene/SceneModelLibrary";
-import { decorationLibraryItems } from "../scene/model-library";
+import { decorationLibraryItems, fluidLibraryItems } from "../scene/model-library";
 import { RoomAlarmStatusPanel } from "../scene/RoomAlarmStatusPanel";
 import type { RoomAlarmStatus } from "../scene/room-alarm-runtime";
 import { useRoomAlarmData } from "../twin/useRoomAlarmData";
@@ -836,10 +836,10 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
   }, [draftScene?.instances, draftScene?.linked2dProjectId, mode, executeAndPublish, fluidEditor.select, extrasPending, notify]);
 
   if (loading) {
-    return <main className="canvas-page-state"><p className="eyebrow">3D workspace</p><h1>正在加载独立 3D 场景…</h1></main>;
+    return <main className="canvas-page-state"><h1>正在加载独立 3D 场景…</h1></main>;
   }
   if (error && !draftScene) {
-    return <main className="canvas-page-state error-state"><p className="eyebrow">3D workspace</p><h1>3D 项目加载失败</h1><p>{error}</p>{!publicView ? <a className="secondary-button" href="#/projects">返回项目</a> : null}</main>;
+    return <main className="canvas-page-state error-state"><h1>3D 项目加载失败</h1><p>{error}</p>{!publicView ? <a className="secondary-button" href="#/projects">返回项目</a> : null}</main>;
   }
   if (!draftScene || draftScene.projectId !== projectId || !rendererNode) return null;
 
@@ -924,42 +924,57 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
   return (
     <main className={`standalone-3d-editor${twinEditor ? " is-configuring-twin" : ""}`}>
       <header className="standalone-3d-toolbar">
-        <a className="secondary-button compact-button" href="#/projects" onClick={(event) => { if (fluidEditor.session) { event.preventDefault(); notify.warning("请先应用并保存或取消当前流体路径，再离开编辑器。"); setInspectorView("fluid"); } }}>返回项目</a>
-        <div className="standalone-3d-title"><span>3D SCENE BUILDER</span><strong>{projectName}</strong></div>
-        <div className="standalone-3d-budget" title="通过明确预算阻止浏览器无上限加载">
-          <span>{draftScene.instances.length + extrasCost.instances}/{limits.maximumInstances} 实例</span>
-          <span>{scenePerformance.estimatedMeshInstances}/{limits.maximumEstimatedMeshInstances} 网格</span>
-          <span>{formatFileSize(scenePerformance.uniqueModelBytes)}/{formatFileSize(limits.maximumUniqueModelBytes)}</span>
-          {draftScene.settings.playAnimations ? <span>{scenePerformance.animatedInstances}/{limits.maximumAnimatedInstances} 动画实例</span> : null}
+        <div className="standalone-toolbar-meta">
+          <a className="secondary-button compact-button" href="#/projects" onClick={(event) => { if (fluidEditor.session) { event.preventDefault(); notify.warning("请先应用并保存或取消当前流体路径，再离开编辑器。"); setInspectorView("fluid"); } }}>返回项目</a>
+          <div className="standalone-3d-title"><strong>{projectName}</strong><span>3D 场景编辑</span></div>
+          <details className="standalone-scene-usage"><summary>场景用量</summary>
+            <div className="standalone-3d-budget" title="通过明确预算阻止浏览器无上限加载">
+              <span>{draftScene.instances.length + extrasCost.instances}/{limits.maximumInstances} 实例</span>
+              <span>{scenePerformance.estimatedMeshInstances}/{limits.maximumEstimatedMeshInstances} 网格</span>
+              <span>{formatFileSize(scenePerformance.uniqueModelBytes)}/{formatFileSize(limits.maximumUniqueModelBytes)}</span>
+              {draftScene.settings.playAnimations ? <span>{scenePerformance.animatedInstances}/{limits.maximumAnimatedInstances} 动画实例</span> : null}
+            </div>
+          </details>
+          <ThemeToggle />
         </div>
-        <ThemeToggle />
-        {extrasSupported ? <button className="secondary-button compact-button" disabled={saving || !!fluidEditor.session} onClick={() => setInspectorView("extras")} type="button">场景扩展</button> : null}
-        <button className="secondary-button compact-button" type="button" disabled={twin.loading || saving} onClick={() => {
-          if (twin.error || !twin.document) { twin.reload(); return; }
-          if (dirty) { notify.warning("请先保存场景，再进入数据与模型配置。部件绑定需要使用已保存的模型。"); return; }
-          setShowTwinEditor(true);
-        }}>{twin.loading ? "加载数据配置…" : twin.error ? "重试数据配置" : "数据与模型"}</button>
-        {editable ? <button className="secondary-button compact-button" disabled={saving || !!fluidEditor.session} title="替换模型与场景设置，保留现有流体路径" onClick={() => { setTemplateError(null); setShowTemplates(true); }} type="button">模板</button> : null}
-        {editable && draftScene.instances.some(instance => {
-          const latest = latestBuiltinModel(instance.modelAssetId);
-          return latest && latest.id !== instance.modelAssetId;
-        }) ? <button className="secondary-button compact-button" disabled={saving} onClick={updateBuiltinModels} title="仅更新内置模型资源版本，保留当前布局与设置，保存后生效" type="button">更新内置模型</button> : null}
-        <a className="secondary-button compact-button" href={standaloneSceneRoutePath(projectId, "preview")} onClick={(event) => { if (dirty) { event.preventDefault(); notify.warning(fluidEditor.session ? "请先应用流体路径并保存场景，再进入预览。" : "请先保存场景，再预览已保存的配置。"); if (fluidEditor.session) setInspectorView("fluid"); } }}>预览</a>
-        <PublicationPanel projectId={projectId} canEdit={editable} disabled={dirty || saving || !!fluidEditor.session} />
-        <button className="primary-button compact-button" disabled={!dirty || saving || !editable || extrasPending} onClick={() => void save()} type="button">
-          {saving ? "保存中…" : dirty ? "保存场景" : "已保存"}
-        </button>
+        <div className="standalone-toolbar-group" role="group" aria-label="场景搭建">
+          <span className="standalone-toolbar-label">场景搭建</span>
+          <button className="secondary-button compact-button" onClick={() => setLibraryView("models")} type="button" title="从模型库加入工业模型、植物或流体">添加模型</button>
+          {editable ? <button className="secondary-button compact-button" disabled={saving || !!fluidEditor.session} title="选择一套场景布局作为搭建起点；替换模型与场景设置，保留流体路径" onClick={() => { setTemplateError(null); setShowTemplates(true); }} type="button">模板</button> : null}
+          {editable && draftScene.instances.some(instance => {
+            const latest = latestBuiltinModel(instance.modelAssetId);
+            return latest && latest.id !== instance.modelAssetId;
+          }) ? <button className="secondary-button compact-button" disabled={saving} onClick={updateBuiltinModels} title="仅更新内置模型资源版本，保留当前布局与设置，保存后生效" type="button">更新内置模型</button> : null}
+        </div>
+        <div className="standalone-toolbar-group" role="group" aria-label="属性与数据">
+          <span className="standalone-toolbar-label">属性与数据</span>
+          <button className="secondary-button compact-button" onClick={selectScene} type="button" title="设置背景、灯光、相机与全局动画">场景设置</button>
+          {extrasSupported ? <button className="secondary-button compact-button" disabled={saving || !!fluidEditor.session} onClick={() => setInspectorView("extras")} type="button">场景扩展</button> : null}
+          <button className="secondary-button compact-button" type="button" disabled={twin.loading || saving} title="绑定模型部件、配置数据源与动作" onClick={() => {
+            if (twin.error || !twin.document) { twin.reload(); return; }
+            if (dirty) { notify.warning("请先保存场景，再进入数据与模型配置。部件绑定需要使用已保存的模型。"); return; }
+            setShowTwinEditor(true);
+          }}>{twin.loading ? "加载数据配置…" : twin.error ? "重试数据配置" : "数据与模型"}</button>
+        </div>
+        <div className="standalone-toolbar-group is-delivery" role="group" aria-label="保存与交付">
+          <span className="standalone-toolbar-label">保存与交付</span>
+          <a className="secondary-button compact-button" href={standaloneSceneRoutePath(projectId, "preview")} onClick={(event) => { if (dirty) { event.preventDefault(); notify.warning(fluidEditor.session ? "请先应用流体路径并保存场景，再进入预览。" : "请先保存场景，再预览已保存的配置。"); if (fluidEditor.session) setInspectorView("fluid"); } }}>预览</a>
+          <PublicationPanel projectId={projectId} canEdit={editable} disabled={dirty || saving || !!fluidEditor.session} />
+          <button className="primary-button compact-button" disabled={!dirty || saving || !editable || extrasPending} onClick={() => void save()} type="button">
+            {saving ? "保存中…" : dirty ? "保存场景" : "已保存"}
+          </button>
+        </div>
       </header>
 
       <aside className="standalone-3d-library">
         <nav aria-label="场景内容" className="standalone-panel-tabs">
           <button aria-pressed={libraryView === "layers"} className={libraryView === "layers" ? "is-active" : ""} onClick={() => setLibraryView("layers")} type="button">图层 <span>{draftScene.instances.length + (draftScene.fluids?.length ?? 0) + (draftScene.decorations?.length ?? 0) + (draftScene.staticMap ? 1 : 0)}</span></button>
-          <button aria-pressed={libraryView === "models"} className={libraryView === "models" ? "is-active" : ""} onClick={() => setLibraryView("models")} type="button">模型库 <span>{models.length + decorationLibraryItems.length}</span></button>
+          <button aria-pressed={libraryView === "models"} className={libraryView === "models" ? "is-active" : ""} onClick={() => setLibraryView("models")} type="button">模型库 <span>{models.length + decorationLibraryItems.length + fluidLibraryItems.length}</span></button>
         </nav>
         {libraryView === "layers" ? (
           <>
             <div className="standalone-panel-heading standalone-layer-heading">
-              <div><span>SCENE LAYERS</span><strong>画布模型</strong></div>
+              <div><strong>场景对象</strong></div>
               <button className="icon-button" onClick={() => setLibraryView("models")} title="添加模型" type="button">＋</button>
             </div>
             <p className="standalone-panel-copy">选择图层会同步选中画布中的模型，并打开对应属性。</p>
@@ -973,7 +988,6 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
                   <span className="standalone-layer-icon">◇</span>
                   <span><strong>场景</strong><small>背景、灯光与相机</small></span>
                 </button>
-                <span className="standalone-layer-state">ROOT</span>
               </article>
               {draftScene.instances.map((instance, index) => {
                 const asset = models.find((model) => model.id === instance.modelAssetId);
@@ -1000,9 +1014,9 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
                   </article>
                 );
               })}
+              <div className="standalone-layer-tree" ref={fluidLayerRef}><FluidLayers editor={fluidEditor} onSelect={selectFluid} /></div>
             </div>
-            {draftScene.instances.length === 0 && !(draftScene.decorations?.length) && !draftScene.staticMap ? <p className="standalone-layer-empty">打开“模型库”添加模型，或在下方添加可沿路径流动的流体。</p> : null}
-            <div ref={fluidLayerRef}><FluidLayers editor={fluidEditor} onSelect={selectFluid} onAdd={startFluid} /></div>
+            {draftScene.instances.length === 0 && !(draftScene.decorations?.length) && !draftScene.staticMap && !(draftScene.fluids?.length) && !fluidEditor.session ? <p className="standalone-layer-empty">打开“模型库”添加工业模型、植物或流体。</p> : null}
             {extrasSupported ? <section className="standalone-layer-tree" aria-label="场景扩展图层">
               {(draftScene.decorations ?? []).map(item => <article key={item.id} data-decoration-id={item.id} className={extrasSelection?.id === item.id ? "is-selected" : ""}>
                 <span className="standalone-layer-branch" aria-hidden="true">└</span>
@@ -1021,7 +1035,7 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
         ) : (
           <>
             <div className="standalone-panel-heading standalone-layer-heading">
-              <div><span>MODEL LIBRARY</span><strong>模型积木</strong></div>
+              <div><strong>添加模型</strong></div>
               <label className={`secondary-button compact-button${uploading ? " is-disabled" : ""}`}>
                 {uploading ? "上传中…" : "上传模型"}
                 <input accept=".glb,.gltf,model/gltf-binary,model/gltf+json" disabled={uploading || !editable || saving || extrasPending || !!fluidEditor.session} onChange={(event) => void upload(event)} type="file" />
@@ -1030,7 +1044,8 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
             <SceneModelLibrary models={models} modelName={modelName} onPreview={setPreviewModel}
               disabled={!editable || saving || extrasPending || !!fluidEditor.session || draftScene.instances.length + extrasCost.instances >= limits.maximumInstances}
               decorationsDisabled={(draftScene.decorations?.length ?? 0) >= SCENE_DECORATION_LIMITS.maximumDecorations}
-              extrasSupported={extrasSupported} onAddModel={addModel} onAddDecoration={addDecoration} />
+              fluidsDisabled={!fluidEditor.enabled || !!fluidEditor.session || extrasPending || (draftScene.fluids?.length ?? 0) >= FLUID_LIMITS.maximumFluids}
+              extrasSupported={extrasSupported} onAddModel={addModel} onAddDecoration={addDecoration} onAddFluid={startFluid} />
           </>
         )}
       </aside>
@@ -1039,7 +1054,7 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
         {sceneView}
         {editable && fluidEditor.session ? <div className="standalone-transform-tools standalone-fluid-drawing-hint" role="status">
           <strong>{fluidEditor.session.active ? "正在绘制流体" : "流体拾取已暂停"}</strong>
-          <span>{fluidEditor.session.selectedPointIndex === null ? "左键单击添加点" : `左键单击移动第 ${fluidEditor.session.selectedPointIndex + 1} 点`} · 拖动旋转 · 滚轮缩放 · {fluidEditor.session.fluid.points.length} 个点</span>
+          <span>{fluidEditor.session.selectedPointIndex === null ? "先查看黄色落点，再单击添加" : `查看黄色落点后，单击移动第 ${fluidEditor.session.selectedPointIndex + 1} 点`} · 拖动旋转 · 滚轮缩放 · {fluidEditor.session.fluid.points.length} 个点</span>
           <button className="inspector-action-button" type="button" onClick={() => setInspectorView("fluid")}>路径属性</button>
         </div> : editable && extrasSelection?.kind === "map" ? <div className="standalone-transform-tools" role="status">已选中地图，在右侧调整位置、旋转与缩放。</div> : editable && !fluidEditor.selectedId ? (
           <div
@@ -1102,7 +1117,7 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
         {inspectorView === "extras" ? null : inspectorView === "fluid" ? <FluidEditor editor={fluidEditor} sceneAnimationsEnabled={draftScene.settings.playAnimations} sceneAnimationSpeed={draftScene.settings.animationSpeed} /> : inspectorView === "model" && selectedInstance ? (
           <>
             <div className="standalone-inspector-title">
-              <div><span>SELECTED MODEL</span><strong>{selectedInstance.label}</strong><small>{selectedModelAsset ? modelName(selectedModelAsset) : selectedInstance.modelAssetId}</small></div>
+              <div><strong>{selectedInstance.label}</strong><small>{selectedModelAsset ? modelName(selectedModelAsset) : selectedInstance.modelAssetId}</small></div>
               <button className="inspector-action-button is-danger" disabled={!editable} onClick={removeSelected} type="button">移除</button>
             </div>
 
@@ -1168,7 +1183,7 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
         ) : (
           <>
             <div className="standalone-inspector-title">
-              <div><span>SCENE SETTINGS</span><strong>场景属性</strong><small>影响整个 3D 画布</small></div>
+              <div><strong>场景属性</strong><small>影响整个 3D 画布</small></div>
             </div>
 
             <section className="standalone-property-group">

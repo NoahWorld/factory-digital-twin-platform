@@ -32,12 +32,35 @@ try {
  await page.getByRole('button',{name:/^图层/}).click();
  const canvas=page.locator('.model-3d-renderer canvas');await canvas.waitFor();
  const choose=async(name,option)=>{await page.getByRole('combobox',{name,exact:true}).click();await page.getByRole('listbox').getByRole('option',{name:option}).click();};
- const layer=page.getByRole('region',{name:'流体图层'});
+ const layer=page.locator('[data-fluid-id]');
+ assert.equal(await page.locator('.fluid-add-actions').count(),0);
+ for (const name of ['场景搭建','属性与数据','保存与交付']) assert.ok(await page.getByRole('group',{name,exact:true}).isVisible());
+ assert.doesNotMatch(await page.locator('.standalone-3d-editor').innerText(), /SCENE LAYERS|SCENE BUILDER|MODEL LIBRARY|ROOT/);
  for (const [kind,index] of [['液体',0],['气体',1],['熔融体',2]]) {
-   await page.getByRole('button',{name:'＋ '+kind,exact:true}).click();
+   await page.getByRole('button',{name:/^模型库/}).click();
+   await page.getByRole('group',{name:'模型分类'}).getByRole('button',{name:/^流体/}).click();
+   await page.getByRole('button',{name:'加入场景 '+kind,exact:true}).click();
    const box=await canvas.boundingBox();
+   if(index===0) await page.getByLabel('网格吸附',{exact:true}).check();
    for(const [rx,ry] of [[.30,.59],[.49,.48],[.70,.60]]) await page.mouse.click(box.x+box.width*rx,box.y+box.height*(ry-index*.06));
    assert.equal(await page.getByRole('list',{name:'流体路径点'}).locator('li').count(),3);
+   if(index===0){
+     await page.mouse.move(box.x+box.width*.56,box.y+box.height*.6);
+     const cursor=await page.locator('.fluid-placement-status').innerText();
+     assert.match(cursor,/落点：X/); assert.match(cursor,/吸附 0.25/);
+     const coords=[...cursor.matchAll(/[XYZ] (-?\d+\.\d{3})/g)].map(m=>Number(m[1]));
+     assert.equal(coords.length,3);
+     await page.screenshot({path:join(artifacts,'placement.png')});
+     await page.mouse.down(); await page.mouse.up();
+     const last=await page.getByRole('list',{name:'流体路径点'}).locator('li').last().locator('span').innerText();
+     assert.deepEqual(last.split(', ').map(Number),coords,'Preview and committed point must match');
+     await page.getByRole('button',{name:'撤销上一点',exact:true}).click();
+     // Returning to the pointer-down pixel after orbiting must not count as a click.
+     await page.mouse.move(box.x+box.width*.6,box.y+box.height*.4);await page.mouse.down();
+     await page.mouse.move(box.x+box.width*.63,box.y+box.height*.43,{steps:5});
+     await page.mouse.move(box.x+box.width*.6,box.y+box.height*.4,{steps:5});await page.mouse.up();
+     assert.equal(await page.getByRole('list',{name:'流体路径点'}).locator('li').count(),3);
+   }
    // A camera drag must not append a path point.
    if(index===0){await page.mouse.move(box.x+box.width*.6,box.y+box.height*.4);await page.mouse.down();await page.mouse.move(box.x+box.width*.62,box.y+box.height*.41,{steps:5});await page.mouse.up();assert.equal(await page.getByRole('list',{name:'流体路径点'}).locator('li').count(),3);}
    await page.getByLabel('流体颜色',{exact:true}).fill(['#00aaff','#ccddff','#ff5511'][index]);
@@ -50,9 +73,10 @@ try {
  await page.getByText('场景已保存。').waitFor();
  const saved=(await api(`/projects/${projectId}/scene`)).value.scene;
  assert.equal(saved.fluids.length,3);assert.deepEqual(saved.fluids.map(f=>f.kind),['liquid','gas','molten']);assert.equal(saved.fluids[2].direction,'reverse');assert.equal(saved.fluids[2].mode,'diffuse');assert.equal(saved.fluids[0].color,'#00aaff');assert.ok(saved.fluids.every(f=>f.points.length===3));
+ assert.ok(saved.fluids[0].points.flat().every(v=>Math.abs(v/.25-Math.round(v/.25))<1e-8));
  await page.reload();await page.getByRole('button',{name:/^图层/}).click();
  await page.waitForFunction(()=>JSON.parse(document.querySelector('.model-3d-renderer')?.dataset.sceneDiagnostics||'null')?.fluids.fluidCount===3);
- assert.equal(await layer.locator('article').count(),3);
+ assert.equal(await layer.count(),3);
  // Click the visible midpoint of the first fluid using the actual shared camera diagnostic.
  const pixel=await page.evaluate(async points=>{
   const THREE=await import('/node_modules/.vite/deps/three.js');

@@ -1,4 +1,5 @@
 import { errorMessage, reportError } from "../api";
+import { errorPresentation } from "../errors";
 import { memo, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import type { Model3DNodeProps } from "./Model3DNode";
 import { ModelPresentationPanel } from "./ModelPresentationPanel";
@@ -6,6 +7,7 @@ import type { ModelSceneSnapshot } from "./model-scene";
 import { componentLabels, parseModel3DProps, resolveModelInstances, type Model3DProps } from "./types";
 import type { NavigationStatus, SceneInput, SceneRuntime, SceneStatus } from "../scene/scene-runtime";
 
+import type { FluidPoint } from "../../../../shared/fluids";
 import "../scene/walk-navigation.css";
 
 const errorText = errorMessage;
@@ -36,6 +38,8 @@ export const BatchModel3DNode = memo(function BatchModel3DNode({
   selectedSceneNodePath,
 }: Model3DNodeProps) {
   const [interactionError, setInteractionError] = useState<string | null>(null);
+  const [fluidCursor, setFluidCursor] = useState<{ point?: FluidPoint; error?: string } | null>(null);
+  const fluidCursorErrorRef = useRef<string | null>(null);
   const [navigation, setNavigation] = useState<NavigationStatus>({ mode: "orbit" });
   const walkSignature = JSON.stringify(walkScene);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -69,6 +73,7 @@ export const BatchModel3DNode = memo(function BatchModel3DNode({
     clientX: number;
     clientY: number;
     pointerId: number;
+    dragged: boolean;
   } | null>(null);
 
   const saved = parseModel3DProps(node.props, maximumModelInstances);
@@ -164,9 +169,36 @@ export const BatchModel3DNode = memo(function BatchModel3DNode({
 
   useEffect(() => { runtimeRef.current?.exitWalk("碰撞配置已变化，请核对后重新进入行走"); }, [walkSignature]);
 
+  const clearFluidCursor = () => {
+    runtimeRef.current?.setFluidCursor(null);
+    setFluidCursor(null);
+    fluidCursorErrorRef.current = null;
+  };
+  useEffect(clearFluidCursor, [inputSignature]);
+
   const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    clearFluidCursor();
     if ((!editable && !interactive) || event.button !== 0) return;
-    pointerStartRef.current = { clientX: event.clientX, clientY: event.clientY, pointerId: event.pointerId };
+    pointerStartRef.current = { clientX: event.clientX, clientY: event.clientY, pointerId: event.pointerId, dragged: false };
+  };
+
+  const handlePointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const start = pointerStartRef.current;
+    if (start && Math.hypot(event.clientX - start.clientX, event.clientY - start.clientY) > 4) start.dragged = true;
+    if (!fluidEditor?.active || !runtimeRef.current || event.buttons) return;
+    try {
+      const point = runtimeRef.current.pickFluidPoint(event.clientX, event.clientY);
+      runtimeRef.current.setFluidCursor(point);
+      setFluidCursor({ point });
+      fluidCursorErrorRef.current = null;
+    } catch (reason) {
+      const message = errorPresentation(reason).message;
+      // Invalid viewing angles are visible; report once until the pointer is valid again.
+      if (fluidCursorErrorRef.current !== message) reportError(reason, { operation: "scene.fluid-point-preview", projectId, canvasNodeId: node.id });
+      fluidCursorErrorRef.current = message;
+      runtimeRef.current.setFluidCursor(null);
+      setFluidCursor({ error: message });
+    }
   };
 
   const handlePointerUp = (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -177,7 +209,7 @@ export const BatchModel3DNode = memo(function BatchModel3DNode({
       return;
     }
     if ((!editable && !interactive) || !start || start.pointerId !== event.pointerId) return;
-    if (Math.hypot(event.clientX - start.clientX, event.clientY - start.clientY) > 4) return;
+    if (start.dragged || Math.hypot(event.clientX - start.clientX, event.clientY - start.clientY) > 4) return;
     try {
       const runtime = runtimeRef.current;
       if (!runtime) return;
@@ -218,11 +250,19 @@ export const BatchModel3DNode = memo(function BatchModel3DNode({
         onPointerCancel={() => {
           pointerStartRef.current = null;
           suppressNextPickRef.current = false;
+          clearFluidCursor();
         }}
         onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerLeave={clearFluidCursor}
+        onWheel={clearFluidCursor}
         onPointerUp={handlePointerUp}
         ref={containerRef}
       />
+      {fluidEditor?.active ? <div className={`fluid-placement-status${fluidCursor?.error ? " is-error" : ""}`}>
+        <strong>{fluidEditor.plane === "xz" ? "水平面" : fluidEditor.plane === "xy" ? "正面" : "侧面"} · {fluidEditor.plane === "xz" ? "Y" : fluidEditor.plane === "xy" ? "Z" : "X"} = {fluidEditor.offset}{fluidEditor.snapStep ? ` · 吸附 ${fluidEditor.snapStep}` : " · 自由选点"}</strong>
+        <span>{fluidCursor?.error ?? (fluidCursor?.point ? `落点：${fluidCursor.point.map((value, axis) => `${["X", "Y", "Z"][axis]} ${value.toFixed(3)}`).join(" · ")}，单击确认` : "移动鼠标查看黄色落点，再单击确认；落点位于绘制平面上")}</span>
+      </div> : null}
       {interactionError ? <div className="scene-walk-navigation" role="alert" onPointerDown={event => event.stopPropagation()} onPointerUp={event => event.stopPropagation()}><span>{interactionError}</span><button type="button" onClick={() => setInteractionError(null)}>关闭</button></div> : null}
       {walkScene && !editable && input?.controlsEnabled && loadState.status === "ready" ? (
         <div className="scene-walk-navigation" onPointerDown={(event) => event.stopPropagation()} onPointerUp={(event) => event.stopPropagation()}>

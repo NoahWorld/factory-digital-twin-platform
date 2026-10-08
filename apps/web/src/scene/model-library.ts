@@ -1,13 +1,15 @@
 import type { DecorationKind } from "../../../../shared/scene-decorations";
+import type { FluidKind } from "../../../../shared/fluids";
 import type { ModelAsset } from "../canvas/model-assets";
 
-export type ModelLibraryCategory = "all" | "industrial" | "plants" | "water" | "military" | "uploaded" | "background";
+export type ModelLibraryCategory = "all" | "industrial" | "plants" | "water" | "fluids" | "military" | "uploaded" | "background";
 
 export const modelLibraryCategories: { id: ModelLibraryCategory; label: string }[] = [
   { id: "all", label: "全部" },
   { id: "industrial", label: "工业模型" },
   { id: "plants", label: "植物" },
   { id: "water", label: "水景" },
+  { id: "fluids", label: "流体" },
   { id: "military", label: "军事模型" },
   { id: "uploaded", label: "上传模型" },
   { id: "background", label: "背景模型" },
@@ -25,3 +27,9 @@ export const decorationLibraryItems: { kind: DecorationKind; name: string; categ
 
 export const modelAssetCategory = (asset: ModelAsset): ModelLibraryCategory =>
   asset.source === "system" ? "industrial" : asset.source === "scene-background" ? "background" : "uploaded";
+
+export const fluidLibraryItems: { kind: FluidKind; name: string; description: string; icon: string }[] = [
+  { kind: "gas", name: "气体", description: "沿路径流动的烟雾与气流", icon: "☁" },
+  { kind: "liquid", name: "液体", description: "沿路径流动的水与液体", icon: "≋" },
+  { kind: "molten", name: "熔融体", description: "沿路径流动的高温熔体", icon: "♨" },
+];

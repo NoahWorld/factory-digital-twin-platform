@@ -11,11 +11,13 @@ export type FluidPathSession = {
   isNew: boolean;
   plane: FluidDrawingPlane;
   offset: number;
+  snapStep: number;
   active: boolean;
   selectedPointIndex: number | null;
 };
 const EMPTY_FLUIDS: FluidDefinition[] = [];
 const planeAxis = { xz: "Y", xy: "Z", yz: "X" } as const;
+const planeAxisIndex = { xz: 1, xy: 2, yz: 0 } as const;
 
 /** Editor drafts deliberately allow zero/one points and never enter the saved document. */
 export function useFluidEditor({ fluids = EMPTY_FLUIDS, onChange, enabled }: {
@@ -43,7 +45,7 @@ export function useFluidEditor({ fluids = EMPTY_FLUIDS, onChange, enabled }: {
   }, [fluids, session]);
   const previewFluids = validation?.ok ? validation.value : fluids;
   const rendererEditor = useMemo(() => session ? {
-    points: session.fluid.points, plane: session.plane, offset: session.offset,
+    points: session.fluid.points, plane: session.plane, offset: session.offset, snapStep: session.snapStep,
     active: enabled && session.active, direction: session.fluid.direction, selectedPointIndex: session.selectedPointIndex,
   } : null, [enabled, session]);
 
@@ -62,7 +64,7 @@ export function useFluidEditor({ fluids = EMPTY_FLUIDS, onChange, enabled }: {
     if (fluids.length >= FLUID_LIMITS.maximumFluids) { setError(`场景最多支持 ${FLUID_LIMITS.maximumFluids} 条流体。`); return false; }
     const fluid = createFluidDefinition(`fluid-${createUuid()}`, kind);
     fluid.label = `${fluidKindLabels[kind]} ${fluids.length + 1}`;
-    setSession({ fluid, isNew: true, plane: "xz", offset: 0, active: true, selectedPointIndex: null });
+    setSession({ fluid, isNew: true, plane: "xz", offset: 0, snapStep: 0, active: true, selectedPointIndex: null });
     setSelectedId(fluid.id); setError(null);
     return true;
   };
@@ -79,12 +81,21 @@ export function useFluidEditor({ fluids = EMPTY_FLUIDS, onChange, enabled }: {
   };
   const updateSession = (patch: Partial<Omit<FluidPathSession, "fluid" | "isNew">>) => {
     if (!enabled) return;
-    setSession((current) => current ? { ...current, ...patch } : current); setError(null);
+    setSession((current) => {
+      if (!current) return current;
+      const next = { ...current, ...patch };
+      // Moving an existing point must keep its depth, not project it onto the first point's plane.
+      const selected = next.selectedPointIndex === null ? null : next.fluid.points[next.selectedPointIndex];
+      if (selected && (patch.plane !== undefined || patch.selectedPointIndex !== undefined)) {
+        next.offset = selected[planeAxisIndex[next.plane]];
+      }
+      return next;
+    }); setError(null);
   };
   const editPath = () => {
     if (!enabled || !selected || session) return;
     const fluid = structuredClone(selected);
-    setSession({ fluid, isNew: false, plane: "xz", offset: fluid.points[0][1], active: true, selectedPointIndex: null });
+    setSession({ fluid, isNew: false, plane: "xz", offset: fluid.points[0][1], snapStep: 0, active: true, selectedPointIndex: null });
     setError(null);
   };
   const onPoint = useCallback((point: FluidPoint) => {
@@ -122,7 +133,9 @@ export function useFluidEditor({ fluids = EMPTY_FLUIDS, onChange, enabled }: {
   };
   const setPoints = (points: FluidPoint[], selectedPointIndex: number | null = null) => {
     if (!enabled || !session) return;
-    setSession({ ...session, fluid: { ...session.fluid, points }, selectedPointIndex }); setError(null);
+    const selectedPoint = selectedPointIndex === null ? null : points[selectedPointIndex];
+    setSession({ ...session, fluid: { ...session.fluid, points }, selectedPointIndex,
+      offset: selectedPoint ? selectedPoint[planeAxisIndex[session.plane]] : session.offset }); setError(null);
   };
   return { fluids, selected, selectedId, session, error: error ?? (validation && !validation.ok ? `路径尚未生效：${validation.message}` : null),
     previewFluids, rendererEditor, enabled, hasInvalidFields, setFieldError, reset, select, start, update, updateSession, editPath, onPoint, apply, cancel, remove, toggleVisible, setPoints };
@@ -130,20 +143,11 @@ export function useFluidEditor({ fluids = EMPTY_FLUIDS, onChange, enabled }: {
 
 export type FluidEditorController = ReturnType<typeof useFluidEditor>;
 
-export function FluidLayers({ editor, onSelect, onAdd }: {
+export function FluidLayers({ editor, onSelect }: {
   editor: FluidEditorController;
   onSelect: (id: string) => void;
-  onAdd: (kind: FluidKind) => void;
 }) {
-  return <section className="fluid-layers" aria-label="流体图层">
-    <div className="standalone-panel-heading standalone-layer-heading">
-      <div><span>FLUID COMPONENTS</span><strong>流体 <small>{editor.fluids.length}/{FLUID_LIMITS.maximumFluids}</small></strong></div>
-    </div>
-    <div className="fluid-add-actions">{(["gas", "liquid", "molten"] as const).map((kind) => <button
-      className="inspector-action-button" disabled={!editor.enabled || !!editor.session || editor.fluids.length >= FLUID_LIMITS.maximumFluids}
-      key={kind} onClick={() => onAdd(kind)} type="button">＋ {fluidKindLabels[kind]}</button>)}</div>
-    <p className="standalone-panel-copy">添加流体后，在画布中点击路径点。三种流体均支持沿路径扩散。</p>
-    <div className="standalone-layer-tree">
+  return <>
       {editor.fluids.map((fluid) => <article key={fluid.id} data-fluid-id={fluid.id} className={`${editor.selectedId === fluid.id ? "is-selected" : ""}${fluid.visible ? "" : " is-hidden"}`}>
         <span className="standalone-layer-branch" aria-hidden="true">└</span>
         <button className="standalone-layer-main" onClick={() => onSelect(fluid.id)} type="button">
@@ -160,8 +164,7 @@ export function FluidLayers({ editor, onSelect, onAdd }: {
           <span><strong>{editor.session.fluid.label}</strong><small>绘制中 · {editor.session.fluid.points.length} 点 · 尚未应用</small></span>
         </button>
       </article> : null}
-    </div>
-  </section>;
+  </>;
 }
 
 /** Buffered numeric inputs permit intermediate typing without injecting NaN into scene state. */
@@ -191,53 +194,20 @@ function FluidNumberField({ label, value, min, max, step = 0.1, disabled, onChan
 export function FluidEditor({ editor, sceneAnimationsEnabled, sceneAnimationSpeed }: { editor: FluidEditorController; sceneAnimationsEnabled?: boolean; sceneAnimationSpeed?: number }) {
   const fluid = editor.selected;
   const session = editor.session;
-  if (!fluid) return <div className="fluid-editor"><p className="standalone-property-note">在图层中添加气体、液体或熔融体，并绘制流向路径。</p>{editor.error ? <p className="fluid-error" role="alert">{editor.error}</p> : null}</div>;
+  if (!fluid) return <div className="fluid-editor"><p className="standalone-property-note">在“模型库 → 流体”中添加气体、液体或熔融体，再绘制流向路径。</p>{editor.error ? <p className="fluid-error" role="alert">{editor.error}</p> : null}</div>;
   const disabled = !editor.enabled;
   const selectedPoint = session?.selectedPointIndex !== null && session?.selectedPointIndex !== undefined ? session.fluid.points[session.selectedPointIndex] : null;
   const directionLabel = fluid.direction === "forward" ? "首点 → 末点" : "末点 → 首点";
-  return <div className="fluid-editor" onKeyDown={(event) => event.stopPropagation()}>
-    <div className="standalone-inspector-title">
-      <div><span>FLUID COMPONENT</span><strong>{fluid.label}</strong><small>{session ? "路径草稿 · 应用后再保存场景" : "公共流体组件 · 场景坐标"}</small></div>
-      {!session ? <button className="inspector-action-button is-danger" disabled={disabled} onClick={editor.remove} type="button">移除</button> : null}
-    </div>
-    {editor.error ? <p className="fluid-error" role="alert">{editor.error}</p> : null}
-    <section className="standalone-property-group">
-      <header><span aria-hidden="true">01</span><div><h3>流体与外观</h3><small>可复用于任意模型与路径</small></div></header>
-      <label><span>流体名称</span><input aria-label="流体名称" disabled={disabled} maxLength={FLUID_LIMITS.maximumLabelLength} value={fluid.label} onChange={(event) => editor.update({ label: event.target.value })} /></label>
-      <label><span>流体类型</span><Select aria-label="流体类型" disabled={disabled} value={fluid.kind} onValueChange={(kind) => editor.update({ kind: kind as FluidKind })}>
-        <option value="gas">气体</option><option value="liquid">液体</option><option value="molten">熔融体</option>
-      </Select></label>
-      <label><span>流体颜色</span><span className="standalone-color-input"><input aria-label="流体颜色" disabled={disabled} type="color" value={fluid.color} onChange={(event) => editor.update({ color: event.target.value })} /><code>{fluid.color.toUpperCase()}</code></span></label>
-      <label><span>表现形态</span><Select aria-label="表现形态" disabled={disabled} value={fluid.mode} onValueChange={(mode) => editor.update({ mode: mode as FluidDefinition["mode"] })}>
-        <option value="stream">连续流 · 沿路径流动</option><option value="diffuse">扩散流 · 沿流向扩散</option>
-      </Select></label>
-      <p className="standalone-property-note">气体、液体和熔融体都可选择扩散流；扩散从流向起点逐渐展开，反向会同步反转扩散方向。</p>
-      <div className="fluid-fields-grid">
-        <FluidNumberField onValidity={editor.setFieldError} label="流体半径" value={fluid.radius} min={FLUID_LIMITS.minimumRadius} max={FLUID_LIMITS.maximumRadius} step={0.05} disabled={disabled} onChange={(radius) => editor.update({ radius })} />
-        <FluidNumberField onValidity={editor.setFieldError} label="扩散幅度（半径倍数）" value={fluid.spread} min={FLUID_LIMITS.minimumSpread} max={FLUID_LIMITS.maximumSpread} disabled={disabled || fluid.mode !== "diffuse"} onChange={(spread) => editor.update({ spread })} />
-      </div>
-      <label><span>不透明度 <output>{Math.round(fluid.opacity * 100)}%</output></span><input aria-label="流体不透明度" disabled={disabled} type="range" min={FLUID_LIMITS.minimumOpacity} max={FLUID_LIMITS.maximumOpacity} step={0.01} value={fluid.opacity} onChange={(event) => editor.update({ opacity: Number(event.target.value) })} /></label>
-      <label className="standalone-checkbox"><input disabled={disabled} type="checkbox" checked={fluid.visible} onChange={(event) => editor.update({ visible: event.target.checked })} /> 显示流体</label>
-    </section>
-    <section className="standalone-property-group">
-      <header><span aria-hidden="true">02</span><div><h3>流向与动态</h3><small>{directionLabel}</small></div></header>
-      <label><span>流动方向</span><Select aria-label="流动方向" disabled={disabled} value={fluid.direction} onValueChange={(direction) => editor.update({ direction: direction as FluidDefinition["direction"] })}>
-        <option value="forward">正向：首点 → 末点</option><option value="reverse">反向：末点 → 首点</option>
-      </Select></label>
-      <FluidNumberField onValidity={editor.setFieldError} label="视觉流速" value={fluid.speed} min={FLUID_LIMITS.minimumSpeed} max={FLUID_LIMITS.maximumSpeed} disabled={disabled} onChange={(speed) => editor.update({ speed })} />
-      <label className="standalone-checkbox"><input disabled={disabled} type="checkbox" checked={fluid.playing} onChange={(event) => editor.update({ playing: event.target.checked })} /> 播放流动效果</label>
-      {sceneAnimationsEnabled !== undefined ? <p className="standalone-property-note">{sceneAnimationsEnabled
-        ? `流体受场景全局动画控制${sceneAnimationSpeed === undefined ? "" : `；当前全局速度 ${sceneAnimationSpeed}×`}，与这里的视觉流速共同生效。`
-        : "场景全局动画当前已关闭，流体保持暂停。可在“场景属性 → 动态”开启全局动画。"}</p> : null}
-    </section>
-    <section className="standalone-property-group">
-      <header><span aria-hidden="true">03</span><div><h3>流向路径</h3><small>{fluid.points.length}/{FLUID_LIMITS.maximumPoints} 个三维路径点</small></div></header>
+  const pathEditor = <section className="standalone-property-group fluid-path-group">
+      <header><span aria-hidden="true">{session ? "01" : "03"}</span><div><h3>流向路径</h3><small>{fluid.points.length}/{FLUID_LIMITS.maximumPoints} 个三维路径点</small></div></header>
       {!session ? <><p className="standalone-property-note">路径按点序连接，流动方向可反转。编辑路径时可用鼠标定位或输入 XYZ。</p><button className="inspector-action-button" disabled={disabled} onClick={editor.editPath} type="button">编辑路径</button></> : <>
         <label><span>鼠标绘制平面</span><Select aria-label="鼠标绘制平面" disabled={disabled} value={session.plane} onValueChange={(plane) => editor.updateSession({ plane: plane as FluidDrawingPlane })}>
           <option value="xz">XZ 水平面（固定 Y）</option><option value="xy">XY 竖直面（固定 Z）</option><option value="yz">YZ 竖直面（固定 X）</option>
         </Select></label>
         <FluidNumberField onValidity={editor.setFieldError} label={`平面位置 ${planeAxis[session.plane]}`} value={session.offset} min={-FLUID_LIMITS.maximumCoordinate} max={FLUID_LIMITS.maximumCoordinate} disabled={disabled} onChange={(offset) => editor.updateSession({ offset })} />
-        <p className="standalone-property-note">左键单击{selectedPoint ? `移动第 ${session.selectedPointIndex! + 1} 点` : "添加路径点"}；拖动旋转、滚轮缩放。切换平面只影响下一次拾取，可组合绘制三维路径。</p>
+        <label className="standalone-checkbox"><input type="checkbox" disabled={disabled} checked={session.snapStep > 0} onChange={(event) => editor.updateSession({ snapStep: event.target.checked ? 0.25 : 0 })} /> 网格吸附</label>
+        {session.snapStep > 0 ? <FluidNumberField onValidity={editor.setFieldError} label="吸附间距" value={session.snapStep} min={0.001} max={100} step={0.05} disabled={disabled} onChange={(snapStep) => editor.updateSession({ snapStep })} /> : null}
+        <p className="standalone-property-note">黄色标记是实际落点，点击确认。落点位于所选平面，不会自动贴到模型表面；可调整平面位置或在下方输入精确坐标。左键单击{selectedPoint ? `移动第 ${session.selectedPointIndex! + 1} 点` : "添加路径点"}；拖动旋转、滚轮缩放。切换平面只影响下一次拾取，可组合绘制三维路径。</p>
         <div className="fluid-path-actions">
           <button className="inspector-action-button" aria-pressed={session.active} disabled={disabled} onClick={() => editor.updateSession({ active: !session.active })} type="button">{session.active ? "暂停鼠标拾取" : "开启鼠标拾取"}</button>
           <button className="inspector-action-button" disabled={disabled || !session.fluid.points.length} onClick={() => editor.setPoints(session.fluid.points.slice(0, -1))} type="button">撤销上一点</button>
@@ -260,6 +230,43 @@ export function FluidEditor({ editor, sceneAnimationsEnabled, sceneAnimationSpee
         <div className="fluid-apply-actions"><button className="primary-button compact-button" disabled={disabled || editor.hasInvalidFields || fluid.points.length < FLUID_LIMITS.minimumPoints} onClick={editor.apply} type="button">应用流体</button><button className="secondary-button compact-button" onClick={editor.cancel} type="button">取消路径修改</button></div>
         <p className="standalone-property-note">{fluid.points.length < 2 ? "至少设置 2 个不同的路径点。" : "画布显示有效路径的临时预览。"}应用后点击“保存场景”保存配置。</p>
       </>}
+    </section>;
+  return <div className={`fluid-editor${session ? " is-drawing" : ""}`} onKeyDown={(event) => event.stopPropagation()}>
+    <div className="standalone-inspector-title">
+      <div><strong>{fluid.label}</strong><small>{session ? "路径草稿 · 应用后再保存场景" : "公共流体组件 · 场景坐标"}</small></div>
+      {!session ? <button className="inspector-action-button is-danger" disabled={disabled} onClick={editor.remove} type="button">移除</button> : null}
+    </div>
+    {editor.error ? <p className="fluid-error" role="alert">{editor.error}</p> : null}
+    {session ? pathEditor : null}
+    <section className="standalone-property-group">
+      <header><span aria-hidden="true">{session ? "02" : "01"}</span><div><h3>流体与外观</h3><small>可复用于任意模型与路径</small></div></header>
+      <label><span>流体名称</span><input aria-label="流体名称" disabled={disabled} maxLength={FLUID_LIMITS.maximumLabelLength} value={fluid.label} onChange={(event) => editor.update({ label: event.target.value })} /></label>
+      <label><span>流体类型</span><Select aria-label="流体类型" disabled={disabled} value={fluid.kind} onValueChange={(kind) => editor.update({ kind: kind as FluidKind })}>
+        <option value="gas">气体</option><option value="liquid">液体</option><option value="molten">熔融体</option>
+      </Select></label>
+      <label><span>流体颜色</span><span className="standalone-color-input"><input aria-label="流体颜色" disabled={disabled} type="color" value={fluid.color} onChange={(event) => editor.update({ color: event.target.value })} /><code>{fluid.color.toUpperCase()}</code></span></label>
+      <label><span>表现形态</span><Select aria-label="表现形态" disabled={disabled} value={fluid.mode} onValueChange={(mode) => editor.update({ mode: mode as FluidDefinition["mode"] })}>
+        <option value="stream">连续流 · 沿路径流动</option><option value="diffuse">扩散流 · 沿流向扩散</option>
+      </Select></label>
+      <p className="standalone-property-note">气体、液体和熔融体都可选择扩散流；扩散从流向起点逐渐展开，反向会同步反转扩散方向。</p>
+      <div className="fluid-fields-grid">
+        <FluidNumberField onValidity={editor.setFieldError} label="流体半径" value={fluid.radius} min={FLUID_LIMITS.minimumRadius} max={FLUID_LIMITS.maximumRadius} step={0.05} disabled={disabled} onChange={(radius) => editor.update({ radius })} />
+        <FluidNumberField onValidity={editor.setFieldError} label="扩散幅度（半径倍数）" value={fluid.spread} min={FLUID_LIMITS.minimumSpread} max={FLUID_LIMITS.maximumSpread} disabled={disabled || fluid.mode !== "diffuse"} onChange={(spread) => editor.update({ spread })} />
+      </div>
+      <label><span>不透明度 <output>{Math.round(fluid.opacity * 100)}%</output></span><input aria-label="流体不透明度" disabled={disabled} type="range" min={FLUID_LIMITS.minimumOpacity} max={FLUID_LIMITS.maximumOpacity} step={0.01} value={fluid.opacity} onChange={(event) => editor.update({ opacity: Number(event.target.value) })} /></label>
+      <label className="standalone-checkbox"><input disabled={disabled} type="checkbox" checked={fluid.visible} onChange={(event) => editor.update({ visible: event.target.checked })} /> 显示流体</label>
     </section>
+    <section className="standalone-property-group">
+      <header><span aria-hidden="true">{session ? "03" : "02"}</span><div><h3>流向与动态</h3><small>{directionLabel}</small></div></header>
+      <label><span>流动方向</span><Select aria-label="流动方向" disabled={disabled} value={fluid.direction} onValueChange={(direction) => editor.update({ direction: direction as FluidDefinition["direction"] })}>
+        <option value="forward">正向：首点 → 末点</option><option value="reverse">反向：末点 → 首点</option>
+      </Select></label>
+      <FluidNumberField onValidity={editor.setFieldError} label="视觉流速" value={fluid.speed} min={FLUID_LIMITS.minimumSpeed} max={FLUID_LIMITS.maximumSpeed} disabled={disabled} onChange={(speed) => editor.update({ speed })} />
+      <label className="standalone-checkbox"><input disabled={disabled} type="checkbox" checked={fluid.playing} onChange={(event) => editor.update({ playing: event.target.checked })} /> 播放流动效果</label>
+      {sceneAnimationsEnabled !== undefined ? <p className="standalone-property-note">{sceneAnimationsEnabled
+        ? `流体受场景全局动画控制${sceneAnimationSpeed === undefined ? "" : `；当前全局速度 ${sceneAnimationSpeed}×`}，与这里的视觉流速共同生效。`
+        : "场景全局动画当前已关闭，流体保持暂停。可在“场景属性 → 动态”开启全局动画。"}</p> : null}
+    </section>
+    {!session ? pathEditor : null}
   </div>;
 }

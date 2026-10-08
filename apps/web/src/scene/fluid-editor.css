@@ -1,7 +1,4 @@
-.fluid-layers { margin-top: 22px; padding-top: 14px; border-top: 1px solid var(--ui-border); }
-.fluid-add-actions, .fluid-path-actions, .fluid-apply-actions { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 12px; }
-.fluid-add-actions > button { flex: 1 1 64px; }
-.fluid-layers small { color: var(--ui-text-subtle); font-size: 0.65rem; }
+.fluid-path-actions, .fluid-apply-actions { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 12px; }
 .fluid-layer-swatch { width: 13px; height: 13px; flex: 0 0 13px; border: 1px solid var(--ui-border-strong); border-radius: 50%; }
 .fluid-layer-draft { border-style: dashed !important; }
 .fluid-editor { min-width: 0; }
@@ -27,7 +24,13 @@
 .standalone-fluid-drawing-hint > strong { color: var(--ui-accent); }
 .standalone-fluid-drawing-hint > span { flex: 1 1 220px; font-size: 0.65rem; line-height: 1.5; }
 .standalone-inspector-tabs.has-fluid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-.fluid-editor :is(button, input):focus-visible, .fluid-layers button:focus-visible { outline: 2px solid var(--ui-accent); outline-offset: 2px; }
-.fluid-editor button:active:not(:disabled), .fluid-layers button:active:not(:disabled) { transform: translateY(1px); }
-.fluid-editor :is(button, input):disabled, .fluid-layers button:disabled { color: var(--ui-text-subtle); background: var(--ui-readonly-bg); border-color: var(--ui-border); cursor: not-allowed; }
+.fluid-editor :is(button, input):focus-visible, [data-fluid-id] button:focus-visible { outline: 2px solid var(--ui-accent); outline-offset: 2px; }
+.fluid-editor button:active:not(:disabled), [data-fluid-id] button:active:not(:disabled) { transform: translateY(1px); }
+.fluid-editor :is(button, input):disabled, [data-fluid-id] button:disabled { color: var(--ui-text-subtle); background: var(--ui-readonly-bg); border-color: var(--ui-border); cursor: not-allowed; }
 @media (max-width: 760px) { .fluid-point-list { max-height: 180px; } .fluid-apply-actions > button { flex: 1; } }
+
+.fluid-placement-status { position: absolute; bottom: 16px; left: 16px; right: 16px; display: grid; gap: 5px; width: fit-content; max-width: calc(100% - 32px); padding: 10px 14px; border: 1px solid var(--ui-border-strong); border-radius: 8px; background: var(--ui-surface); color: var(--ui-text); font-size: 0.7rem; line-height: 1.6; pointer-events: none; }
+.fluid-placement-status strong { color: var(--ui-accent); }
+.fluid-placement-status span { font-variant-numeric: tabular-nums; }
+.fluid-placement-status.is-error { border-color: var(--ui-danger); color: var(--ui-danger); }
+.model-3d-renderer:has(+ .fluid-placement-status) { cursor: crosshair; }
