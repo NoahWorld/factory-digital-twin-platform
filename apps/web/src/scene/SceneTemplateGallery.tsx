@@ -16,13 +16,14 @@ function TemplateModelImage({ modelId }: { modelId: string }) {
   </figure>;
 }
 
-export function SceneTemplateGallery({ editable, onApply, actionLabel = "使用此模板" }: {
+export function SceneTemplateGallery({ editable, onApply, actionLabel = "使用此模板", includeApiExamples = false }: {
   editable: boolean;
   onApply: (templateId: SceneTemplateId) => void;
   actionLabel?: string;
+  includeApiExamples?: boolean;
 }) {
   return <div className="scene-template-gallery">
-    {sceneTemplates.map((template) => <article className="scene-template-card" key={template.id}>
+    {sceneTemplates.filter((template) => includeApiExamples || !("creationOnly" in template && template.creationOnly)).map((template) => <article className="scene-template-card" key={template.id}>
       <div className="scene-template-models">
         <span className="scene-template-preview-label">模板包含的模型</span>
         <div>{template.previewModelIds.map((modelId) => <TemplateModelImage key={modelId} modelId={modelId} />)}</div>
@@ -31,7 +32,7 @@ export function SceneTemplateGallery({ editable, onApply, actionLabel = "使用�
         <div className="scene-template-meta"><span>3D 场景 · {template.category}</span></div>
         <h3>{template.name}</h3>
         <p>{template.description}</p>
-        <p className="scene-template-stats">{template.instances.length} 个实例 · {new Set(template.instances.map((instance) => instance.modelAssetId)).size} 类模型 · 预设动画</p>
+        <p className="scene-template-stats">{template.instances.length} 个实例 · {new Set(template.instances.map((instance) => instance.modelAssetId)).size} 类模型 · {"creationOnly" in template ? "后端测试业务接口" : "预设动画"}</p>
       </div>
       <button className="secondary-button" disabled={!editable} onClick={() => onApply(template.id)} type="button">{actionLabel}</button>
     </article>)}

@@ -74,6 +74,15 @@ test("401 retains authentication codes and distinguishes login failure from miss
   }
 });
 
+test("a missing test-business endpoint identifies the backend update while retaining diagnostics", async t => {
+  respond(t, failure(404, "not_found", "No route for endpoint", { body: { requestId: "request-source" } }));
+  const error = await rejected(request("/api/v1/test-business/handling-cell/state"));
+  assert.equal(error.context.status, 404);
+  assert.equal(error.requestId, "request-source");
+  assert.match(assertUserSafe(error), /测试业务接口尚未启用.*更新后端/);
+  assert.doesNotMatch(errorPresentation(new ApiRequestError("not_found", undefined, "No route", { status: 404, path: "/api/v1/projects/missing" })).message, /更新后端/);
+});
+
 test("429 does not confuse login throttling with a busy model optimizer", async t => {
   for (const [code, raw] of [
     ["login_rate_limited", "Too many login attempts; retry after 15 minutes."],
@@ -102,6 +111,21 @@ test("403 distinguishes denied origin configuration from account permissions", a
       assert.match(errorPresentation(error).message, pattern);
       assert.doesNotMatch(errorPresentation(error).message, /账号或密码不正确/);
     });
+  }
+});
+
+test("business-source notices explain the actual cause without exposing source or diagnostic details", async t => {
+  for (const [code, pattern] of [
+    ["source_timeout", /业务接口响应超时/],
+    ["source_origin_denied", /接口地址未获允许/],
+    ["source_point_missing", /字段缺失或类型不符/],
+    ["source_point_out_of_range", /超出设置范围/],
+    ["source_sequence_regressed", /时间或序号发生回退/],
+  ]) {
+    const raw = "private upstream https://private.invalid/path?secret=fixture-secret";
+    const error = new ApiRequestError(code, "request-source", raw);
+    assert.match(assertUserSafe(error, [raw, "fixture-secret"]), pattern);
+    reportError(error, { operation: "twin-stream.source", projectId: "project", revision: 3, sequence: 7, failureCount: 2 });
   }
 });
 

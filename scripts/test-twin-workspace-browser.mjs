@@ -15,9 +15,10 @@ await mkdir(screenshotDir, { recursive: true });
 
 const projectId = 'workspace-browser-fixture';
 const config = {
-  version: 1, enabled: false, source: 'simulator',
-  points: [{ id: 'point-lift', label: '升降高度', assetId: 'lift-01', metricKey: 'height',
-    topic: 'fixture/lift/height', unit: 'm', min: 0, max: 10, initialValue: 0, maxSpeed: 1, staleAfterMs: 3000 }],
+  version: 1, enabled: false, source: 'api',
+  connection: { protocol: 'rest', url: '/api/v1/test-business/handling-cell/state', timestampPath: 'timestamp', intervalMs: 500, timeoutMs: 5000 },
+  points: [{ id: 'point-lift', label: '升降高度', assetId: '', metricKey: 'height',
+    sourcePath: 'agv.positionM', unit: 'm', min: 0, max: 10, initialValue: 0, maxSpeed: 1, staleAfterMs: 3000 }],
   bindings: [{ id: 'binding-lift', label: '升降台移动', pointId: 'point-lift',
     target: { instanceId: 'model-original', modelAssetId: 'builtin:fixture-original', nodeName: 'LiftArm' },
     parentBindingId: null, useNodeRestPose: true, kind: 'translation', axis: [0, 1, 0],
@@ -29,8 +30,6 @@ const config = {
 };
 const initialDocument = { projectId, revision: 1, editable: true, config };
 const timestamp = '2026-09-21T00:00:00.000Z';
-const assets = [{ id: 'asset-record-lift', projectId, assetId: 'lift-01', name: '一号升降设备',
-  assetType: 'lift', modelNode: null, metadata: {}, createdAt: timestamp, updatedAt: timestamp }];
 const instances = [
   ['model-original', '原升降模型', 'builtin:fixture-original'],
   ['model-replacement', '替换升降模型', 'builtin:fixture-replacement'],
@@ -57,6 +56,7 @@ import React, { useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { TwinDriveEditor } from '/src/twin/TwinDriveEditor.tsx';
 import { ThemeProvider } from '/src/theme/ThemeProvider.tsx';
+import { NotificationProvider } from '/src/components/NotificationProvider.tsx';
 import '/src/styles.css';
 import '/src/theme/theme-palette.css';
 import '/src/twin/twin-drive.css';
@@ -65,8 +65,16 @@ const initialDocument = ${JSON.stringify(initialDocument)};
 const scene = ${JSON.stringify(scene)};
 const catalog = ${JSON.stringify(catalog)};
 function App() {
-  const [document, setDocument] = useState(() => ({ ...initialDocument,
-    editable: !new URLSearchParams(location.search).has('readonly') }));
+  const [document, setDocument] = useState(() => {
+    const params = new URLSearchParams(location.search);
+    if (!params.has('legacy')) return { ...initialDocument, editable: !params.has('readonly') && !params.has('redacted'),
+      config: params.has('redacted') ? { ...initialDocument.config, connection: { ...initialDocument.config.connection, url: '', redacted: true } } : initialDocument.config };
+    const { connection, ...old } = initialDocument.config;
+    return { ...initialDocument, config: { ...old, source: 'simulator', points: old.points.map(point => {
+      const { sourcePath, ...legacyPoint } = point;
+      return { ...legacyPoint, assetId: 'lift-01', topic: 'fixture/lift/height' };
+    }) }, editable: true };
+  });
   const [open, setOpen] = useState(true);
   const [testing, setTesting] = useState(false);
   window.fixtureDocument = document;
@@ -84,7 +92,7 @@ function App() {
 }
 document.documentElement.dataset.uiTheme = 'light';
 createRoot(document.getElementById('root')).render(h(React.StrictMode, null,
-  h(ThemeProvider, { initialState: { preference: 'light', systemTheme: 'light', storageIssue: null } }, h(App))));
+  h(ThemeProvider, { initialState: { preference: 'light', systemTheme: 'light', storageIssue: null } }, h(NotificationProvider, null, h(App)))));
 `;
 
 const server = await createServer({
@@ -115,6 +123,8 @@ const errors = [];
 const requests = [];
 const saves = [];
 const unexpectedRequests = [];
+const expectedSourceDiagnostics = [];
+let malformedInspection = false;
 let savedDocument = structuredClone(initialDocument);
 try {
   await server.listen();
@@ -127,7 +137,10 @@ try {
   deadline.unref();
   page.on('pageerror', error => { errors.push(error.message); console.error('Browser page error:', error.message); });
   page.on('console', message => {
-    if (message.type() === 'error') { errors.push(message.text()); console.error('Browser console error:', message.text()); }
+    if (message.type() !== 'error') return;
+    if (malformedInspection && message.text().startsWith('[DTwin] 操作失败')) {
+      expectedSourceDiagnostics.push(message.args()[1].jsonValue());
+    } else { errors.push(message.text()); console.error('Browser console error:', message.text()); }
   });
   page.on('request', request => requests.push(request.url()));
   await page.route('**/*', async route => {
@@ -139,8 +152,17 @@ try {
       return route.abort('blockedbyclient');
     }
     if (!url.pathname.startsWith('/api/')) return route.continue();
-    if (url.pathname === `/api/v1/projects/${projectId}/assets` && req.method() === 'GET')
-      return json({ assets, requestId: 'fixture-assets' });
+    if (url.pathname === `/api/v1/projects/${projectId}/twin-drive/test-source` && req.method() === 'POST') {
+      const input = req.postDataJSON();
+      assert.deepEqual(input.connection, savedDocument.config.connection, 'Source inspection must use the current configured connection through the project gateway');
+      if (malformedInspection) return json({ timestamp: new Date().toISOString(), fields: [{ path: 'robot.running', type: 'boolean', value: 'invalid-type' }] });
+      return json({ timestamp: new Date().toISOString(), fields: [
+        { path: 'agv.positionM', type: 'number', value: 2.5 },
+        { path: 'robot.angleDeg', type: 'number', value: -30 },
+        { path: 'robot.running', type: 'boolean', value: true },
+        { path: 'cycle.phase', type: 'string', value: 'loading' },
+      ] });
+    }
     if (url.pathname === `/api/v1/projects/${projectId}/twin-drive`) {
       if (req.method() === 'GET') return json(savedDocument);
       if (req.method() === 'PUT') {
@@ -156,7 +178,7 @@ try {
       body: JSON.stringify({ error: 'unexpected_fixture_request', message: 'Unexpected request in isolated browser fixture.' }) });
   });
 
-  const steps = [/选择数据源/, /选择数据(?!源)/, /绑定模型部件/, /检查与测试|接入测试/];
+  const steps = [/连接接口/, /绑定动作/, /检查效果/];
   const step = index => page.locator('nav').getByRole('button', { name: steps[index] });
   const save = () => page.locator('footer').getByRole('button', { name: /^保存/ });
   const returnButton = () => page.getByRole('button', { name: /返回模型|返回场景/ });
@@ -185,9 +207,9 @@ try {
     });
     assert.deepEqual(overflowing, [], 'The configuration workspace must not overflow horizontally');
   };
-  const openFixture = async (readonly = false) => {
+  const openFixture = async (readonly = false, legacy = false, redacted = false) => {
     savedDocument = structuredClone(initialDocument);
-    await page.goto(`${origin}__twin-workspace-test${readonly ? '?readonly' : ''}`);
+    await page.goto(`${origin}__twin-workspace-test${legacy ? '?legacy' : redacted ? '?redacted' : readonly ? '?readonly' : ''}`);
     await step(0).waitFor();
     assert.equal(await page.locator('dialog').count(), 0, 'The configuration workspace must not be a dialog');
     assert.equal(await page.getByTestId('scene-marker').count(), 1, 'The underlying scene stays mounted');
@@ -195,14 +217,52 @@ try {
     assert.equal(await page.getByTestId('scene-marker').evaluate(el => getComputedStyle(el).pointerEvents), 'none',
       'The underlying scene cannot receive pointer events');
     await page.evaluate(() => { window.fixtureSceneNode = document.querySelector('[data-testid="scene-marker"]'); });
-    const viewport = page.viewportSize();
-    await page.mouse.click(viewport.width / 2, viewport.height / 2);
+    await page.getByRole('heading', { name: '数据与模型配置', exact: true }).click();
     assert.equal(await page.evaluate(() => window.fixtureSceneClicks || 0), 0, 'Workspace clicks must not reach the scene');
   };
 
   await openFixture();
-  assert.equal(await page.getByRole('button', { name: /API 轮询/ }).isDisabled(), true);
-  assert.equal(await page.getByRole('button', { name: /外部 WebSocket/ }).isDisabled(), true);
+  assert.equal(await page.getByRole('button', { name: '填写 REST 示例', exact: true }).isDisabled(), false);
+  assert.equal(await page.getByRole('button', { name: '填写 WebSocket 示例', exact: true }).isDisabled(), false);
+  assert.equal(await page.getByText('平台模拟数据', { exact: true }).count(), 0);
+  assert.equal(await page.locator('nav').getByRole('button', { name: '模拟流程', exact: true }).count(), 0);
+  await page.getByRole('button', { name: '检查接口并读取字段', exact: true }).click();
+  await page.getByText(/已读取接口/).waitFor();
+  await step(1).click();
+  await choose('数据字段', /robot.running/);
+  assert.equal(await page.getByRole('textbox', { name: '手动数据字段', exact: true, includeHidden: true }).inputValue(), 'robot.running');
+  await page.getByText(/这个字段是开关值：false = 0，true = 1/).waitFor();
+  await choose('数据字段', /robot.angleDeg/);
+  await page.getByRole('alert').filter({ hasText: /已读取当前值 -30 超出数据范围 0～10/ }).waitFor();
+  assert.equal(await page.getByLabel('最小值', { exact: true }).inputValue(), '0', 'Selecting an out-of-range field must not implicitly change the configured minimum');
+  assert.equal(await page.getByLabel('最大值', { exact: true }).inputValue(), '10', 'Selecting an out-of-range field must not implicitly change the configured maximum');
+  assert.equal(saves.length, 0, 'Choosing a field cannot write the saved configuration');
+  await choose('数据字段', /agv.positionM/);
+  assert.equal(await page.getByRole('alert').filter({ hasText: /已读取当前值/ }).count(), 0, 'A field inside the configured range must not retain an obsolete warning');
+  assert.equal(await page.getByLabel('模拟初始值', { exact: true }).count(), 0);
+  assert.equal(await page.getByLabel('所属设备', { exact: true }).count(), 0);
+  console.log('Twin workspace: real source inspection uses the project gateway and supplies numeric/boolean motion fields');
+  await step(0).click();
+  malformedInspection = true;
+  await page.getByRole('button', { name: '检查接口并读取字段', exact: true }).click();
+  await page.getByRole('alert').filter({ hasText: '接口检查返回了无效字段' }).waitFor();
+  await step(1).click();
+  assert.equal(await page.getByRole('combobox', { name: '数据字段', exact: true }).count(), 0, 'A failed fresh inspection must clear the old field choices');
+  assert.equal(await page.getByRole('textbox', { name: '数据字段', exact: true }).inputValue(), 'agv.positionM', 'A failed inspection must retain the configured field without changing the document');
+  assert.equal(saves.length, 0, 'Source inspection cannot write the saved configuration');
+  assert.equal(expectedSourceDiagnostics.length, 1, 'The failed inspection must produce one deduplicated diagnostic');
+  const [sourceDiagnostic] = await Promise.all(expectedSourceDiagnostics);
+  assert.equal(sourceDiagnostic.name, 'UserFacingError');
+  assert.equal(sourceDiagnostic.operation, 'inspect_twin_source');
+  assert.equal(sourceDiagnostic.projectId, projectId);
+  assert.equal(sourceDiagnostic.message, undefined, 'Diagnostic output cannot include arbitrary response contents');
+  malformedInspection = false;
+  await step(0).click();
+  await page.getByRole('button', { name: '检查接口并读取字段', exact: true }).click();
+  await page.getByText(/已读取接口/).waitFor();
+  await step(1).click();
+  assert.equal(await page.getByRole('combobox', { name: '数据字段', exact: true }).count(), 1, 'A successful retry must restore actual source fields');
+  console.log('Twin workspace: failed inspection clears stale fields, preserves the saved configuration, and records project/operation diagnostics');
   const themeColors = [];
   for (const viewport of [{ width: 1366, height: 768 }, { width: 1024, height: 600 }, { width: 390, height: 844 }]) {
     await page.setViewportSize(viewport);
@@ -225,26 +285,33 @@ try {
       }
       if (viewport.width === 1366) themeColors.push(await page.locator('footer').evaluate(el => getComputedStyle(el).backgroundColor));
     }
-    console.log(`Twin workspace: ${viewport.width} × ${viewport.height}, light/dark, all four steps and fixed save controls passed`);
+    console.log(`Twin workspace: ${viewport.width} × ${viewport.height}, light/dark, all three steps and fixed save controls passed`);
   }
   assert.notEqual(themeColors[0], themeColors[1], 'The footer must respond to light/dark theme changes');
 
   await page.setViewportSize({ width: 1366, height: 768 });
   await setTheme('light');
   await step(1).click();
-  const pointName = () => page.getByLabel(/^(数据名称|点位名称)$/);
+  const pointName = () => page.getByLabel(/^数据名称$/);
+  const openDataSettings = async () => {
+    const details = page.locator('details').filter({ has: page.locator('summary').filter({ hasText: '数据范围与高级设置' }) });
+    if (!(await details.evaluate(el => el.open))) await details.locator('summary').click();
+  };
+  await openDataSettings();
   await pointName().fill('修改后的升降高度');
-  await step(2).click();
+  await step(0).click();
   await step(1).click();
+  await openDataSettings();
   assert.equal(await pointName().inputValue(), '修改后的升降高度', 'Switching steps must preserve point edits');
   await save().click();
   await page.waitForFunction(() => window.fixtureDocument?.revision === 2);
   assert.equal(saves.at(-1).config.points[0].label, '修改后的升降高度');
-  assert.equal(saves.at(-1).config.source, 'simulator');
+  assert.equal(saves.at(-1).config.source, 'api');
+  assert.equal(saves.at(-1).config.points[0].sourcePath, 'agv.positionM');
   assert.equal(saves.at(-1).config.bindings[0].target.nodeName, 'LiftArm');
   assert.equal(saves.at(-1).expectedRevision, 1);
 
-  await page.locator('summary').filter({ hasText: '数据范围与高级设置' }).click();
+  await openDataSettings();
   const minimum = page.getByLabel(/^最小值$/);
   await minimum.fill('');
   assert.equal(await save().isDisabled(), true, 'Empty numeric input must block saving, not become zero');
@@ -304,7 +371,7 @@ try {
   assert.equal(saves.at(-1).expectedRevision, 2);
   console.log('Twin workspace: real UI model remap requires missing node selection and preserves data/motion configuration');
 
-  await step(2).click();
+  await step(1).click();
   await choose('选择模型', '替换升降模型');
   assert.match(await page.getByRole('combobox', { name: '选择模型部件', exact: true }).textContent(), /LiftArmV2/,
     'Selecting the current model again must not clear its selected part');
@@ -348,24 +415,29 @@ try {
   assert.equal(await jsonEditor.inputValue(), appliedJson, 'Discarding JSON changes must restore the current form');
   console.log('Twin workspace: unapplied JSON persists across steps and blocks both saving and unconfirmed exit');
 
-  await page.locator('nav').getByRole('button', { name: '模拟流程', exact: true }).click();
-  await page.getByRole('button', { name: /新建流程/ }).click();
-  const targetValue = page.getByRole('spinbutton', { name: /^达到目标值/ });
-  await targetValue.fill('5.75');
-  await choose('目标点位 1', /尚未保存的名称/);
-  assert.equal(await targetValue.inputValue(), '5.75', 'Reselecting the current procedure target must preserve its edited value');
+  await step(0).click();
+  await page.getByRole('button', { name: '填写 WebSocket 示例', exact: true }).click();
+  assert.equal(await page.getByRole('textbox', { name: '接口地址', exact: true }).inputValue(), '/api/v1/test-business/handling-cell/live');
+  await step(1).click();
+  assert.equal(await page.getByRole('combobox', { name: '数据字段', exact: true }).count(), 0, 'Changing the connection must clear previously inspected fields');
+  assert.equal(await page.getByRole('textbox', { name: '数据字段', exact: true }).inputValue(), 'agv.positionM');
+  await step(0).click();
+  await page.locator('summary').filter({ hasText: '连接高级设置' }).click();
+  await page.getByRole('textbox', { name: '订阅消息（可选 JSON）', exact: true }).fill('{"subscribe":"handling"}');
   await save().click();
   await page.waitForFunction(() => window.fixtureDocument?.revision === 5);
-  assert.equal(saves.at(-1).config.procedures[0].steps[0].targets[0].pointId, 'point-lift');
-  assert.equal(saves.at(-1).config.procedures[0].steps[0].targets[0].value, 5.75);
-  console.log('Twin workspace: procedure target values survive selecting the same point again and save correctly');
+  assert.equal(saves.at(-1).config.connection.protocol, 'websocket');
+  assert.equal(saves.at(-1).config.connection.subscribeMessage, '{"subscribe":"handling"}');
+  assert.deepEqual(saves.at(-1).config.procedures, []);
+  console.log('Twin workspace: protocol examples and real WebSocket subscription settings save without platform procedures');
 
   await openFixture(true);
   assert.equal(await save().isDisabled(), true, 'Read-only users cannot save');
   assert.equal(await page.getByLabel(/启用数据驱动/).isDisabled(), true, 'Read-only users cannot enable motion');
   await step(1).click();
+  await openDataSettings();
   assert.equal(await pointName().isDisabled(), true, 'Read-only users cannot edit point fields');
-  await step(2).click();
+  await step(1).click();
   const enabledFormInputs = await page.locator('fieldset input, fieldset textarea, fieldset [role="combobox"]').evaluateAll(elements =>
     elements.filter(element => !element.matches(':disabled')).map(element => element.outerHTML));
   assert.deepEqual(enabledFormInputs, [], 'Read-only binding fields must remain disabled');
@@ -379,19 +451,26 @@ try {
   assert.equal(await page.getByTestId('scene-marker').evaluate(el => window.fixtureSceneNode === el), true,
     'Returning must not remount the underlying scene');
 
+  await openFixture(false, false, true);
+  await page.getByText(/接口地址与订阅信息由数据网关保护/).waitFor();
+  assert.equal(await page.getByRole('button', { name: '检查接口并读取字段', exact: true }).count(), 0, 'Projected source information cannot be inspected');
+  assert.equal(await page.getByRole('button', { name: /填写 .* 示例/ }).count(), 0, 'Projected source information must not show editable examples');
+  assert.equal(await page.getByRole('textbox', { name: '接口地址', exact: true }).count(), 0, 'The protected URL must not be exposed');
+  assert.equal(await save().isDisabled(), true);
+  await advanced().click();
+  assert.equal(JSON.parse(await jsonEditor.inputValue()).connection.redacted, true);
+  console.log('Twin workspace: redacted viewer projection protects source details and prevents edits or inspection');
+
   await openFixture();
   const savesBeforeEmptyForms = saves.length;
-  for (const name of ['更换模型', '模拟流程', '碰撞提示', '高级配置']) {
+  for (const name of ['更换模型', '碰撞提示', '高级配置']) {
     await page.locator('nav').getByRole('button', { name, exact: true }).click();
     await page.getByRole('heading', { name, exact: true }).waitFor();
     await assertInsideViewport(save(), `Save control in ${name}`);
   }
   await step(1).click();
-  await page.getByRole('button', { name: /添加数据/ }).click();
-  assert.equal(await pointName().inputValue(), '新数据', 'New data with an empty device selection must render');
-  assert.equal(await save().isDisabled(), true, 'Incomplete new data cannot be saved');
-  await step(2).click();
-  await page.getByRole('button', { name: /绑定部件/ }).click();
+  await page.getByRole('button', { name: /添加动作/ }).click();
+  assert.equal(await page.getByRole('textbox', { name: '数据字段', exact: true }).inputValue(), '', 'A new action contains its own empty interface field');
   assert.equal(await page.getByRole('textbox', { name: '动作名称', exact: true }).inputValue(), '新部件动作');
   assert.match(await page.getByRole('combobox', { name: '选择模型', exact: true }).textContent(), /请选择模型/,
     'New bindings must render before a model has been selected');
@@ -403,7 +482,25 @@ try {
     'New collision parts must render before a model has been selected');
   assert.equal(await save().isDisabled(), true, 'An incomplete collision part cannot be saved');
   assert.equal(saves.length, savesBeforeEmptyForms, 'Empty-form smoke tests must not issue a PUT');
-  console.log('Twin workspace: all secondary pages and newly created data/binding/collision forms render with empty selections');
+  console.log('Twin workspace: all secondary pages and new action/collision forms render with empty selections');
+
+  await openFixture(false, true);
+  await page.getByRole('heading', { name: '旧版平台模拟配置已停用', exact: true }).waitFor();
+  assert.equal(await save().isDisabled(), true, 'Legacy simulator configuration must not be saved or started');
+  assert.equal(await page.evaluate(() => window.fixtureDocument.config.source), 'simulator', 'Legacy configuration must remain unchanged until explicit migration');
+  const savesBeforeMigration = saves.length;
+  await page.getByRole('button', { name: '重新接入接口', exact: true }).click();
+  assert.equal(await page.getByRole('textbox', { name: '接口地址', exact: true }).inputValue(), '');
+  await advanced().click();
+  const migrated = JSON.parse(await jsonEditor.inputValue());
+  assert.equal(migrated.source, 'api');
+  assert.deepEqual(migrated.points, []);
+  assert.deepEqual(migrated.bindings, []);
+  assert.equal(saves.length, savesBeforeMigration, 'Migration must only create a draft and never write the scene or configuration automatically');
+  await returnButton().click();
+  await page.getByRole('button', { name: '放弃修改并返回', exact: true }).click();
+  assert.equal(await page.evaluate(() => window.fixtureDocument.config.source), 'simulator', 'Discarding migration must retain the old persisted configuration');
+  console.log('Twin workspace: legacy migration is explicit, draft-only, and can be discarded');
 
   assert.deepEqual(errors, [], 'Browser errors must be reported and fail the regression');
   assert.deepEqual(unexpectedRequests, [], 'No real or unexpected API request is permitted');

@@ -22,7 +22,7 @@ export function TwinBindingRemap({ config, scene, catalog, onChange }: {
   const visibleNodes = matchingNodes.slice(0, 200);
   const result = prepareTwinBindingRemap(config, scene, catalog, sourceKey, targetId, nodeNames);
   return <section className="twin-card twin-remap">
-    <div className="twin-remap-heading"><h3>更换模型，保留配置</h3><p className="twin-help">为已有动作选择新模型中的对应部件，保留数据、动作参数、碰撞规则和工序。</p></div>
+    <div className="twin-remap-heading"><h3>更换模型，保留配置</h3><p className="twin-help">为已有动作选择新模型中的对应部件，保留接口字段、动作参数和碰撞规则。</p></div>
     {!sources.length ? <p className="twin-help">建立部件绑定后，可在这里将整组配置用于另一个模型。</p> : <>
       <div className="twin-fields">
         <label><span>原模型</span><Select value={sourceKey} onValueChange={(value) => { setSourceKey(value); setTargetId(""); setNodeNames({}); setSearch(""); setNotice(null); }}>

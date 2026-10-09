@@ -144,15 +144,15 @@
 
 ## 开发与质量要求
 
-- 当前技术栈：pnpm workspace；`apps/web` 为 React + Vite + TypeScript；`apps/api` 为既有 TypeScript Cloudflare Worker + D1；`apps/backend` 为 Java 21 + Spring Boot 独立部署后端，`deploy/local` 为 Docker Compose。启动和验证命令以根目录 `README.md` 与各应用 `package.json` 为准。
+- 当前技术栈：pnpm workspace；`apps/web` 为 React + Vite + TypeScript；运行后端为独立 `factory-digital-twin-backend` 的 Java 21 + Spring Boot，`deploy/local` 为 Docker Compose。`apps/api` 为历史 TypeScript Cloudflare Worker + D1，`apps/backend` 为历史 Java 快照。启动和验证命令以根目录 `README.md` 与各应用 `package.json` 为准。
 - 2026-09-17 后端设计补充：用户要求同时支持客户独立部署和平台统一托管，并说明有充足 Java 后端团队资源；设计首选据此调整为 Java + Spring Boot、PostgreSQL、Valkey、S3 兼容存储与 Docker Compose，详见 [后端架构设计建议](./docs/backend-architecture-proposal.md)。历史 Node/Fastify 选型属于旧建议。Java 本地首版现已实现，运行方式、接口与未完成范围以 [Java 后端说明](./apps/backend/README.md) 为准。
 - 2026-09-18 已把 `factory-digital-twin-config` 的云端业务快照和旧 Wrangler 本地状态中的 3D 工厂、组合大屏、上传模型与图片导入本地 PostgreSQL/SeaweedFS，结果与可复现命令见 [Cloudflare 到本地迁移记录](./docs/cloudflare-to-local-migration.md)。Cloudflare 身份、密码散列和会话不得迁入 Java；项目成员要显式映射到本地账号并留下审计记录。云端与旧 Wrangler 源数据保持不变，后续不得把旧 D1 当作本地开发的写入目标。
-- Java 契约生成物由 `pnpm backend:contracts` 从现有共享 TS 定义生成；变更相关定义后执行 `backend:contracts:check`、`backend:verify` 和本地 `backend:smoke`。所有 `.env`、随机凭据、备份均不得提交。
-- `@Transactional` 服务经 Spring CGLIB 代理调用，调用方不得直接读取代理实例字段；依赖使用构造注入或服务方法。首次配置读取和模拟命令回归须覆盖真实代理，不能只测试手工创建的未代理服务。
+- Java 契约生成物由 `pnpm backend:contracts` 从现有共享 TS 定义生成；变更相关定义后执行 `backend:contracts:check`、`backend:verify` 和本地 `backend:smoke`。`backend:verify` 先 clean 再 verify，部署不得打包残留的已删除类或已改名迁移资源；清理/网络失败必须阻断部署。所有 `.env`、随机凭据、备份均不得提交。
+- `@Transactional` 服务经 Spring CGLIB 代理调用，调用方不得直接读取代理实例字段；依赖使用构造注入或服务方法。首次配置读取和接口连接测试须覆盖真实代理，不能只测试手工创建的未代理服务。
 - 2D/3D 动作的本地真 API 回归使用 `pnpm backend:smoke:twin-actions`，仅访问本机 18080、不占用 8790；默认清理自己创建的临时项目和账号。`--keep-fixture` 成功后保留用于浏览器验证，之后必须以 `--cleanup` 按本地记录精确清理，禁止删除记录后跳过清理或触碰业务项目；详见 [联动交互验证](./docs/linked-2d-3d-interactions.md#本地-java-api-冒烟测试)。
 - Java 保存旧 `model-3d` 节点时，仅对缺失字段应用由原 TS 校验器生成的兼容默认值，包括缺少 `modelInstances` 的旧单模型画布；显式 `null`、类型错误和未知字段仍必须拒绝。画布 `props` 按节点 `type` 精确校验，禁止同时校验所有组件的属性联合而返回无关错误；错误去重并保留请求 ID 日志。`backend:smoke` 覆盖旧画布保存、读取和与前端兼容结果的一致性。
 - Java 迁移时保留现有 HTTP 契约、错误与权限语义，并按版本定义新增 WS 契约；将当前 TypeScript 共享校验逐步提取为语言无关 schema 与共享正反样例，并验证 Java/TypeScript 结果一致。生成类型不能替代服务端业务校验，不能同时维护会漂移的两套配置定义。
-- `apps/api/wrangler.jsonc` 绑定 D1 `factory-digital-twin-config`。Worker/D1 迁移只存放在 `apps/api/migrations/`；Java/PostgreSQL 迁移只存放在 `apps/backend/src/main/resources/db/migration/`，由 Flyway 管理，并且必须在迁移命令成功返回后才能让对应 API 依赖新表。
+- 历史 `apps/api/wrangler.jsonc` 绑定 D1 `factory-digital-twin-config`，Worker/D1 迁移只存放在 `apps/api/migrations/`；当前 Java/PostgreSQL 迁移只存放在独立后端的 `src/main/resources/db/migration/`，由 Flyway 管理，并且必须在迁移命令成功返回后才能让对应 API 依赖新表。
 - 前端 API 地址只能从 `VITE_API_BASE_URL` 获取；本地默认值仅用于开发。生产域名、真实客户接口与密钥不可写入源码或提交 Git。
 - P1 本地 REST 竖切的模拟设备由根目录 `pnpm dev:mock` 启动，只监听 `127.0.0.1:8790`。完整配置、状态切换和失联恢复步骤以 [本地 REST 设备联动测试](./docs/local-rest-device-runtime-test.md) 为准。
 - 流体行业案例当前采用第二版：`scripts/generate-fluid-cases-v2.mjs` 生成标准 GLB，`scripts/update-fluid-cases-v2.mjs` 通过 Java 正式 API 原地更新初版日志明确记录的三个案例，保留六个项目 ID；规模、入口、工艺边界与验收见 [第二版案例说明](./demo-assets/fluid-cases-v2/README.md)。更新前保存原配置与资产映射快照，使用独立日志、资源哈希和 revision 检查，外部变更或 API 错误必须中止。初版生成/导入脚本仅保留历史复现用途。配套模拟源由 `deploy/local/fluid-demo.yml` 的 `source` 服务启动，与 `dev:mock` 互斥占用本机 8790；修改源代码后重启该服务。设备及看板必须标注模拟，源停止时保留真实失联状态。案例是预设流体视觉动画与业务绑定；指标中的简化热量/水量关系不等于 CFD，也不代表数据驱动液面或真实生产接入。
@@ -225,15 +225,20 @@
 
 ## 当前开发顺序
 
-2026-09-21 用户将当前优先级调整为可配置点位反馈驱动，先用长沙凯德案例验收。已实施的模拟 WS / 点位绑定 / 关节依赖 / 反馈条件工序 / 简化碰撞事件及限制见 [点位驱动契约](./docs/data-driven-twin.md)。真实点位链路不得使用演示时钟推进姿态；下面旧演示计划仅适用于显式离线演示，不代表已完成物料交接或生产采集。
+2026-10-09 用户要求停用平台模拟模块，模型由后端实际采集的 REST / WebSocket 业务接口观测值驱动。新配置、测试业务案例、权限边界及验证见 [业务接口驱动契约](./docs/data-driven-twin.md)。旧 source:"simulator" 仅保留历史读取和显式重新接入入口，后端旧执行器/命令停用，不自动覆盖已有项目配置。
 
-- 点位配置以 `shared/twin-drive.ts` 为单一契约，存独立 `twin_drive_documents` revision，不塞入 2D 画布或 localStorage。Java 独立 WS 使用 Cookie/Origin/项目权限；命令带 revision + commandId，ACK 不等于运动到位。
-- 点位/topic、后端自动源和接入测试仅在 3D 编辑页配置；预览只订阅反馈，不放配置表或手动控制，不发送 reset/run/move。`simulation.enabled` 保存后 Java 后台独立运行，关闭全部浏览器不能停止源；按完整项目 topic 集合显式订阅并核验回包映射。topic 是本平台 WS 主题，不能宣称已经接入 MQTT。自动模式拒绝手动命令；循环按反馈到位推进，不复位瞬移。契约和验收见点位驱动文档。
-- 点位配置使用独立工作区，按选择数据源、选择数据、绑定部件、接入测试四步组织；姿态与模拟工序使用表单，JSON 仅作高级入口。当前可驱动模型的来源仍只有平台模拟 WebSocket；API 轮询的设备数据展示不等于运动接入，外部 WebSocket 订阅尚未实现，两者必须明确暂不可选。不得为界面选择增加没有实际执行链路的持久化字段或伪造连通状态。
-- 数据工作区只使用已保存场景，进入前须保存场景草稿；编辑期间原场景保持挂载且不可交互，返回不得新建 renderer。保存与返回操作在小屏常驻，草稿跨步骤保留，未应用 JSON 必须阻止保存，离开未保存内容须明确确认。运行 `pnpm test:twin-workspace` 验证小屏、浅深主题、只读、草稿及重绑；使用既有 Playwright/Chromium，可通过 `PLAYWRIGHT_MODULE_PATH`、`CHROMIUM_EXECUTABLE` 指定路径，不临时下载依赖。
-- 跨模型复用通过显式重绑实现：先加入并保存新模型，再将旧模型全部动作/碰撞目标映射到新模型、应用草稿并保存点位配置，最后才可移除旧模型并保存场景。保留点位/topic、动作参数、父关节 ID、工序和碰撞规则；唯一同名只作建议，漏映射、重名、旧资源、重复驱动和不合法依赖必须阻断应用，不静默丢弃。关闭驱动不解除服务端场景引用保护；新旧模型共存继续遵守资源预算。更换后必须重新核对坐标、轴心、零位、行程和碰撞盒，不宣称自动校准。运行 `pnpm test:twin-drive` 包含重绑回归。
-- 姿态只由实际反馈值驱动；缺失、过期、断线时冻结并提示，禁止时钟补走、隐式重发或把模拟值标记为真实设备数据。绑定与原生动画冲突必须在保存和运行时暴露。
-- 碰撞是配置的浏览器 OBB enter/exit，不等于连续检测/工业安全互锁；不得自行修改真实反馈以“避障”。每次改动须执行 `pnpm test:twin-drive`、`node scripts/test-kaide-twin-drive.mjs` 与 `node scripts/test-kaide-twin-runtime.mjs`（真实模型可用时）、运行层回归与前后端 check/verify。
+- 配置以 `shared/twin-drive.ts` 为单一契约，保存独立 `twin_drive_documents` revision。新 `source:"api"` 使用 connection 和 sourcePath，经 Java 后台真实 HTTP/WS 采集，再通过授权项目网关推送；浏览器禁止直接持有客户私有上游地址/凭据、生成观测值或外推模型运动。
+- 配置工作区按连接接口、绑定动作、检查效果三步组织，数据字段和动作合并配置；高级参数按需展开。新 UI 不要求设备登记、Topic、初值、速度或模拟工序。接入测试仅观察已保存版本，预览不发启动/复位/运动命令。
+- 固定公开测试端点为 `/api/v1/test-business/handling-cell/state` 与 `/live`，Java 生成无敏感信息的搬运单元数据。后台相对路径只允许这两项，用固定 loopback 发实际请求，禁止根据请求 Host 派生地址。外部业务源严格执行已有 RUNTIME_ALLOWED_ORIGINS；不自动扩大白名单、不跟随重定向。源时间、字段、类型、量程、消息大小和超时必须验证，错误保留上下文而不制造正常数据。
+- 普通项目观察者/公开分享仅获取授权标准快照；私有上游 URL/订阅消息在配置响应与分享 manifest 中脱敏为 connection.url:""、redacted:true。两个固定公开测试端点保留相对地址，以明确标记测试业务数据。只读投影不能保存或测试。WebSocket Cookie/Origin/租户/项目权限、配置 revision、确认订阅和序号边界继续有效。
+- 模板中心的接口驱动搬运单元创建独立项目和动作，不能以模板替换覆盖既有场景。分步创建失败暴露已创建项目 ID，重试同项目前核验版本及内容，拒绝覆盖用户后续修改。
+- 项目、模板与资源分类由 `?type=2d|3d` 路由保留；刷新、编辑返回及前进后退不得默认切回 2D。窗口获得焦点/恢复可见时重取项目列表，取消离开页面的旧请求；失败保留已有错误通知与请求上下文，不假装空列表。
+- 接口搬运案例使用独立不可变 `builtin:handling-cell-v1`，旧 GLB 不得改写。共享 `shared/handling-cell-geometry.json` 同时生成模型与 Java geometry resource，统一米制/Y-up、车轮滚动轴、真实关节轴心、夹爪间隙和工位尺寸。64 秒送检与回收闭环使用同一件可见工件；车辆停稳后取放，后端逆解肩/肘/腕并给出当前阶段，REST/WS 共享 200 ms 采样。不得用只转底座、横向滑车或周期瞬移来替代真实取放逻辑。修改案例几何或轨迹后，用 `node scripts/test-handling-cell.mjs --frames ../factory-digital-twin-backend/target/handling-cell-states.json` 验证 Java 导出的完整轨迹与实际 GLB、生产 FK、车轮滚动、夹爪接触、工件连续交接、碰撞及显示补间误差；轨迹须来自独立后端测试，不得在浏览器验证脚本重建业务运动充当接口证据。
+- `TwinPoint.valueLabels` 为可选离散反馈名称，前后端共同验证唯一整数、量程与可读文本。预览步骤只能来自实际快照；未知、缺失、过期、断线显式提示，不能前端推测业务阶段。升级本机 retained 示例先完整比对已存基线、保留备份、按 revision 分步写入，拒绝覆盖用户修改或其他项目。
+- 数据工作区只使用已保存场景，进入前保存场景草稿；编辑时原场景保持挂载且不可交互，返回不新建 renderer。保存/返回操作小屏常驻；草稿跨步骤保留，未应用 JSON 阻止保存，离开未保存内容须确认。运行 `pnpm test:twin-workspace` 验证三步、小屏、主题、只读和草稿。
+- 跨模型复用通过显式重绑：先保留旧模型、添加并保存新模型，映射全部动作/碰撞部件、应用草稿并保存配置，最后才移除旧模型。接口/字段/动作参数/父关节/碰撞规则保留。同名仅作建议，漏映射、重名、旧资源和重复驱动阻断应用；坐标、轴心、零位、范围必须重新核对。关闭驱动不解除服务端场景引用保护。
+- 姿态终点只由实际反馈决定；现有渲染循环用单调帧时钟在当前显示值与已收到的有效终点之间补间，时长取新快照实际接收间隔且最多 1000 ms，不新增渲染循环或配置项。各关节共用进度并逐帧重新求解，显隐立即生效；开始补间前验证完整终点与实际父级可逆性，写入失败整帧回滚。首帧、恢复连接及同源时间修正直接应用真实终点，缺失、过期、断线和源错误取消补间并冻结提示；到达终点后不外推，不生成反馈或伪造质量正常。上游重试与浏览器传输重试分开计数。绑定与原生动画冲突必须在保存和运行时暴露。
+- 碰撞为浏览器当前显示姿态（包括补间）的 OBB enter/exit，事件保留最近源快照序号与源时间便于追溯，不能当作源端精确碰撞时刻、工业安全互锁或自行修改真实反馈。改动运行 `pnpm test:twin-drive`、`node scripts/test-twin-point-stream.mjs`、`node scripts/test-business-api-example.mjs`、相关场景回归、前端 check/build、独立后端 verify 和契约检查；补间用 `node scripts/backend-business-example-motion-sample.mjs` 检查真实模型的中间姿态、帧率、端点及断线冻结。真实模型可用时保留长沙 FK 校准回归，其历史模拟联调脚本不作为新链路验收。
 
 2026-09-15 根据用户确认的交付目标调整如下。既有身份、权限、资产与数据链路继续保留；演示配置无需等待客户实时接口接通。生产采集、数据库迁移和模型处理服务仍分别规划，本次方向确认不代表这些服务已实施。
 

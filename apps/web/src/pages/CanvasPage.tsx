@@ -9,7 +9,7 @@ import { isRuntimeNodeVisible } from "../canvas/runtime-projection";
 import { projectAssetsPath, type ProjectAsset, type ProjectAssetListResponse } from "../canvas/assets";
 import type { EmbeddedSceneRuntimeSelection } from "../canvas/EmbeddedSceneNode";
 import { findModelSceneNode, type ModelSceneSnapshot } from "../canvas/model-scene";
-import { canvasRoutePath, modelEditorRoutePath, projectCanvasPath } from "../canvas/routes";
+import { canvasRoutePath, modelEditorRoutePath, projectCanvasPath, projectListRoutePath } from "../canvas/routes";
 import { TemplateDialog } from "../canvas/TemplateDialog";
 import { getCanvasTemplate, instantiateCanvasTemplate, type CanvasTemplateId } from "../canvas/templates";
 import { ThemeDialog } from "../canvas/ThemeDialog";
@@ -568,7 +568,7 @@ export function CanvasPage({ initialAssetId, initialTemplateId, mode, projectId,
 
   if (loading) return <main className="canvas-page-state"><p className="eyebrow">Canvas</p><h1>正在加载画布…</h1></main>;
   if (loadError || !document) {
-    return <main className="canvas-page-state error-state"><p className="eyebrow">Canvas error</p><h1>画布加载失败</h1><p>{loadError ?? "接口没有返回画布文档。"}</p>{!publicView ? <a className="secondary-button" href="#/projects">返回项目列表</a> : null}</main>;
+    return <main className="canvas-page-state error-state"><p className="eyebrow">Canvas error</p><h1>画布加载失败</h1><p>{loadError ?? "接口没有返回画布文档。"}</p>{!publicView ? <a className="secondary-button" href={projectListRoutePath("2d")}>返回项目列表</a> : null}</main>;
   }
 
   const editable = mode === "edit" && canEdit && !saving;
@@ -577,7 +577,7 @@ export function CanvasPage({ initialAssetId, initialTemplateId, mode, projectId,
     <main aria-label={`${projectName}${mode === "preview" ? "预览" : "编辑"}`} className={`canvas-page canvas-page-${mode}`}>
       {mode === "edit" ? <header className="canvas-toolbar">
         <div className="canvas-toolbar-context">
-          <div className="canvas-toolbar-title">{!publicView ? <a aria-label="返回项目列表" className="canvas-back-link" href="#/projects">←</a> : null}<div><span>2D 画布</span><strong>{projectName}</strong></div></div>
+          <div className="canvas-toolbar-title">{!publicView ? <a aria-label="返回项目列表" className="canvas-back-link" href={projectListRoutePath("2d")}>←</a> : null}<div><span>2D 画布</span><strong>{projectName}</strong></div></div>
           <div aria-label="画布信息" className="canvas-document-meta"><span>{document.width} × {document.height}</span><span>{canvasThemePresetLabels[document.theme.presetId]}</span><span className={dirty ? "is-dirty" : "is-saved"}>{dirty ? "有未保存更改" : "已保存"}</span></div>
         </div>
         <div className="canvas-toolbar-actions">

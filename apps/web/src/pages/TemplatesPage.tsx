@@ -81,7 +81,7 @@ export function TemplatesPage({
       />
       </div> : null}
       {allowedModules.includes("3d") ? <div aria-labelledby="template-kind-3d" hidden={projectType !== "3d"} id="template-panel-3d" role="tabpanel">
-        <SceneTemplateGallery editable={canCreateProject} onApply={(id) => onCreateFromTemplate({ projectType: "3d", id })} actionLabel="用模板创建 3D 项目" />
+        <SceneTemplateGallery editable={canCreateProject} onApply={(id) => onCreateFromTemplate({ projectType: "3d", id })} actionLabel="用模板创建 3D 项目" includeApiExamples />
       </div> : null}
     </section>
   );

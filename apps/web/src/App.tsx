@@ -6,7 +6,7 @@ import { LoginShowcase } from "./auth/LoginShowcase";
 import { useNotifications } from "./components/NotificationProvider";
 import { AccountMenu } from "./components/AccountMenu";
 import { reportError, UserFacingError } from "./api";
-import { canvasRoutePath, projectTemplateCanvasPath, projectTemplateScenePath } from "./canvas/routes";
+import { canvasRoutePath, projectListRoutePath, projectTemplateCanvasPath, projectTemplateScenePath } from "./canvas/routes";
 import { getSceneTemplate, isSceneTemplateId, type SceneTemplateId, type ProjectTemplate } from "./scene/scene-templates";
 import {
   getCanvasTemplate,
@@ -22,6 +22,8 @@ import { PRODUCT_NAME } from "./product-config";
 import { ProductLogo } from "./components/ProductLogo";
 import { ThemeToggle } from "./theme/ThemeToggle";
 import type { CoverProject } from "./covers/ProjectCoverQueue";
+import { BUSINESS_API_EXAMPLE_ID } from "./twin/business-api-example";
+import { populateBusinessApiExample, prepareBusinessApiExample } from "./twin/create-business-example";
 
 const ProjectCoverQueue = lazy(() => import("./covers/ProjectCoverQueue"));
 
@@ -406,19 +408,37 @@ function CreateProjectDialog({
   const [projectType, setProjectType] = useState<ProjectType>(initialProjectType);
   const notify = useNotifications();
   const [submitting, setSubmitting] = useState(false);
+  const [createdExampleProject, setCreatedExampleProject] = useState<Project | null>(null);
+  const [creationProgress, setCreationProgress] = useState("");
+  const [creationError, setCreationError] = useState<string | null>(null);
+  const isBusinessExample = templateId?.projectType === "3d" && templateId.id === BUSINESS_API_EXAMPLE_ID;
+  const close = () => createdExampleProject ? onCreated(createdExampleProject, null) : onClose();
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setSubmitting(true);
+    setCreationError(null);
 
     try {
-      const result = await request<ProjectResponse>("/api/v1/projects", {
-        method: "POST",
-        body: JSON.stringify({ name, projectType: templateId?.projectType ?? projectType }),
-      });
-      notify.success("项目已创建。");
-      onCreated(result.project, templateId);
+      let project = createdExampleProject;
+      if (!project) {
+        if (isBusinessExample) {
+          setCreationProgress("正在检查测试业务接口…");
+          await prepareBusinessApiExample();
+        }
+        setCreationProgress("正在创建项目…");
+        const result = await request<ProjectResponse>("/api/v1/projects", {
+          method: "POST",
+          body: JSON.stringify({ name, projectType: templateId?.projectType ?? projectType }),
+        });
+        project = result.project;
+        if (isBusinessExample) setCreatedExampleProject(project);
+      }
+      if (isBusinessExample) await populateBusinessApiExample(project.id, setCreationProgress);
+      notify.success(isBusinessExample ? "接口驱动示例已创建，模型将跟随后端反馈运动。" : "项目已创建。");
+      onCreated(project, isBusinessExample ? null : templateId);
     } catch (reason) {
+      setCreationError(errorMessage(reason));
       notify.error(reason);
     } finally {
       setSubmitting(false);
@@ -428,13 +448,14 @@ function CreateProjectDialog({
   return (
     <div aria-modal="true" className="dialog-backdrop" role="dialog">
       <form className="dialog-card" onSubmit={submit}>
-        <button aria-label="关闭" className="dialog-close" disabled={submitting} onClick={onClose} type="button">
+        <button aria-label="关闭" className="dialog-close" disabled={submitting} onClick={close} type="button">
           ×
         </button>
-        <p className="eyebrow">New project</p>
         <h2>{template ? "使用模板创建项目" : "创建空白项目"}</h2>
         <p>
-          {template
+          {isBusinessExample
+            ? "创建独立示例项目，自动保存场景、接口和模型动作绑定。模型使用后端返回的数据运动；不会修改现有项目。"
+            : template
             ? `将创建一个新 ${templateId?.projectType === "3d" ? "3D 场景" : "2D 看板"}项目，并载入“${template.name}”模板。确认效果后请显式保存，封面会根据已保存内容生成。`
             : "新项目默认处于草稿状态，创建人自动成为项目负责人。"}
         </p>
@@ -457,7 +478,7 @@ function CreateProjectDialog({
           <span>项目名称</span>
           <input
             autoFocus
-            disabled={submitting}
+            disabled={submitting || createdExampleProject !== null}
             maxLength={100}
             minLength={2}
             onChange={(event) => setName(event.target.value)}
@@ -466,12 +487,14 @@ function CreateProjectDialog({
             value={name}
           />
         </label>
+        {creationError ? <p className="error-message" role="alert">{createdExampleProject ? "项目已创建，示例尚未完成。可重试，或打开已创建项目检查。" : ""}{creationError}</p> : null}
+        {submitting ? <p role="status">{creationProgress}</p> : null}
         <div className="dialog-actions">
-          <button className="secondary-button" disabled={submitting} onClick={onClose} type="button">
-            取消
+          <button className="secondary-button" disabled={submitting} onClick={close} type="button">
+            {createdExampleProject ? "打开已创建项目" : "取消"}
           </button>
           <button className="primary-button" disabled={submitting} type="submit">
-            {submitting ? "正在创建…" : template ? "创建并进入编辑器" : "创建草稿项目"}
+            {submitting ? "正在创建…" : createdExampleProject ? "重试完成示例" : template ? "创建并进入编辑器" : "创建草稿项目"}
           </button>
         </div>
       </form>
@@ -699,7 +722,7 @@ function AccessDenied({ module }: { module: string }) {
 }
 
 type WorkspaceRoute =
-  | { kind: "projects" }
+  | { kind: "projects"; projectType?: ProjectType }
   | { kind: "templates" }
   | { kind: "resources" }
   | { kind: "publication-run"; projectId: string; versionId?: string }
@@ -710,6 +733,14 @@ type WorkspaceRoute =
   | { kind: "invalid"; message: string };
 
 const currentWorkspaceRoute = (): WorkspaceRoute => {
+  const projectListMatch = window.location.hash.match(/^#\/projects(?:\?([^#]*))?$/);
+  if (projectListMatch) {
+    const projectType = new URLSearchParams(projectListMatch[1] ?? "").get("type");
+    if (projectType !== null && projectType !== "2d" && projectType !== "3d") {
+      return { kind: "invalid", message: "项目类型无效，请选择 2D 看板或 3D 场景。" };
+    }
+    return { kind: "projects", projectType: projectType ?? undefined };
+  }
   if (window.location.hash === "#/templates") {
     return { kind: "templates" };
   }
@@ -764,11 +795,18 @@ const currentWorkspaceRoute = (): WorkspaceRoute => {
   };
 };
 
+const routeProjectType = (route: WorkspaceRoute): ProjectType | undefined =>
+  route.kind === "projects" ? route.projectType
+    : route.kind === "standalone-scene" ? "3d"
+      : route.kind === "canvas" || route.kind === "model-editor" ? "2d" : undefined;
+
 function Workspace({ user, onLogout }: WorkspaceProps) {
   const notify = useNotifications();
   const [route, setRoute] = useState<WorkspaceRoute>(currentWorkspaceRoute);
   const [projects, setProjects] = useState<Project[]>([]);
-  const [projectTypeFilter, setProjectTypeFilter] = useState<ProjectType>(() => user.modules.includes("2d") ? "2d" : "3d");
+  const [preferredProjectType, setPreferredProjectType] = useState<ProjectType>(() =>
+    routeProjectType(route) ?? (user.modules.includes("2d") ? "2d" : "3d"));
+  const projectTypeFilter = route.kind === "projects" ? route.projectType ?? preferredProjectType : preferredProjectType;
   const [loadingProjects, setLoadingProjects] = useState(true);
   const [projectError, setProjectError] = useState<string | null>(null);
   const [showCreateProject, setShowCreateProject] = useState(false);
@@ -785,12 +823,21 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
   }, []);
 
   useEffect(() => {
+    const projectType = routeProjectType(route);
+    if (projectType && user.modules.includes(projectType)) setPreferredProjectType(projectType);
+  }, [route, user.modules]);
+
+  useEffect(() => {
     if (route.kind !== "projects" && route.kind !== "resources") return;
     let active = true;
-    setLoadingProjects(true);
-    setProjectError(null);
-
-    void request<ProjectsResponse>("/api/v1/projects")
+    let inFlight = false;
+    const controller = new AbortController();
+    const loadProjects = (initial = false) => {
+      if (!active || inFlight) return;
+      inFlight = true;
+      if (initial) setLoadingProjects(true);
+      setProjectError(null);
+      void request<ProjectsResponse>("/api/v1/projects", { signal: controller.signal })
       .then((result) => {
         if (active) {
           setProjects(result.projects);
@@ -802,13 +849,24 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
         }
       })
       .finally(() => {
+        inFlight = false;
         if (active) {
           setLoadingProjects(false);
         }
       });
+    };
+    const refreshVisibleProjects = () => {
+      if (document.visibilityState === "visible") loadProjects();
+    };
+    loadProjects(true);
+    window.addEventListener("focus", refreshVisibleProjects);
+    document.addEventListener("visibilitychange", refreshVisibleProjects);
 
     return () => {
       active = false;
+      controller.abort();
+      window.removeEventListener("focus", refreshVisibleProjects);
+      document.removeEventListener("visibilitychange", refreshVisibleProjects);
     };
   }, [route.kind]);
 
@@ -827,13 +885,15 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
 
   const createProject = (project: Project, templateId: ProjectTemplate | null) => {
     setProjects((current) => [project, ...current]);
-    setProjectTypeFilter(project.projectType);
+    setPreferredProjectType(project.projectType);
     setShowCreateProject(false);
     setCreateProjectTemplateId(null);
     if (templateId) {
       window.location.hash = (templateId.projectType === "2d" ? projectTemplateCanvasPath(project.id, templateId.id) : projectTemplateScenePath(project.id, templateId.id)).slice(1);
     } else if (project.projectType === "3d") {
       window.location.hash = standaloneSceneRoutePath(project.id, "edit").slice(1);
+    } else {
+      window.location.hash = projectListRoutePath(project.projectType).slice(1);
     }
   };
 
@@ -883,6 +943,10 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
   const visibleProjects = projects.filter(
     (project) => project.projectType === projectTypeFilter,
   );
+  const switchProjectType = (projectType: ProjectType) => {
+    setPreferredProjectType(projectType);
+    window.location.hash = projectListRoutePath(projectType).slice(1);
+  };
   const switchProjectTypeWithKeyboard = (event: KeyboardEvent<HTMLButtonElement>) => {
     const nextType = event.key === "ArrowLeft" || event.key === "Home"
       ? "2d"
@@ -891,9 +955,13 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
         : null;
     if (!nextType || !user.modules.includes(nextType)) return;
     event.preventDefault();
-    setProjectTypeFilter(nextType);
+    switchProjectType(nextType);
     document.getElementById(`project-type-tab-${nextType}`)?.focus();
   };
+
+  if (route.kind === "projects" && route.projectType && !user.modules.includes(route.projectType)) {
+    return <AccessDenied module={route.projectType === "3d" ? "3D 场景" : "2D 看板"} />;
+  }
 
   if (route.kind === "canvas") {
     if (!user.modules.includes("2d")) return <AccessDenied module="2D 看板" />;
@@ -960,7 +1028,7 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
             <span className="brand-name"><strong>{PRODUCT_NAME}</strong><small>交付工作台</small></span>
           </a>
           <nav aria-label="主导航" className="topbar-nav">
-            <a aria-current={route.kind === "projects" ? "page" : undefined} href="#/projects">项目</a>
+            <a aria-current={route.kind === "projects" ? "page" : undefined} href={projectListRoutePath(preferredProjectType)}>项目</a>
             {user.modules.length > 0 ? <a aria-current={route.kind === "templates" ? "page" : undefined} href="#/templates">模板</a> : null}
             {user.modules.length > 0 ? <a aria-current={route.kind === "resources" ? "page" : undefined} href="#/resources">资源库</a> : null}
           </nav>
@@ -1019,7 +1087,7 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
               className={projectTypeFilter === "2d" ? "is-active" : ""}
               id="project-type-tab-2d"
               onKeyDown={switchProjectTypeWithKeyboard}
-              onClick={() => setProjectTypeFilter("2d")}
+              onClick={() => switchProjectType("2d")}
               role="tab"
               tabIndex={projectTypeFilter === "2d" ? 0 : -1}
               type="button"
@@ -1033,7 +1101,7 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
               className={projectTypeFilter === "3d" ? "is-active" : ""}
               id="project-type-tab-3d"
               onKeyDown={switchProjectTypeWithKeyboard}
-              onClick={() => setProjectTypeFilter("3d")}
+              onClick={() => switchProjectType("3d")}
               role="tab"
               tabIndex={projectTypeFilter === "3d" ? 0 : -1}
               type="button"

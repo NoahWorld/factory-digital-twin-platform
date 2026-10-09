@@ -33,7 +33,9 @@ pnpm backend:bootstrap
 pnpm dev:web:java
 ```
 
-打开 http://127.0.0.1:5173/#/projects ，使用 `admin` 登录；随机密码保存在被 Git 忽略的 `deploy/local/.local/admin.json`。本机已完成构建与初始化。后续修改 Java 时执行 `pnpm backend:verify` 和 `pnpm backend:up:prebuilt`。`pnpm backend:down` 停止本项目服务并保留数据卷。
+打开 http://127.0.0.1:5173/#/projects ，使用 `admin` 登录；随机密码保存在被 Git 忽略的 `deploy/local/.local/admin.json`。本机已完成构建与初始化。后续修改 Java 时执行 `pnpm backend:verify`（clean + verify）和 `pnpm backend:up:prebuilt`，避免已删除的类或已改名的迁移残留在部署包中。`pnpm backend:down` 停止本项目服务并保留数据卷。
+
+模型运动接入使用后端真实 REST / WebSocket 业务接口，按“连接接口 → 绑定动作 → 检查效果”配置。模板中心的“接口驱动搬运单元”可创建 AGV 与机械臂示例；旧平台模拟执行模块已停用。接口、字段、故障行为和验证见 [业务接口驱动模型](docs/data-driven-twin.md)。
 
 ## 已实现的第一期基础能力
 

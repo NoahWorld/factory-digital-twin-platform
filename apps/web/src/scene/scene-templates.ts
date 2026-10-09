@@ -2,6 +2,7 @@ import { STANDALONE_3D_LIMITS, type StandaloneSceneDocument, type StandaloneScen
 import { workshopInstances, workshopSettings } from "../../../../shared/workshop-layout";
 import { formatFileSize, type ModelAsset } from "../canvas/model-assets";
 import type { CanvasTemplateId } from "../canvas/templates";
+import { BUSINESS_API_EXAMPLE_ID, businessApiExampleInstances, businessApiExampleSettings } from "../twin/business-api-example";
 
 export const sceneTemplates = [{
   id: "production-workshop",
@@ -11,6 +12,15 @@ export const sceneTemplates = [{
   instances: workshopInstances,
   settings: workshopSettings,
   previewModelIds: ["builtin:workshop-robot-arm-v2", "builtin:workshop-agv-v2", "builtin:workshop-rack-v2"],
+}, {
+  id: BUSINESS_API_EXAMPLE_ID,
+  name: "接口驱动搬运单元 · 送检与回收",
+  description: "小车送件、机械臂取放、工件检验和成品回收的完整流程。车轮、关节、夹爪和工件均由真实后端 REST 或 WebSocket 接口驱动；预览显示当前步骤。",
+  category: "接口接入",
+  creationOnly: true,
+  instances: businessApiExampleInstances,
+  settings: businessApiExampleSettings,
+  previewModelIds: ["builtin:handling-cell-v1"],
 }] as const;
 
 export type SceneTemplateId = typeof sceneTemplates[number]["id"];
@@ -65,6 +75,9 @@ export function instantiateSceneTemplate({ templateId, currentScene, savedScene,
     throw new Error("模板链接仅用于全新空项目；已有项目请通过工具栏“模板”确认后套用。");
   }
   const template = getSceneTemplate(templateId);
+  if ("creationOnly" in template && template.creationOnly) {
+    throw new Error("此模板包含接口与动作绑定，请到模板中心创建独立示例项目。");
+  }
   const missing = [...new Set(template.instances.map((instance) => instance.modelAssetId))].filter((id) => !models.some((model) => model.id === id));
   if (missing.length) throw new Error(`模板模型未全部就绪：${missing.join("、")}。请刷新资源库后重试。`);
   const violation = sceneBudgetViolation(measureScenePerformance(template.instances, models), limits, template.settings.playAnimations);

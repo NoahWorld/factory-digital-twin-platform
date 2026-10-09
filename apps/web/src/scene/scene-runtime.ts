@@ -857,7 +857,7 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
       if (roomSignature !== roomStatusSignature) { roomStatusSignature = roomSignature; onRoomAlarmStatuses?.(roomStatuses); }
       if (settings.autoRotate && !desired.fluidEditor?.active) rotationPivot.rotation.y += deltaSeconds * settings.rotationSpeed;
       const animationConflict = settings.playAnimations && records.some(record => twinRuntime?.drivenInstances.has(record.id) && record.animationCount > 0 && desiredInstancesById.get(record.id)?.animation?.enabled !== false);
-      twinRuntime?.tick(Date.now(), animationConflict);
+      twinRuntime?.tick(Date.now(), animationConflict, now);
       selectionHelper?.update();
       updateRuntimeSelectionRing(now);
       if (walk) {

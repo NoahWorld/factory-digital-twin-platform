@@ -1,4 +1,4 @@
-import { errorMessage, reportError } from "../errors";
+import { ApiRequestError, errorMessage, errorPresentation, reportError } from "../errors";
 import { Euler, MathUtils, Matrix4, Quaternion, Vector3, type Object3D } from "three";
 import { OBB } from "three/examples/jsm/math/OBB.js";
 import { twinDriveErrors, type TwinCollisionEvent, type TwinDriveConfig, type TwinMotionBinding, type TwinTarget } from "../../../../shared/twin-drive";
@@ -18,11 +18,13 @@ export type TwinDriveAttachment = {
 };
 type Resolved = { record: InstanceRecord; object: Object3D };
 type Binding = Resolved & { definition: TwinMotionBinding; rest: Matrix4; motion: Matrix4; desired: Matrix4; visibility: boolean };
+type Pose = { motion: Matrix4; desired: Matrix4; visibility: boolean };
+type Transition = { from: Map<string, number>; to: Map<string, number>; startedAt: number; durationMs: number };
 const radians = MathUtils.degToRad;
 const rotation = (v: [number, number, number]) => new Quaternion().setFromEuler(new Euler(...v.map(radians) as [number, number, number], "XYZ"));
 const depth = (object: Object3D): number => object.parent ? 1 + depth(object.parent) : 0;
 
-/** No animation time or target integration: a coherent observation snapshot determines the entire pose. */
+/** Display interpolation is bounded by received observations; never integrate targets or extrapolate. */
 export class TwinDriveRuntime {
   private bindings: Binding[] = [];
   private writeOrder: Binding[] = [];
@@ -32,10 +34,19 @@ export class TwinDriveRuntime {
   private events: TwinCollisionEvent[] = [];
   private lastSequence: number | null = null;
   private hasPose = false;
+  private displayValues = new Map<string, number>();
+  private transition: Transition | null = null;
+  private lastSampleTime: number | null = null;
+  private lastArrivalTime: number | null = null;
+  private lastFrameTime: number | null = null;
+  private needsSnap = true;
+  private requiredPoints: TwinDriveConfig["points"] = [];
   private dirty = true;
   private failed: string | null = null;
   private lastReport = -Infinity;
+  private lastCollisionCheck = -Infinity;
   private lastStatus = "";
+  private lastReportedDiagnostics: TwinDriveDiagnostics | null = null;
   private disposed = false;
   readonly drivenInstances = new Set<string>();
   diagnostics: TwinDriveDiagnostics = { status: "waiting", message: "等待点位反馈", sequence: null, boundNodes: 0, activeCollisions: [], events: [] };
@@ -62,6 +73,8 @@ export class TwinDriveRuntime {
       this.drivenInstances.add(resolved.record.id);
     }
     this.writeOrder = [...this.bindings].sort((a, b) => depth(a.object) - depth(b.object));
+    const required = new Set(this.bindings.map(b => b.definition.pointId));
+    this.requiredPoints = attachment.config.points.filter(p => required.has(p.id));
     for (const c of attachment.config.colliders) this.boxes.set(c.id, { ...this.resolve(c.target), center: new Vector3(...c.center), halfSize: new Vector3(...c.size).multiplyScalar(0.5), box: new OBB(), active: true });
     // Resolve everything before taking ownership, so an invalid configuration cannot partially change a scene.
     for (const b of this.bindings) this.originals.set(b.object, { matrix: b.object.matrix.clone(), auto: b.object.matrixAutoUpdate, visible: b.object.visible });
@@ -105,6 +118,74 @@ export class TwinDriveRuntime {
     const t = left === right ? 0 : (value - left.value) / (right.value - left.value);
     return new Matrix4().compose(new Vector3(...left.position).lerp(new Vector3(...right.position), t), rotation(left.rotation).slerp(rotation(right.rotation), t), new Vector3(...left.scale).lerp(new Vector3(...right.scale), t));
   }
+
+  private calculatePose(values: ReadonlyMap<string, number>, visibilityValues = values): Map<Binding, Pose> {
+    const motions = new Map<string, Matrix4>();
+    const poses = new Map<Binding, Pose>();
+    for (const b of this.bindings) {
+      const value = values.get(b.definition.pointId)!;
+      const parent = b.definition.parentBindingId ? motions.get(b.definition.parentBindingId)! : new Matrix4();
+      const motion = parent.clone().multiply(this.motion(b.definition, value));
+      const desired = motion.clone();
+      if (b.definition.useNodeRestPose) desired.multiply(b.rest);
+      const visibleValue = visibilityValues.get(b.definition.pointId)!;
+      poses.set(b, { motion, desired, visibility: visibleValue * b.definition.valueScale + b.definition.valueOffset > 0 });
+      motions.set(b.definition.id, motion);
+    }
+    return poses;
+  }
+
+  private applyValues(values: Map<string, number>, poses = this.calculatePose(values)) {
+    // Commit both geometry and its restoration cache only after every node can be written.
+    this.writePose(poses);
+    for (const [b, pose] of poses) { b.motion.copy(pose.motion); b.desired.copy(pose.desired); b.visibility = pose.visibility; }
+    this.displayValues = values;
+    this.hasPose = true;
+  }
+
+  private validatePose(poses: ReadonlyMap<Binding, Pose>) {
+    // Predict actual hierarchy matrices without writing nodes. Logical FK parents may be siblings,
+    // while an actual GLB ancestor may itself be driven; both cases must be checked at the endpoint.
+    const worlds = new Map<Object3D, Matrix4>();
+    for (const b of this.bindings) {
+      if (!b.object.parent) throw new Error(`驱动节点已被移除：${b.definition.target.nodeName}`);
+      b.record.model.updateWorldMatrix(true, false);
+      worlds.set(b.record.model, b.record.model.matrixWorld.clone());
+      worlds.set(b.object, b.record.model.matrixWorld.clone().multiply(poses.get(b)!.desired));
+    }
+    const world = (object: Object3D): Matrix4 => {
+      const cached = worlds.get(object);
+      if (cached) return cached;
+      const local = object.matrixAutoUpdate ? new Matrix4().compose(object.position, object.quaternion, object.scale) : object.matrix.clone();
+      const predicted = object.parent ? world(object.parent).clone().multiply(local) : local;
+      worlds.set(object, predicted);
+      return predicted;
+    };
+    for (const b of this.writeOrder) {
+      const parentWorld = world(b.object.parent!);
+      const determinant = parentWorld.determinant();
+      if (!Number.isFinite(determinant) || Math.abs(determinant) < 1e-15) throw new Error(`驱动节点父级变换不可逆：${b.definition.target.nodeName}（检查父级零缩放）`);
+      if (!parentWorld.clone().invert().multiply(worlds.get(b.object)!).elements.every(Number.isFinite)) throw new Error(`驱动节点变换超出有效数值范围：${b.definition.target.nodeName}`);
+    }
+  }
+
+  private advance(frameNow: number) {
+    const transition = this.transition;
+    if (!transition) return false;
+    const progress = Math.min(1, (frameNow - transition.startedAt) / transition.durationMs);
+    const values = new Map<string, number>();
+    for (const [id, to] of transition.to) {
+      const from = transition.from.get(id)!;
+      // Convex combination avoids overflow from subtracting opposite large finite values.
+      values.set(id, progress === 1 ? to : (1 - progress) * from + progress * to);
+    }
+    const moved = [...values].some(([id, value]) => value !== this.displayValues.get(id));
+    if (moved) this.applyValues(values, this.calculatePose(values, transition.to));
+    if (progress === 1) this.transition = null;
+    return moved;
+  }
+
+  private freeze() { this.transition = null; this.needsSnap = true; }
 
   private writePose(poses?: Map<Binding, { desired: Matrix4; visibility: boolean }>) {
     const previous = this.writeOrder.map(b => ({ object: b.object, matrix: b.object.matrix.clone(), auto: b.object.matrixAutoUpdate, visible: b.object.visible }));
@@ -155,58 +236,85 @@ export class TwinDriveRuntime {
   }
 
   private report(status: TwinDriveDiagnostics["status"], message: string, now: number) {
-    this.diagnostics = { status, message, sequence: this.lastSequence, boundNodes: this.bindings.length, activeCollisions: [...this.active], events: [...this.events] };
+    const previous = this.diagnostics;
+    if (previous.status !== status || previous.message !== message || previous.sequence !== this.lastSequence
+      || previous.boundNodes !== this.bindings.length || previous.events.at(-1) !== this.events.at(-1)) {
+      this.diagnostics = { status, message, sequence: this.lastSequence, boundNodes: this.bindings.length, activeCollisions: [...this.active], events: [...this.events] };
+    }
     const key = `${status}/${message}`;
-    if (key !== this.lastStatus || now - this.lastReport >= 200) {
+    if (key !== this.lastStatus || this.diagnostics !== this.lastReportedDiagnostics && now - this.lastReport >= 200) {
       this.lastReport = now; this.lastStatus = key;
+      this.lastReportedDiagnostics = this.diagnostics;
       this.attachment.onDiagnostics?.(this.diagnostics);
     }
   }
 
   /** Called by the existing renderer loop; no new RAF, timer, mixer or WebGL context. */
-  tick(now = Date.now(), animationConflict = false) {
+  tick(now = Date.now(), animationConflict = false, frameNow = now) {
     if (this.disposed) return;
     if (!this.attachment.config.enabled) { this.report("disabled", "点位驱动未启用", now); return; }
     try {
+      if (!Number.isFinite(frameNow) || frameNow < 0 || this.lastFrameTime !== null && frameNow < this.lastFrameTime) throw new Error("模型补间帧时钟无效或发生回退");
+      this.lastFrameTime = frameNow;
       if (animationConflict) throw new Error("点位驱动与原生动画冲突，请关闭已绑定实例的原生动画");
       if (this.failed) { this.report("error", this.failed, now); return; }
       // Settings edits may reset transforms. Restore the last coherent pose even if transport is down.
       if (this.dirty && this.hasPose) this.writePose();
       const state = this.attachment.source.getState(), snapshot = state.snapshot;
-      if (!state.connected) { this.report("disconnected", "连接中断：模型保持最后有效姿态", now); return; }
-      if (!snapshot || snapshot.status === "idle") { this.report("waiting", this.attachment.config.simulation?.enabled ? "等待后端自动模拟源的点位反馈" : "等待点位初始化；请在编辑页检查模拟源配置", now); return; }
-      if (snapshot.status === "error") { this.report("error", snapshot.procedure?.message || "模拟器报告错误，已停止接收运动", now); return; }
-      const required = new Set(this.bindings.map(b => b.definition.pointId));
-      for (const p of this.attachment.config.points.filter(p => required.has(p.id))) {
+      if (!state.connected) { this.freeze(); this.report("disconnected", "连接中断：模型保持最后有效姿态", now); return; }
+      if (!snapshot || snapshot.status === "idle") { this.freeze(); this.report("waiting", "等待业务接口的数据反馈", now); return; }
+      if (snapshot.status === "error") {
+        this.freeze();
+        const message = snapshot.source === "api" && snapshot.error
+          ? errorPresentation(new ApiRequestError(snapshot.error, undefined, "Business source observation failed.")).message
+          : snapshot.procedure?.message || "业务接口返回错误，模型保持最后有效姿态";
+        this.report("error", message, now); return;
+      }
+      for (const p of this.requiredPoints) {
         const sample = snapshot.points[p.id];
-        if (!sample) { this.report("waiting", `缺少点位反馈：${p.label}`, now); return; }
+        if (!sample) { this.freeze(); this.report("waiting", `缺少点位反馈：${p.label}`, now); return; }
         const age = now - Date.parse(sample.timestamp);
-        if (sample.quality !== "good" || !Number.isFinite(age) || age > p.staleAfterMs || age < -5000) { this.report("stale", `点位过期或质量异常：${p.label}；模型保持最后有效姿态`, now); return; }
+        if (sample.quality !== "good" || !Number.isFinite(age) || age > p.staleAfterMs || age < -5000) { this.freeze(); this.report("stale", `点位过期或质量异常：${p.label}；模型保持最后有效姿态`, now); return; }
         if (!Number.isFinite(sample.value) || sample.value < p.min || sample.value > p.max) throw new Error(`点位 ${p.label} 的反馈值超出量程`);
       }
       if (this.lastSequence !== null && snapshot.sequence < this.lastSequence) throw new Error("点位序号回退，请重新连接当前配置");
-      const changed = snapshot.sequence !== this.lastSequence || !this.hasPose;
+      const changed = snapshot.sequence !== this.lastSequence || !this.hasPose || this.needsSnap && snapshot.status !== "paused";
       if (changed) {
-        const motions = new Map<string, Matrix4>();
-        const poses = new Map<Binding, { motion: Matrix4; desired: Matrix4; visibility: boolean }>();
-        // Compute every target before touching the scene (atomic coherent snapshot).
-        for (const b of this.bindings) {
-          const value = snapshot.points[b.definition.pointId]!.value;
-          const parent = b.definition.parentBindingId ? motions.get(b.definition.parentBindingId)! : new Matrix4();
-          const motion = parent.clone().multiply(this.motion(b.definition, value));
-          const desired = motion.clone();
-          if (b.definition.useNodeRestPose) desired.multiply(b.rest);
-          poses.set(b, { motion, desired, visibility: value * b.definition.valueScale + b.definition.valueOffset > 0 });
-          motions.set(b.definition.id, motion);
+        const sampleTime = Date.parse(snapshot.timestamp);
+        if (!Number.isFinite(sampleTime) || this.lastSampleTime !== null && sampleTime < this.lastSampleTime) throw new Error("接口采样时间无效或发生回退");
+        const values = new Map(this.requiredPoints.map(p => [p.id, snapshot.points[p.id]!.value]));
+        // Validate ALL latest mappings before advancing anything, even an existing transition.
+        const poses = this.calculatePose(values);
+        this.validatePose(poses);
+        const sampleGap = this.lastSampleTime === null ? 0 : sampleTime - this.lastSampleTime;
+        const arrivalGap = this.lastArrivalTime === null ? 0 : frameNow - this.lastArrivalTime;
+        const freshnessLimit = Math.min(...this.requiredPoints.map(p => p.staleAfterMs));
+        const interpolate = this.hasPose && !this.needsSnap && snapshot.status !== "paused" && sampleGap > 0
+          && arrivalGap > 0 && sampleGap <= freshnessLimit && arrivalGap <= freshnessLimit;
+        if (interpolate) {
+          this.advance(frameNow);
+          const from = new Map(this.displayValues);
+          // Visibility remains discrete even when the same point also drives a moving node.
+          this.applyValues(from, this.calculatePose(from, values));
+          this.transition = { from, to: values, startedAt: frameNow, durationMs: Math.min(arrivalGap, 1000) };
+        } else {
+          // First/recovered samples and corrections at the same source time are direct observations.
+          this.transition = null;
+          this.applyValues(values, poses);
         }
-        this.writePose(poses);
-        for (const [b, pose] of poses) { b.motion.copy(pose.motion); b.desired.copy(pose.desired); b.visibility = pose.visibility; }
-        this.hasPose = true; this.lastSequence = snapshot.sequence;
+        this.lastSequence = snapshot.sequence; this.lastSampleTime = sampleTime; this.lastArrivalTime = frameNow;
+        this.needsSnap = false;
       }
+      if (snapshot.status === "paused") this.freeze();
+      const moved = snapshot.status !== "paused" && this.advance(frameNow);
       // World-space collision boxes also respond to editor instance transforms.
-      if (changed || now - this.lastReport >= 200) this.collisions(snapshot.sequence, snapshot.timestamp);
-      this.report(snapshot.status === "paused" ? "paused" : "live", snapshot.status === "paused" ? "模拟器已暂停；显示最后反馈位置" : "模型由实际点位反馈驱动", now);
+      if (changed || moved || now - this.lastCollisionCheck >= 200) {
+        this.collisions(snapshot.sequence, snapshot.timestamp);
+        this.lastCollisionCheck = now;
+      }
+      this.report(snapshot.status === "paused" ? "paused" : "live", snapshot.status === "paused" ? "反馈已暂停；显示最后有效位置" : "模型由实际接口反馈驱动", now);
     } catch (reason) {
+      this.freeze();
       reportError(reason, { operation: "twin-drive.tick", bindingIds: this.bindings.map(b => b.definition.id), sequence: this.lastSequence });
       this.failed = errorMessage(reason);
       this.report("error", this.failed, now);

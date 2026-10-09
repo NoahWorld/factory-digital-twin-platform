@@ -1,0 +1,68 @@
+{
+  "version": 1,
+  "modelId": "builtin:handling-cell-v1",
+  "sha256": "fc8895589305e79d159ce5fc91b4514a63e4ff2d3202755305f14e986e433e95",
+  "byteSize": 1023280,
+  "source": "Original procedural geometry; no customer or external assets",
+  "contractSha256": "13ff13c7894b721c3f10a3c0ac2c26e9242c4547f1655d20c30991681231b264",
+  "frameSource": "actual backend TestBusiness.frameAt fixture",
+  "frames": 3200,
+  "conservativeCollisionToleranceM": 0.001,
+  "maxTcpErrorM": 9.678699938266253e-16,
+  "maxHeldCargoCenterErrorM": 9.678699938266253e-16,
+  "maxHeldFingerContactErrorM": 5.364418437237006e-9,
+  "minFingerCargoVerticalContactM": 0.32000000298023146,
+  "maxWheelNoSlipErrorMps": 1.1102230246251565e-16,
+  "maxCargoStepM": 0.02198961934940805,
+  "minTransferCargoAboveSupportM": 0.4549999970197678,
+  "cargoCount": 1,
+  "phases": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19,
+    20,
+    21
+  ],
+  "rootSpaceRestPivots": {
+    "turret": [
+      1.4,
+      0.57,
+      0
+    ],
+    "shoulder": [
+      1.4,
+      0.7,
+      0
+    ],
+    "elbow": [
+      1.4,
+      1.59,
+      0
+    ],
+    "wrist": [
+      1.4,
+      2.68,
+      0
+    ]
+  },
+  "supportingFloorAndPaint": "Support surface and thin lane/parking paint excluded from obstacle pairs; actual wheel floor contact verified.",
+  "collisionPairs": "All moving arm meshes except the mechanically attached shoulder axle against AGV and fixed base/table; cargo against AGV, fixed base/table and all arm meshes including both fingers. Adjacent joint geometry intentionally shares axes, so arm self-joint pairs are not obstacles.",
+  "backendFixtureSha256": "84246947366a0f42d1ef2d054c230eb84025246407f1517d6c9b9430abc696c4"
+}

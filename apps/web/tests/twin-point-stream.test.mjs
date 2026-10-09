@@ -15,8 +15,9 @@ assert.deepEqual(parseTwinDriveConfig(emptyTwinDriveConfig()), emptyTwinDriveCon
 for (const patch of [{ unknown: 'not ignored' }, { points: {} }, { enabled: 'true' }, { source: 'invented' }, { description: [] }, { bindings: [{}] }, { procedures: [{ id: 'x', label: 'x', steps: [{}] }] }]) {
   assert.throws(() => parseTwinDriveConfig({ ...emptyTwinDriveConfig(), ...patch }));
 }
+const legacyConfig = () => { const { connection, ...base } = emptyTwinDriveConfig(); return { ...base, source: 'simulator' }; };
 const automaticConfig = parseTwinDriveConfig({
-  ...emptyTwinDriveConfig(), enabled: true, points: [point],
+  ...legacyConfig(), enabled: true, points: [point],
   bindings: [{ id: 'binding', label: 'Axis binding', pointId: point.id, target: { instanceId: 'instance', modelAssetId: 'model', nodeName: 'Axis' }, parentBindingId: null, useNodeRestPose: true, kind: 'rotation', axis: [0, 1, 0], pivot: [0, 0, 0], valueScale: 1, valueOffset: 0, poses: [] }],
   procedures: [{ id: 'cycle', label: 'Cycle', steps: [{ id: 'home', label: 'Home', targets: [{ pointId: point.id, value: 0 }], tolerance: 0.01, timeoutMs: 3000 }] }],
   simulation: { enabled: true, procedureId: 'cycle', repeat: true },
@@ -67,7 +68,7 @@ try {
   await assert.rejects(source.command({ expectedRevision: 2, operation: 'reset' }), /配置已变化/);
   const rejected = source.command({ expectedRevision: 1, operation: 'move', values: [{ pointId: 'x', value: 3 }] });
   socket.message({ type: 'error', commandId: socket.sent.at(-1).commandId, error: 'bad_point', message: 'Unknown point' });
-  await assert.rejects(rejected, /bad_point/);
+  await assert.rejects(rejected, /操作未完成/);
   const timedOut = source.command({ expectedRevision: 1, operation: 'pause' });
   const before = socket.sent.length; fireTimeout(10000); await assert.rejects(timedOut, /不会自动重发/);
   assert.equal(socket.sent.length, before);
@@ -115,9 +116,27 @@ try {
   subscriber.close(); subscriber.connect(); socket = Socket.all.at(-1); socket.open(); socket.message({ type: 'hello' });
   fireTimeout(10000); assert.match(subscriber.getState().error, /订阅在 10 秒内未确认/);
   subscriber.close(); assert.equal(timers.size, 0);
-  assert.deepEqual(parseTwinDriveConfig({ ...emptyTwinDriveConfig(), points: [point] }).points[0].topic, point.topic);
-  assert.throws(() => parseTwinDriveConfig({ ...emptyTwinDriveConfig(), points: [{ ...point, topic: 'bad/*' }] }), /topic|Topic/);
+  assert.deepEqual(parseTwinDriveConfig({ ...legacyConfig(), points: [point] }).points[0].topic, point.topic);
+  assert.throws(() => parseTwinDriveConfig({ ...legacyConfig(), points: [{ ...point, topic: 'bad/*' }] }), /topic|Topic/);
   assert.throws(() => parseTwinDriveConfig({ ...emptyTwinDriveConfig(), simulation: { enabled: true, procedureId: '', repeat: true } }));
+  const api = new TwinPointStream('ws://local/api/v1/twin-drive?projectId=project', 'project', () => reloads++);
+  api.setConfiguration(1, [], 'api'); api.connect();
+  socket = Socket.all.at(-1); socket.open(); socket.message({ type: 'hello' });
+  assert.deepEqual(socket.sent, [{ type: 'subscribe', expectedRevision: 1, topics: [] }]);
+  socket.message({ type: 'subscribed', revision: 1, topics: [] });
+  socket.message(snapshot({ source: 'api', status: 'error', error: 'source_timeout', retryCount: 20 }));
+  assert.equal(api.getState().connected, true, 'upstream failure does not claim the gateway socket is disconnected');
+  assert.equal(api.getState().phase, 'error'); assert.equal(api.getState().retryCount, 20);
+  assert.match(api.getState().error, /业务接口响应超时/); assert.doesNotMatch(api.getState().error, /source_timeout/);
+  await assert.rejects(api.command({ expectedRevision: 1, operation: 'reset' }), /只接收业务反馈/);
+  socket.close(1006); assert.equal(api.getState().retryCount, 1, 'upstream retries must not exhaust gateway transport retries');
+  fireTimeout(1000); socket = Socket.all.at(-1); socket.open(); socket.message({ type: 'hello' });
+  socket.message({ type: 'subscribed', revision: 1, topics: [] });
+  socket.message(snapshot({ source: 'api', sequence: 2, status: 'running' }));
+  assert.equal(api.getState().error, null); assert.equal(api.getState().phase, 'live');
+  socket.message(snapshot({ source: 'simulator', sequence: 3 }));
+  assert.match(api.getState().error, /来源与已保存配置不一致/);
+  api.close(); assert.equal(timers.size, 0);
   console.log('Topic subscriptions: exact ACK, sample topic rejection, no pre-ACK feedback, subscription timeout, preview subscribe/ping only and cleanup passed.');
   console.log('Twin point stream: snapshot validation, revision fencing, ACK/errors, timeout, bounded retry state, no replay and sequence rollback passed.');
 } finally { Object.assign(globalThis, originals); }

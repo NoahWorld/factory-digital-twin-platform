@@ -13,7 +13,7 @@ export function useTwinDrive(projectId: string, { live = true }: { live?: boolea
   // Explicit reconnect is a new source identity so the scene also clears its sequence fence.
   // Automatic transport retries retain the same identity and must still reject rollback.
   const reconnect = useCallback(() => setConnectionEpoch((value) => value + 1), []);
-  // Every saved revision owns a fresh simulator sequence, even if its JSON content is unchanged.
+  // Each saved revision has a distinct observation stream and sequence fence.
   const documentRevision = document?.projectId === projectId ? document.revision : null;
   const source = useMemo(() => {
     const url = new URL(apiUrl("/api/v1/twin-drive"), window.location.href);
@@ -51,7 +51,7 @@ export function useTwinDrive(projectId: string, { live = true }: { live?: boolea
 
   const enabled = document?.projectId === projectId && document.config.enabled;
   useEffect(() => {
-    if (live && enabled && document) { source.setConfiguration(document.revision, document.config.points); source.connect(); }
+    if (live && enabled && document?.config.source === "api") { source.setConfiguration(document.revision, document.config.points, document.config.source); source.connect(); }
     return () => source.close();
   }, [enabled, document, source, live]);
 

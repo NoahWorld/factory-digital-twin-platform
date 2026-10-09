@@ -5,8 +5,9 @@ import { prepareTwinBindingRemap, suggestTwinRemapNodes, twinRemapRows, twinRema
 const target = (nodeName, instanceId = 'old', modelAssetId = 'old-asset') => ({ instanceId, modelAssetId, nodeName });
 const motion = (id, nodeName, parentBindingId = null) => ({ id, label: id, pointId: 'distance', target: target(nodeName), parentBindingId, useNodeRestPose: true, kind: 'translation', axis: [1, 0, 0], pivot: [0, 0, 0], valueScale: 2, valueOffset: 1, poses: [] });
 const fixture = () => {
+  const { connection, ...legacy } = emptyTwinDriveConfig();
   const config = {
-    ...emptyTwinDriveConfig(), enabled: true,
+    ...legacy, source: 'simulator', enabled: true,
     points: [{ id: 'distance', label: '行程', assetId: 'device', metricKey: 'distance', topic: 'device/distance', unit: 'm', min: 0, max: 10, initialValue: 0, maxSpeed: 1, staleAfterMs: 1000 }],
     bindings: [motion('arm', 'arm'), motion('tool', 'tool', 'arm')],
     colliders: [{ id: 'tool-box', label: '工具碰撞区域', target: target('tool'), center: [1, 0, 0], size: [2, 1, 1] }, { id: 'fixed-box', label: '固定区域', target: target('fixed', 'untouched', 'fixed-asset'), center: [0, 0, 0], size: [1, 1, 1] }],

@@ -1,9 +1,12 @@
 import type { CanvasTemplateId } from "./templates";
-import { standaloneSceneRoutePath } from "../../../../shared/standalone-3d";
+import { standaloneSceneRoutePath, type ProjectType } from "../../../../shared/standalone-3d";
 import type { SceneTemplateId } from "../scene/scene-templates";
 
 export const projectCanvasPath = (projectId: string): string =>
   `/api/v1/projects/${encodeURIComponent(projectId)}/canvas`;
+
+export const projectListRoutePath = (projectType: ProjectType): string =>
+  `#/projects?type=${projectType}`;
 
 export const canvasRoutePath = (
   projectId: string,

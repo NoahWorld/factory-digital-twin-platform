@@ -52,9 +52,35 @@ const userMessages: Readonly<Record<string, string>> = {
   invalid_response: "服务返回异常，请稍后重试。",
   publication_read_only: "公开链接仅供查看，请登录后编辑。",
   publication_not_found: "公开链接已失效，请联系项目负责人。",
+  source_origin_denied: "接口地址未获允许，请联系管理员添加业务来源。",
+  invalid_source_url: "接口地址无效，请检查地址和连接方式。",
+  invalid_subscription_json: "订阅消息格式不正确，请填写有效的 JSON。",
+  source_http_error: "业务接口返回异常，请检查接口服务。",
+  source_connection_failed: "无法连接业务接口，正在重试。请检查接口服务。",
+  source_socket_closed: "业务接口连接已断开，正在重试。",
+  source_timeout: "业务接口响应超时，请检查服务和超时设置。",
+  source_payload_too_large: "接口数据过大，请缩小返回内容。",
+  invalid_source_payload: "接口数据结构不符合要求，请检查返回内容。",
+  invalid_source_json: "接口未返回有效的 JSON，请检查接口服务。",
+  invalid_source_timestamp: "接口采样时间无效，请检查时间字段。",
+  source_clock_error: "接口采样时间异常，请检查业务服务器时间。",
+  invalid_source_sequence: "接口数据序号无效，请检查接口服务。",
+  source_sequence_regressed: "接口时间或序号发生回退，已暂停动作。请修正接口后重新保存配置。",
+  source_timestamp_reused: "接口数据已变化但采样时间未更新，已暂停动作。",
+  source_point_missing: "绑定字段缺失或类型不符，请检查接口字段。",
+  source_point_out_of_range: "接口数据超出设置范围，请检查数据和动作范围。",
+  source_binary_not_supported: "订阅接口需要返回 JSON 文本，请检查接口格式。",
+  source_discovery_failed: "后端无法读取接口配置，正在重试。请联系管理员。",
+  source_worker_capacity_exceeded: "后端接口采集繁忙，正在重试。",
+  motion_source_capacity_exceeded: "运行中的接口项目过多，请联系管理员。",
+  source_test_interrupted: "接口检查已中断，请重试。",
+  legacy_simulation_removed: "旧版平台模拟已停用，请重新接入业务接口。",
+  twin_revision_conflict: "接口配置已变化，请重新加载后再保存。",
+  twin_animation_conflict: "绑定模型的原生动画仍在播放，请先关闭该模型动画。",
 };
 
 function userMessage(error: ApiRequestError): string {
+  if (error.context.status === 404 && error.context.path === "/api/v1/test-business/handling-cell/state") return "测试业务接口尚未启用，请联系管理员更新后端服务。";
   if (Object.hasOwn(userMessages, error.code)) return userMessages[error.code];
   const status = error.context.status;
   if (status === 400 || status === 422) return "输入内容不符合要求，请检查后重试。";

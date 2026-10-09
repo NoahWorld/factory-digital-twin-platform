@@ -1,6 +1,7 @@
 import { workshopLegacyModels } from "./workshop-models-legacy";
 import { workshopModels } from "./workshop-models";
 import { workshopModels as workshopModelsV1 } from "./workshop-models-v1";
+import { handlingCellModels } from "./handling-cell-models";
 
 /** Bundled, public demonstration assets. IDs and content hashes are immutable per version. */
 export const builtinModels = [
@@ -54,6 +55,7 @@ export const builtinModels = [
   ...workshopModels,
   ...workshopModelsV1,
   ...workshopLegacyModels,
+  ...handlingCellModels,
 ] as const;
 
 export const findBuiltinModel = (id: string) => builtinModels.find((model) => model.id === id);

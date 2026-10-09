@@ -30,7 +30,7 @@ import { getSceneTemplate, instantiateSceneTemplate, measureScenePerformance, sc
 import { projectAssetsPath, type ProjectAsset, type ProjectAssetListResponse } from "../canvas/assets";
 import { Model3DNode } from "../canvas/Model3DNode";
 import { CanvasSurface } from "../canvas/CanvasSurface";
-import { canvasRoutePath, projectCanvasPath } from "../canvas/routes";
+import { canvasRoutePath, projectCanvasPath, projectListRoutePath } from "../canvas/routes";
 import { ModelAssetPreviewDialog } from "../canvas/ModelAssetPreviewDialog";
 import { standaloneRendererNode } from "../canvas/standalone-renderer-node";
 import { ThemeToggle } from "../theme/ThemeToggle";
@@ -839,7 +839,7 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
     return <main className="canvas-page-state"><h1>正在加载独立 3D 场景…</h1></main>;
   }
   if (error && !draftScene) {
-    return <main className="canvas-page-state error-state"><h1>3D 项目加载失败</h1><p>{error}</p>{!publicView ? <a className="secondary-button" href="#/projects">返回项目</a> : null}</main>;
+    return <main className="canvas-page-state error-state"><h1>3D 项目加载失败</h1><p>{error}</p>{!publicView ? <a className="secondary-button" href={projectListRoutePath("3d")}>返回项目</a> : null}</main>;
   }
   if (!draftScene || draftScene.projectId !== projectId || !rendererNode) return null;
 
@@ -919,7 +919,7 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
     <main className={`standalone-3d-editor${twinEditor ? " is-configuring-twin" : ""}`}>
       <header className="standalone-3d-toolbar">
         <div className="standalone-toolbar-meta">
-          <a className="secondary-button compact-button" href="#/projects" onClick={(event) => { if (fluidEditor.session) { event.preventDefault(); notify.warning("请先应用并保存或取消当前流体路径，再离开编辑器。"); setInspectorView("fluid"); } }}>返回项目</a>
+          <a className="secondary-button compact-button" href={projectListRoutePath("3d")} onClick={(event) => { if (fluidEditor.session) { event.preventDefault(); notify.warning("请先应用并保存或取消当前流体路径，再离开编辑器。"); setInspectorView("fluid"); } }}>返回项目</a>
           <div className="standalone-3d-title"><strong>{projectName}</strong><span>3D 场景编辑</span></div>
           <details className="standalone-scene-usage"><summary>场景用量</summary>
             <div className="standalone-3d-budget" title="通过明确预算阻止浏览器无上限加载">

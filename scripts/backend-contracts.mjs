@@ -55,12 +55,24 @@ for(const type of ['TwinPoint','TwinMotionBinding','TwinCollider','TwinCollision
  twinField(type,'id',{minLength:1,maxLength:120,pattern:'^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$'});
  twinField(type,'label',{minLength:1,maxLength:120});
 }
-for(const key of ['assetId','metricKey'])twinField('TwinPoint',key,{minLength:1,maxLength:80,pattern:'^[A-Za-z0-9][A-Za-z0-9._:-]{0,79}$'});
+twinField('TwinPoint','assetId',{maxLength:80,pattern:'^(?:[A-Za-z0-9][A-Za-z0-9._:-]{0,79})?$'});
+twinField('TwinPoint','metricKey',{minLength:1,maxLength:80,pattern:'^[A-Za-z0-9][A-Za-z0-9._:-]{0,79}$'});
+twinField('TwinPoint','sourcePath',{minLength:1,maxLength:256});
+const valueLabels = definitions.TwinPoint.properties.valueLabels.anyOf.find(entry=>entry.type==='array');
+Object.assign(valueLabels,{minItems:1,maxItems:64});
+const valueLabel = valueLabels.items;
+Object.assign(valueLabel.properties.value,{type:'integer',minimum:-1e6,maximum:1e6});
+Object.assign(valueLabel.properties.label,{minLength:1,maxLength:120,pattern:'^[^\\u0000-\\u001f\\u007f-\\u009f]*(?![\\s\\S])'});
+twinField('TwinApiConnection','url',{maxLength:2048});
+twinField('TwinApiConnection','timestampPath',{minLength:1,maxLength:256});
+twinField('TwinApiConnection','intervalMs',{type:'integer',minimum:200,maximum:60000});
+twinField('TwinApiConnection','timeoutMs',{type:'integer',minimum:500,maximum:30000});
+twinField('TwinApiConnection','subscribeMessage',{minLength:2,maxLength:8192});
 twinField('TwinPoint','unit',{maxLength:32});
 twinField('TwinPoint','topic',{minLength:1,maxLength:200,pattern:'^[A-Za-z0-9][A-Za-z0-9._:/-]{0,199}$'});
 twinField('TwinSimulation','procedureId',{maxLength:120});
 for(const key of ['min','max','initialValue'])twinField('TwinPoint',key,{minimum:-1e6,maximum:1e6});
-twinField('TwinPoint','maxSpeed',{exclusiveMinimum:0,maximum:1e6});
+twinField('TwinPoint','maxSpeed',{minimum:0,maximum:1e6});
 twinField('TwinPoint','staleAfterMs',{type:'integer',minimum:500,maximum:60000});
 for(const key of ['instanceId','modelAssetId'])twinField('TwinTarget',key,{minLength:1,maxLength:120,pattern:'^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$'});
 twinField('TwinTarget','nodeName',{minLength:1,maxLength:256});
@@ -90,6 +102,8 @@ definitions.CanvasNode.allOf=Object.entries(groups).map(([name,types])=>({if:{re
 const output=join(backendDirectory(),'src/main/resources/contracts');mkdirSync(output,{recursive:true});
 const fingerprints=Object.fromEntries(program.getSourceFiles().filter(s=>s.fileName.startsWith(root)&&!s.fileName.includes('node_modules')).map(s=>[s.fileName.slice(root.length),createHash('sha256').update(s.text).digest('hex')]));
 function write(name,value){const contents=JSON.stringify(value,null,2)+'\n';const path=join(output,name);if(process.argv.includes('--check')){if(readFileSync(path,'utf8')!==contents)throw new Error('Contract drift: '+name+'; run pnpm backend:contracts');}else writeFileSync(path,contents);}
+// Shared authored geometry is also the backend's kinematic source of truth.
+write('handling-cell-geometry.json',JSON.parse(readFileSync(join(root,'shared/handling-cell-geometry.json'),'utf8')));
 const temp=mkdtempSync(join(tmpdir(),'twin-contracts-'));
 try{
  execFileSync(process.execPath,[require.resolve('typescript/bin/tsc'),'--target','ES2022','--module','commonjs','--moduleResolution','node','--strict','--skipLibCheck','--rootDir',root,'--outDir',temp,join(root,'shared/builtin-models.ts'),join(root,'shared/standalone-3d.ts'),join(root,'apps/api/src/canvas.ts'),join(root,'apps/api/src/standalone-scenes.ts')],{stdio:'inherit'});

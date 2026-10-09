@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { CanvasSurface } from "../src/canvas/CanvasSurface";
+import { NotificationProvider } from "../src/components/NotificationProvider";
 import { ComponentInspector } from "../src/canvas/ComponentInspector";
 import { TwinActionEditor } from "../src/twin/TwinActionEditor";
 import { TwinDriveConsole } from "../src/twin/TwinDriveConsole";
@@ -15,7 +16,7 @@ import { canvasViewportScale, isOverlayNode, isRuntimeNodeVisible, projectRuntim
 const node = (type, id = type) => ({ ...createCanvasNode(type, 0, 0, 1), id });
 const doc = (nodes) => ({ projectId: "test-2d", nodes, width: 1920, height: 1080, revision: 0, updatedAt: null, theme: { accentColor: "#00ffff", backgroundColor: "#071525", borderColor: "#115577", glowIntensity: 0, panelRadius: 0, surfaceColor: "#102030", textColor: "#ffffff", backgroundPattern: "grid", fontFamily: "system", mode: "dark", presetId: "deep-blue" } });
 const ignore = () => undefined;
-const render = (document, props = {}) => renderToStaticMarkup(createElement(CanvasSurface, { document, editable: false, selectedNodeId: null, selectedModelSceneNodePath: null, onCreateNode: ignore, onModelSceneNodeSelect: ignore, onNodeChange: ignore, onSelectNode: ignore, ...props }));
+const render = (document, props = {}) => renderToStaticMarkup(createElement(NotificationProvider, null, createElement(CanvasSurface, { document, editable: false, selectedNodeId: null, selectedModelSceneNodePath: null, onCreateNode: ignore, onModelSceneNodeSelect: ignore, onNodeChange: ignore, onSelectNode: ignore, ...props })));
 
 test("embedded point streams mount only for real preview, never editing or cover rendering", () => {
   const surface = readFileSync("apps/web/src/canvas/CanvasSurface.tsx", "utf8");
@@ -23,7 +24,7 @@ test("embedded point streams mount only for real preview, never editing or cover
   assert.match(surface, /interactive=\{previewMode && runtimeControlsEnabled && modelInteractionEnabled\}/);
   assert.match(embedded, /!editable && interactive \? <EmbeddedLiveScene/);
   assert.match(embedded, /function EmbeddedLiveScene[\s\S]*useTwinDrive\(projectId\)/);
-  assert.match(embedded, /<Model3DNode \{\.\.\.rendererProps\} twinDrive=\{attachment\}/);
+  assert.match(embedded, /<RoomAlarmSceneNode scene=\{scene\} rendererProps=\{\{ \.\.\.rendererProps, twinDrive: attachment \}\}/);
   assert.match(embedded, /: <Model3DNode \{\.\.\.rendererProps\} \/>/);
   const styles = readFileSync("apps/web/src/twin/twin-drive.css", "utf8");
   assert.match(styles, /\.embedded-twin-status \{[^}]*pointer-events: none/);
@@ -42,14 +43,32 @@ test("delivery preview has provenance and real errors but no point configuration
   assert.match(source.slice(editStart), /"加载数据配置…" : twin\.error \? "重试数据配置" : "数据与模型"/);
   assert.match(source, /mode === "edit" && showTwinEditor/);
   assert.match(source, /useTwinDrive\(projectId, \{ live: mode === "preview" \|\| testingTwin \}\)/);
-  const document = { revision: 5, projectId: 'scene', editable: true, config: { ...emptyTwinDriveConfig(), enabled: true, simulation: { enabled: true, procedureId: 'p', repeat: true } } };
+  const document = { revision: 5, projectId: 'scene', editable: true, config: { ...emptyTwinDriveConfig(), enabled: true, connection: { protocol: 'websocket', url: '/api/v1/test-business/handling-cell/live', timestampPath: 'timestamp', intervalMs: 500, timeoutMs: 5000 } } };
   const stream = { connected: true, snapshot: null, phase: 'live', retryCount: 0, error: null };
   const status = renderToStaticMarkup(createElement(TwinDriveStatus, { document, error: null, stream, diagnostics: null, onReload: ignore, onReconnect: ignore }));
-  assert.match(status, /模拟数据 · WebSocket/); assert.doesNotMatch(status, /<button|<input|<table/);
+  assert.match(status, /测试业务接口 · WebSocket 订阅/); assert.doesNotMatch(status, /<button|<input|<table/);
   const broken = renderToStaticMarkup(createElement(TwinDriveStatus, { document, error: null, stream: { ...stream, connected: false, phase: 'reconnecting', error: '🔴 网络异常／正在重连', retryCount: 3 }, diagnostics: null, onReload: ignore, onReconnect: ignore }));
   assert.match(broken, /网络异常／正在重连/); assert.match(broken, /第 3 次/);
   const diagnostics = renderToStaticMarkup(createElement(TwinDriveConsole, { document, loading: false, error: null, source: {}, stream, diagnostics: null, onReload: ignore, onReconnect: ignore }));
-  assert.match(diagnostics, /后端独立产生点位数据/); assert.doesNotMatch(diagnostics, /运动到目标|直接设置反馈值|暂停模拟|重置点位|运行一次/);
+  assert.match(diagnostics, /测试业务接口 · WebSocket 订阅/); assert.doesNotMatch(diagnostics, /运动到目标|直接设置反馈值|暂停模拟|重置点位|运行一次/);
+});
+
+test("upstream retry and browser gateway disconnect have distinct status and recovery controls", () => {
+  const document = { revision: 5, projectId: 'scene', editable: true, config: { ...emptyTwinDriveConfig(), enabled: true } };
+  const upstream = { connected: true, snapshot: null, phase: 'error', retryCount: 4, error: '业务接口响应超时，请检查服务和超时设置。' };
+  const props = { document, loading: false, error: null, source: {}, stream: upstream, diagnostics: null, onReload: ignore, onReconnect: ignore };
+  for (const Component of [TwinDriveStatus, TwinDriveConsole]) {
+    const retrying = renderToStaticMarkup(createElement(Component, props));
+    assert.match(retrying, /接口异常／正在重试 · 第 4 次/);
+    assert.doesNotMatch(retrying, /重新连接|网关连接异常/);
+    const gateway = renderToStaticMarkup(createElement(Component, { ...props, stream: { ...upstream, connected: false, retryCount: 6, error: '网关连接失败，请重新连接。' } }));
+    assert.match(gateway, /<button[^>]*>重新连接<\/button>/);
+    assert.doesNotMatch(gateway, /接口异常／正在重试/);
+    const reconnecting = renderToStaticMarkup(createElement(Component, { ...props, stream: { ...upstream, connected: false, phase: 'reconnecting', retryCount: 2 } }));
+    assert.match(reconnecting, /网络异常／正在重连/);
+    assert.match(reconnecting, /第 2 次/);
+    assert.doesNotMatch(reconnecting, /<button[^>]*>重新连接<\/button>/);
+  }
 });
 
 test("overlay includes the real fullscreen button but excludes recursive 3D nodes and background texture", () => {

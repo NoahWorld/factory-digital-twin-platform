@@ -28,14 +28,15 @@ const vector: Check = (value, path) => {
 };
 const identity = { id: text, label: text };
 const target = object({ instanceId: text, modelAssetId: text, nodeName: text });
-const point = object({ ...identity, assetId: text, metricKey: text, unit: text, min: number, max: number, initialValue: number, maxSpeed: number, staleAfterMs: number }, { topic: text });
+const point = object({ ...identity, assetId: text, metricKey: text, unit: text, min: number, max: number, initialValue: number, maxSpeed: number, staleAfterMs: number }, { topic: text, sourcePath: text, valueLabels: list(object({ value: number, label: text }), 64) });
 const pose = object({ value: number, position: vector, rotation: vector, scale: vector });
 const binding = object({ ...identity, pointId: text, target, parentBindingId: (value, path) => { if (value !== null) text(value, path); }, useNodeRestPose: boolean, kind: oneOf("translation", "rotation", "pose", "visibility"), axis: vector, pivot: vector, valueScale: number, valueOffset: number, poses: list(pose, TWIN_DRIVE_LIMITS.poses) });
 const collider = object({ ...identity, target, center: vector, size: vector });
 const rule = object({ ...identity, first: text, second: text, severity: oneOf("warning", "error"), enabled: boolean });
 const step = object({ ...identity, targets: list(object({ pointId: text, value: number }), TWIN_DRIVE_LIMITS.points), tolerance: number, timeoutMs: number });
 const procedure = object({ ...identity, steps: list(step, TWIN_DRIVE_LIMITS.steps) });
-const configuration = object({ version: oneOf(1), enabled: boolean, source: oneOf("simulator"), points: list(point, TWIN_DRIVE_LIMITS.points), bindings: list(binding, TWIN_DRIVE_LIMITS.bindings), colliders: list(collider, TWIN_DRIVE_LIMITS.colliders), collisionRules: list(rule, TWIN_DRIVE_LIMITS.collisionRules), procedures: list(procedure, TWIN_DRIVE_LIMITS.procedures) }, {
+const configuration = object({ version: oneOf(1), enabled: boolean, source: oneOf("simulator", "api"), points: list(point, TWIN_DRIVE_LIMITS.points), bindings: list(binding, TWIN_DRIVE_LIMITS.bindings), colliders: list(collider, TWIN_DRIVE_LIMITS.colliders), collisionRules: list(rule, TWIN_DRIVE_LIMITS.collisionRules), procedures: list(procedure, TWIN_DRIVE_LIMITS.procedures) }, {
+  connection: object({ protocol: oneOf("rest", "websocket"), url: text, timestampPath: text, intervalMs: number, timeoutMs: number }, { subscribeMessage: text, redacted: boolean }),
   description: (value, path) => { text(value, path); if ((value as string).length > 4000) fail(path, "最多 4000 字符"); },
   simulation: object({ enabled: boolean, procedureId: text, repeat: boolean }),
 });
