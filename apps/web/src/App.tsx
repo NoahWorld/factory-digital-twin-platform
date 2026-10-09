@@ -1212,7 +1212,9 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
                           aria-label={`直接预览 ${project.name}`}
                           className="icon-button project-action"
                           href={previewPath}
-                          title="直接预览"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          title="在新页签中预览"
                         >
                           <ActionIcon name="view" />
                         </a>

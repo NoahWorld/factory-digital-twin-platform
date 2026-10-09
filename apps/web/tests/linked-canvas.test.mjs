@@ -92,12 +92,17 @@ test("runtime visibility and text changes never mutate the saved node", () => {
   assert.match(render(doc([original]), { runtimeNodeVisibility: { details: true }, runtimeTextOverrides: { details: "设备运行中" } }), /设备运行中/);
 });
 
-test("overlay fits without an editor inset or 1x ceiling; fullscreen keeps cover scaling", () => {
-  assert.equal(canvasViewportScale(3840, 2160, 1920, 1080, true, false), 2);
-  assert.equal(canvasViewportScale(1920, 1080, 1920, 1080, true, false), 1);
-  assert.equal(canvasViewportScale(1920, 1200, 1920, 1080, true, true), 1200 / 1080);
-  assert.equal(canvasViewportScale(3840, 2160, 1920, 1080, false, false), 1);
-  assert.equal(canvasViewportScale(1920, 1080, 1920, 1080, false, false), 1032 / 1080);
+test("dashboard and overlay contain the whole canvas; editor and 3D fullscreen retain their scaling", () => {
+  for (const [width, height] of [[3840, 2160], [1920, 1080], [2560, 1323], [1512, 982], [800, 1200]]) {
+    const scale = canvasViewportScale(width, height, 1920, 1080, "contain");
+    assert.ok(1920 * scale <= width + 1e-6, "both horizontal canvas edges must remain visible");
+    assert.ok(1080 * scale <= height + 1e-6, "both vertical canvas edges must remain visible");
+    assert.ok(Math.abs(1920 * scale - width) < 1e-6 || Math.abs(1080 * scale - height) < 1e-6, "canvas uses the largest scale that fits");
+  }
+  assert.equal(canvasViewportScale(3840, 2160, 1920, 1080, "contain"), 2);
+  assert.equal(canvasViewportScale(1920, 1200, 1920, 1080, "cover"), 1200 / 1080);
+  assert.equal(canvasViewportScale(3840, 2160, 1920, 1080, "editor"), 1);
+  assert.equal(canvasViewportScale(1920, 1080, 1920, 1080, "editor"), 1032 / 1080);
 });
 
 test("click actions get keyboard access and href-free buttons retain native button semantics", () => {

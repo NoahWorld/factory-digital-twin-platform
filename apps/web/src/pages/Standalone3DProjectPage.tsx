@@ -886,13 +886,7 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
 
   if (mode === "preview") {
     return (
-      <main className="standalone-3d-preview">
-        <header>
-          {!publicView ? <a className="secondary-button compact-button" href="#/projects">返回项目</a> : null}
-          <div><span>独立 3D 项目</span><strong>{projectName}</strong></div>
-          <ThemeToggle />
-          {!publicView ? <a className="primary-button compact-button" href={standaloneSceneRoutePath(projectId, "edit")}>编辑场景</a> : null}
-        </header>
+      <main className="standalone-3d-preview" aria-label={`${projectName}预览`}>
         <section className="standalone-3d-preview-stage" data-canvas-fullscreen-root>
           {sceneView}
           <RoomAlarmStatusPanel rules={renderExtras.current.roomAlarms} statuses={roomStatuses} />
@@ -958,7 +952,7 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
         </div>
         <div className="standalone-toolbar-group is-delivery" role="group" aria-label="保存与交付">
           <span className="standalone-toolbar-label">保存与交付</span>
-          <a className="secondary-button compact-button" href={standaloneSceneRoutePath(projectId, "preview")} onClick={(event) => { if (dirty) { event.preventDefault(); notify.warning(fluidEditor.session ? "请先应用流体路径并保存场景，再进入预览。" : "请先保存场景，再预览已保存的配置。"); if (fluidEditor.session) setInspectorView("fluid"); } }}>预览</a>
+          <a className="secondary-button compact-button" href={standaloneSceneRoutePath(projectId, "preview")} target="_blank" rel="noopener noreferrer" title="在新页签中预览" onClick={(event) => { if (dirty) { event.preventDefault(); notify.warning(fluidEditor.session ? "请先应用流体路径并保存场景，再进入预览。" : "请先保存场景，再预览已保存的配置。"); if (fluidEditor.session) setInspectorView("fluid"); } }}>预览</a>
           <PublicationPanel projectId={projectId} canEdit={editable} disabled={dirty || saving || !!fluidEditor.session} />
           <button className="primary-button compact-button" disabled={!dirty || saving || !editable || extrasPending} onClick={() => void save()} type="button">
             {saving ? "保存中…" : dirty ? "保存场景" : "已保存"}

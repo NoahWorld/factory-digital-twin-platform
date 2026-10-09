@@ -19,9 +19,9 @@ export const projectRuntimeNode = (node: CanvasNode, textOverrides: Record<strin
   return text === undefined ? node : { ...node, props: { ...node.props, text } };
 };
 
-export const canvasViewportScale = (width: number, height: number, canvasWidth: number, canvasHeight: number, overlay: boolean, fullscreen: boolean) => {
-  const inset = overlay || fullscreen ? 0 : 48;
+export const canvasViewportScale = (width: number, height: number, canvasWidth: number, canvasHeight: number, mode: "editor" | "contain" | "cover") => {
+  const inset = mode === "editor" ? 48 : 0;
   const widthScale = Math.max(width - inset, 1) / canvasWidth;
   const heightScale = Math.max(height - inset, 1) / canvasHeight;
-  return fullscreen ? Math.max(widthScale, heightScale) : overlay ? Math.min(widthScale, heightScale) : Math.min(widthScale, heightScale, 1);
+  return mode === "cover" ? Math.max(widthScale, heightScale) : mode === "contain" ? Math.min(widthScale, heightScale) : Math.min(widthScale, heightScale, 1);
 };

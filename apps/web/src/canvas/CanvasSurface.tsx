@@ -177,7 +177,7 @@ const CanvasNodeView = memo(function CanvasNodeView({ editable, overlay, preview
 type CanvasSurfaceProps = {
   previewMode?: boolean;
   children?: ReactNode;
-  presentation?: "canvas" | "overlay";
+  presentation?: "canvas" | "overlay" | "viewport";
   document: CanvasDocument;
   editable: boolean;
   runtimeControlsEnabled?: boolean;
@@ -213,6 +213,7 @@ const isCanvasBackdropNode = (node: CanvasNode, document: CanvasDocument) => (
 
 export function CanvasSurface({ children, document, editable, previewMode = !editable, presentation = "canvas", runtimeControlsEnabled = true, embeddedSceneSelection = null, modelInteractionEnabled = false, selectedNodeId, selectedModelSceneNodePath, onCreateNode, onEmbeddedSceneSelectionChange = ignoreEmbeddedSceneSelection, onEmbeddedSceneActions, onNodeActions, modelFocusRequest, onModelSceneChange, onModelSceneNodeSelect, onNodeChange, onSelectNode, runtimeAppearanceOverrides = {}, runtimeNodeVisibility = {}, runtimeTextOverrides = {}, runtimeAsset = null, runtimeAssetConnection, runtimeAssetError = null, runtimeAssetLoading = false }: CanvasSurfaceProps) {
   const overlay = presentation === "overlay";
+  const fitViewport = presentation === "viewport";
   const viewportRef = useRef<HTMLDivElement>(null);
   const surfaceRef = useRef<HTMLDivElement>(null);
   const verticalGuideRef = useRef<HTMLDivElement>(null);
@@ -243,7 +244,9 @@ export function CanvasSurface({ children, document, editable, previewMode = !edi
     const updateScale = () => {
       const fullscreenElement = globalThis.document.fullscreenElement;
       const isFullscreen = fullscreenElement === viewport || (overlay && fullscreenElement !== null && fullscreenElement.contains(viewport));
-      const nextScale = canvasViewportScale(viewport.clientWidth, viewport.clientHeight, document.width, document.height, overlay, isFullscreen);
+      // A dashboard must keep its authored edges visible, including in native fullscreen.
+      const scaleMode = fitViewport ? "contain" : isFullscreen ? "cover" : overlay ? "contain" : "editor";
+      const nextScale = canvasViewportScale(viewport.clientWidth, viewport.clientHeight, document.width, document.height, scaleMode);
       scaleRef.current = nextScale;
       setScale(nextScale);
     };
@@ -256,7 +259,7 @@ export function CanvasSurface({ children, document, editable, previewMode = !edi
       observer.disconnect();
       globalThis.document.removeEventListener("fullscreenchange", updateScale);
     };
-  }, [document.height, document.width, overlay]);
+  }, [document.height, document.width, fitViewport, overlay]);
 
   const hideGuides = useCallback(() => {
     if (verticalGuideRef.current) verticalGuideRef.current.style.display = "none";
@@ -401,7 +404,7 @@ export function CanvasSurface({ children, document, editable, previewMode = !edi
   };
 
   return (
-    <div className={`canvas-viewport${overlay ? " is-overlay" : ""}`} data-canvas-fullscreen-root={overlay ? undefined : true} ref={viewportRef} style={overlay ? { background: "transparent", pointerEvents: "none" } : undefined}>
+    <div className={`canvas-viewport${overlay ? " is-overlay" : ""}${fitViewport ? " is-full-viewport" : ""}`} data-canvas-fullscreen-root={overlay ? undefined : true} ref={viewportRef} style={overlay ? { background: "transparent", pointerEvents: "none" } : fitViewport ? { background: document.theme.backgroundColor } : undefined}>
       <div className="canvas-scale-frame" style={{ height: document.height * scale, width: document.width * scale }}>
         <div
           className={`canvas-surface${editable ? " is-editable" : " is-preview"}`}

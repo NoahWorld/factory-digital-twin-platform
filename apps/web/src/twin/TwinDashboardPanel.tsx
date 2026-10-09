@@ -86,6 +86,8 @@ export function TwinDashboardPanel({
       <a
         className="secondary-button compact-button twin-dashboard-link"
         href={`#/projects/${encodeURIComponent(linkedProjectId)}/preview${selectedAsset ? `?asset=${encodeURIComponent(selectedAsset.assetId)}` : ""}`}
+        target="_blank"
+        rel="noopener noreferrer"
       >打开完整 2D 看板</a>
     </aside>
   );

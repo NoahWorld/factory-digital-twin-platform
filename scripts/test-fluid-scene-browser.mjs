@@ -23,11 +23,14 @@ try {
  await api(`/projects/${projectId}/scene`,'PATCH',{expectedRevision:scene.revision,settings});
  browser=await chromium.launch({headless:true,...(process.env.CHROMIUM_EXECUTABLE ? {executablePath:process.env.CHROMIUM_EXECUTABLE} : {})});
  const context=await browser.newContext({viewport:{width:1512,height:982}});
+ context.on('page',observedPage=>{
+   observedPage.on('pageerror',e=>errors.push(e.message));
+   observedPage.on('console',m=>{if(m.type()==='error')errors.push(m.text()+' '+m.location().url);});
+ });
  const separator=cookie.indexOf('=');await context.addCookies([{name:cookie.slice(0,separator),value:cookie.slice(separator+1),domain:'127.0.0.1',path:'/'}]);
  page=await context.newPage();page.setDefaultTimeout(10000);
  // Isolate the browser's optional icon fetch from the scene regression.
  await page.route(web+'/favicon.ico',route=>route.fulfill({status:204,body:''}));
- page.on('pageerror',e=>errors.push(e.message));page.on('console',m=>{if(m.type()==='error')errors.push(m.text()+' '+m.location().url);});
  await page.goto(web+`/#/projects/${projectId}/scene`);
  await page.getByRole('button',{name:/^图层/}).click();
  const canvas=page.locator('.model-3d-renderer canvas');await canvas.waitFor();
@@ -89,9 +92,18 @@ try {
  await page.getByRole('button',{name:'流体属性',exact:true}).waitFor();
  assert.equal(await page.getByRole('button',{name:'流体属性',exact:true}).getAttribute('aria-pressed'),'true','clicking a fluid must preserve the fluid selection');
  await page.screenshot({path:join(artifacts,'editor.png')});
- await page.getByRole('link',{name:'预览',exact:true}).click();
+ const editor=page;
+ const [preview]=await Promise.all([context.waitForEvent('page'),editor.getByRole('link',{name:'预览',exact:true}).click()]);
+ page=preview;page.setDefaultTimeout(10000);
+ await page.waitForURL(web+`/#/projects/${projectId}/scene-preview`);
  await page.waitForFunction(()=>JSON.parse(document.querySelector('.model-3d-renderer')?.dataset.sceneDiagnostics||'null')?.fluids.fluidCount===3);
  assert.equal(await page.locator('.fluid-editor').count(),0);
+ assert.equal(await page.locator('.standalone-3d-preview > header').count(),0);
+ assert.equal(await page.evaluate(()=>window.opener),null);
+ assert.equal(editor.url(),web+`/#/projects/${projectId}/scene`);
+ assert.ok(await editor.locator('.standalone-3d-editor').isVisible());
+ const viewport=await page.locator('.standalone-3d-preview-stage').boundingBox();
+ assert.deepEqual(viewport,{x:0,y:0,width:1512,height:982});
  const capture=await page.evaluate(async()=>{const {captureCoverSurface}=await import('/src/covers/render-surfaces.ts');return captureCoverSurface(document.querySelector('.model-3d-renderer canvas'));});
  await writeFile(join(artifacts,'cover.png'),Buffer.from(capture.split(',')[1],'base64'));
  await page.screenshot({path:join(artifacts,'preview.png')});
