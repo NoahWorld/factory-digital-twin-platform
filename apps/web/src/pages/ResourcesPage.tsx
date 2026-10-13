@@ -39,6 +39,7 @@ import {
   type SceneBackgroundGenerationResponse,
 } from "../canvas/scene-backgrounds";
 import { SceneBackgroundWizard } from "./SceneBackgroundWizard";
+import { EngineeringImportWizard } from "./EngineeringImportWizard";
 import {
   sceneBackgroundResourceKind,
   type SceneBackgroundMode,
@@ -268,6 +269,7 @@ export function ResourcesPage({
   const [previewItem, setPreviewItem] = useState<ResourceItem | null>(null);
   const [deleteItem, setDeleteItem] = useState<ResourceItem | null>(null);
   const [backgroundWizardOpen, setBackgroundWizardOpen] = useState(false);
+  const [engineeringWizardOpen, setEngineeringWizardOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [generatingImageAssetId, setGeneratingImageAssetId] = useState<string | null>(null);
   const [compressingModelAssetId, setCompressingModelAssetId] = useState<string | null>(null);
@@ -672,10 +674,20 @@ export function ResourcesPage({
 
       {previewItem && selectedProjectId ? <ResourcePreviewDialog item={previewItem} onClose={() => setPreviewItem(null)} projectId={selectedProjectId} /> : null}
       {deleteItem ? <ResourceDeleteDialog item={deleteItem} onClose={() => setDeleteItem(null)} onConfirm={() => void confirmDelete()} submitting={deleting} /> : null}
+      {selectedProject && canEdit ? <EngineeringImportWizard
+        key={selectedProject.id}
+        open={engineeringWizardOpen}
+        projectId={selectedProject.id}
+        projectName={selectedProject.name}
+        onClose={() => setEngineeringWizardOpen(false)}
+        onCompleted={() => { setFilter("model"); setReloadVersion((value) => value + 1); }}
+        onPreview={(asset) => { setEngineeringWizardOpen(false); setPreviewItem({ kind: "model", asset }); }}
+      /> : null}
       {backgroundWizardOpen && selectedProject ? (
         <SceneBackgroundWizard
           onClose={() => setBackgroundWizardOpen(false)}
           onCreate={createSceneBackground}
+          onEngineering={() => { setBackgroundWizardOpen(false); setEngineeringWizardOpen(true); }}
           projectName={selectedProject.name}
         />
       ) : null}

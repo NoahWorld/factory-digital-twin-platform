@@ -62,7 +62,7 @@ Valkey 的 `valkey-cli` 健康检查使用 `REDISCLI_AUTH` 环境变量读取密
 2. 记录所有既有运行容器的 ID/启动时间、默认 Docker ID/root、iptables/ip6tables、IP forwarding、既有 Nginx 配置哈希。确认所有拟用端口空闲，`/data` 已挂载且 XFS `ftype=1`。
 3. 按已确认的独立运行方案，将本目录的配置复制到 `/data/dtwin/config`；将挂载盘 UUID 写到 `config/data-disk.uuid`。安装两个独立 systemd unit 和 `check-mount`、`docker-dtwin`。启动前运行 `dockerd --validate --config-file=/data/dtwin/config/daemon.json`。
 4. 先启动自己的 containerd 和 Docker，核实进程参数、所有 root/state/socket 路径和空的容器清单，再进行镜像操作。所有后续命令只用 `/data/dtwin/bin/docker-dtwin`，脚本会检查实际 Docker root。
-5. 将构建产物传到新 release 目录并验证 SHA-256。把 `backend.jar`、后端 `meshopt/worker.mjs` 与 `Dockerfile.backend` 放在同一构建上下文，使用已核实的 Linux/amd64 Node22/JRE21 镜像（固定 digest）构建后端镜像。
+5. 将构建产物传到新 release 目录并验证 SHA-256。工程转换需要后端镜像内置 Python/native wheels：优先在有网的目标架构构建机使用独立后端 `Dockerfile.runtime` 构建完整镜像，禁网转换验收后 `docker save/load` 传入服务器。若现场构建应用层，把 `backend.jar`、后端 `meshopt/worker.mjs`（命名为 `worker.mjs`）、完整 `engineering/` 及 `Dockerfile.backend` 放在同一上下文，预先导入同架构 `engineering-runtime` 依赖镜像，以 `--build-arg ENGINEERING_RUNTIME_IMAGE=<已核实镜像>` 构建；该阶段不联网安装依赖。具体命令见 [工程底座离线部署](../../docs/engineering-imports.md)。不要把 Mac ARM 镜像当作服务器 amd64 产物。
 6. 从 `.env.example` 生成权限 0600 的 `config/.env`，生成随机数据库、Valkey、S3 和 bootstrap 密钥，替换真实公开地址、release 路径和镜像 digest。任何凭据不得进入 Git、静态资源或日志。
 7. Valkey 用 UID/GID 10001，数据目录和配置文件需匹配；配置含 `bind 127.0.0.1`、`port 16379`、`dir /data`、`appendonly yes`、`maxmemory 128mb`、`maxmemory-policy noeviction` 与随机 `requirepass`。健康检查通过 `REDISCLI_AUTH` 读取同一密码。
 8. SeaweedFS 用 UID/GID 10002，提前创建并授权 `storage/volumes`、`storage/master`、`storage/filer`。`config/seaweedfs/filer.toml` 设置 `[leveldb2] enabled=true; dir="/data/filer"`。`s3.json` 仅包含本项目随机账号，授予本实例 Admin/Read/Write/List/Tagging，无 anonymous 身份；Admin 用于 API 启动时配置 bucket CORS。

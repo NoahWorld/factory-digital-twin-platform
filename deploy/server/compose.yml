@@ -142,10 +142,13 @@ services:
       PORT: 21081
   worker:
     <<: *app
+    mem_limit: ${ENGINEERING_WORKER_MEMORY:-2g}
+    tmpfs: ["/tmp:size=512m,mode=1777"]
     environment:
       <<: *app-env
       TWIN_MODE: worker
       PORT: 21082
+      JAVA_TOOL_OPTIONS: '-Xmx384m -XX:+ExitOnOutOfMemoryError'
 
   nginx:
     <<: *service

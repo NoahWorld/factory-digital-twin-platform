@@ -499,3 +499,17 @@ test("request diagnostics never copy request bodies, authentication headers or q
   assert.equal(diagnostic.status, undefined);
   assert.doesNotMatch(JSON.stringify(diagnostic), /private-|password|authorization|token|fragment/);
 });
+
+test("multipart upload uses the browser boundary and authenticated API transport", async t => {
+  const form = new FormData();
+  form.append("file", new Blob(["source"]), "layout.dxf");
+  form.append("name", "车间工程模型");
+  const mocked = t.mock.method(globalThis, "fetch", async (_url, init) => {
+    assert.equal(init.body, form);
+    assert.equal(init.headers.has("content-type"), false);
+    assert.equal(init.credentials, "include");
+    return new Response(JSON.stringify({ import: { id: "job-1" } }), { status: 202, headers: { "content-type": "application/json" } });
+  });
+  assert.deepEqual(await request("/api/v1/projects/project-1/engineering-imports", { method: "POST", body: form }), { import: { id: "job-1" } });
+  assert.equal(mocked.mock.callCount(), 1);
+});

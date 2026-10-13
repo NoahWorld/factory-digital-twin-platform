@@ -64,8 +64,14 @@ services:
     mem_limit: 512m
   worker:
     <<: *app
-    environment: {<<: *env, TWIN_MODE: worker, DB_POOL_SIZE: 4}
-    mem_limit: 512m
+    environment:
+      <<: *env
+      TWIN_MODE: worker
+      DB_POOL_SIZE: 4
+      # Leave room for the isolated IFC/DXF Python process.
+      JAVA_TOOL_OPTIONS: '-Xmx384m -XX:+ExitOnOutOfMemoryError'
+    mem_limit: ${ENGINEERING_WORKER_MEMORY:-2g}
+    tmpfs: ['/tmp:size=512m,mode=1777']
 volumes:
   postgres-data:
   valkey-data:

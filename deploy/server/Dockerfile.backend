@@ -1,13 +1,17 @@
-ARG NODE_IMAGE
-ARG JAVA_IMAGE
-FROM ${NODE_IMAGE} AS meshopt-node
-FROM ${JAVA_IMAGE}
+# Prepare this dependency image on a connected machine from the standalone backend:
+# docker build --target engineering-runtime -f Dockerfile.runtime -t dtwin/engineering-runtime:1 .
+# Transfer it using docker save/load. Offline builds do not run apt/pip/npm.
+ARG ENGINEERING_RUNTIME_IMAGE
+FROM ${ENGINEERING_RUNTIME_IMAGE}
 RUN groupadd --system twin && useradd --system --gid twin twin
 WORKDIR /app
 COPY backend.jar /app/backend.jar
-COPY --from=meshopt-node /usr/local/bin/node /usr/local/bin/node
 COPY worker.mjs /app/meshopt/worker.mjs
+COPY engineering /app/engineering
 USER twin
 ENV JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=60 -XX:+ExitOnOutOfMemoryError"
 ENV TWIN_MESHOPT_WORKER=/app/meshopt/worker.mjs
+ENV TWIN_ENGINEERING_PYTHON=/usr/local/bin/python3
+ENV TWIN_ENGINEERING_WORKER=/app/engineering/convert.py
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 XDG_CACHE_HOME=/tmp
 ENTRYPOINT ["java", "-jar", "/app/backend.jar"]

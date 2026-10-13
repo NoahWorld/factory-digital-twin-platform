@@ -62,6 +62,9 @@
     "test:scene-extensions": "node scripts/test-scene-decorations.mjs && node scripts/test-room-alarms.mjs && node scripts/test-room-alarm-data.mjs && node scripts/test-static-map.mjs",
     "test:scene-extensions:api": "node scripts/test-scene-extensions-api.mjs",
     "test:scene-extensions:browser": "node scripts/test-scene-extensions-browser.mjs",
-    "test:model-library:browser": "node scripts/test-model-library-browser.mjs"
+    "test:model-library:browser": "node scripts/test-model-library-browser.mjs",
+    "test:engineering": "node scripts/test-engineering-imports.mjs",
+    "test:engineering:browser": "node scripts/test-engineering-imports-browser.mjs",
+    "backend:smoke:engineering": "node scripts/backend-engineering-smoke.mjs"
   }
 }

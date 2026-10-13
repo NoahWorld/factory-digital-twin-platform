@@ -19,6 +19,7 @@ import {
 
 type SceneBackgroundWizardProps = {
   onClose: () => void;
+  onEngineering: () => void;
   onCreate: (input: {
     files: readonly File[];
     knownScaleMeters: number | null;
@@ -89,7 +90,7 @@ const isPreviewImage = (file: File): boolean =>
 const isPreviewVideo = (file: File): boolean =>
   ["mp4", "webm"].includes(fileExtension(file.name));
 
-export function SceneBackgroundWizard({ onClose, onCreate, projectName }: SceneBackgroundWizardProps) {
+export function SceneBackgroundWizard({ onClose, onCreate, onEngineering, projectName }: SceneBackgroundWizardProps) {
   const notify = useNotifications();
   const [step, setStep] = useState<WizardStep>(1);
   const [mode, setMode] = useState<SceneBackgroundMode>("single-image");
@@ -244,13 +245,13 @@ export function SceneBackgroundWizard({ onClose, onCreate, projectName }: SceneB
                     <em>{option.output}</em>
                   </button>
                 ))}
-                <div aria-disabled="true" className="scene-background-mode-card is-disabled">
+                <button className="scene-background-mode-card" onClick={onEngineering} type="button">
                   <span className="scene-background-mode-code">03</span>
-                  <span className="scene-background-mode-badge">后续</span>
+                  <span className="scene-background-mode-badge">BIM / CAD</span>
                   <strong>工程底座</strong>
-                  <small>使用 BIM、CAD 或点云建立准确尺寸和空间关系，适合测距、碰撞与工程分析。</small>
-                  <em>计划输出 · 轻量化工程 Mesh</em>
-                </div>
+                  <small>导入 IFC 构件或规范 DXF 图纸，检查尺寸与图层后在后台转换为三维模型。</small>
+                  <em>输出 · 标准 GLB 模型</em>
+                </button>
               </div>
               <aside className="scene-background-principle">
                 <span aria-hidden="true">◎</span>
