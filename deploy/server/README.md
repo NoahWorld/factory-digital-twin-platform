@@ -1,14 +1,16 @@
 # 数据盘独立部署
 
+**2026-10-13 工程底座已部署并通过生产验收。** 入口为 [DTwin](http://8.136.35.33:19080)，release `dtwin-engineering-20261013-968009b`；平台应用提交 `968009b3a0c452fcad56612c7bcbc27a4b43347c`、后端应用提交 `43ec0a91e2becea96274ee0290a062ff4382e936`，后端镜像 `dtwin/backend:43ec0a9-amd64`。本轮升级前后端及 V8 工程任务表，服务器原生断网、真实 IFC/DXF 几何、公网接口、普通 HTTP 浏览器和工程界面验收均通过，备份恢复、既有业务及其他 24 个容器状态核对一致。运行产物与后续验收脚本/文档提交分开记录，完整证据见 [本轮部署记录](DEPLOYMENT.md#2026-10-13-bim--cad-工程底座升级)。以下历史结果各归其对应版本。
+
 本目录是服务器部署配置，与 `deploy/local` 的开发环境分开。2026-09-28 已按用户确认部署：7 个本项目容器运行，本机 10 项业务验收、专用 Docker 重启恢复及原业务基线对照通过，自启动和专用日志轮转已配置。2026-09-29 用户确认放行 TCP `19080` 后完成 10 项公网接口与资源验收，随后 HTTP UUID 白屏修复另行通过 6 项真实浏览器检查；上述验收的临时项目与会话均已清理。
 
-当前前端于 `2026-10-08T05:46:44.262816Z` 切换至 `/data/dtwin/releases/dtwin-ui-20261008-account-menu-c56f334`，源码为 Codeup `main` 已提交的 `c56f3343271648f8362803e5ecedf139d3211b53`，入口 `/assets/index-CZ1SlaM0.js`。顶部账号区改为头像下拉菜单，名称、角色和“退出登录”在展开后显示。119 个 web 文件全部通过 SHA-256 校验（9 个增量上传、110 个复用）；10 项公网接口/资源检查与 8 项真实 HTTP 浏览器检查通过，包括菜单退出、会话失效和画布保存刷新，零页面异常，临时项目与测试会话均已清理。只重建本项目 Nginx，其余 6 个本项目容器和公共 Docker 中 23 个容器的 ID、启动时间、状态不变；除 `.env` 的 `RELEASE_DIR` 外，运行配置不变。回滚目标为 `/data/dtwin/releases/dtwin-ui-20260929-model-library-b0csanop-063700286494`；审计位于 `/data/dtwin/audit/dtwin-ui-20261008-account-menu-c56f334/`，详见 [部署记录](DEPLOYMENT.md)。
+此前前端于 `2026-10-08T05:46:44.262816Z` 切换至 `/data/dtwin/releases/dtwin-ui-20261008-account-menu-c56f334`，源码为 Codeup `main` 已提交的 `c56f3343271648f8362803e5ecedf139d3211b53`，入口 `/assets/index-CZ1SlaM0.js`。顶部账号区改为头像下拉菜单，名称、角色和“退出登录”在展开后显示。119 个 web 文件全部通过 SHA-256 校验（9 个增量上传、110 个复用）；10 项公网接口/资源检查与 8 项真实 HTTP 浏览器检查通过，包括菜单退出、会话失效和画布保存刷新，零页面异常，临时项目与测试会话均已清理。只重建本项目 Nginx，其余 6 个本项目容器和公共 Docker 中 23 个容器的 ID、启动时间、状态不变；除 `.env` 的 `RELEASE_DIR` 外，运行配置不变。回滚目标为 `/data/dtwin/releases/dtwin-ui-20260929-model-library-b0csanop-063700286494`；审计位于 `/data/dtwin/audit/dtwin-ui-20261008-account-menu-c56f334/`，详见 [部署记录](DEPLOYMENT.md)。
 
 此前模型库前端于 `2026-09-29T06:38:25.493284Z` 切换至 `/data/dtwin/releases/dtwin-ui-20260929-model-library-b0csanop-063700286494`，入口为 `/assets/index-B0CsANOp.js`。7 类参数化对象已移入左侧分类模型库，并接入移动、缩放与保存；右侧保留参数、地图和报警配置。119 个 web、54 个 source 文件及源码补丁哈希通过，10 个 web 文件增量发布、109 个复用；包 SHA-256 为 `1154aa54c1601a65a7d1b06cc034a38d93f336e5b7c2f30497a25003319b3757`。本地前端检查、构建、57 项 API 错误测试、场景相关回归与隔离浏览器 7 组检查通过，**真实线上专项浏览器 7 组验收也已通过，页面异常、HTTP 错误和越界请求均为 0。** 7 种对象创建保存及 API 回读、乔木真实鼠标移动和缩放后保存刷新、原有 GLB 添加保存刷新均通过；临时项目已删除，会话已撤销。本次只重建本项目 Nginx，其他 6 个本项目服务与公共 Docker 中 25 个容器的 ID、启动时间和状态不变；Compose、Nginx、Valkey 配置不变，`.env` 只修改 `RELEASE_DIR`。回滚目标为 `/data/dtwin/releases/dtwin-ui-20260929-notifications-d-dxotyt`，仅切回该目录并重建本项目 Nginx，随后重新验收。访问地址为 [DTwin](http://8.136.35.33:19080)，版本与验证证据见 [部署记录](DEPLOYMENT.md)。
 
 此前统一通知版本于 `2026-09-29T03:18:22.412472Z` 发布，入口为 `/assets/index-D-dXOtyt.js`；该版本的 7 项真实公网浏览器检查与 10 项接口、资源检查均通过，临时项目已删除、测试会话已撤销。统一通知、简短中文提示、开发者控制台诊断及 HTTP UUID 修复在当前版本中保留，后端不变。上述历史验收不能替代本次模型库版本的线上专项验收。用户另行授权的本地业务迁移也已完成，下述迁移检查使用独立证据。
 
-迁移曾因 storage 内存限制受阻：上传约 87.8 MB 对象时，原 768 MiB 上限导致两次 OOM（`2026-09-29T03:23:42Z`、`2026-09-29T03:25:03Z`）。当时宿主机可用内存约 7557 MiB；已于 `2026-09-29T03:31:36.505724Z` 仅将本项目 storage 上限提高至 2 GiB 并重建该容器。七容器限额合计现为 4800 MiB，约 4.69 GiB，仍与其他业务共享宿主机资源。此前失败的大对象在 33 秒内上传完成；70 个 S3 对象于 `03:33:26Z` 全部上传、`03:34:13Z` 全部 SHA-256 复核通过，调整后 storage 无重启，已观测峰值约 1.217 GiB。数据库于 `2026-09-29T03:34:26.425Z` 导入并通过全表 postverify。
+迁移曾因 storage 内存限制受阻：上传约 87.8 MB 对象时，原 768 MiB 上限导致两次 OOM（`2026-09-29T03:23:42Z`、`2026-09-29T03:25:03Z`）。当时宿主机可用内存约 7557 MiB；已于 `2026-09-29T03:31:36.505724Z` 仅将本项目 storage 上限提高至 2 GiB 并重建该容器。该次调整后七容器限额合计为 4800 MiB，约 4.69 GiB，仍与其他业务共享宿主机资源。此前失败的大对象在 33 秒内上传完成；70 个 S3 对象于 `03:33:26Z` 全部上传、`03:34:13Z` 全部 SHA-256 复核通过，调整后 storage 无重启，已观测峰值约 1.217 GiB。数据库于 `2026-09-29T03:34:26.425Z` 导入并通过全表 postverify。
 
 **本轮迁移验收全部通过：** 公网 API 核对全部 18 个项目完整内容、70 个资源元数据、18 个 PNG 封面及 2 个代表签名下载的 SHA-256；真实浏览器 10/10 通过，覆盖 9 个 2D 与 9 个 3D 项目及封面、模板入口、资源列表、代表 2D/3D 渲染，零页面或请求错误，文档与 revision 未变化，测试会话均已撤销。4 个本地模拟数据源保持暂停，未扩大生产采集白名单。浏览器验证为代表样本，不等于全部项目交互或大模型压力测试。
 
@@ -18,7 +20,7 @@
 
 ## 范围与约束
 
-- 应用代码以 Codeup `main` 为基线。当前前端直接构建已推送提交 `c56f3343271648f8362803e5ecedf139d3211b53`，工作区干净；`release.json` 记录提交、构建命令和完整产物校验和，`source.patch` 保留相对父提交的完整差异。后端仍为 `ecd3f476812bcc87a85b692a9040cc9b9a514285`，本轮未变更。此前尚未提交的历史发布仍按各自源码快照复现。
+- 每次发布固定平台和独立后端的已提交源码、产物与镜像校验和。2026-10-13 目标提交和镜像见本页开头及部署记录；本轮同时更新前后端，不从平台历史 `apps/backend` 构建。历史发布仍按各自 `release.json`、`source.patch` 或源码快照复现，不能用历史后端版本代表本轮目标。
 - 应用、数据库、对象存储、镜像层、构建临时文件和运行日志全部在 `/data/dtwin`，不复用既有业务的数据库或存储。“不迁移本地业务数据”是首次部署的范围限制；2026-09-29 用户另行授权的本地业务导入已通过验收，范围与验收限制见 [本地到生产迁移](../../docs/local-to-production-migration.md)。
 - 现有服务器 Docker、Nginx、业务容器、目录和防火墙规则保持不变。不执行全局 prune、重启或移动 Docker root。
 - 本项目新增 `dtwin-containerd.service`、`dtwin-docker.service` 和自己的日志轮转配置。复用已安装的二进制，但 root、state、socket、namespace 和配置完全独立。
@@ -56,9 +58,13 @@ SeaweedFS 4.47 使用 `server`，不使用 `mini`：mini 的 Admin gRPC 存在�
 
 Valkey 的 `valkey-cli` 健康检查使用 `REDISCLI_AUTH` 环境变量读取密码，Compose 将其赋值为本项目的 `VALKEY_PASSWORD`；认证失败必须使健康检查失败，不能省略密码或忽略错误。以上兼容性检查之后，本机和真实公网业务验收均已通过，详见 [部署记录](DEPLOYMENT.md)。
 
+2026-10-13 工程转换镜像另使用 Python 3.11 / Debian Bookworm 运行层，依赖 wheel 在有网构建阶段按固定 SHA-256 安装。导入生产 amd64 镜像后，必须使用本项目 wrapper 在服务器运行 `--network none` 的依赖探测与 Python 几何测试；保持默认 seccomp，不能用放宽宿主机安全策略绕过兼容性问题。该项本轮结果见部署记录，不能以本机 ARM 测试通过替代。
+
+worker 内存上限为 2 GiB，`/tmp` 为 512 MiB tmpfs，JVM 堆为 384 MiB；对象存储保持 2 GiB，七容器限额合计 6080 MiB（约 5.94 GiB），不是资源预占。单个工程 worker 一次处理一个转换任务，源文件限额 100 MiB、GLB 限额 25 MiB。调整 worker 容器内存不能自动增加临时空间或文件/几何预算；大模型需按规范拆分，并如实保留超限、超时与失败信息。
+
 ## 构建与首次部署步骤
 
-1. 检查两仓库工作区和最新 main；在独立后端使用 JDK21 运行 `mvn -B verify`，前端运行 `VITE_API_BASE_URL=/ pnpm --filter @factory-twin/web build`。不从平台历史 `apps/backend` 构建。
+1. 检查两仓库工作区和最新 main；在独立后端使用 JDK21 运行 `mvn -B clean verify`，前端运行 `VITE_API_BASE_URL=/ pnpm --filter @factory-twin/web build`。不从平台历史 `apps/backend` 构建。
 2. 记录所有既有运行容器的 ID/启动时间、默认 Docker ID/root、iptables/ip6tables、IP forwarding、既有 Nginx 配置哈希。确认所有拟用端口空闲，`/data` 已挂载且 XFS `ftype=1`。
 3. 按已确认的独立运行方案，将本目录的配置复制到 `/data/dtwin/config`；将挂载盘 UUID 写到 `config/data-disk.uuid`。安装两个独立 systemd unit 和 `check-mount`、`docker-dtwin`。启动前运行 `dockerd --validate --config-file=/data/dtwin/config/daemon.json`。
 4. 先启动自己的 containerd 和 Docker，核实进程参数、所有 root/state/socket 路径和空的容器清单，再进行镜像操作。所有后续命令只用 `/data/dtwin/bin/docker-dtwin`，脚本会检查实际 Docker root。
@@ -112,9 +118,22 @@ node deploy/server/verify-model-library-browser.mjs
 
 如 Playwright 不在默认模块位置，可额外设置 `DTWIN_PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs`。该验收每次只创建一个具有唯一标识的临时项目，验证 7 种对象创建保存及 API 回读、真实鼠标移动缩放后的保存刷新，以及原有 GLB 模型添加保存刷新。清理必须限定为本轮记录的精确项目 ID，并撤销本轮会话；不得批量删除、按模糊名称清理或修改既有项目。
 
+工程底座的生产专项验收使用 Node 22+，在执行验收的机器准备独立后端仓库中的原创测试样例，无需在服务器安装浏览器或 Python 开发环境：
+
+```bash
+DTWIN_ORIGIN=http://YOUR_SERVER:19080 \
+DTWIN_ADMIN_FILE=/path/to/private/admin.json \
+DTWIN_BACKEND_DIR=/path/to/factory-digital-twin-backend \
+node deploy/server/verify-engineering.mjs
+```
+
+`DTWIN_BACKEND_DIR` 可省略并使用兄弟后端仓库，兼容 `TWIN_BACKEND_DIR`。该脚本验证匿名权限、已登录 capabilities 与 100 MiB/25 MiB 限额，以及 IFC/DXF 上传、后台检查、配置、转换、入库、签名下载和实际 GLB 几何。仅创建一个具有唯一标识的临时 3D 项目，按精确 ID 清理其资源并撤销自己的会话；审计文件权限 0600，保存在受限凭据文件同目录。生产对象下载必须同源，不能使用仅供本机脚本调试的 `DTWIN_OBJECT_ORIGIN` 绕过公开对象代理。此脚本不替代真实 HTTP 浏览器与场景保存验收，也不能证明所有客户图纸兼容。
+
+工程镜像升级包含数据库 V8：先备份并恢复验证 PostgreSQL 与对象数据、保留受限配置和旧镜像，再按候选配置更新本项目 API/collector/worker/Nginx。新 worker 和 storage 的资源限额须与运行容器核对，Nginx 允许 102 MiB 请求体以容纳 100 MiB 文件和 multipart 包装，并关闭 API 请求缓冲。完整升级不得直接套用下述仅前端回滚方式；迁移后必须先确认实际数据库版本及旧应用兼容性，不能盲目恢复数据库或仅改前端目录后宣称回滚成功。
+
 仅前端升级时，将验证后的 `web/` 放入新的 release 目录，保留旧目录，备份受限 `.env` 并只更新 `RELEASE_DIR`；使用专用 wrapper 的 `compose ... up -d --no-deps nginx` 切换挂载。此变量只用于 Nginx 静态目录，后端镜像和数据不变。前端回滚同样只恢复此前的 `RELEASE_DIR` 并重建自己的 Nginx，随后重新验收；无需停止其他 DTwin 服务或公共 Docker。
 
-当前发布 `dtwin-ui-20261008-workspace-61472f6` 的前端回滚目标为 `/data/dtwin/releases/dtwin-ui-20261008-account-menu-c56f334`。本轮只更新前端；审计目录 `/data/dtwin/audit/dtwin-ui-20261008-workspace-61472f6/` 保留配置备份、`activation.json`、`impact-final.json` 和 `completed.json`，`evidence/` 保存接口、浏览器与工作台专项报告、实际验收脚本、截图和文档。应用代码提交为 `61472f61ae5bd3914710ac417e2372fdc5a01b7a`，源码已同步 GitHub 与 Codeup `main`；后续验收脚本与记录提交不改变已发布前端产物。
+此前发布 `dtwin-ui-20261008-workspace-61472f6` 的前端回滚目标为 `/data/dtwin/releases/dtwin-ui-20261008-account-menu-c56f334`。本轮只更新前端；审计目录 `/data/dtwin/audit/dtwin-ui-20261008-workspace-61472f6/` 保留配置备份、`activation.json`、`impact-final.json` 和 `completed.json`，`evidence/` 保存接口、浏览器与工作台专项报告、实际验收脚本、截图和文档。应用代码提交为 `61472f61ae5bd3914710ac417e2372fdc5a01b7a`，源码已同步 GitHub 与 Codeup `main`；后续验收脚本与记录提交不改变已发布前端产物。
 
 此前发布 `dtwin-ui-20261008-account-menu-c56f334` 的前端回滚目标为 `/data/dtwin/releases/dtwin-ui-20260929-model-library-b0csanop-063700286494`。本轮审计目录 `/data/dtwin/audit/dtwin-ui-20261008-account-menu-c56f334` 保存 `activation.json`、`impact-final.json`、`completed.json`；`evidence/` 保存验收报告、实际脚本及发布后的文档。
 

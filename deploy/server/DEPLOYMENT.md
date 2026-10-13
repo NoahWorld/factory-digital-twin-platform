@@ -1,19 +1,69 @@
 # DTwin 服务器部署记录
 
-首次部署：2026-09-28；最新发布及记录更新：2026-10-08。服务器：`8.136.35.33`。
+首次部署：2026-09-28；记录更新：2026-10-13。服务器：`8.136.35.33`。
 
-当前前端于 `2026-10-08T07:58:36.859251Z` 切换至 `/data/dtwin/releases/dtwin-ui-20261008-workspace-61472f6`，应用源码为 GitHub 与 Codeup `main` 同一提交 `61472f61ae5bd3914710ac417e2372fdc5a01b7a`，入口 `/assets/index-DELsoXwy.js`。包含用户卡片与设置弹窗、紧凑导航和项目类型切换、列表标题整理、工作台纹理及页脚、统一 Kingdom Logo 与页签图标；顶部品牌在新标签页打开宣传页。120 个 web 文件 SHA-256 校验通过（11 个增量上传、109 个复用）。10 项公网接口/资源检查、8 项真实 HTTP 浏览器检查及 6 组深浅主题工作台检查通过，临时项目已删除、测试会话已撤销。只重建本项目 Nginx，另外 6 个本项目容器和 23 个其他业务容器的 ID、启动时间、状态不变；5 个健康检查均 healthy，运行配置仅改变 `RELEASE_DIR`。回滚目标为 `/data/dtwin/releases/dtwin-ui-20261008-account-menu-c56f334`，审计位于 `/data/dtwin/audit/dtwin-ui-20261008-workspace-61472f6/`。
+**2026-10-13 BIM / CAD 工程底座已部署并通过生产验收。** 前后端于 `06:57:49.276338Z`（北京时间 14:57）激活；服务器原生禁网、备份恢复、公网业务、真实几何、工程界面及既有业务核对全部通过。最终状态以本轮审计目录的 `completed.json` 为准，原始 `activation.json` 保留激活时尚待验收的事实，不覆写初始记录。
+
+本轮升级前已验收前端于 `2026-10-08T07:58:36.859251Z` 切换至 `/data/dtwin/releases/dtwin-ui-20261008-workspace-61472f6`，应用源码为 GitHub 与 Codeup `main` 同一提交 `61472f61ae5bd3914710ac417e2372fdc5a01b7a`，入口 `/assets/index-DELsoXwy.js`。包含用户卡片与设置弹窗、紧凑导航和项目类型切换、列表标题整理、工作台纹理及页脚、统一 Kingdom Logo 与页签图标；顶部品牌在新标签页打开宣传页。120 个 web 文件 SHA-256 校验通过（11 个增量上传、109 个复用）。10 项公网接口/资源检查、8 项真实 HTTP 浏览器检查及 6 组深浅主题工作台检查通过，临时项目已删除、测试会话已撤销。只重建本项目 Nginx，另外 6 个本项目容器和 23 个其他业务容器的 ID、启动时间、状态不变；5 个健康检查均 healthy，运行配置仅改变 `RELEASE_DIR`。回滚目标为 `/data/dtwin/releases/dtwin-ui-20261008-account-menu-c56f334`，审计位于 `/data/dtwin/audit/dtwin-ui-20261008-workspace-61472f6/`。
 
 用户另行授权的 18 个项目、70 个资源迁移已完成数据库、对象、公网 API、浏览器和同机服务影响验收；4 个本地模拟数据源保持暂停，最终验收证据已归档并核对服务器权限与哈希。迁移有独立验收证据，范围及限制见 [本地到生产迁移](../../docs/local-to-production-migration.md)。历史发布记录继续保留，各版本使用各自的验收证据。
 
-## 版本与位置
+## 2026-10-13 BIM / CAD 工程底座升级
 
-| 项目 | 本次部署内容 |
+| 项目 | 已发布内容 |
+| --- | --- |
+| 公开地址 | [DTwin](http://8.136.35.33:19080) |
+| 前端源码 | GitHub `main`：`968009b3a0c452fcad56612c7bcbc27a4b43347c` |
+| 独立后端源码 | GitHub `main`：`43ec0a91e2becea96274ee0290a062ff4382e936` |
+| 发布目录 | `/data/dtwin/releases/dtwin-engineering-20261013-968009b` |
+| 前端入口 | `/assets/index-e_Qraikj.js` |
+| 后端镜像 | `dtwin/backend:43ec0a9-amd64`，image ID `sha256:8289c72f75dd7bca03fa57380cfc9950bb72faddfdde3bbc88e08e56e4be9a42` |
+| 离线镜像包 | 320379884 字节；SHA-256 `581c3affddf610eae526a68da10e6b15dde52bf2e8db21782deeb045c46ab79e` |
+| 镜像内运行时 | Java `21.0.12.1`、Node `22.23.3`、Python `3.11.17`、IfcOpenShell `0.8.4` |
+| 本轮审计目录 | `/data/dtwin/audit/dtwin-engineering-20261013-968009b` |
+| 升级前前端 | `/data/dtwin/releases/dtwin-ui-20261008-workspace-61472f6` |
+| 升级前后端 | `dtwin/backend:ecd3f476812bcc87a85b692a9040cc9b9a514285` |
+| 数据库变更 | V7 → V8，新增 `engineering_imports` 及索引；最终 V1–V8 全部迁移成功 |
+| 转换资源 | worker 上限 2 GiB、`/tmp` tmpfs 512 MiB、JVM `-Xmx384m`；storage 保持 2 GiB |
+| 七容器内存限额合计 | 6080 MiB（约 5.94 GiB）；由升级前 4800 MiB 加 worker 增量 1280 MiB 得到，不是资源预占 |
+| 文件限额 | 源 IFC/DXF 100 MiB，生成 GLB 25 MiB；前端在上传创建前展示 |
+
+本次从上述两个已提交应用版本交付完整前后端；后续验收脚本与部署文档提交不改变已经发布的应用产物。Java 负责持久任务，Python 子进程使用服务器 worker 的 CPU 与内存生成几何；前端负责上传、参数与异步状态，并在下载模型后使用浏览器渲染。镜像内置 Python 3.11 和固定版本/哈希的 IfcOpenShell、ezdxf 等依赖，现场转换不安装依赖、不调用外部云转换服务。转换兼容范围仍以 [工程底座约定](../../docs/engineering-imports.md) 为准，不承诺原生 DWG/RVT 或所有复杂客户图纸均可转换。
+
+前置构建入口为独立后端 JDK 21 的 `mvn -B clean verify` 和平台 `VITE_API_BASE_URL=/ pnpm --filter @factory-twin/web build`。Python 运行层采用 Debian Bookworm；镜像先通过本机隔离测试，再于 `2026-10-13T06:55:17.598882Z` 通过服务器 amd64 原生禁网验证：`--network none`、只读根文件系统、默认 seccomp、2 GiB 内存、1 CPU 和 512 MiB `/tmp` 下，12 项 Python 几何测试全部通过，耗时 1.201 秒。`image-native-verified.json` 绑定实际镜像 ID 与验证结果。跨架构构建或本机测试不能替代这项真实宿主机检查。
+
+仅通过 `/data/dtwin/bin/docker-dtwin` 改动本项目专用 daemon。先校验候选 Compose/Nginx，再停止本项目 API、collector、worker 和 storage，冻结写入并备份 PostgreSQL、对象存储及受限配置。`2026-10-13T06:57:11.992290Z` 完成恢复验证：数据库恢复到独立临时数据库后 22 张表内容一致，对象备份实际解包后 127 个目录/文件项与原存储逐项哈希一致；临时恢复副本已清理，原 release、镜像和备份保留。
+
+| 备份文件 | 字节数 | SHA-256 |
+| --- | ---: | --- |
+| `backup/postgres.dump` | 5122447 | `02f293515563726018076ed7abc1c7ac99f9f171f61ed23a2e8bd69e840a5668` |
+| `backup/objects.tar.gz` | 249230043 | `f0cf978308597a6f590ce530bca7dd42db690d6982685c945763c419b5a4b9e3` |
+
+真实公网验收全部通过，每组仅创建和精确删除自己的临时项目、撤销自己的会话：
+
+- `verify.mjs`：10/10，报告 `dtwin-verify-37406df8-3478-4e7b-96c5-077d93f93da5.json`。
+- `verify-engineering.mjs`：5/5，报告 `dtwin-engineering-d2cdb1eb-d23f-4882-92e2-b34f2556511c.json`。真实上传 IFC/DXF，完成检查、配置、转换、入库和同源签名下载；从实际 GLB 顶点与节点变换核验 CAD 的 20 × 12 × 4.2 米尺寸、12 个对象及图块位置，核验 IFC 墙体尺寸、门洞与体积。小型样例各约 3 秒完成检查和转换，不代表大型工程文件的耗时。
+- 普通 HTTP `verify-browser.mjs`：8/8，报告 `dtwin-browser-08aca89d-47f4-4639-8b2c-719a90f25824.json`，包括真实浏览器登录、场景保存刷新与注销。
+- 工程 UI 专项：8/8，运行 `engineering-ui-6d4ed6ba-c593-40f1-9ed3-5afec6d7e931`，报告为该运行目录的 `results.json`。100/25 MB 提示高亮、后台任务关闭后重开、模型预览均通过；DXF 为 12 个对象/1104 个三角面，IFC 为 1 个对象/28 个三角面，预览截图已逐张核对，无 HTTP 错误或页面异常。临时项目 `05013c0a-2294-42fe-8cd3-ebafe117943c` 删除后读取为 404，注销后会话为 401。
+
+最终 `impact-final.json` 确认其他 24 个业务容器的 ID、启动时间和状态不变，17 张既有业务表内容一致。`data_sources` 的租约、下次调度时间与运行 generation 单独排除于业务内容哈希，完整前后快照仍保留；会话、登录尝试、任务和审计等运行记录不要求静态不变。PostgreSQL/Valkey 未重启，storage 保留原容器，仅为一致性备份停止后恢复；API/collector/worker/Nginx 按本轮配置更新。`runtime-final.json` 确认 7 个本项目容器运行、5 个健康检查均 healthy，重启计数为 0、未发生 OOM。`config-network-final.json` 确认 13 个内部 TCP 端口全部只绑定 loopback，公开入口为 19080；活动配置仅 `.env`、`compose.yml`、`nginx.conf` 改变，其中 `.env` 仅修改 `BACKEND_IMAGE` 与 `RELEASE_DIR`，其余配置一致。公共 Docker/Nginx 和其他业务配置没有修改。
+
+前置 Nginx 探测首次遗漏生产 `101:101` 用户设置，因只读/能力限制下的 chown 返回 EPERM 而失败，当时尚未停止服务。探测改为与生产相同用户并保证候选文件可读后通过；生产配置和权限限制未放宽，该次失败的 `candidate-validation-first.log` 保留在私有审计中。这是探测配置修正，不是线上 Nginx 故障。
+
+本轮最终验收报告、脚本、截图与部署后文档位于 `/data/dtwin/audit/dtwin-engineering-20261013-968009b/final-evidence/`，镜像构建证据位于同一审计根目录下的 `build-evidence/`，该目录 7 个文件已完成服务器解包后 SHA-256 校验。根目录保留 `before.json`、配置快照、`image-native-verified.json`、`backup-verified.json`、`activation.json`、`impact-final.json`、`runtime-final.json`、`config-network-final.json` 和最终 `completed.json`。已校验 release 包保留构建时快照，不以验收后的文件覆写它。
+
+最终归档中的 `acceptance-api.json`、`acceptance-engineering.json`、`acceptance-browser.json` 分别对应上述三个完整 run ID；工程 UI 的报告与截图位于 `engineering-ui/`，其中 `results.json` 保留原始运行 ID。`manifest.json` 和审计根目录 `final-evidence-verified.json` 记录逐文件与归档哈希；`source-commits.json` 区分运行应用提交和收尾文档/验收脚本提交。
+
+本次包含数据库迁移，不能套用历史仅前端发布的“只切回 RELEASE_DIR”回滚步骤。需要回退时先保留日志、迁移状态和配置快照，判断旧应用对实际数据库版本的兼容性，再选择应用回退或受控数据恢复，禁止直接覆盖生产数据。本轮验收覆盖给定 IFC/DXF 样例、真实 UI 和既有业务影响，不等于所有客户文件兼容或大模型压力测试。
+
+## 升级前已验收版本与位置（2026-10-08）
+
+| 项目 | 2026-10-08 已验收部署内容 |
 | --- | --- |
 | 前端源码 | GitHub `main` 与 Codeup `DTwin_UI/main`：`61472f61ae5bd3914710ac417e2372fdc5a01b7a` |
 | 后端源码 | Codeup `DTwin_Cloud` 的 `main`：`ecd3f476812bcc87a85b692a9040cc9b9a514285` |
-| 当前前端发布目录 | `/data/dtwin/releases/dtwin-ui-20261008-workspace-61472f6` |
-| 当前前端入口 | `/assets/index-DELsoXwy.js` |
+| 当时前端发布目录 | `/data/dtwin/releases/dtwin-ui-20261008-workspace-61472f6` |
+| 当时前端入口 | `/assets/index-DELsoXwy.js` |
 | 前端回滚目标 | `/data/dtwin/releases/dtwin-ui-20261008-account-menu-c56f334` |
 | 原完整发布与后端构建目录 | `/data/dtwin/releases/dtwin-release-20260928-b5bd9de-ecd3f47`，保留历史构建与诊断记录 |
 | 活动配置 | `/data/dtwin/config` |
@@ -22,11 +72,11 @@
 | 独立运行服务临时状态 | `/run/dtwin-docker`、`/run/dtwin-containerd` |
 | 运维入口 | `/data/dtwin/bin/docker-dtwin`；先检查数据盘挂载与实际 Docker root，再操作本项目 socket |
 | 运行日志 | `/data/dtwin/logs`；容器日志位于本项目 Docker 数据目录并按配置轮转 |
-| 当前前端发布审计目录 | `/data/dtwin/audit/dtwin-ui-20261008-workspace-61472f6` |
+| 当时前端发布审计目录 | `/data/dtwin/audit/dtwin-ui-20261008-workspace-61472f6` |
 | 首次部署审计目录 | `/data/dtwin/audit/deploy-20260928` |
 | 公开地址 | [DTwin](http://8.136.35.33:19080)，10 项公网接口/资源、8 项真实浏览器及 6 组工作台专项检查通过 |
 
-前端以 `VITE_API_BASE_URL=/ pnpm --filter @factory-twin/web build` 从已推送提交 `61472f61ae5bd3914710ac417e2372fdc5a01b7a` 构建，包含 TypeScript 检查；构建通过，Vite 仍提示既有大体积 chunk。可直接检出该提交复现源码，或检出 `release.json` 的 `sourceBaseCommit` 后应用 `source.patch`；完整产物校验和同样记录在 `release.json`。首次后端构建使用 JDK 21 执行 `mvn -B verify`，94 项测试通过；本轮后端源码与镜像不变。
+前端以 `VITE_API_BASE_URL=/ pnpm --filter @factory-twin/web build` 从已推送提交 `61472f61ae5bd3914710ac417e2372fdc5a01b7a` 构建，包含 TypeScript 检查；构建通过，Vite 仍提示既有大体积 chunk。可直接检出该提交复现源码，或检出 `release.json` 的 `sourceBaseCommit` 后应用 `source.patch`；完整产物校验和同样记录在 `release.json`。首次后端构建使用 JDK 21 执行 `mvn -B verify`，94 项测试通过；2026-10-08 该次发布后端源码与镜像不变。
 
 | 运行组件 | 本次采用的版本系列或构建基线 |
 | --- | --- |
@@ -40,7 +90,7 @@
 
 CentOS 7 / kernel 3.10、runc 1.1.12、libseccomp 2.3.1 环境下，PostgreSQL Alpine 初始化和 Nginx Alpine 实际启动曾出现写入 `EPERM`。本项目分别改用 Bookworm 镜像后通过实际验证，未升级公共运行组件或放宽默认 seccomp。PostgreSQL 有 strace 证据，Nginx 仅有启动错误日志，不能将二者的底层系统调用原因混同。详情见 [兼容性记录](README.md#宿主机兼容性记录)。
 
-## 2026-10-08 工作台与品牌界面发布（当前版本）
+## 2026-10-08 工作台与品牌界面发布（升级前已验收版本）
 
 北京时间 15:58 发布。应用提交 `61472f61ae5bd3914710ac417e2372fdc5a01b7a` 已推送至 GitHub 与 Codeup `main`。生产包 SHA-256：`1c1113e3e24fc0da6b6a3364180ac9bfb5b5da573fbb0bf0050e930ff16e69e9`；120 个 web 文件逐一核验，11 个增量上传、109 个从旧版本复制，旧目录保留。后端镜像、数据库与对象存储无需迁移。
 
