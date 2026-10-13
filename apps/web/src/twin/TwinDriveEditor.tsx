@@ -11,6 +11,8 @@ import { parseTwinDriveConfig } from "./twin-config-json";
 import { TwinSourceStep } from "./TwinSourceStep";
 import { TwinBindingRemap } from "./TwinBindingRemap";
 import { TwinPoseFields } from "./TwinPoseFields";
+import { TwinModelTargetPicker, type TwinTargetPickerChange } from "./TwinModelTargetPicker";
+import { twinTargetLabel, twinTargetSearch } from "./twin-target-label";
 import "./twin-drive.css";
 
 const id = (prefix: string) => `${prefix}-${createUuid().slice(0, 8)}`;
@@ -22,12 +24,12 @@ function VectorField({ label, value, onChange }: { label: string; value: TwinVec
   return <fieldset className="twin-vector"><legend>{label}</legend>{value.map((axis, index) => <NumberField key={index} label={["X", "Y", "Z"][index]!} value={axis} onChange={(next) => { const result: TwinVector = [...value]; result[index] = next; onChange(result); }} />)}</fieldset>;
 }
 
-function TargetFields({ target, onChange, scene, catalog, motion = false }: { target: TwinTarget; onChange: (value: TwinTarget) => void; scene: StandaloneSceneDocument; catalog: TwinNodeCatalogEntry[]; motion?: boolean }) {
+function TargetFields({ target, onChange, scene, catalog, onTargetPickerChange, motion = false }: { target: TwinTarget; onChange: (value: TwinTarget) => void; scene: StandaloneSceneDocument; catalog: TwinNodeCatalogEntry[]; motion?: boolean; onTargetPickerChange?: TwinTargetPickerChange }) {
   const [search, setSearch] = useState("");
   const instance = scene.instances.find((item) => item.id === target.instanceId);
   const sameResource = instance?.modelAssetId === target.modelAssetId;
   const available = catalog.filter((node) => node.instanceId === target.instanceId && node.modelAssetId === instance?.modelAssetId);
-  const nodes = available.filter((node) => node.nodeName.toLocaleLowerCase().includes(search.toLocaleLowerCase()));
+  const nodes = available.filter((node) => twinTargetSearch(node, search, available));
   const options = nodes.slice(0, 200);
   const selected = sameResource ? available.find((node) => node.nodeName === target.nodeName) : undefined;
   const unavailable = (node: TwinNodeCatalogEntry | undefined) => !node?.unique || (motion && node.drivable !== true);
@@ -41,9 +43,10 @@ function TargetFields({ target, onChange, scene, catalog, motion = false }: { ta
     <label><span>查找部件</span><input placeholder="输入部件名称" value={search} onChange={(event) => setSearch(event.target.value)} disabled={!instance} /></label>
     <label className="twin-wide"><span>选择模型部件</span><Select value={sameResource ? target.nodeName : ""} disabled={!instance} onValueChange={(nodeName) => onChange({ ...target, modelAssetId: instance!.modelAssetId, nodeName })}>
       <option value="">请选择部件</option>
-      {sameResource && target.nodeName && !options.some((node) => node.nodeName === target.nodeName) ? <option value={target.nodeName} disabled={unavailable(selected)}>{target.nodeName}{suffix(selected)}</option> : null}
-      {options.map((node, index) => <option key={`${node.nodeName}-${index}`} value={node.nodeName} disabled={unavailable(node)}>{node.nodeName}{suffix(node)}</option>)}
+      {sameResource && target.nodeName && !options.some((node) => node.nodeName === target.nodeName) ? <option value={target.nodeName} disabled={unavailable(selected)}>{selected ? twinTargetLabel(selected, available) : "原部件已不可用"}{suffix(selected)}</option> : null}
+      {options.map((node, index) => <option key={`${node.nodeName}-${index}`} value={node.nodeName} disabled={unavailable(node)}>{twinTargetLabel(node, available)}{suffix(node)}</option>)}
     </Select></label>
+    <div className="twin-wide twin-target-action"><TwinModelTargetPicker target={target} scene={scene} catalog={catalog} motion={motion} onChange={onChange} onTargetPickerChange={onTargetPickerChange} /><span className="twin-help">点击实物确认对应部件，高亮范围就是绑定范围。</span></div>
     {instance && !sameResource ? <p className="twin-error twin-wide">这个模型的文件已更换，请重新选择部件，或使用“更换模型”批量对应。</p> : null}
     <p className="twin-help twin-wide">{!instance ? "先选择模型，再选择要控制的部件。" : !available.length ? "模型部件尚未加载，请确认模型在场景中可正常显示。" : nodes.length > 200 ? `找到 ${nodes.length} 个部件，显示前 200 个，请继续筛选。` : `找到 ${nodes.length} 个部件。`}</p>
   </div>;
@@ -100,9 +103,9 @@ const axes: { value: string; label: string; vector: TwinVector }[] = [
   { value: "x", label: "X 轴", vector: [1, 0, 0] }, { value: "y", label: "Y 轴", vector: [0, 1, 0] }, { value: "z", label: "Z 轴", vector: [0, 0, 1] },
 ];
 
-export function TwinDriveEditor({ document, scene, catalog, projectName, onSaved, onClose, onTestChange, connectionTest }: {
+export function TwinDriveEditor({ document, scene, catalog, projectName, onSaved, onClose, onTestChange, connectionTest, onTargetPickerChange }: {
   document: TwinDriveDocument; scene: StandaloneSceneDocument; catalog: TwinNodeCatalogEntry[]; projectName?: string;
-  onSaved: (document: TwinDriveDocument) => void; onClose: () => void; onTestChange: (active: boolean) => void; connectionTest: ReactNode;
+  onSaved: (document: TwinDriveDocument) => void; onClose: () => void; onTestChange: (active: boolean) => void; connectionTest: ReactNode; onTargetPickerChange?: TwinTargetPickerChange;
 }) {
   const heading = useRef<HTMLHeadingElement>(null);
   const content = useRef<HTMLDivElement>(null);
@@ -208,7 +211,7 @@ export function TwinDriveEditor({ document, scene, catalog, projectName, onSaved
               <TextField label="数据单位" maxLength={32} value={point.unit} placeholder="例如：m、度" onChange={(unit) => patchPoint({ unit })} /><NumberField label="数据过期时间（毫秒）" value={point.staleAfterMs} min={500} max={60000} onChange={(staleAfterMs) => patchPoint({ staleAfterMs })} />
               <TextField label="数据名称" value={point.label} onChange={(label) => patchPoint({ label })} />
             </div><p className="twin-help">数据超出范围或长时间未更新时，动作会停下并提示。布尔字段按 false = 0、true = 1 处理。</p></details></div> : <p className="twin-error" role="alert">动作引用的数据已删除，请在高级配置中修正对应关系。</p>}
-            <TargetFields key={`target:${binding.id}`} target={binding.target} onChange={(target) => patchBinding({ target })} scene={scene} catalog={catalog} motion />
+            <TargetFields key={`target:${binding.id}`} target={binding.target} onChange={(target) => patchBinding({ target })} scene={scene} catalog={catalog} onTargetPickerChange={onTargetPickerChange} motion />
             <div className="twin-fields"><label><span>部件如何变化</span><Select value={binding.kind} onValueChange={(value) => { const kind = value as TwinMotionBinding["kind"]; if (kind === binding.kind) return; if (binding.kind === "pose" && binding.poses.length) setPendingMotionKind({ bindingId: binding.id, kind }); else changeMotionKind(kind); }}><option value="translation">沿方向移动</option><option value="rotation">绕轴转动</option><option value="pose">在多个姿态间变化</option><option value="visibility">显示 / 隐藏</option></Select></label>
               {binding.kind === "translation" || binding.kind === "rotation" ? <label><span>{binding.kind === "translation" ? "移动方向" : "转动轴"}</span><Select value={axes.find((axis) => axis.vector.every((value, index) => value === binding.axis[index]))?.value ?? "custom"} onValueChange={(value) => { const selected = axes.find((axis) => axis.value === value); if (selected) patchBinding({ axis: [...selected.vector] }); }}><option value="custom" disabled>自定义方向（见高级设置）</option>{axes.map((axis) => <option key={axis.value} value={axis.value}>{axis.label}</option>)}</Select></label> : null}
             </div>
@@ -223,10 +226,10 @@ export function TwinDriveEditor({ document, scene, catalog, projectName, onSaved
             </details><button className="secondary-button compact-button twin-danger" type="button" disabled={Boolean(bindingInUse)} onClick={() => { const remaining = config.bindings.filter((item) => item.id !== binding.id); setConfig({ ...config, bindings: remaining, points: config.points.filter(item => item.id !== binding.pointId || remaining.some(other => other.pointId === item.id)) }); setBindingId(remaining[0]?.id ?? ""); }}>删除这个动作</button>{bindingInUse ? <p className="twin-help">其他动作正在跟随这个动作，请先修改它们的跟随关系。</p> : null}
           </section> : <p className="twin-empty">添加动作，选择接口字段与模型部件，即可让部件跟随数据变化。</p>}
         </> : null}
-        {tab === "reuse" && config.source === "api" ? <TwinBindingRemap config={config} scene={scene} catalog={catalog} onChange={setConfig} /> : null}
+        {tab === "reuse" && config.source === "api" ? <TwinBindingRemap config={config} scene={scene} catalog={catalog} onChange={setConfig} onTargetPickerChange={onTargetPickerChange} /> : null}
         {tab === "collisions" && config.source === "api" ? <>
           <div className="twin-row"><label><span>选择碰撞部件</span><Select value={colliderId} onValueChange={setColliderId}><option value="">请选择碰撞部件</option>{config.colliders.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</Select></label><button className="secondary-button compact-button" type="button" disabled={config.colliders.length >= TWIN_DRIVE_LIMITS.colliders} onClick={() => { const nextId = id("collider"); setConfig({ ...config, colliders: [...config.colliders, { id: nextId, label: "新碰撞部件", target: emptyTarget(), center: [0, 0, 0], size: [1, 1, 1] }] }); setColliderId(nextId); }}>＋ 添加碰撞部件</button></div>
-          {collider ? <section className="twin-card"><TextField label="碰撞部件名称" value={collider.label} onChange={(label) => patchCollider({ label })} /><TargetFields key={collider.id} target={collider.target} onChange={(target) => patchCollider({ target })} scene={scene} catalog={catalog} /><VectorField label="检测盒中心" value={collider.center} onChange={(center) => patchCollider({ center })} /><VectorField label="检测盒尺寸（正数）" value={collider.size} onChange={(size) => patchCollider({ size })} /><button className="secondary-button compact-button twin-danger" type="button" disabled={Boolean(colliderInUse)} onClick={() => { setConfig({ ...config, colliders: config.colliders.filter((item) => item.id !== collider.id) }); setColliderId(""); }}>删除碰撞部件</button>{colliderInUse ? <p className="twin-help">这个部件仍被碰撞规则使用，请先移除对应规则。</p> : null}</section> : null}
+          {collider ? <section className="twin-card"><TextField label="碰撞部件名称" value={collider.label} onChange={(label) => patchCollider({ label })} /><TargetFields key={collider.id} target={collider.target} onChange={(target) => patchCollider({ target })} scene={scene} catalog={catalog} onTargetPickerChange={onTargetPickerChange} /><VectorField label="检测盒中心" value={collider.center} onChange={(center) => patchCollider({ center })} /><VectorField label="检测盒尺寸（正数）" value={collider.size} onChange={(size) => patchCollider({ size })} /><button className="secondary-button compact-button twin-danger" type="button" disabled={Boolean(colliderInUse)} onClick={() => { setConfig({ ...config, colliders: config.colliders.filter((item) => item.id !== collider.id) }); setColliderId(""); }}>删除碰撞部件</button>{colliderInUse ? <p className="twin-help">这个部件仍被碰撞规则使用，请先移除对应规则。</p> : null}</section> : null}
           <h3>碰撞提示规则</h3><p className="twin-help">检查指定部件是否接触，显示进入和离开提示。仅用于模型演示，不控制真实设备。</p>
           {config.collisionRules.map((rule) => <section className="twin-card" key={rule.id}><div className="twin-fields"><TextField label="规则名称" value={rule.label} onChange={(label) => setConfig({ ...config, collisionRules: config.collisionRules.map((item) => item.id === rule.id ? { ...item, label } : item) })} /><label><span>提示等级</span><Select value={rule.severity} onValueChange={(severity) => setConfig({ ...config, collisionRules: config.collisionRules.map((item) => item.id === rule.id ? { ...item, severity: severity as "warning" | "error" } : item) })}><option value="warning">警告</option><option value="error">错误</option></Select></label>{(["first", "second"] as const).map((key, index) => <label key={key}><span>碰撞部件 {index + 1}</span><Select value={rule[key]} onValueChange={(value) => setConfig({ ...config, collisionRules: config.collisionRules.map((item) => item.id === rule.id ? { ...item, [key]: value } : item) })}><option value="">请选择部件</option>{config.colliders.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</Select></label>)}</div><div className="twin-row"><label className="twin-check"><input type="checkbox" checked={rule.enabled} onChange={(event) => setConfig({ ...config, collisionRules: config.collisionRules.map((item) => item.id === rule.id ? { ...item, enabled: event.target.checked } : item) })} />启用规则</label><button className="secondary-button compact-button twin-danger" type="button" onClick={() => setConfig({ ...config, collisionRules: config.collisionRules.filter((item) => item.id !== rule.id) })}>删除规则</button></div></section>)}
           <button className="secondary-button" type="button" disabled={config.colliders.length < 2 || config.collisionRules.length >= TWIN_DRIVE_LIMITS.collisionRules} onClick={() => setConfig({ ...config, collisionRules: [...config.collisionRules, { id: id("collision"), label: "新碰撞提示", first: config.colliders[0]!.id, second: config.colliders[1]!.id, severity: "warning", enabled: true }] })}>＋ 添加碰撞规则</button>

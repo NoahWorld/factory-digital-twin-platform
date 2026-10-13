@@ -4,8 +4,10 @@ import { OBB } from "three/examples/jsm/math/OBB.js";
 import { twinDriveErrors, type TwinCollisionEvent, type TwinDriveConfig, type TwinMotionBinding, type TwinTarget } from "../../../../shared/twin-drive";
 import type { TwinDriveLiveSource } from "../twin/point-stream";
 import type { InstanceRecord } from "./instance-manager";
+import { buildTwinNodeCatalog } from "./twin-target-selection";
 
-export type TwinNodeCatalogEntry = { instanceId: string; modelAssetId: string; nodeName: string; unique: boolean; drivable: boolean };
+export type { TwinNodeCatalogEntry } from "./twin-target-selection";
+import type { TwinNodeCatalogEntry } from "./twin-target-selection";
 export type TwinDriveDiagnostics = {
   status: "disabled" | "waiting" | "live" | "paused" | "stale" | "disconnected" | "error";
   message: string; sequence: number | null; boundNodes: number;
@@ -52,10 +54,7 @@ export class TwinDriveRuntime {
   diagnostics: TwinDriveDiagnostics = { status: "waiting", message: "等待点位反馈", sequence: null, boundNodes: 0, activeCollisions: [], events: [] };
 
   constructor(private records: InstanceRecord[], private attachment: TwinDriveAttachment) {
-    attachment.onCatalog?.(records.flatMap(record => [...record.objectsByName].map(([nodeName, objects]) => ({
-      instanceId: record.id, modelAssetId: record.assetId, nodeName, unique: objects.length === 1,
-      drivable: objects.length === 1 && objects[0] !== record.model,
-    }))));
+    attachment.onCatalog?.(buildTwinNodeCatalog(records));
     const errors = twinDriveErrors(attachment.config);
     if (errors.length) throw new Error(errors.join("；"));
     if (!attachment.config.enabled) return;

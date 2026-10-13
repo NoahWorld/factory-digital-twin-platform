@@ -41,14 +41,14 @@ export function twinRemapRows(config: TwinDriveConfig, selectedSourceKey: string
   ];
 }
 
-export function twinRemapTargetNodes(scene: StandaloneSceneDocument, catalog: TwinNodeCatalogEntry[], targetInstanceId: string): { nodeName: string; unique: boolean; drivable: boolean }[] {
+export function twinRemapTargetNodes(scene: StandaloneSceneDocument, catalog: TwinNodeCatalogEntry[], targetInstanceId: string): { nodeName: string; unique: boolean; drivable: boolean; label?: string; parentNodeName?: string }[] {
   const instance = scene.instances.find((item) => item.id === targetInstanceId);
   if (!instance) return [];
-  const nodes = new Map<string, { nodeName: string; unique: boolean; drivable: boolean }>();
+  const nodes = new Map<string, { nodeName: string; unique: boolean; drivable: boolean; label?: string; parentNodeName?: string }>();
   for (const node of catalog) {
     if (node.instanceId !== instance.id || node.modelAssetId !== instance.modelAssetId) continue;
     const previous = nodes.get(node.nodeName);
-    nodes.set(node.nodeName, { nodeName: node.nodeName, unique: !previous && node.unique && node.nodeName.length > 0, drivable: !previous && node.drivable });
+    nodes.set(node.nodeName, { nodeName: node.nodeName, ...(node.label ? { label: node.label } : {}), ...(node.parentNodeName ? { parentNodeName: node.parentNodeName } : {}), unique: !previous && node.unique && node.nodeName.length > 0, drivable: !previous && node.drivable });
   }
   return [...nodes.values()];
 }

@@ -34,6 +34,7 @@ import { applyOrbitViewLimits } from "../scene/orbit-view-limits";
 import type { SceneSelectionStyle } from "../scene/scene-runtime";
 import { registerCoverSurface } from "../covers/render-surfaces";
 import type { TwinDriveAttachment } from "../scene/twin-drive-runtime";
+import type { TwinTarget } from "../../../../shared/twin-drive";
 
 export type Model3DNodeProps = {
   staticMap?: import("../../../../shared/static-map").StaticMapDefinition | null;
@@ -49,6 +50,8 @@ export type Model3DNodeProps = {
   onFluidPoint?: (point: import("../../../../shared/fluids").FluidPoint) => void;
   onFluidSelect?: (id: string | null) => void;
   twinDrive?: TwinDriveAttachment;
+  twinTargetSelection?: TwinTarget | null;
+  onTwinTargetPick?: (targets: TwinTarget[]) => void;
   walkScene?: WalkSceneConfig;
   cameraControlsEnabled?: boolean;
   runtimeControlsEnabled?: boolean;
@@ -1060,7 +1063,7 @@ const SingleModel3DNode = memo(function SingleModel3DNode({
 
 export const Model3DNode = memo(function Model3DNode(props: Model3DNodeProps) {
   const parsed = parseModel3DProps(props.node.props, props.maximumModelInstances);
-  if (parsed.ok && (parsed.value.modelInstances.length > 0 || props.maximumModelInstances !== undefined || props.walkScene !== undefined || props.twinDrive !== undefined || props.fluids !== undefined || props.fluidEditor !== undefined || props.decorations !== undefined || props.roomAlarms !== undefined || props.staticMap !== undefined)) {
+  if (parsed.ok && (parsed.value.modelInstances.length > 0 || props.maximumModelInstances !== undefined || props.walkScene !== undefined || props.twinDrive !== undefined || props.twinTargetSelection !== undefined || props.onTwinTargetPick !== undefined || props.fluids !== undefined || props.fluidEditor !== undefined || props.decorations !== undefined || props.roomAlarms !== undefined || props.staticMap !== undefined)) {
     return <BatchModel3DNode {...props} />;
   }
   return <SingleModel3DNode {...props} />;

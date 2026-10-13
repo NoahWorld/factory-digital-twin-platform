@@ -59,6 +59,7 @@ import { useLinkedTwinScenes } from "../twin/useLinkedTwinScenes";
 import { publishTwinActions, subscribeTwinActions } from "../twin/action-events";
 import { useAssetRuntimeConnections } from "../twin/useAssetRuntimeConnections";
 import { useTwinDrive } from "../twin/useTwinDrive";
+import type { TwinTargetPickerView } from "../twin/TwinModelTargetPicker";
 import { TwinDriveEditor } from "../twin/TwinDriveEditor";
 import { TwinDriveConsole } from "../twin/TwinDriveConsole";
 import { TwinDriveStatus } from "../twin/TwinDriveStatus";
@@ -184,6 +185,7 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
   const fluidLayerRef = useRef<HTMLDivElement | null>(null);
   const [showTwinEditor, setShowTwinEditor] = useState(false);
   const [testingTwin, setTestingTwin] = useState(false);
+  const [twinTargetPicker, setTwinTargetPicker] = useState<TwinTargetPickerView | null>(null);
   const twin = useTwinDrive(projectId, { live: mode === "preview" || testingTwin });
   const [twinCatalog, setTwinCatalog] = useState<TwinNodeCatalogEntry[]>([]);
   const [twinDiagnostics, setTwinDiagnostics] = useState<TwinDriveDiagnostics | null>(null);
@@ -194,7 +196,7 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
     onDiagnostics: setTwinDiagnostics,
   } : undefined, [twin.document, twin.source, mode, testingTwin, projectId]);
 
-  useEffect(() => { setShowTwinEditor(false); setTestingTwin(false); }, [projectId, mode]);
+  useEffect(() => { setShowTwinEditor(false); setTestingTwin(false); setTwinTargetPicker(null); }, [projectId, mode]);
 
   useEffect(() => {
     draftSceneRef.current = draftScene;
@@ -855,14 +857,16 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
       cameraControlsEnabled
       editable={false}
       interactive
-      instanceTransformMode={mode === "edit" && editable && !saving && !extrasPending && extrasSelection?.kind !== "map" && !fluidEditor.selectedId && !fluidEditor.session ? instanceTransformMode : null}
+      instanceTransformMode={mode === "edit" && !showTwinEditor && editable && !saving && !extrasPending && extrasSelection?.kind !== "map" && !fluidEditor.selectedId && !fluidEditor.session ? instanceTransformMode : null}
       fluids={mode === "edit" ? fluidEditor.previewFluids : draftScene.fluids}
       selectedFluidId={mode === "edit" ? fluidEditor.selectedId : null}
       fluidEditor={mode === "edit" ? fluidEditor.rendererEditor : null}
       onFluidPoint={mode === "edit" ? fluidEditor.onPoint : undefined}
       onFluidSelect={mode === "edit" ? selectFluid : undefined}
       maximumModelInstances={limits.maximumInstances}
-      modelFocusRequest={mode === "preview" ? modelFocusRequest : null}
+      modelFocusRequest={twinTargetPicker?.focusRequest ?? (mode === "preview" ? modelFocusRequest : null)}
+      twinTargetSelection={twinTargetPicker?.target.nodeName ? twinTargetPicker.target : null}
+      onTwinTargetPick={twinTargetPicker?.onPick}
       node={rendererNode}
       onModelInstanceSelect={selectModelInstance}
       onModelInstanceTransform={commitInstanceTransform}
@@ -879,6 +883,7 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
 
   const twinEditor = mode === "edit" && showTwinEditor && twin.document && savedScene ? <TwinDriveEditor
     document={twin.document} scene={savedScene} catalog={twinCatalog} projectName={projectName}
+    onTargetPickerChange={setTwinTargetPicker}
     onSaved={twin.acceptDocument} onClose={() => { setShowTwinEditor(false); setTestingTwin(false); }} onTestChange={setTestingTwin}
     connectionTest={<TwinDriveConsole document={twin.document} loading={twin.loading} error={twin.error} source={twin.source}
       stream={twin.stream} diagnostics={twinDiagnostics} onReload={twin.reload} onReconnect={twin.reconnect} />}
@@ -1044,7 +1049,9 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
         )}
       </aside>
 
-      <section className="standalone-3d-stage">
+      <section className={`standalone-3d-stage${twinTargetPicker ? " is-twin-target-picking" : ""}`}
+        aria-label={twinTargetPicker ? "模型部件实物选择" : undefined}
+        style={twinTargetPicker ? { left: twinTargetPicker.viewport.left, top: twinTargetPicker.viewport.top, width: twinTargetPicker.viewport.width, height: twinTargetPicker.viewport.height } : undefined}>
         {sceneView}
         {editable && fluidEditor.session ? <div className="standalone-transform-tools standalone-fluid-drawing-hint" role="status">
           <strong>{fluidEditor.session.active ? "正在绘制流体" : "流体拾取已暂停"}</strong>

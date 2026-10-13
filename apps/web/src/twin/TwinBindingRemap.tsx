@@ -2,12 +2,14 @@ import { useState } from "react";
 import type { TwinDriveConfig } from "../../../../shared/twin-drive";
 import type { StandaloneSceneDocument } from "../../../../shared/standalone-3d";
 import type { TwinNodeCatalogEntry } from "../scene/twin-drive-runtime";
+import { TwinModelTargetPicker, type TwinTargetPickerChange } from "./TwinModelTargetPicker";
+import { twinTargetLabel, twinTargetSearch } from "./twin-target-label";
 import { Select } from "../components/Select";
 import { prepareTwinBindingRemap, suggestTwinRemapNodes, twinRemapRows, twinRemapSources, twinRemapTargetNodes, type TwinRemapNodes } from "./twin-binding-remap";
 
-export function TwinBindingRemap({ config, scene, catalog, onChange }: {
+export function TwinBindingRemap({ config, scene, catalog, onChange, onTargetPickerChange }: {
   config: TwinDriveConfig; scene: StandaloneSceneDocument; catalog: TwinNodeCatalogEntry[];
-  onChange: (config: TwinDriveConfig) => void;
+  onChange: (config: TwinDriveConfig) => void; onTargetPickerChange?: TwinTargetPickerChange;
 }) {
   const [sourceKey, setSourceKey] = useState("");
   const [targetId, setTargetId] = useState("");
@@ -18,7 +20,7 @@ export function TwinBindingRemap({ config, scene, catalog, onChange }: {
   const source = sources.find((item) => item.key === sourceKey);
   const rows = twinRemapRows(config, sourceKey);
   const nodes = twinRemapTargetNodes(scene, catalog, targetId);
-  const matchingNodes = nodes.filter((node) => node.nodeName.toLocaleLowerCase().includes(search.toLocaleLowerCase()));
+  const matchingNodes = nodes.filter((node) => twinTargetSearch(node, search, nodes));
   const visibleNodes = matchingNodes.slice(0, 200);
   const result = prepareTwinBindingRemap(config, scene, catalog, sourceKey, targetId, nodeNames);
   return <section className="twin-card twin-remap">
@@ -47,14 +49,15 @@ export function TwinBindingRemap({ config, scene, catalog, onChange }: {
           const selected = nodeNames[row.key] ?? "";
           const selectedNode = nodes.find((node) => node.nodeName === selected);
           const unavailable = (node: typeof nodes[number]) => !node.unique || (row.kind === "binding" && !node.drivable);
-          const nodeLabel = (node: typeof nodes[number]) => `${node.nodeName}${!node.unique ? "（重名，不可绑定）" : row.kind === "binding" && !node.drivable ? "（模型根节点，不可用于动作）" : ""}`;
+          const nodeLabel = (node: typeof nodes[number]) => `${twinTargetLabel(node, nodes)}${!node.unique ? "（重名，不可绑定）" : row.kind === "binding" && !node.drivable ? "（模型根节点，不可用于动作）" : ""}`;
           return <div key={row.key} className="twin-remap-row">
-            <div className="twin-remap-origin"><strong>{row.label}</strong><span>{row.kind === "binding" ? "动作" : "碰撞部件"} · {row.target.nodeName || "尚未选择部件"}</span></div>
+            <div className="twin-remap-origin"><strong>{row.label}</strong><span>{row.kind === "binding" ? "动作" : "碰撞部件"} · {row.target.nodeName ? twinTargetLabel(catalog.find((node) => node.instanceId === row.target.instanceId && node.modelAssetId === row.target.modelAssetId && node.nodeName === row.target.nodeName) ?? { nodeName: row.target.nodeName }, catalog.filter((node) => node.instanceId === row.target.instanceId && node.modelAssetId === row.target.modelAssetId)) : "尚未选择部件"}</span></div>
             <label><span>对应的新部件</span><Select aria-label={`${row.label}对应的新部件`} value={selected} onValueChange={(value) => setNodeNames({ ...nodeNames, [row.key]: value })}>
               <option value="">请选择对应部件</option>
-              {selected && !visibleNodes.some((node) => node.nodeName === selected) ? <option value={selected} disabled={!selectedNode || unavailable(selectedNode)}>{selectedNode ? nodeLabel(selectedNode) : `${selected}（已不可用）`}</option> : null}
+              {selected && !visibleNodes.some((node) => node.nodeName === selected) ? <option value={selected} disabled={!selectedNode || unavailable(selectedNode)}>{selectedNode ? nodeLabel(selectedNode) : "原部件已不可用"}</option> : null}
               {visibleNodes.map((node) => <option key={node.nodeName} value={node.nodeName} disabled={unavailable(node)}>{nodeLabel(node)}</option>)}
             </Select></label>
+            <TwinModelTargetPicker target={{ instanceId: targetId, modelAssetId: scene.instances.find((item) => item.id === targetId)!.modelAssetId, nodeName: selected }} scene={scene} catalog={catalog} motion={row.kind === "binding"} lockInstance onTargetPickerChange={onTargetPickerChange} onChange={(target) => setNodeNames((current) => ({ ...current, [row.key]: target.nodeName }))} />
           </div>;
         })}</div>
         {result.errors.length ? <details className="twin-validation twin-remap-errors"><summary>{result.errors.length} 项需要确认，暂时不能应用</summary><ul>{result.errors.map((message) => <li key={message}>{message}</li>)}</ul></details> : null}

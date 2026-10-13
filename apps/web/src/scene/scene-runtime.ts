@@ -28,6 +28,8 @@ import type { StaticMapDefinition } from "../../../../shared/static-map";
 import { createWalkPhysics, type WalkPhysics, type WalkSceneConfig } from "./walk-physics";
 import { createWalkControls } from "./walk-controls";
 import { TwinDriveRuntime, type TwinDriveAttachment } from "./twin-drive-runtime";
+import { createTwinTargetPickingService, TwinTargetSelectionOutline } from "./twin-target-selection";
+import type { TwinTarget } from "../../../../shared/twin-drive";
 import { createNativePlayback, type AnimationProgress, type NativePlaybackMode } from "./native-playback";
 import {
   constrainEditableDecorationScale,
@@ -59,6 +61,8 @@ export type SceneInput = {
   controlsEnabled: boolean;
   instanceTransformMode: InstanceTransformMode | null;
   modelFocusRequest?: { instanceId: string; requestId: string } | null;
+  twinTargetSelection?: TwinTarget | null;
+  onTwinTargetPick?: (targets: TwinTarget[]) => void;
 };
 export type SceneDiagnostics = {
   staticMap: ReturnType<StaticMapManager["diagnostics"]>;
@@ -210,6 +214,8 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
     let selectionHelper: InstanceType<typeof THREE.BoxHelper> | null = null;
     let selectionRing: THREE.Mesh<THREE.RingGeometry, THREE.MeshBasicMaterial> | null = null;
     let selectionTarget: Object3D | null = null;
+    const twinSelectionOutline = new TwinTargetSelectionOutline(scene);
+    constructionCleanup.push(() => twinSelectionOutline.dispose());
     const selectionBounds = new THREE.Box3();
     const selectionSize = new THREE.Vector3();
     const selectionCenter = new THREE.Vector3();
@@ -299,6 +305,7 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
     };
 
     const clearSelection = () => {
+      twinSelectionOutline.clear();
       if (selectionHelper) {
         scene.remove(selectionHelper);
         selectionHelper.geometry.dispose();
@@ -342,7 +349,7 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
       const decoration = input.extrasSelection?.kind === "decoration" ? decorations.getRoot(input.extrasSelection.id) : undefined;
       const target = decoration ? { kind: "decoration" as const, id: input.extrasSelection!.id, object: decoration }
         : record ? { kind: "instance" as const, id: record.id, object: record.wrapper } : null;
-      if (disposed || contextLost || input.selectionStyle !== "editor" || !input.controlsEnabled || !input.instanceTransformMode || !target?.object.visible || walk || input.fluidEditor?.active) {
+      if (disposed || contextLost || input.selectionStyle !== "editor" || !input.controlsEnabled || !input.instanceTransformMode || !target?.object.visible || walk || input.fluidEditor?.active || input.onTwinTargetPick || input.twinTargetSelection) {
         detachTransformControl();
         return;
       }
@@ -735,6 +742,12 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
 
     const applySelection = (path: string | null, instanceId: string | null, style: SceneSelectionStyle) => {
       clearSelection();
+      if (desired.twinTargetSelection) {
+        twinSelectionOutline.set(records, desired.twinTargetSelection);
+        return;
+      }
+      // While choosing a motion target, ordinary scene selection stays suspended.
+      if (desired.onTwinTargetPick) return;
       let selected: Object3D | undefined;
       if (desired.extrasSelection && style === "editor") {
         selected = desired.extrasSelection.kind === "decoration"
@@ -780,6 +793,10 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
     };
 
     const pick = createSceneObjectPickingService(camera, renderer.domElement);
+    const pickTwin = createTwinTargetPickingService(camera, renderer.domElement);
+    const pickTwinTargets = (x: number, y: number) => pickTwin(x, y, records, [
+      ...fluids.getObjects(), ...decorations.getPickObjects(), ...staticMap.getPickObjects(),
+    ]);
     const pickSceneObject = (x: number, y: number) => pick(x, y, records, primaryPathsByObject, fluids, [...decorations.getPickObjects(), ...staticMap.getPickObjects()]);
     const pickSceneTarget = (x: number, y: number) => {
       const target = pickSceneObject(x, y);
@@ -859,6 +876,7 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
       const animationConflict = settings.playAnimations && records.some(record => twinRuntime?.drivenInstances.has(record.id) && record.animationCount > 0 && desiredInstancesById.get(record.id)?.animation?.enabled !== false);
       twinRuntime?.tick(Date.now(), animationConflict, now);
       selectionHelper?.update();
+      twinSelectionOutline.update();
       updateRuntimeSelectionRing(now);
       if (walk) {
         try { walk.controls.update(frameMs / 1000); }
@@ -963,10 +981,10 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
         if (fluidsChanged) fluids.reconcile(next.fluids ?? []);
         if (instancesChanged) applyInstances(next.instances);
         else if (fluidsChanged || decorationsChanged || mapChanged) updateSceneBounds();
-        if (fluidsChanged || JSON.stringify(appliedInput?.fluidEditor) !== JSON.stringify(next.fluidEditor) || appliedInput?.selectedFluidId !== next.selectedFluidId || appliedInput?.selectionStyle !== next.selectionStyle) {
+        if (fluidsChanged || JSON.stringify(appliedInput?.fluidEditor) !== JSON.stringify(next.fluidEditor) || appliedInput?.selectedFluidId !== next.selectedFluidId || appliedInput?.selectionStyle !== next.selectionStyle || !!appliedInput?.onTwinTargetPick !== !!next.onTwinTargetPick) {
           const selected = next.fluids?.find(fluid => fluid.id === next.selectedFluidId && fluid.visible);
           const selectedPoints = selected?.direction === "reverse" ? [...selected.points].reverse() : selected?.points;
-          if (next.selectionStyle === "editor") fluidGuide.update(next.fluidEditor ?? null, selectedPoints, selected?.radius);
+          if (next.selectionStyle === "editor" && !next.onTwinTargetPick) fluidGuide.update(next.fluidEditor ?? null, selectedPoints, selected?.radius);
           else fluidGuide.clear();
         }
         if (settingsChanged) applySceneSettings(next.settings);
@@ -977,7 +995,7 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
         if (graphChanged || appliedInput?.settings.playAnimations !== next.settings.playAnimations || JSON.stringify(appliedInput?.instances.map(i => i.animation)) !== JSON.stringify(next.instances.map(i => i.animation))) {
           twinReady = true; rebuildTwin();
         }
-        if (instancesChanged || modelChanged || decorationsChanged || mapChanged || JSON.stringify(appliedInput?.extrasSelection) !== JSON.stringify(next.extrasSelection) || appliedInput?.selectedPath !== next.selectedPath || appliedInput?.selectedInstanceId !== next.selectedInstanceId || appliedInput?.selectionStyle !== next.selectionStyle) {
+        if (instancesChanged || modelChanged || decorationsChanged || mapChanged || JSON.stringify(appliedInput?.extrasSelection) !== JSON.stringify(next.extrasSelection) || appliedInput?.selectedPath !== next.selectedPath || appliedInput?.selectedInstanceId !== next.selectedInstanceId || appliedInput?.selectionStyle !== next.selectionStyle || JSON.stringify(appliedInput?.twinTargetSelection) !== JSON.stringify(next.twinTargetSelection) || !!appliedInput?.onTwinTargetPick !== !!next.onTwinTargetPick) {
           applySelection(next.selectedPath, next.selectedInstanceId, next.selectionStyle);
         }
         syncTransformControl(next);
@@ -1005,7 +1023,7 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
       nativePlayback.onProgress(playback.progress());
       renderSceneFrame();
     };
-    return { update, setTwinDrive, seekAnimation, resetCamera: fitCameraToScene, pickSceneTarget, pickSceneObject, pickFluidPoint, setFluidCursor, enterWalk, exitWalk, navigationStatus: () => navigation, dispose: disposeRuntime, diagnostics: () => lastDiagnostics };
+    return { update, setTwinDrive, seekAnimation, resetCamera: fitCameraToScene, pickSceneTarget, pickSceneObject, pickTwinTargets, pickFluidPoint, setFluidCursor, enterWalk, exitWalk, navigationStatus: () => navigation, dispose: disposeRuntime, diagnostics: () => lastDiagnostics };
   } catch (reason) {
     for (const cleanup of constructionCleanup.reverse()) cleanup();
     throw reason;

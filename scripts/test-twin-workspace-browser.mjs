@@ -45,11 +45,11 @@ const scene = { projectId, revision: 1, instances, linked2dProjectId: null, upda
     keyLightColor: '#ffffff', keyLightIntensity: 1, modelScale: 1,
     playAnimations: false, rotationSpeed: 1, showGrid: true } };
 const catalog = [
-  ['model-original', 'builtin:fixture-original', 'LiftArm'],
-  ['model-original', 'builtin:fixture-original', 'SafetyBody'],
-  ['model-replacement', 'builtin:fixture-replacement', 'LiftArmV2'],
-  ['model-replacement', 'builtin:fixture-replacement', 'SafetyBody'],
-].map(([instanceId, modelAssetId, nodeName]) => ({ instanceId, modelAssetId, nodeName, unique: true, drivable: true }));
+  ['model-original', 'builtin:fixture-original', 'LiftArm', '原升降部件'],
+  ['model-original', 'builtin:fixture-original', 'SafetyBody', '安全边界'],
+  ['model-replacement', 'builtin:fixture-replacement', 'LiftArmV2', '替换升降部件'],
+  ['model-replacement', 'builtin:fixture-replacement', 'SafetyBody', '安全边界'],
+].map(([instanceId, modelAssetId, nodeName, label]) => ({ instanceId, modelAssetId, nodeName, label, unique: true, drivable: true }));
 
 const fixture = `
 import React, { useState } from 'react';
@@ -352,9 +352,9 @@ try {
   await choose('新模型', '替换升降模型');
   const applyRemap = page.getByRole('button', { name: '应用到草稿', exact: true });
   assert.equal(await applyRemap.isDisabled(), true, 'Missing renamed nodes must prevent an incomplete remap');
-  assert.match(await page.getByRole('combobox', { name: '升降台边界对应的新部件', exact: true }).textContent(), /SafetyBody/,
+  assert.match(await page.getByRole('combobox', { name: '升降台边界对应的新部件', exact: true }).textContent(), /安全边界/,
     'Unique same-name collision nodes should be suggested');
-  await choose('升降台移动对应的新部件', 'LiftArmV2');
+  await choose('升降台移动对应的新部件', '替换升降部件');
   assert.equal(await applyRemap.isDisabled(), false);
   await page.screenshot({ path: join(screenshotDir, '1366x768-light-model-remap.png') });
   await applyRemap.click();
@@ -373,10 +373,10 @@ try {
 
   await step(1).click();
   await choose('选择模型', '替换升降模型');
-  assert.match(await page.getByRole('combobox', { name: '选择模型部件', exact: true }).textContent(), /LiftArmV2/,
+  assert.match(await page.getByRole('combobox', { name: '选择模型部件', exact: true }).textContent(), /替换升降部件/,
     'Selecting the current model again must not clear its selected part');
   await choose('部件如何变化', '沿方向移动');
-  assert.match(await page.getByRole('combobox', { name: '选择模型部件', exact: true }).textContent(), /LiftArmV2/);
+  assert.match(await page.getByRole('combobox', { name: '选择模型部件', exact: true }).textContent(), /替换升降部件/);
   await choose('部件如何变化', '在多个姿态间变化');
   const poseX = page.getByRole('spinbutton', { name: '位置（米） X', exact: true });
   await poseX.fill('2.5');

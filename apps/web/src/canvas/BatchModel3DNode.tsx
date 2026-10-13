@@ -16,7 +16,7 @@ export const BatchModel3DNode = memo(function BatchModel3DNode({
   decorations, roomAlarms, roomAlarmObservations, onRoomAlarmStatuses,
   staticMap, extrasSelection, onExtrasSelect,
   fluids, fluidEditor, selectedFluidId, onFluidPoint, onFluidSelect,
-  twinDrive,
+  twinDrive, twinTargetSelection = null, onTwinTargetPick,
   walkScene,
   cameraControlsEnabled,
   runtimeControlsEnabled = true,
@@ -96,10 +96,11 @@ export const BatchModel3DNode = memo(function BatchModel3DNode({
     controlsEnabled: cameraControlsEnabled ?? !editable,
     instanceTransformMode,
     modelFocusRequest,
+    twinTargetSelection, onTwinTargetPick,
   } : null;
   const inputRef = useRef(input);
   inputRef.current = input;
-  const inputSignature = JSON.stringify(input);
+  const inputSignature = JSON.stringify([input, !!onTwinTargetPick]);
   const [loadState, setLoadState] = useState<SceneStatus>(
     instances.length > 0 ? { status: "loading" } : { status: "empty" },
   );
@@ -178,14 +179,15 @@ export const BatchModel3DNode = memo(function BatchModel3DNode({
 
   const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
     clearFluidCursor();
-    if ((!editable && !interactive) || event.button !== 0) return;
+    if (onTwinTargetPick) event.stopPropagation();
+    if ((!editable && !interactive && !onTwinTargetPick) || event.button !== 0) return;
     pointerStartRef.current = { clientX: event.clientX, clientY: event.clientY, pointerId: event.pointerId, dragged: false };
   };
 
   const handlePointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
     const start = pointerStartRef.current;
     if (start && Math.hypot(event.clientX - start.clientX, event.clientY - start.clientY) > 4) start.dragged = true;
-    if (!fluidEditor?.active || !runtimeRef.current || event.buttons) return;
+    if (onTwinTargetPick || !fluidEditor?.active || !runtimeRef.current || event.buttons) return;
     try {
       const point = runtimeRef.current.pickFluidPoint(event.clientX, event.clientY);
       runtimeRef.current.setFluidCursor(point);
@@ -202,17 +204,24 @@ export const BatchModel3DNode = memo(function BatchModel3DNode({
   };
 
   const handlePointerUp = (event: ReactPointerEvent<HTMLDivElement>) => {
+    // OrbitControls completes its gesture on ownerDocument. Let pointerup reach it;
+    // the picker branch below already isolates ordinary scene selection.
     const start = pointerStartRef.current;
     pointerStartRef.current = null;
     if (suppressNextPickRef.current) {
       suppressNextPickRef.current = false;
       return;
     }
-    if ((!editable && !interactive) || !start || start.pointerId !== event.pointerId) return;
+    if ((!editable && !interactive && !onTwinTargetPick) || !start || start.pointerId !== event.pointerId) return;
     if (start.dragged || Math.hypot(event.clientX - start.clientX, event.clientY - start.clientY) > 4) return;
     try {
       const runtime = runtimeRef.current;
       if (!runtime) return;
+      if (onTwinTargetPick) {
+        onTwinTargetPick(runtime.pickTwinTargets(event.clientX, event.clientY));
+        setInteractionError(null);
+        return;
+      }
       if (fluidEditor?.active) {
         const point = runtime.pickFluidPoint(event.clientX, event.clientY);
         onFluidPoint?.(point);
@@ -259,7 +268,7 @@ export const BatchModel3DNode = memo(function BatchModel3DNode({
         onPointerUp={handlePointerUp}
         ref={containerRef}
       />
-      {fluidEditor?.active ? <div className={`fluid-placement-status${fluidCursor?.error ? " is-error" : ""}`}>
+      {fluidEditor?.active && !onTwinTargetPick ? <div className={`fluid-placement-status${fluidCursor?.error ? " is-error" : ""}`}>
         <strong>{fluidEditor.plane === "xz" ? "水平面" : fluidEditor.plane === "xy" ? "正面" : "侧面"} · {fluidEditor.plane === "xz" ? "Y" : fluidEditor.plane === "xy" ? "Z" : "X"} = {fluidEditor.offset}{fluidEditor.snapStep ? ` · 吸附 ${fluidEditor.snapStep}` : " · 自由选点"}</strong>
         <span>{fluidCursor?.error ?? (fluidCursor?.point ? `落点：${fluidCursor.point.map((value, axis) => `${["X", "Y", "Z"][axis]} ${value.toFixed(3)}`).join(" · ")}，单击确认` : "移动鼠标查看黄色落点，再单击确认；落点位于绘制平面上")}</span>
       </div> : null}

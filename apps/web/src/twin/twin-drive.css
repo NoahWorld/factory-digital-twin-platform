@@ -227,3 +227,37 @@
 .twin-action-data { display: grid; gap: 16px; padding-bottom: 20px; border-bottom: 1px solid var(--ui-border); }
 .twin-editor-body textarea { width: 100%; min-width: 0; resize: vertical; background: var(--ui-input-bg); color: var(--ui-text); border: 1px solid var(--ui-border-strong); border-radius: 7px; padding: 10px; font: inherit; }
 .twin-editor-body textarea:focus-visible { outline: 2px solid var(--ui-accent); outline-offset: 2px; }
+
+.twin-target-action { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
+.twin-picker-backdrop { position: fixed; inset: 0; z-index: 40; padding: 24px; display: grid; place-items: center; background: rgba(0, 0, 0, .65); }
+.twin-target-picker { width: min(1280px, 100%); height: min(850px, calc(100dvh - 48px)); display: grid; grid-template: auto minmax(0, 1fr) auto / 280px minmax(0, 1fr); color: var(--ui-text); background: var(--ui-surface); border: 1px solid var(--ui-border-strong); border-radius: 14px; overflow: hidden; box-shadow: 0 16px 60px rgba(0, 0, 0, .35); font-size: 13px; }
+.twin-target-picker *, .twin-target-picker *::before, .twin-target-picker *::after { box-sizing: border-box; }
+.twin-target-picker header, .twin-target-picker footer { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 20px; }
+.twin-target-picker header > button, .twin-target-picker footer > button { flex-shrink: 0; white-space: nowrap; }
+.twin-target-picker header { border-bottom: 1px solid var(--ui-border); }
+.twin-target-picker footer { border-top: 1px solid var(--ui-border); }
+.twin-target-picker h2 { margin: 0; font-size: 18px; color: var(--ui-text-strong); outline: none; }
+.twin-target-picker h3 { margin: 0; font-size: 13px; }
+.twin-target-picker header p { margin: 6px 0 0; font-size: 12px; color: var(--ui-text-muted); }
+.twin-target-picker aside { min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 14px; padding: 16px; border-right: 1px solid var(--ui-border); }
+.twin-target-picker label { display: grid; gap: 8px; font-weight: 600; }
+.twin-target-picker input { min-width: 0; width: 100%; padding: 9px 10px; background: var(--ui-input-bg); color: var(--ui-text); border: 1px solid var(--ui-border-strong); border-radius: 7px; }
+.twin-picker-parts, .twin-picker-candidates { display: grid; gap: 6px; }
+.twin-picker-part { display: grid; gap: 3px; text-align: left; padding: 10px; min-width: 0; color: var(--ui-text); background: var(--ui-surface-muted); border: 1px solid var(--ui-border); border-radius: 7px; cursor: pointer; }
+.twin-picker-part span { overflow-wrap: anywhere; }
+.twin-picker-part small { color: var(--ui-text-muted); font-size: 11px; }
+.twin-picker-part small:empty { display: none; }
+.twin-picker-part:hover, .twin-picker-part.is-selected { border-color: var(--ui-accent); background: var(--ui-accent-soft); }
+.twin-picker-part:disabled { cursor: default; opacity: .55; }
+.twin-picker-part:focus-visible, .twin-target-picker input:focus-visible { outline: 2px solid var(--ui-accent); outline-offset: 2px; }
+.twin-picker-viewport { min-width: 0; min-height: 0; background: var(--ui-bg); }
+.standalone-3d-editor.is-configuring-twin > .standalone-3d-stage.is-twin-target-picking { position: fixed; inset: auto; z-index: 41; visibility: visible; pointer-events: auto; min-height: 0; grid-area: auto; }
+.standalone-3d-stage.is-twin-target-picking > :not(.model-3d-node) { display: none; }
+.twin-remap-row > .compact-button { justify-self: start; }
+@media (max-width: 760px) {
+  .twin-picker-backdrop { padding: 8px; }
+  .twin-target-picker { height: calc(100dvh - 16px); grid-template: auto minmax(0, 1fr) minmax(0, 1fr) auto / minmax(0, 1fr); }
+  .twin-target-picker header, .twin-target-picker footer { padding: 12px; }
+  .twin-target-picker aside { grid-row: 3; border-right: 0; border-top: 1px solid var(--ui-border); }
+  .twin-picker-viewport { grid-row: 2; }
+}
