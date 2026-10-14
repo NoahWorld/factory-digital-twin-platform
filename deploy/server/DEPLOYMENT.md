@@ -1,12 +1,44 @@
 # DTwin 服务器部署记录
 
-首次部署：2026-09-28；记录更新：2026-10-13。服务器：`8.136.35.33`。
+首次部署：2026-09-28；记录更新：2026-10-14。服务器：`8.136.35.33`。
+
+**2026-10-14 当前前端为 AI 场景底座宣传与入口版本。** 已于 `05:16:14.792086Z`（北京时间 13:16）切换到 `dtwin-ui-20261014-ai-1ca1834`；此次沿用既有部署，只更新前端。后端仍为下述 2026-10-13 工程底座镜像，写实漫游保持隐藏。当前发布与验收证据见下一节，旧版本记录保留。
 
 **2026-10-13 BIM / CAD 工程底座已部署并通过生产验收。** 前后端于 `06:57:49.276338Z`（北京时间 14:57）激活；服务器原生禁网、备份恢复、公网业务、真实几何、工程界面及既有业务核对全部通过。最终状态以本轮审计目录的 `completed.json` 为准，原始 `activation.json` 保留激活时尚待验收的事实，不覆写初始记录。
 
 本轮升级前已验收前端于 `2026-10-08T07:58:36.859251Z` 切换至 `/data/dtwin/releases/dtwin-ui-20261008-workspace-61472f6`，应用源码为 GitHub 与 Codeup `main` 同一提交 `61472f61ae5bd3914710ac417e2372fdc5a01b7a`，入口 `/assets/index-DELsoXwy.js`。包含用户卡片与设置弹窗、紧凑导航和项目类型切换、列表标题整理、工作台纹理及页脚、统一 Kingdom Logo 与页签图标；顶部品牌在新标签页打开宣传页。120 个 web 文件 SHA-256 校验通过（11 个增量上传、109 个复用）。10 项公网接口/资源检查、8 项真实 HTTP 浏览器检查及 6 组深浅主题工作台检查通过，临时项目已删除、测试会话已撤销。只重建本项目 Nginx，另外 6 个本项目容器和 23 个其他业务容器的 ID、启动时间、状态不变；5 个健康检查均 healthy，运行配置仅改变 `RELEASE_DIR`。回滚目标为 `/data/dtwin/releases/dtwin-ui-20261008-account-menu-c56f334`，审计位于 `/data/dtwin/audit/dtwin-ui-20261008-workspace-61472f6/`。
 
 用户另行授权的 18 个项目、70 个资源迁移已完成数据库、对象、公网 API、浏览器和同机服务影响验收；4 个本地模拟数据源保持暂停，最终验收证据已归档并核对服务器权限与哈希。迁移有独立验收证据，范围及限制见 [本地到生产迁移](../../docs/local-to-production-migration.md)。历史发布记录继续保留，各版本使用各自的验收证据。
+
+## 2026-10-14 AI 宣传与入口前端更新
+
+| 项目 | 本轮内容 |
+| --- | --- |
+| 公开地址 | [DTwin](http://8.136.35.33:19080) |
+| 应用源码 | GitHub `codex/photorealistic-walkthrough`：`1ca183463d41aeaca558a1414425b8d3f7ea5836` |
+| 发布目录 | `/data/dtwin/releases/dtwin-ui-20261014-ai-1ca1834` |
+| 前端入口 | `/assets/index-ujFjeZJ9.js` |
+| 后端 | 保留 `dtwin/backend:43ec0a9-amd64`，无镜像、数据库或 worker 配置变更 |
+| 发布包 | 34,406,112 字节，125 个 web 文件逐项 SHA-256 校验通过 |
+| 包 SHA-256 | `1ccfd732fa9e251aa484dd88cb35ef9fb002c6f7ebebfc59458ece0781bcdfd8` |
+| 回滚目录 | `/data/dtwin/releases/dtwin-engineering-20261013-968009b` |
+| 审计目录 | `/data/dtwin/audit/dtwin-ui-20261014-ai-1ca1834` |
+
+前端从上述已推送提交以 `VITE_API_BASE_URL=/ pnpm --dir apps/web build` 构建，TypeScript 与生产构建通过；Vite 仍提示既有大 chunk。此次包含 AI 场景底座的主导航/资源库专题入口、功能中心布局与返回入口、CAD/BIM 差异化交互宣传、放大的 AI 标题及移除三个快捷卡片。宣传滑块和构件选择是明确标注的本地 SVG 示意，不调用转换服务；尚未开放的写实漫游仍不展示。
+
+切换前真实登录确认全局 capabilities 的 `sceneBackgroundGeneration=false` 和工程 capabilities 的 `available=true`、IFC/DXF 格式及 100 MiB/25 MiB 限额与当前前端兼容。预检读取公共 Docker 容器清单时曾因宿主默认 ASCII 编码失败，尚未切换服务；脚本改为明确 UTF-8 后重新预检通过，原失败快照保留在同名 `-preflight-failed1` 审计目录。发布只通过专用 `/data/dtwin/bin/docker-dtwin` 执行 `compose ... up -d --no-deps nginx`，没有操作公共 Docker 或公共 Nginx。
+
+本轮真实公网验收：
+
+- `verify.mjs` 10 项通过：健康、身份/来源边界、2D/3D 保存、静态资源、上传/签名下载/Range、multipart worker 与 WebSocket；运行 `dtwin-verify-cca0e80c-3314-4f28-949c-e67f64a38b69`。
+- `verify-browser.mjs` 8 项通过：普通 HTTP 首页、错误/成功登录、真实拖拽及保存刷新、菜单退出；零页面异常，运行 `dtwin-browser-5489ef12-cfc2-4fe8-b41d-bd9c1551e5d3`。
+- AI 宣传页 11 组通过，保留 8 张桌面/360px 手机深浅主题截图；原生滑块实际改变 SVG、选择联动、AI 字号、三卡片移除及边界均通过，匿名业务请求、页面异常和 HTTP 错误均为 0。
+- AI 入口 6 项通过：真实登录保留深链意图、自己的可编辑项目、工程 capabilities 和任务列表成功、返回功能中心及关闭路由、写实模块隐藏且零相关请求；运行 `dtwin-ai-entry-c4348bc0-8471-4f01-a3b5-a3df16241243`。首轮仅因验收脚本截图裁剪坐标失败，尚未登录或创建项目；修正截图脚本后完整重跑通过，失败记录保留。
+- `verify-engineering.mjs` 5 项通过，运行 `dtwin-engineering-5d5848c6-aeb1-4e52-a992-5a9b4fdc6706`：DXF → GLB 为 12 个对象、1104 个三角形，实际顶点尺寸 20×4.2×12 m，设备旋转和嵌套块符合样例；IFC → GLB 为 1 个对象、28 个三角形，尺寸 4×3×0.2 m，9 个门洞射线探测、净体积及源 GUID 检查通过。真实上传、检查、配置、转换、自动入库及同源下载均完成；这证明给定样例链路，不等于所有客户格式或大模型压力测试。
+
+各验收只精确删除自己创建的临时项目，并撤销自己的会话。只重建本项目 Nginx，另外 6 个本项目容器和 24 个其他业务容器的 ID、启动时间、状态与发布前一致；5 个健康检查均 healthy。配置哈希不变，另逐行核验 `.env` 恰好只改一行 `RELEASE_DIR`。服务器 `activation.json` 保留“已激活待验收”的初始事实，最终完成状态与证据清单分别记录在 `completed.json` 和 `final-evidence-verified.json`，不覆写初始收据。
+
+本轮无数据迁移。回滚时先保留本轮诊断，只将 `RELEASE_DIR` 恢复到上述前端回滚目录，再用专用 wrapper 重建本项目 Nginx 并重新验收；不回退后端、数据库或既有业务数据。后续部署文档提交与运行应用提交分开记录。
 
 ## 2026-10-13 BIM / CAD 工程底座升级
 
