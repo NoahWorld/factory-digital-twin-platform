@@ -147,7 +147,6 @@ try {
     for (const theme of ['light', 'dark']) {
       await setTheme(theme);
       if (viewport.width > 800) await landingNav.click();
-      else await page.getByRole('button', { name: /从工程文件到 3D/ }).click();
       await promotion.scrollIntoViewIfNeeded(); await layout('landing-foundation', promotion);
     }
   }
