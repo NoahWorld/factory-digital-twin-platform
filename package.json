@@ -23,6 +23,7 @@
     "test:scene-templates": "node scripts/test-scene-templates.mjs",
     "test:canvas-templates": "node scripts/test-canvas-templates.mjs",
     "test:scene-background": "node scripts/test-scene-background.mjs",
+    "test:scene-foundation:entry": "node scripts/test-scene-foundation-entry-browser.mjs",
     "test:scene-background:browser": "node scripts/test-scene-background-browser.mjs",
     "test:scene-background:live": "node scripts/test-scene-background-live.mjs",
     "test:workshop-motion": "node scripts/test-workshop-motion.mjs",

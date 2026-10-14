@@ -724,7 +724,7 @@ function AccessDenied({ module }: { module: string }) {
 type WorkspaceRoute =
   | { kind: "projects"; projectType?: ProjectType }
   | { kind: "templates" }
-  | { kind: "resources" }
+  | { kind: "resources"; tool?: "scene-foundation" }
   | { kind: "publication-run"; projectId: string; versionId?: string }
   | { kind: "users" }
   | { kind: "canvas"; projectId: string; mode: "edit" | "preview"; templateId?: CanvasTemplateId; initialAssetId?: string }
@@ -744,8 +744,13 @@ const currentWorkspaceRoute = (): WorkspaceRoute => {
   if (window.location.hash === "#/templates") {
     return { kind: "templates" };
   }
-  if (window.location.hash === "#/resources") {
-    return { kind: "resources" };
+  const resourcesMatch = window.location.hash.match(/^#\/resources(?:\?([^#]*))?$/);
+  if (resourcesMatch) {
+    const tool = new URLSearchParams(resourcesMatch[1] ?? "").get("tool");
+    if (tool !== null && tool !== "scene-foundation") {
+      return { kind: "invalid", message: "资源库功能地址无效，请从主导航重新进入。" };
+    }
+    return { kind: "resources", tool: tool ?? undefined };
   }
   const publicationMatch = window.location.hash.match(/^#\/projects\/([^/]+)\/publications\/(?:([^/]+)\/)?run$/);
   if (publicationMatch) {
@@ -1030,7 +1035,8 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
           <nav aria-label="主导航" className="topbar-nav">
             <a aria-current={route.kind === "projects" ? "page" : undefined} href={projectListRoutePath(preferredProjectType)}>项目</a>
             {user.modules.length > 0 ? <a aria-current={route.kind === "templates" ? "page" : undefined} href="#/templates">模板</a> : null}
-            {user.modules.length > 0 ? <a aria-current={route.kind === "resources" ? "page" : undefined} href="#/resources">资源库</a> : null}
+            {user.modules.length > 0 ? <a aria-current={route.kind === "resources" && !route.tool ? "page" : undefined} href="#/resources">资源库</a> : null}
+            {user.modules.length > 0 ? <a aria-current={route.kind === "resources" && route.tool === "scene-foundation" ? "page" : undefined} className="scene-foundation-nav-link" href="#/resources?tool=scene-foundation"><span aria-hidden="true">✦</span>AI 场景底座</a> : null}
           </nav>
         </div>
         <div className="user-menu">
@@ -1072,6 +1078,14 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
           loadingProjects={loadingProjects}
           projectError={projectError}
           projects={projects}
+          openSceneFoundation={route.tool === "scene-foundation"}
+          onCloseSceneFoundation={() => {
+            const currentRoute = currentWorkspaceRoute();
+            if (currentRoute.kind === "resources" && currentRoute.tool === "scene-foundation") {
+              window.history.replaceState(null, "", "#/resources");
+              setRoute({ kind: "resources" });
+            }
+          }}
         />
       ) : user.modules.length === 0 ? (
         <section aria-label="项目" className="workspace-content" id="projects">

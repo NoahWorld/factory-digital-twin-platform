@@ -59,6 +59,8 @@ type ResourcesPageProps = {
   loadingProjects: boolean;
   projectError: string | null;
   projects: ResourceProject[];
+  openSceneFoundation?: boolean;
+  onCloseSceneFoundation?: () => void;
 };
 
 type ResourceKind = "model" | "image" | "video" | "audio";
@@ -260,6 +262,8 @@ export function ResourcesPage({
   loadingProjects,
   projectError,
   projects,
+  openSceneFoundation = false,
+  onCloseSceneFoundation,
 }: ResourcesPageProps) {
   const notify = useNotifications();
   const [selectedProjectId, setSelectedProjectId] = useState("");
@@ -279,6 +283,7 @@ export function ResourcesPage({
   const [reloadVersion, setReloadVersion] = useState(0);
   const importedWizardImages = useRef(new WeakMap<File, ImageAsset>());
   const resourceLoadId = useRef(0);
+  const foundationEntryHandled = useRef(false);
   const currentProjectId = useRef(selectedProjectId);
   currentProjectId.current = selectedProjectId;
 
@@ -321,6 +326,30 @@ export function ResourcesPage({
     || selectedProject?.projectRole === "editor"
   );
   const filteredItems = items.filter((item) => item.kind === filter);
+
+  useEffect(() => {
+    if (!openSceneFoundation) {
+      if (foundationEntryHandled.current) {
+        setBackgroundWizardOpen(false);
+        setEngineeringWizardOpen(false);
+        setCaptureWizardOpen(false);
+        foundationEntryHandled.current = false;
+      }
+      return;
+    }
+    if (foundationEntryHandled.current || loadingProjects || projectError || !canEdit || uploadingKind !== null) return;
+    foundationEntryHandled.current = true;
+    setPreviewItem(null);
+    setDeleteItem(null);
+    setBackgroundWizardOpen(true);
+  }, [openSceneFoundation, loadingProjects, projectError, canEdit, uploadingKind]);
+
+  const closeSceneFoundation = () => {
+    setBackgroundWizardOpen(false);
+    setEngineeringWizardOpen(false);
+    setCaptureWizardOpen(false);
+    onCloseSceneFoundation?.();
+  };
 
   const refreshAfterMutation = async (message: string, tone: "success" | "warning" = "success") => {
     const loadId = currentProjectId.current === selectedProjectId ? ++resourceLoadId.current : null;
@@ -508,6 +537,37 @@ export function ResourcesPage({
 
   return (
     <section aria-label="资源库" className="workspace-content resource-library" id="resources">
+      <section aria-labelledby="scene-foundation-banner-title" className="scene-foundation-banner">
+        <div className="scene-foundation-banner-copy">
+          <div className="scene-foundation-banner-label"><span aria-hidden="true">✦</span> 工程模型转换</div>
+          <h2 id="scene-foundation-banner-title">AI 场景底座</h2>
+          <p className="scene-foundation-banner-lead">把工程图纸，变成三维场景。</p>
+          <p>导入 IFC / DXF，确认建模参数，后台生成 GLB，直接入库用于场景搭建。</p>
+        </div>
+        <div aria-label="BIM IFC、CAD DXF 转为 GLB 三维模型" className="scene-foundation-banner-flow">
+          <div className="scene-foundation-banner-inputs"><span><b>BIM</b> IFC</span><span><b>CAD</b> DXF</span></div>
+          <span aria-hidden="true" className="scene-foundation-banner-arrow">→</span>
+          <div className="scene-foundation-banner-output">
+            <svg aria-hidden="true" viewBox="0 0 64 64" fill="none"><path d="M32 5 57 19 32 34 7 19 32 5Z"/><path d="M7 19v27l25 14 25-14V19M32 34v26M20 12l25 14v27M44 12 20 27v26"/></svg>
+            <span><b>GLB</b> 三维模型</span>
+          </div>
+        </div>
+        <div className="scene-foundation-banner-action">
+          <button
+            aria-label="AI 场景底座，进入功能中心"
+            className="primary-button scene-foundation-banner-button"
+            disabled={!canEdit || Boolean(projectError) || uploadingKind !== null}
+            onClick={() => {
+              setPreviewItem(null);
+              setDeleteItem(null);
+              setBackgroundWizardOpen(true);
+            }}
+            type="button"
+          >进入功能中心 <span aria-hidden="true">↗</span></button>
+          <p>{projectError ? "项目加载失败，请先恢复项目访问。" : !selectedProject ? "先创建或加入项目，再开始转换。" : !canEdit ? "当前项目为只读，请选择可编辑的项目。" : uploadingKind !== null ? "正在上传文件，请稍候。" : "先了解文件要求，再开始创建。"}</p>
+          {!projectError && projects.length === 0 ? <a href="#/projects">前往项目 →</a> : null}
+        </div>
+      </section>
       {projects.length > 0 ? (
         <div className="resource-scope-toolbar">
           <label className="resource-project-select">
@@ -549,20 +609,6 @@ export function ResourcesPage({
               ))}
             </div>
             <div className="resource-upload-actions">
-              <button
-                className="scene-background-launch-button"
-                disabled={!canEdit || uploadingKind !== null}
-                onClick={() => {
-                  setPreviewItem(null);
-                  setDeleteItem(null);
-                  setBackgroundWizardOpen(true);
-                }}
-                type="button"
-              >
-                <span aria-hidden="true">✦</span>
-                AI 场景底座
-                <small>BETA</small>
-              </button>
               {([
                 ["model", "上传模型", ".glb,.gltf"],
                 ["image", "上传图片", ".png,.jpg,.jpeg,.webp"],
@@ -663,15 +709,15 @@ export function ResourcesPage({
         open={engineeringWizardOpen}
         projectId={selectedProject.id}
         projectName={selectedProject.name}
-        onClose={() => setEngineeringWizardOpen(false)}
+        onClose={closeSceneFoundation}
         onBack={() => { setEngineeringWizardOpen(false); setBackgroundWizardOpen(true); }}
         onCompleted={() => { setFilter("model"); setReloadVersion((value) => value + 1); }}
-        onPreview={(asset) => { setEngineeringWizardOpen(false); setPreviewItem({ kind: "model", asset }); }}
+        onPreview={(asset) => { closeSceneFoundation(); setPreviewItem({ kind: "model", asset }); }}
       /> : null}
-      {SITE_CAPTURE_RELEASED && selectedProject && canEdit ? <SiteCaptureWizard key={`capture-${selectedProject.id}`} open={captureWizardOpen} projectId={selectedProject.id} projectName={selectedProject.name} onClose={() => setCaptureWizardOpen(false)} onBack={() => { setCaptureWizardOpen(false); setBackgroundWizardOpen(true); }} /> : null}
-      {backgroundWizardOpen && selectedProject ? (
+      {SITE_CAPTURE_RELEASED && selectedProject && canEdit ? <SiteCaptureWizard key={`capture-${selectedProject.id}`} open={captureWizardOpen} projectId={selectedProject.id} projectName={selectedProject.name} onClose={closeSceneFoundation} onBack={() => { setCaptureWizardOpen(false); setBackgroundWizardOpen(true); }} /> : null}
+      {backgroundWizardOpen && selectedProject && canEdit ? (
         <SceneBackgroundWizard
-          onClose={() => setBackgroundWizardOpen(false)}
+          onClose={closeSceneFoundation}
           onCreate={createSceneBackground}
           onCapture={() => { setBackgroundWizardOpen(false); setCaptureWizardOpen(true); }}
           onEngineering={() => { setBackgroundWizardOpen(false); setEngineeringWizardOpen(true); }}

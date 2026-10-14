@@ -1,6 +1,8 @@
 import {
   useEffect,
+  useLayoutEffect,
   useMemo,
+  useRef,
   useState,
   type ChangeEvent,
   type DragEvent,
@@ -87,6 +89,12 @@ export function SceneBackgroundWizard({ onClose, onCreate, onEngineering, onCapt
   const [progress, setProgress] = useState<{ completed: number; total: number; filename: string } | null>(null);
   const [startedAt, setStartedAt] = useState<number | null>(null);
   const [elapsed, setElapsed] = useState(0);
+  const creationSession = useRef<object | null>(null);
+
+  useLayoutEffect(() => {
+    creationSession.current = {};
+    return () => { creationSession.current = null; };
+  }, []);
 
   const validation = useMemo(
     () => validateSceneBackgroundFiles("single-image", files),
@@ -175,7 +183,8 @@ export function SceneBackgroundWizard({ onClose, onCreate, onEngineering, onCapt
   };
 
   const createBackground = async () => {
-    if (validation.errors.length > 0 || !configurationValid || files.length === 0) return;
+    const session = creationSession.current;
+    if (!session || importing || validation.errors.length > 0 || !configurationValid || files.length === 0) return;
     setImporting(true);
     setElapsed(0);
     setStartedAt(Date.now());
@@ -188,14 +197,17 @@ export function SceneBackgroundWizard({ onClose, onCreate, onEngineering, onCapt
         movement,
         name: sceneName.trim(),
         quality,
-        onProgress: setProgress,
+        onProgress: (value) => { if (creationSession.current === session) setProgress(value); },
       });
-      onClose();
+      // Creation continues after navigation; its completion must not close a newer page.
+      if (creationSession.current === session) onClose();
     } catch (reason) {
       notify.error(reason);
     } finally {
-      setImporting(false);
-      setStartedAt(null);
+      if (creationSession.current === session) {
+        setImporting(false);
+        setStartedAt(null);
+      }
     }
   };
 

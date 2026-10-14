@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ApiRequestError, UserFacingError, errorPresentation, reportError, request } from "../api";
 import { formatFileSize, modelAssetsPath, type ModelAsset, type ModelAssetListResponse } from "../canvas/model-assets";
 import { Select } from "../components/Select";
@@ -69,9 +69,17 @@ export function EngineeringImportWizard({ open, projectId, projectName, onClose,
   const [configurationAccepted, setConfigurationAccepted] = useState(false);
   const configuredJob = useRef<string | null>(null);
   const knownCompletions = useRef(new Set<string>());
+  const previewSession = useRef<object | null>(null);
   const onCompletedRef = useRef(onCompleted);
   onCompletedRef.current = onCompleted;
   const job = jobs.find((item) => item.id === selectedId) ?? null;
+
+  useLayoutEffect(() => {
+    // A delayed preview belongs only to this opening of this project's panel.
+    previewSession.current = open ? {} : null;
+    if (open) setPreviewing(false);
+    return () => { previewSession.current = null; };
+  }, [open, projectId]);
 
   useEffect(() => {
     if (!open) return;
@@ -204,16 +212,21 @@ export function EngineeringImportWizard({ open, projectId, projectName, onClose,
     } finally { setSubmitting(false); }
   };
   const preview = async () => {
-    if (!job?.resourceId || previewing) return;
+    const session = previewSession.current;
+    if (!session || !job?.resourceId || previewing) return;
     setPreviewing(true);
     setActionError(null);
     try {
       const response = await timedRequest<ModelAssetListResponse>(modelAssetsPath(projectId));
       const asset = response.modelAssets.find((item) => item.id === job.resourceId);
       if (!asset) throw new UserFacingError("生成模型已不存在，请刷新资源列表并检查是否被删除。");
-      onPreview(asset);
-    } catch (reason) { reportError(reason, { operation: "engineering-import-preview", projectId }); setActionError(reason); }
-    finally { setPreviewing(false); }
+      if (previewSession.current === session) onPreview(asset);
+    } catch (reason) {
+      reportError(reason, { operation: "engineering-import-preview", projectId });
+      if (previewSession.current === session) setActionError(reason);
+    } finally {
+      if (previewSession.current === session) setPreviewing(false);
+    }
   };
   const updateLayer = (index: number, patch: Partial<EngineeringLayerDraft>) => {
     setLayers((previous) => previous.map((layer, current) => index === current ? { ...layer, ...patch } : layer));

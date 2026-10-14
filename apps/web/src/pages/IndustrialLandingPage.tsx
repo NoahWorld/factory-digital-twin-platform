@@ -8,6 +8,7 @@ import { ThemeToggle } from "../theme/ThemeToggle";
 import { demoDevices, getDemoSelection, industrialDemoNode } from "./industrial-demo-scene";
 import { PrecisionMotionDemo } from "./PrecisionMotionDemo";
 import { DeliveryScrollStory, DeliveryScreenGallery } from "./DeliveryExperience";
+import { SceneFoundationShowcase } from "./SceneFoundationShowcase";
 import "./IndustrialLandingPage.css";
 
 function Arrow({ direction = "right", framed = false }: { direction?: "right" | "down" | "up-right"; framed?: boolean }) {
@@ -97,7 +98,7 @@ const advantages = [
 ] as const;
 
 const steps = [
-  ["准备模型", "导入 GLB / glTF，或选用内置工业模型。", "01"],
+  ["准备模型", "导入 GLB / glTF，也可将合规 IFC / DXF 转成模型。", "01"],
   ["搭建场景", "摆放设备，配置材质、灯光和展示视角。", "02"],
   ["关联业务", "绑定设备资产，配置数据和看板组件。", "03"],
   ["预览验证", "检查交互和数据呈现，完善客户展示。", "04"],
@@ -117,15 +118,16 @@ export default function IndustrialLandingPage() {
   return (
     <div className="delivery-landing" ref={page}>
       <a className="delivery-skip" href="#industrial-main" onClick={(event) => { event.preventDefault(); document.getElementById("industrial-main")?.focus(); }}>跳到主要内容</a>
-      <header className="delivery-header" ref={header}><div className="delivery-header-inner"><a href="#/" aria-label={`${PRODUCT_NAME} 首页`}><Brand /></a><nav aria-label="主导航"><button type="button" onClick={() => scrollToSection("industrial-demo")}>场景体验</button><button type="button" onClick={() => scrollToSection("industrial-story")}>滚动演示</button><button type="button" onClick={() => scrollToSection("industrial-motion")}>动作案例</button><button type="button" onClick={() => scrollToSection("industrial-gallery")}>宣传画面</button><button type="button" onClick={() => scrollToSection("industrial-workflow")}>交付流程</button></nav><div className="delivery-header-actions"><ThemeToggle /><a className="delivery-nav-cta" href="#/projects">进入平台<Arrow direction="up-right" framed /></a></div></div></header>
+      <header className="delivery-header" ref={header}><div className="delivery-header-inner"><a href="#/" aria-label={`${PRODUCT_NAME} 首页`}><Brand /></a><nav aria-label="主导航"><button type="button" className="delivery-foundation-nav" onClick={() => scrollToSection("industrial-foundation")}>AI 场景底座</button><button type="button" onClick={() => scrollToSection("industrial-demo")}>场景体验</button><button type="button" onClick={() => scrollToSection("industrial-motion")}>动作案例</button><button type="button" onClick={() => scrollToSection("industrial-gallery")}>宣传画面</button></nav><div className="delivery-header-actions"><ThemeToggle /><a className="delivery-nav-cta" href="#/projects">进入平台<Arrow direction="up-right" framed /></a></div></div></header>
       <main id="industrial-main" tabIndex={-1}>
         <section className="delivery-hero delivery-container">
           <div className="delivery-flow-field delivery-hero-flow" aria-hidden="true" />
-          <div className="delivery-hero-copy"><div><p className="delivery-eyebrow"><span />面向工业场景的 3D 交付平台</p><h1>把工业现场，<em>交付到客户眼前。</em></h1></div><div className="delivery-hero-intro"><p>从 3D 场景搭建、设备数据关联，到可交互看板。<br className="delivery-wide-break" />让模型有业务，让展示有说服力。</p><div className="delivery-actions"><a href="#/projects" className="delivery-button is-primary">开始搭建项目<Arrow framed /></a><button type="button" className="delivery-button is-secondary" onClick={() => scrollToSection("industrial-demo")}>体验 3D 场景<Arrow direction="down" framed /></button></div><div className="delivery-hero-tags"><span>场景可编辑</span><span>设备可关联</span><span>看板可组合</span></div></div></div>
+          <div className="delivery-hero-copy"><div><p className="delivery-eyebrow"><span />面向工业场景的 3D 交付平台</p><h1>把工业现场，<em>交付到客户眼前。</em></h1></div><div className="delivery-hero-intro"><p>让已有的 BIM / CAD 工程文件，成为 3D 场景的起点。<br className="delivery-wide-break" />从模型搭建、设备关联到业务看板，把现场变成可交互的展示。</p><div className="delivery-actions"><a href="#/resources?tool=scene-foundation" className="delivery-button is-primary">进入 AI 场景底座<Arrow framed /></a><a href="#/projects" className="delivery-button is-secondary">开始搭建项目<Arrow direction="up-right" framed /></a></div><div className="delivery-hero-tags"><span>IFC / DXF 转模型</span><span>设备可关联</span><span>看板可组合</span></div></div></div>
           <FactoryDemo />
           <div className="delivery-capability-strip"><span>从模型到客户展示</span><strong>3D 场景搭建</strong><i>＋</i><strong>设备资产关联</strong><i>＋</i><strong>业务数据呈现</strong><i>＝</i><strong className="delivery-strip-result">有业务价值的 3D 交付</strong></div>
-          <div className="delivery-explore-shortcuts" aria-label="探索更多展示"><button type="button" onClick={() => scrollToSection("industrial-story")}><span><LocalIcon name="boxes" size={23} /></span><span><strong>滚动看交付</strong><small>模型 → 资产 → 业务画面</small></span><Arrow direction="down" /></button><button type="button" onClick={() => scrollToSection("industrial-motion")}><span><LocalIcon name="cog" size={23} /></span><span><strong>查看动作细节</strong><small>体验机械臂的精密取放</small></span><Arrow direction="down" /></button><button type="button" onClick={() => scrollToSection("industrial-gallery")}><span><LocalIcon name="monitor" size={23} /></span><span><strong>切换宣传画面</strong><small>探索四种行业展示</small></span><Arrow direction="down" /></button></div>
+          <div className="delivery-explore-shortcuts" aria-label="探索更多展示"><button type="button" onClick={() => scrollToSection("industrial-foundation")}><span><LocalIcon name="boxes" size={23} /></span><span><strong>从工程文件到 3D</strong><small>探索 AI 场景底座</small></span><Arrow direction="down" /></button><button type="button" onClick={() => scrollToSection("industrial-motion")}><span><LocalIcon name="cog" size={23} /></span><span><strong>查看动作细节</strong><small>体验机械臂的精密取放</small></span><Arrow direction="down" /></button><button type="button" onClick={() => scrollToSection("industrial-gallery")}><span><LocalIcon name="monitor" size={23} /></span><span><strong>切换宣传画面</strong><small>探索四种行业展示</small></span><Arrow direction="down" /></button></div>
         </section>
+        <SceneFoundationShowcase />
         <DeliveryScrollStory />
         <PrecisionMotionDemo />
         <DeliveryScreenGallery />
