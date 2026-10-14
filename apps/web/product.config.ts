@@ -1,4 +1,4 @@
-export const DEFAULT_PRODUCT_NAME = "Kingdom 3D vision";
+export const DEFAULT_PRODUCT_NAME = "Kingdom 3D Vision";
 
 export function resolveProductName(configuredName: string | undefined): string {
   if (configuredName === undefined) {

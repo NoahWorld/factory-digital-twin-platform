@@ -114,10 +114,10 @@ pnpm dev:mock
 
 当前 Cloudflare 验证环境由同一个 Worker 同域承载 Vite 静态前端与 `/api`。先构建 `apps/web/dist`，再从 `apps/api` 部署 Worker；Wrangler 会上传前端静态资源，并只让 `/api/*` 和 `/health` 优先进入 Worker 代码。
 
-产品展示名称统一由 `VITE_PRODUCT_NAME` 配置，未设置时默认为 `Kingdom 3D vision`。如需覆盖名称或在单独的同源 API 网关下运行，可参考 `apps/web/.env.example`，在 `apps/web/.env.local` 设置：
+产品展示名称统一由 `VITE_PRODUCT_NAME` 配置，未设置时默认为 `Kingdom 3D Vision`。如需覆盖名称或在单独的同源 API 网关下运行，可参考 `apps/web/.env.example`，在 `apps/web/.env.local` 设置：
 
 ```dotenv
-VITE_PRODUCT_NAME="Kingdom 3D vision"
+VITE_PRODUCT_NAME="Kingdom 3D Vision"
 VITE_API_BASE_URL=/
 ```
 
