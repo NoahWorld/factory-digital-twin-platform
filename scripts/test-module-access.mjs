@@ -86,6 +86,14 @@ try {
   assert.deepEqual((await call(admin, "GET", "/api/v1/auth/me")).body.user.modules, ["2d", "3d"]);
   assert.deepEqual((await call(operator, "GET", "/api/v1/auth/me")).body.user.modules, ["2d"]);
   assert.deepEqual((await call(restricted, "GET", "/api/v1/auth/me")).body.user.modules, []);
+  const capabilities = await call(operator, "GET", "/api/v1/capabilities");
+  assert.equal(capabilities.status, 200);
+  assert.equal(capabilities.body.sceneBackgroundGeneration, true,
+    "the Worker must advertise its implemented single-image GLB generator");
+  assert.equal(typeof capabilities.body.requestId, "string");
+  const anonymousCapabilities = await call(null, "GET", "/api/v1/capabilities");
+  assert.equal(anonymousCapabilities.status, 401);
+  assert.equal(anonymousCapabilities.body.error, "unauthenticated");
   assert.deepEqual((await call(operator, "GET", "/api/v1/projects")).body.projects.map((project) => project.id), ["canvas"]);
   assert.deepEqual((await call(restricted, "GET", "/api/v1/projects")).body.projects, []);
   assert.equal((await call(operator, "GET", "/api/v1/projects/canvas")).status, 200);

@@ -23,6 +23,8 @@
     "test:scene-templates": "node scripts/test-scene-templates.mjs",
     "test:canvas-templates": "node scripts/test-canvas-templates.mjs",
     "test:scene-background": "node scripts/test-scene-background.mjs",
+    "test:scene-background:browser": "node scripts/test-scene-background-browser.mjs",
+    "test:scene-background:live": "node scripts/test-scene-background-live.mjs",
     "test:workshop-motion": "node scripts/test-workshop-motion.mjs",
     "test:models": "node scripts/test-builtin-models.mjs",
     "smoke:models": "node scripts/smoke-builtin-models.mjs",
@@ -65,6 +67,9 @@
     "test:model-library:browser": "node scripts/test-model-library-browser.mjs",
     "test:engineering": "node scripts/test-engineering-imports.mjs",
     "test:engineering:browser": "node scripts/test-engineering-imports-browser.mjs",
-    "backend:smoke:engineering": "node scripts/backend-engineering-smoke.mjs"
+    "backend:smoke:engineering": "node scripts/backend-engineering-smoke.mjs",
+    "test:site-capture:browser": "node scripts/test-site-capture-browser.mjs",
+    "test:site-capture:viewer": "node scripts/test-site-capture-viewer-browser.mjs",
+    "test:site-capture:live": "node scripts/test-site-capture-live-browser.mjs"
   }
 }

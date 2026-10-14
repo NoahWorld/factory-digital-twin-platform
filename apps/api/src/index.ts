@@ -519,6 +519,11 @@ const handleApiRequest = async (
     return json({ user: presentUser(user), requestId });
   }
 
+  if (method === "GET" && pathname === "/api/v1/capabilities") {
+    await getAuthenticatedUser(env, request);
+    return json({ sceneBackgroundGeneration: true, requestId });
+  }
+
   if (method === "GET" && pathname === "/api/v1/users") {
     const actor = await getAuthenticatedUser(env, request);
     if (!hasGlobalRole(actor, "platform_admin")) {

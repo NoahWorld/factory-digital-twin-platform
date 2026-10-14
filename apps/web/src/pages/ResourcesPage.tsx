@@ -39,9 +39,10 @@ import {
   type SceneBackgroundGenerationResponse,
 } from "../canvas/scene-backgrounds";
 import { SceneBackgroundWizard } from "./SceneBackgroundWizard";
+import { SiteCaptureWizard } from "./SiteCaptureWizard";
 import { EngineeringImportWizard } from "./EngineeringImportWizard";
 import {
-  sceneBackgroundResourceKind,
+  SITE_CAPTURE_RELEASED,
   type SceneBackgroundMode,
   type SceneBackgroundMovement,
   type SceneBackgroundQuality,
@@ -270,6 +271,7 @@ export function ResourcesPage({
   const [deleteItem, setDeleteItem] = useState<ResourceItem | null>(null);
   const [backgroundWizardOpen, setBackgroundWizardOpen] = useState(false);
   const [engineeringWizardOpen, setEngineeringWizardOpen] = useState(false);
+  const [captureWizardOpen, setCaptureWizardOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [generatingImageAssetId, setGeneratingImageAssetId] = useState<string | null>(null);
   const [compressingModelAssetId, setCompressingModelAssetId] = useState<string | null>(null);
@@ -416,6 +418,7 @@ export function ResourcesPage({
     movement: SceneBackgroundMovement;
     name: string;
     quality: SceneBackgroundQuality;
+    onProgress?: (progress: { completed: number; total: number; filename: string }) => void;
   }) => {
     if (!selectedProjectId || !canEdit) {
       throw new Error("当前项目不可编辑，无法创建场景底座。");
@@ -451,28 +454,7 @@ export function ResourcesPage({
       return;
     }
 
-    const kinds = input.files.map((file) => sceneBackgroundResourceKind(file.name));
-    const imported: string[] = [];
-    setUploadingKind(kinds[0]);
-    try {
-      for (let index = 0; index < input.files.length; index += 1) {
-        await uploadAssetFile(kinds[index], input.files[index]);
-        imported.push(input.files[index].name);
-      }
-    } catch (reason) {
-      if (imported.length > 0) {
-        setReloadVersion((value) => value + 1);
-        notify.warning(`已导入 ${imported.length}/${input.files.length} 个文件，其余文件未完成。重试前请检查已入库素材，避免重复导入。`);
-      }
-      throw reason;
-    } finally {
-      setUploadingKind(null);
-    }
-
-    setFilter(kinds[0]);
-    await refreshAfterMutation(input.files.length === 1
-      ? `写实漫游原始素材“${input.files[0].name}”已导入；GPU 重建服务尚未接入。`
-      : `${input.files.length} 个写实漫游原始素材已导入；GPU 重建服务尚未接入。`);
+    throw new Error("写实漫游必须通过独立任务工作区创建。");
   };
 
   const generateFromExistingImage = async (asset: ImageAsset) => {
@@ -535,6 +517,8 @@ export function ResourcesPage({
               setPreviewItem(null);
               setDeleteItem(null);
               setBackgroundWizardOpen(false);
+              setEngineeringWizardOpen(false);
+              setCaptureWizardOpen(false);
             }}>
               {projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
             </Select>
@@ -675,18 +659,21 @@ export function ResourcesPage({
       {previewItem && selectedProjectId ? <ResourcePreviewDialog item={previewItem} onClose={() => setPreviewItem(null)} projectId={selectedProjectId} /> : null}
       {deleteItem ? <ResourceDeleteDialog item={deleteItem} onClose={() => setDeleteItem(null)} onConfirm={() => void confirmDelete()} submitting={deleting} /> : null}
       {selectedProject && canEdit ? <EngineeringImportWizard
-        key={selectedProject.id}
+        key={`engineering-${selectedProject.id}`}
         open={engineeringWizardOpen}
         projectId={selectedProject.id}
         projectName={selectedProject.name}
         onClose={() => setEngineeringWizardOpen(false)}
+        onBack={() => { setEngineeringWizardOpen(false); setBackgroundWizardOpen(true); }}
         onCompleted={() => { setFilter("model"); setReloadVersion((value) => value + 1); }}
         onPreview={(asset) => { setEngineeringWizardOpen(false); setPreviewItem({ kind: "model", asset }); }}
       /> : null}
+      {SITE_CAPTURE_RELEASED && selectedProject && canEdit ? <SiteCaptureWizard key={`capture-${selectedProject.id}`} open={captureWizardOpen} projectId={selectedProject.id} projectName={selectedProject.name} onClose={() => setCaptureWizardOpen(false)} onBack={() => { setCaptureWizardOpen(false); setBackgroundWizardOpen(true); }} /> : null}
       {backgroundWizardOpen && selectedProject ? (
         <SceneBackgroundWizard
           onClose={() => setBackgroundWizardOpen(false)}
           onCreate={createSceneBackground}
+          onCapture={() => { setBackgroundWizardOpen(false); setCaptureWizardOpen(true); }}
           onEngineering={() => { setBackgroundWizardOpen(false); setEngineeringWizardOpen(true); }}
           projectName={selectedProject.name}
         />

@@ -69,6 +69,7 @@ const server = await createServer({ configFile: false, cacheDir,
       const path = new URL(req.url, 'http://fixture.invalid').pathname;
       if (path === '/__engineering') { res.setHeader('Content-Type', 'text/html; charset=utf-8'); res.end('<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><div id="root"></div><script type="module" src="/__engineering-entry.js"></script></html>'); return; }
       if (!path.startsWith('/api/')) return next();
+      if (path === '/api/v1/capabilities') return respond(res, { sceneBackgroundGeneration: false });
       if (path === '/api/v1/engineering-imports/capabilities') {
         if (capabilityMode === 'missing') return respond(res, { error: 'not_found', message: privateMessage }, 404);
         if (capabilityMode === 'forbidden') return respond(res, { error: 'forbidden', message: privateMessage }, 403);

@@ -7,12 +7,12 @@ async function hashFile(path){const hash=createHash('sha256');for await(const ch
 import {resolve,join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 const root=fileURLToPath(new URL('..',import.meta.url));
-const compose=['compose','--env-file','deploy/local/.env','-f','deploy/local/compose.yml'];
+const compose=['compose','--env-file','deploy/local/.env','-f','deploy/local/compose.yml','-f','deploy/local/capture.compose.yml','--profile','capture'];
 const run=(args,options={})=>execFileSync('docker',[...compose,...args],{cwd:root,stdio:'inherit',...options});
 const destination=resolve(root,'deploy/local/.local/backups',new Date().toISOString().replaceAll(':','-'));
 mkdirSync(destination,{recursive:true,mode:0o700});
 const running=run(['ps','--services','--status','running'],{encoding:'utf8',stdio:'pipe'}).trim().split('\n');
-const pause=['api','collector','worker','storage'].filter(s=>running.includes(s));
+const pause=['api','collector','worker','capture-worker','storage'].filter(s=>running.includes(s));
 if(!running.includes('postgres')||!running.includes('storage'))throw new Error('PostgreSQL and storage must be running before backup.');
 let complete=false;
 try {

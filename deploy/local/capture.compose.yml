@@ -1,0 +1,41 @@
+# Optional GPU worker on the SAME Docker host as deploy/local/compose.yml.
+# Load the prebuilt offline image first; no pip/apt installs occur at startup.
+services:
+  capture-worker:
+    profiles: [capture]
+    image: ${CAPTURE_IMAGE:-factory-twin-capture:0.1.0}
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      TWIN_MODE: capture-worker
+      DATABASE_URL: jdbc:postgresql://postgres:5432/factory_twin
+      VALKEY_HOST: valkey
+      VALKEY_PORT: 6379
+      S3_ENDPOINT: http://storage:8333
+      DB_POOL_SIZE: 4
+      TWIN_CAPTURE_PYTHON: /opt/capture-venv/bin/python
+      TWIN_CAPTURE_WORKER: /app/capture/worker.py
+      TWIN_CAPTURE_TIMEOUT_SECONDS: ${TWIN_CAPTURE_TIMEOUT_SECONDS:-7200}
+      JAVA_TOOL_OPTIONS: '-Xmx512m -XX:+ExitOnOutOfMemoryError -Djava.io.tmpdir=/work'
+      TMPDIR: /work
+    depends_on:
+      postgres: {condition: service_healthy}
+      valkey: {condition: service_healthy}
+      storage: {condition: service_started}
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs: ['/tmp:size=512m,mode=1777']
+    volumes: [capture-work:/work]
+    shm_size: 1g
+    mem_limit: ${CAPTURE_WORKER_MEMORY:-16g}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    logging: {driver: json-file, options: {max-size: 10m, max-file: '3'}}
+volumes:
+  capture-work:

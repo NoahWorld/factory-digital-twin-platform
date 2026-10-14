@@ -14,6 +14,7 @@ type Props = {
   projectId: string;
   projectName: string;
   onClose: () => void;
+  onBack: () => void;
   onCompleted: () => void;
   onPreview: (asset: ModelAsset) => void;
 };
@@ -45,7 +46,7 @@ function EngineeringNotice({ title, description, retryLabel, onRetry, warning = 
   return <div className={`engineering-import-notice${warning ? " is-warning" : ""}`} role="alert"><div><strong>{title}</strong><p>{description}</p></div>{onRetry ? <button type="button" className="secondary-button" onClick={onRetry}>{retryLabel}</button> : null}</div>;
 }
 
-export function EngineeringImportWizard({ open, projectId, projectName, onClose, onCompleted, onPreview }: Props) {
+export function EngineeringImportWizard({ open, projectId, projectName, onClose, onBack, onCompleted, onPreview }: Props) {
   const [capabilities, setCapabilities] = useState<EngineeringCapabilities | null>(null);
   const [capabilityError, setCapabilityError] = useState<unknown>(null);
   const [jobs, setJobs] = useState<EngineeringJob[]>([]);
@@ -295,7 +296,7 @@ export function EngineeringImportWizard({ open, projectId, projectName, onClose,
           </>}
         </main>
       </div>
-      <footer className="scene-background-footer"><div><span>工程文件转换</span><strong>后台任务 · 可返回查看</strong></div><div><button className="secondary-button" type="button" onClick={onClose}>关闭面板</button></div></footer>
+      <footer className="scene-background-footer"><div><span>工程文件转换</span><strong>后台任务 · 可返回查看</strong></div><div><button className="secondary-button" type="button" disabled={previewing} onClick={onBack}>返回功能中心</button><button className="secondary-button" type="button" onClick={onClose}>关闭面板</button></div></footer>
     </section>
   </div>;
 }

@@ -1,0 +1,44 @@
+.site-capture-viewer { width: min(1280px, calc(100vw - 32px)); max-width: none; height: min(860px, calc(100dvh - 32px)); max-height: none; padding: 0; border: 1px solid var(--ui-border-strong); border-radius: 16px; color: var(--ui-text); background: var(--ui-surface); overflow: hidden; }
+.site-capture-viewer[open] { display: flex; flex-direction: column; }
+.site-capture-viewer::backdrop { background: var(--ui-backdrop); backdrop-filter: blur(6px); }
+.site-capture-viewer > header { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 17px 24px; border-bottom: 1px solid var(--ui-border); }
+.site-capture-viewer > header > div { min-width: 0; }
+.site-capture-viewer > header p { margin: 0 0 4px; color: var(--ui-accent); font-size: 12px; }
+.site-capture-viewer h2 { margin: 0; overflow-wrap: anywhere; color: var(--ui-text-strong); font-size: 19px; }
+.site-capture-viewer button { padding: 9px 13px; border: 1px solid var(--ui-border-strong); border-radius: 8px; color: var(--ui-text-strong); background: var(--ui-surface-raised); cursor: pointer; touch-action: none; }
+.site-capture-viewer button:hover { background: var(--ui-hover); }
+.site-capture-viewer button:active { background: var(--ui-accent-soft); border-color: var(--ui-accent); }
+.site-capture-viewer button:focus-visible, .site-capture-viewer canvas:focus-visible { outline: 2px solid var(--ui-accent); outline-offset: -3px; }
+.site-capture-viewer button:disabled { color: var(--ui-text-muted); background: var(--ui-readonly-bg); cursor: not-allowed; }
+.site-capture-viewer > header > button { font-size: 23px; line-height: 1; }
+.site-capture-viewer-stage { position: relative; flex: 1; min-height: 180px; background: #101822; isolation: isolate; }
+.site-capture-viewer-stage canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+.site-capture-viewer-status { position: absolute; inset: 20px; z-index: 2; align-content: center; justify-items: center; padding: 20px; border: 1px solid var(--ui-border); border-radius: 12px; color: var(--ui-text); background: var(--ui-surface); text-align: center; }
+.site-capture-viewer-status strong { color: var(--ui-text-strong); }
+.site-capture-viewer-status p { max-width: 500px; line-height: 1.7; font-size: 13px; }
+.site-capture-viewer-status.is-error strong { color: var(--ui-danger); }
+.site-capture-viewer-navigation { position: absolute; bottom: 18px; right: 18px; display: grid; grid-template-columns: repeat(4, 48px); grid-template-areas: ". forward . up" "left back right down"; gap: 6px; }
+.site-capture-viewer-navigation button { display: grid; gap: 2px; padding: 7px; font-size: 19px; }
+.site-capture-viewer-navigation [data-movement="forward"] { grid-area: forward; }
+.site-capture-viewer-navigation [data-movement="back"] { grid-area: back; }
+.site-capture-viewer-navigation [data-movement="left"] { grid-area: left; }
+.site-capture-viewer-navigation [data-movement="right"] { grid-area: right; }
+.site-capture-viewer-navigation [data-movement="up"] { grid-area: up; }
+.site-capture-viewer-navigation [data-movement="down"] { grid-area: down; }
+.site-capture-viewer-navigation small { font-size: 10px; }
+.site-capture-viewer > footer { display: flex; align-items: center; flex-wrap: wrap; gap: 14px 22px; padding: 15px 24px; border-top: 1px solid var(--ui-border); font-size: 12px; }
+.site-capture-viewer-instructions { flex: 1; min-width: min(290px, 100%); display: grid; gap: 5px; }
+.site-capture-viewer-instructions strong { color: var(--ui-text-strong); font-weight: 500; }
+.site-capture-viewer-instructions span { color: var(--ui-text-muted); }
+.site-capture-viewer > footer label { display: flex; align-items: center; gap: 8px; }
+.site-capture-viewer > footer input { width: 85px; accent-color: var(--ui-accent); }
+.site-capture-viewer output { min-width: 32px; }
+@media (max-width: 600px) {
+  .site-capture-viewer { width: calc(100vw - 16px); height: calc(100dvh - 16px); border-radius: 12px; }
+  .site-capture-viewer > header { padding: 14px; gap: 10px; }
+  .site-capture-viewer h2 { font-size: 16px; }
+  .site-capture-viewer > footer { padding: 12px 14px; gap: 12px; }
+  .site-capture-viewer-instructions { flex-basis: 100%; }
+  .site-capture-viewer-navigation { right: 10px; bottom: 10px; }
+  .site-capture-viewer-status { inset: 10px; padding: 14px; }
+}

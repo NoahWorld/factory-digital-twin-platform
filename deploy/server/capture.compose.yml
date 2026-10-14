@@ -1,0 +1,45 @@
+# Optional GPU worker on the SAME Linux host as deploy/server/compose.yml.
+# For a separate GPU host provide actual private DATABASE_URL/S3_ENDPOINT;
+# 127.0.0.1 here deliberately refers to the existing single-host deployment.
+services:
+  capture-worker:
+    profiles: [capture]
+    image: ${CAPTURE_IMAGE:-factory-twin-capture:0.1.0}
+    restart: unless-stopped
+    network_mode: host
+    env_file: /data/dtwin/config/.env
+    environment:
+      TWIN_MODE: capture-worker
+      SERVER_ADDRESS: 127.0.0.1
+      PORT: 21083
+      DATABASE_URL: jdbc:postgresql://127.0.0.1:15432/factory_twin
+      VALKEY_HOST: 127.0.0.1
+      VALKEY_PORT: 16379
+      S3_ENDPOINT: http://127.0.0.1:18333
+      DB_POOL_SIZE: 4
+      TWIN_CAPTURE_PYTHON: /opt/capture-venv/bin/python
+      TWIN_CAPTURE_WORKER: /app/capture/worker.py
+      TWIN_CAPTURE_TIMEOUT_SECONDS: ${TWIN_CAPTURE_TIMEOUT_SECONDS:-7200}
+      JAVA_TOOL_OPTIONS: '-Xmx512m -XX:+ExitOnOutOfMemoryError -Djava.io.tmpdir=/work'
+      TMPDIR: /work
+    depends_on:
+      postgres: {condition: service_healthy}
+      valkey: {condition: service_healthy}
+      storage: {condition: service_started}
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs: ['/tmp:size=512m,mode=1777']
+    volumes: [capture-work:/work]
+    shm_size: 1g
+    mem_limit: ${CAPTURE_WORKER_MEMORY:-16g}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    logging: {driver: json-file, options: {max-size: 10m, max-file: '3'}}
+volumes:
+  capture-work:

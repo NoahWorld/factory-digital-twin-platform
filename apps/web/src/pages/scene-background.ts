@@ -1,5 +1,8 @@
 export type SceneBackgroundMode = "single-image" | "site-capture";
 
+// Product release gate: keep the workflow hidden until GPU deployment and real reconstruction acceptance are complete.
+export const SITE_CAPTURE_RELEASED = false;
+
 export type SceneBackgroundQuality = "lightweight" | "balanced" | "detail";
 
 export type SceneBackgroundMovement = "fixed" | "limited" | "free";
@@ -92,7 +95,7 @@ export function validateSceneBackgroundFiles(
     if (files.some((file) => file.size > SCENE_BACKGROUND_LIMITS.imageBytes)) {
       errors.push("单张图片不能超过 8 MB。");
     }
-    warnings.push("单图无法提供被遮挡区域，生成结果只适合固定视角或小范围镜头移动。");
+    warnings.push("单图无法提供被遮挡区域，生成结果只适合固定视角展示。");
   } else {
     const videos = files.filter(isVideo);
     const images = files.filter(isImage);
@@ -109,7 +112,7 @@ export function validateSceneBackgroundFiles(
         errors.push("视频采集一次只能提交 1 个视频。");
       }
       if (videos.some((file) => file.size > SCENE_BACKGROUND_LIMITS.videoBytes)) {
-        errors.push("环拍视频不能超过 100 MB。");
+        errors.push("采集视频不能超过 100 MB。");
       }
       warnings.push("请保持缓慢移动并从不同方向覆盖现场，避免快速转身、强反光和大面积运动物体。");
     } else {
@@ -118,7 +121,7 @@ export function validateSceneBackgroundFiles(
         images.length < SCENE_BACKGROUND_LIMITS.minimumCaptureImages
         || images.length > SCENE_BACKGROUND_LIMITS.maximumCaptureImages
       ) {
-        errors.push("多图重建需要 8–120 张有重叠视角的图片。");
+        errors.push("照片导入需要 8–120 张图片；请按采集要求准备重叠视角。");
       }
       if (images.some((file) => file.size > SCENE_BACKGROUND_LIMITS.imageBytes)) {
         errors.push("单张图片不能超过 8 MB。");
