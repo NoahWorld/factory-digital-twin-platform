@@ -2,13 +2,37 @@
 
 首次部署：2026-09-28；记录更新：2026-10-14。服务器：`8.136.35.33`。
 
-**2026-10-14 当前前端为 AI 场景底座宣传与入口版本。** 已于 `05:16:14.792086Z`（北京时间 13:16）切换到 `dtwin-ui-20261014-ai-1ca1834`；此次沿用既有部署，只更新前端。后端仍为下述 2026-10-13 工程底座镜像，写实漫游保持隐藏。当前发布与验收证据见下一节，旧版本记录保留。
+**2026-10-14 当前前端已统一品牌名称为 Kingdom 3D Vision。** 已于 `06:14:28.656142Z`（北京时间 14:14）切换到 `dtwin-ui-20261014-brand-6cbe0f7`，应用源码为 `6cbe0f735085c7a10e4b83752f8858e3b66c8ab5`。沿用既有服务器部署和 AI 宣传功能，只更新前端。后端仍为 2026-10-13 工程底座镜像，写实漫游保持隐藏；本轮验收与回滚信息见下一节。
 
 **2026-10-13 BIM / CAD 工程底座已部署并通过生产验收。** 前后端于 `06:57:49.276338Z`（北京时间 14:57）激活；服务器原生禁网、备份恢复、公网业务、真实几何、工程界面及既有业务核对全部通过。最终状态以本轮审计目录的 `completed.json` 为准，原始 `activation.json` 保留激活时尚待验收的事实，不覆写初始记录。
 
 本轮升级前已验收前端于 `2026-10-08T07:58:36.859251Z` 切换至 `/data/dtwin/releases/dtwin-ui-20261008-workspace-61472f6`，应用源码为 GitHub 与 Codeup `main` 同一提交 `61472f61ae5bd3914710ac417e2372fdc5a01b7a`，入口 `/assets/index-DELsoXwy.js`。包含用户卡片与设置弹窗、紧凑导航和项目类型切换、列表标题整理、工作台纹理及页脚、统一 Kingdom Logo 与页签图标；顶部品牌在新标签页打开宣传页。120 个 web 文件 SHA-256 校验通过（11 个增量上传、109 个复用）。10 项公网接口/资源检查、8 项真实 HTTP 浏览器检查及 6 组深浅主题工作台检查通过，临时项目已删除、测试会话已撤销。只重建本项目 Nginx，另外 6 个本项目容器和 23 个其他业务容器的 ID、启动时间、状态不变；5 个健康检查均 healthy，运行配置仅改变 `RELEASE_DIR`。回滚目标为 `/data/dtwin/releases/dtwin-ui-20261008-account-menu-c56f334`，审计位于 `/data/dtwin/audit/dtwin-ui-20261008-workspace-61472f6/`。
 
 用户另行授权的 18 个项目、70 个资源迁移已完成数据库、对象、公网 API、浏览器和同机服务影响验收；4 个本地模拟数据源保持暂停，最终验收证据已归档并核对服务器权限与哈希。迁移有独立验收证据，范围及限制见 [本地到生产迁移](../../docs/local-to-production-migration.md)。历史发布记录继续保留，各版本使用各自的验收证据。
+
+## 2026-10-14 品牌名称大小写更新
+
+平台正式展示名称为 **Kingdom 3D Vision**。默认配置、环境示例和说明文档统一使用大写 V；宣传页、工作台、登录页及浏览器标题/SEO 继续读取同一配置。
+
+| 项目 | 本轮内容 |
+| --- | --- |
+| 公开地址 | [Kingdom 3D Vision](http://8.136.35.33:19080) |
+| 应用源码 | GitHub `codex/photorealistic-walkthrough`：`6cbe0f735085c7a10e4b83752f8858e3b66c8ab5` |
+| 发布目录 | `/data/dtwin/releases/dtwin-ui-20261014-brand-6cbe0f7` |
+| 前端入口 | `/assets/index-Bziw6IX-.js` |
+| 发布包 | 34,405,096 字节，125 个 web 文件 SHA-256 校验通过 |
+| 包 SHA-256 | `b6cd8c7304cc0a7dd648be7e68c4e797d84c4fe883b032f16a587dbb33141601` |
+| 后端 | 保留 `dtwin/backend:43ec0a9-amd64`，无数据库迁移 |
+| 回滚目录 | `/data/dtwin/releases/dtwin-ui-20261014-ai-1ca1834` |
+| 审计目录 | `/data/dtwin/audit/dtwin-ui-20261014-brand-6cbe0f7` |
+
+从上述已推送源码执行 `VITE_API_BASE_URL=/ pnpm --dir apps/web build`，TypeScript 和生产构建通过；构建入口标题、元信息和 JS 品牌字串均为大写 Vision，静态文本产物无旧小写名称。Vite 仍有既有大 chunk 提示。
+
+真实公网验收通过：`verify.mjs` 10 项（`dtwin-verify-69cec668-a3e0-4e11-8c84-72d409b8a62c`）、`verify-browser.mjs` 8 项（`dtwin-browser-92c981dc-6f93-47a1-8e90-0077786c9ab0`）、`verify-engineering.mjs` 5 项（`dtwin-engineering-b5cd3703-0b09-4e29-8c53-0ccc20b217d2`）。覆盖真实 HTTP 首页、错误/成功登录、组件拖拽与保存刷新、菜单退出，以及 IFC/DXF 转换、GLB 几何与入库；各脚本临时项目已精确删除，自己的会话均已撤销。
+
+品牌专项真实 Chrome 验收 16 项通过（`final-evidence/brand-qa/results.json`），保留 8 张截图：首页头尾、工作台头尾及可访问名称均为 `Kingdom 3D Vision`，首页/登录/工作台标题与 SEO 正确，1440px/360px 无横向溢出，匿名零 API 请求，零页面异常和业务写入。独立测试会话已通过界面注销并确认 401。最初两次仅为验收脚本定位器问题（文本匹配忽略大小写、多个进入平台链接匹配），修正后完整重跑通过；原诊断报告一并归档。
+
+发布只通过专用 Docker wrapper 重建本项目 Nginx；另外 6 个本项目容器与 24 个其他业务容器未重启，5 个健康检查全部 healthy。运行配置恰好只修改一行 `RELEASE_DIR`。保留上个前端目录供回滚：仅恢复该目录并重建本项目 Nginx，再重新验收。初始激活事实记录于 `activation.json`，最终证据和收据位于 `final-evidence/`、`final-evidence-verified.json` 与 `completed.json`；后续部署文档提交不改变应用产物。
 
 ## 2026-10-14 AI 宣传与入口前端更新
 

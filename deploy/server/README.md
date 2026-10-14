@@ -1,6 +1,8 @@
 # 数据盘独立部署
 
-**2026-10-14 已更新 AI 场景底座前端。** 当前入口为 [DTwin](http://8.136.35.33:19080)，release `dtwin-ui-20261014-ai-1ca1834`，应用源码为 GitHub `codex/photorealistic-walkthrough` 的 `1ca183463d41aeaca558a1414425b8d3f7ea5836`。宣传页新增 CAD/BIM 交互示意、放大 AI 标题并移除三个快捷卡片，工作台保留显著的 AI 入口，写实漫游仍隐藏。此次只重建本项目 Nginx，后端继续使用 `dtwin/backend:43ec0a9-amd64`，无数据库迁移。当前版本、验收、审计和前端回滚路径见 [本轮部署记录](DEPLOYMENT.md#2026-10-14-ai-宣传与入口前端更新)。
+**2026-10-14 当前前端已将品牌统一为 Kingdom 3D Vision。** 入口为 [Kingdom 3D Vision](http://8.136.35.33:19080)，release `dtwin-ui-20261014-brand-6cbe0f7`，应用提交 `6cbe0f735085c7a10e4b83752f8858e3b66c8ab5`。已通过构建、公网接口、真实 HTTP 浏览器及 IFC/DXF 转换验收。此次只重建本项目 Nginx；后端保持 `dtwin/backend:43ec0a9-amd64`，其余本项目和其他业务容器未重启。回滚目标为上一版 `dtwin-ui-20261014-ai-1ca1834`，详见 [品牌更新部署记录](DEPLOYMENT.md#2026-10-14-品牌名称大小写更新)。
+
+**2026-10-14 此前已更新 AI 场景底座前端。** 入口为 [DTwin](http://8.136.35.33:19080)，release `dtwin-ui-20261014-ai-1ca1834`，应用源码为 GitHub `codex/photorealistic-walkthrough` 的 `1ca183463d41aeaca558a1414425b8d3f7ea5836`。宣传页新增 CAD/BIM 交互示意、放大 AI 标题并移除三个快捷卡片，工作台保留显著的 AI 入口，写实漫游仍隐藏。此次只重建本项目 Nginx，后端继续使用 `dtwin/backend:43ec0a9-amd64`，无数据库迁移。该版本验收、审计和前端回滚路径见 [本轮部署记录](DEPLOYMENT.md#2026-10-14-ai-宣传与入口前端更新)。
 
 **2026-10-13 工程底座已部署并通过生产验收。** 入口为 [DTwin](http://8.136.35.33:19080)，release `dtwin-engineering-20261013-968009b`；平台应用提交 `968009b3a0c452fcad56612c7bcbc27a4b43347c`、后端应用提交 `43ec0a91e2becea96274ee0290a062ff4382e936`，后端镜像 `dtwin/backend:43ec0a9-amd64`。本轮升级前后端及 V8 工程任务表，服务器原生断网、真实 IFC/DXF 几何、公网接口、普通 HTTP 浏览器和工程界面验收均通过，备份恢复、既有业务及其他 24 个容器状态核对一致。运行产物与后续验收脚本/文档提交分开记录，完整证据见 [本轮部署记录](DEPLOYMENT.md#2026-10-13-bim--cad-工程底座升级)。以下历史结果各归其对应版本。
 
