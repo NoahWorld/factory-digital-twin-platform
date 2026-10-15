@@ -1,6 +1,8 @@
 # 数据盘独立部署
 
-**2026-10-14 当前前端已将品牌统一为 Kingdom 3D Vision。** 入口为 [Kingdom 3D Vision](http://8.136.35.33:19080)，release `dtwin-ui-20261014-brand-6cbe0f7`，应用提交 `6cbe0f735085c7a10e4b83752f8858e3b66c8ab5`。已通过构建、公网接口、真实 HTTP 浏览器及 IFC/DXF 转换验收。此次只重建本项目 Nginx；后端保持 `dtwin/backend:43ec0a9-amd64`，其余本项目和其他业务容器未重启。回滚目标为上一版 `dtwin-ui-20261014-ai-1ca1834`，详见 [品牌更新部署记录](DEPLOYMENT.md#2026-10-14-品牌名称大小写更新)。
+**2026-10-15 当前前端已上线联系我们二维码和登录页 Logo。** 入口为 [Kingdom 3D Vision](http://8.136.35.33:19080)，release `dtwin-ui-20261015-contact-c25d708`，应用提交 `c25d708e007550e7199706ecc84755b4ead6de73`。公网接口、真实 HTTP 浏览器和联系入口专项验收通过；二维码与用户原图一致。只重建本项目 Nginx，后端继续使用 `dtwin/backend:43ec0a9-amd64`，其余 6 个本项目服务和 24 个其他业务容器未重启。回滚目标为 `dtwin-ui-20261014-brand-6cbe0f7`，详见 [本轮部署记录](DEPLOYMENT.md#2026-10-15-联系我们与登录页-logo-更新)。
+
+**2026-10-14 此前已将品牌统一为 Kingdom 3D Vision。** 入口为 [Kingdom 3D Vision](http://8.136.35.33:19080)，release `dtwin-ui-20261014-brand-6cbe0f7`，应用提交 `6cbe0f735085c7a10e4b83752f8858e3b66c8ab5`。已通过构建、公网接口、真实 HTTP 浏览器及 IFC/DXF 转换验收。此次只重建本项目 Nginx；后端保持 `dtwin/backend:43ec0a9-amd64`，其余本项目和其他业务容器未重启。回滚目标为上一版 `dtwin-ui-20261014-ai-1ca1834`，详见 [品牌更新部署记录](DEPLOYMENT.md#2026-10-14-品牌名称大小写更新)。
 
 **2026-10-14 此前已更新 AI 场景底座前端。** 入口为 [DTwin](http://8.136.35.33:19080)，release `dtwin-ui-20261014-ai-1ca1834`，应用源码为 GitHub `codex/photorealistic-walkthrough` 的 `1ca183463d41aeaca558a1414425b8d3f7ea5836`。宣传页新增 CAD/BIM 交互示意、放大 AI 标题并移除三个快捷卡片，工作台保留显著的 AI 入口，写实漫游仍隐藏。此次只重建本项目 Nginx，后端继续使用 `dtwin/backend:43ec0a9-amd64`，无数据库迁移。该版本验收、审计和前端回滚路径见 [本轮部署记录](DEPLOYMENT.md#2026-10-14-ai-宣传与入口前端更新)。
 
@@ -24,7 +26,7 @@
 
 ## 范围与约束
 
-- 每次发布固定平台和独立后端的已提交源码、产物与镜像校验和。2026-10-14 只更新前端，后端保留 2026-10-13 的已验收镜像；精确版本见本页开头及部署记录。后端变更从独立仓库构建，不从平台历史 `apps/backend` 构建。历史发布仍按各自 `release.json`、`source.patch` 或源码快照复现，不能用历史版本代表当前目标。
+- 每次发布固定平台和独立后端的已提交源码、产物与镜像校验和。2026-10-15 只更新前端，后端保留 2026-10-13 的已验收镜像；精确版本见本页开头及部署记录。后端变更从独立仓库构建，不从平台历史 `apps/backend` 构建。历史发布仍按各自 `release.json`、`source.patch` 或源码快照复现，不能用历史版本代表当前目标。
 - 应用、数据库、对象存储、镜像层、构建临时文件和运行日志全部在 `/data/dtwin`，不复用既有业务的数据库或存储。“不迁移本地业务数据”是首次部署的范围限制；2026-09-29 用户另行授权的本地业务导入已通过验收，范围与验收限制见 [本地到生产迁移](../../docs/local-to-production-migration.md)。
 - 现有服务器 Docker、Nginx、业务容器、目录和防火墙规则保持不变。不执行全局 prune、重启或移动 Docker root。
 - 本项目新增 `dtwin-containerd.service`、`dtwin-docker.service` 和自己的日志轮转配置。复用已安装的二进制，但 root、state、socket、namespace 和配置完全独立。
