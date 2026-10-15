@@ -27,7 +27,7 @@
 - 产品是面向交付人员的工厂数字孪生项目生成器，不是通用低代码/SaaS 大屏产品。
 - 前端展示名称的唯一配置入口是 `VITE_PRODUCT_NAME`；未配置时由 `apps/web/product.config.ts` 使用默认值 `Kingdom 3D Vision`。宣传页、工作台导航、浏览器标题与 SEO 元信息必须统一读取该配置；显式配置空字符串属于错误，必须让启动或构建失败，不能静默回退。
 - 产品 Logo 使用用户提供的透明原图 `apps/web/public/branding/kingdom-logo.png`，工作台、宣传页与登录页统一通过 `ProductLogo` 组件展示，浏览器页签图标引用同一资源。登录页品牌入口使用原生链接在当前标签页返回 `#/` 产品宣传页；工作台顶部品牌入口在新标签页打开 `#/`，保留 `noopener noreferrer`、可访问名称与键盘焦点，不替换当前工作台地址。
-- 宣传页右上角「联系我们」通过 `ContactPopover` 展示用户提供的原始二维码 `apps/web/public/branding/contact-qr.jpg`；鼠标悬停可移入卡片，触屏和键盘可点击展开，Escape/外部点击收起。二维码保留白底和完整留白，不重绘、不反色、不请求业务接口。
+- 宣传页与登录页右上角「联系我们」统一通过 `ContactPopover` 展示用户提供的原始二维码 `apps/web/public/branding/contact-qr.jpg`；鼠标悬停可移入卡片，触屏和键盘可点击展开，Escape/外部点击收起。二维码保留白底和完整留白，不重绘、不反色、不请求业务接口。登录页 Logo 与联系入口放在页面顶部，窄屏首屏也须可见，不放到下方登录卡片中。
 - 浏览器端 UUID 统一使用 `apps/web/src/uuid.ts` 的 `createUuid()`，直接使用 `crypto.getRandomValues` 生成标准 UUID v4，兼容客户 HTTP 部署；不能直接依赖仅安全上下文可用的 `crypto.randomUUID()`，不得使用 `Math.random` 或静默降级。随机源缺失或失败必须明确抛错。修改后运行 `pnpm test:uuid`，覆盖无 `randomUUID` 的登录模块初始化与模板实例化；发布必须另用真实非 localhost HTTP 浏览器验证首页、登录及组件创建，接口/资源 HTTP 200 不能替代浏览器执行验收。
 - 目标是以行业模板、标准 glTF 2.x 模型、资产台账和数据契约，快速交付两类一等项目：保留原有 **2D + 3D 组件组合大屏**，并新增可独立搭建、漫游和展示的 **大型 3D 场景项目**。
 - 首期运行态是只读大屏；配置能力只向交付人员开放。

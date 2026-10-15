@@ -69,12 +69,6 @@
   outline-offset: 3px;
 }
 
-.auth-theme-controls {
-  position: absolute;
-  top: 24px;
-  right: 32px;
-}
-
 .ui-theme-storage-notice {
   position: fixed;
   right: 16px;
@@ -104,15 +98,4 @@
   background: var(--ui-hover);
   color: var(--ui-text);
   cursor: pointer;
-}
-
-@media (max-width: 860px) {
-  .auth-theme-controls {
-    top: 16px;
-    right: 20px;
-  }
-
-  .auth-shell:has(.auth-theme-controls) {
-    padding-top: 80px;
-  }
 }

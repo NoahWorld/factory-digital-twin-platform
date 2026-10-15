@@ -20,6 +20,7 @@ import { TemplatesPage } from "./pages/TemplatesPage";
 import { UsersPage } from "./pages/UsersPage";
 import { PRODUCT_NAME } from "./product-config";
 import { ProductLogo } from "./components/ProductLogo";
+import { ContactPopover } from "./components/ContactPopover";
 import { ThemeToggle } from "./theme/ThemeToggle";
 import type { CoverProject } from "./covers/ProjectCoverQueue";
 import { BUSINESS_API_EXAMPLE_ID } from "./twin/business-api-example";
@@ -360,35 +361,42 @@ type AuthPageProps = {
 
 function AuthPage({ setupRequired, onSuccess }: AuthPageProps) {
   return (
-    <main className="auth-shell">
-      <ThemeToggle className="auth-theme-controls" />
-      <section className="auth-intro">
-        <p className="eyebrow">Factory Digital Twin</p>
-        <h1><span>工厂数字孪生</span><span>交付平台</span></h1>
-        <p className="auth-description">
-          面向交付人员的 2D + 3D 项目配置台。<br />
-          统一配置场景、资产与数据。
-        </p>
-        <LoginShowcase />
-        <a className="auth-product-link" href="#/">
-          查看产品介绍 <span aria-hidden="true">→</span>
-        </a>
-      </section>
-      <section className="auth-card">
+    <div className="auth-page">
+      <header className="auth-header">
         <a className="auth-brand" href="#/" aria-label={`${PRODUCT_NAME} 产品宣传页`}>
           <ProductLogo />
           <span><strong>{PRODUCT_NAME}</strong><small>3D 数字孪生交付平台</small></span>
         </a>
-        <p className="eyebrow">{setupRequired ? "First setup" : "Sign in"}</p>
-        <h2>{setupRequired ? "初始化平台管理员" : "登录"}</h2>
-        {setupRequired ? (
-          <p className="auth-copy">
-            仅在还没有任何用户时可执行。首个管理员账号固定为 admin，初始化令牌不会被保存到浏览器。
+        <div className="auth-header-actions">
+          <ThemeToggle />
+          <ContactPopover />
+        </div>
+      </header>
+      <main className="auth-shell">
+        <section className="auth-intro">
+          <p className="eyebrow">Factory Digital Twin</p>
+          <h1><span>工厂数字孪生</span><span>交付平台</span></h1>
+          <p className="auth-description">
+            面向交付人员的 2D + 3D 项目配置台。<br />
+            统一配置场景、资产与数据。
           </p>
-        ) : null}
-        {setupRequired ? <BootstrapForm onSuccess={onSuccess} /> : <LoginForm onSuccess={onSuccess} />}
-      </section>
-    </main>
+          <LoginShowcase />
+          <a className="auth-product-link" href="#/">
+            查看产品介绍 <span aria-hidden="true">→</span>
+          </a>
+        </section>
+        <section className="auth-card">
+          <p className="eyebrow">{setupRequired ? "First setup" : "Sign in"}</p>
+          <h2>{setupRequired ? "初始化平台管理员" : "登录"}</h2>
+          {setupRequired ? (
+            <p className="auth-copy">
+              仅在还没有任何用户时可执行。首个管理员账号固定为 admin，初始化令牌不会被保存到浏览器。
+            </p>
+          ) : null}
+          {setupRequired ? <BootstrapForm onSuccess={onSuccess} /> : <LoginForm onSuccess={onSuccess} />}
+        </section>
+      </main>
+    </div>
   );
 }
 
