@@ -220,6 +220,7 @@
 
 ## 安全与交付
 
+- 2026-10-15 登录页遗漏修正已发布 `dtwin-ui-20261015-login-748a262`，应用提交 `748a2624cd9f706d9df8e7531fb2b47261688431`，入口 `/assets/index-X8k3XDfT.js`。登录页顶部 Logo 和联系我们在窄屏首屏可见，公网专项与 API/HTTP 浏览器验收通过；只重建 Nginx，回滚到 `dtwin-ui-20261015-contact-c25d708`。本次本地提交未推送，证据见 [部署记录](deploy/server/DEPLOYMENT.md#2026-10-15-登录页联系入口与顶部品牌修正)。
 - 2026-10-15 前端已上线 `dtwin-ui-20261015-contact-c25d708`，应用提交 `c25d708e007550e7199706ecc84755b4ead6de73`，入口 `/assets/index-0P5EpxWe.js`。包含联系我们二维码和登录页 Logo 链接；公网 API 10 项、真实 HTTP 浏览器 8 项和联系入口专项通过。仅 Nginx 重建，后端不变，回滚目录为 `dtwin-ui-20261014-brand-6cbe0f7`；本次应用仅在当前分支本地提交，未推送。完整版本、证据和回滚边界以 [部署记录](deploy/server/DEPLOYMENT.md#2026-10-15-联系我们与登录页-logo-更新) 为准。
 - 2026-10-14 品牌大小写更新已于 `06:14:28.656142Z` 发布到 `dtwin-ui-20261014-brand-6cbe0f7`，应用提交 `6cbe0f735085c7a10e4b83752f8858e3b66c8ab5`，入口 `/assets/index-Bziw6IX-.js`。正式展示名称为 `Kingdom 3D Vision`，标题、SEO、宣传页和工作台继续读取统一配置。125 个 web 文件校验、公网接口 10 项、真实 HTTP 浏览器 8 项和工程转换 5 项通过；只重建本项目 Nginx，后端及其余容器不变。前端回滚到 `dtwin-ui-20261014-ai-1ca1834`，详见 [部署记录](deploy/server/DEPLOYMENT.md#2026-10-14-品牌名称大小写更新)。
 - 2026-10-14 前端已于 `05:16:14.792086Z` 更新至 `dtwin-ui-20261014-ai-1ca1834`，应用源码为 GitHub `codex/photorealistic-walkthrough` 的 `1ca183463d41aeaca558a1414425b8d3f7ea5836`，入口 `/assets/index-ujFjeZJ9.js`。包含 AI 场景底座专题入口、CAD/BIM 交互宣传、放大 AI 标题及移除三个快捷卡片；写实漫游继续隐藏。125 个 web 文件 SHA-256 校验通过，只重建本项目 Nginx，后端仍为 `dtwin/backend:43ec0a9-amd64`、数据库保持 V8；另外 6 个本项目容器及 24 个其他业务容器未重启，配置只改变 `RELEASE_DIR`。回滚目标为 `dtwin-engineering-20261013-968009b`，仅恢复该前端目录并重建自己的 Nginx；本轮验收和审计路径见 [部署记录](deploy/server/DEPLOYMENT.md#2026-10-14-ai-宣传与入口前端更新)。

@@ -1,6 +1,8 @@
 # 数据盘独立部署
 
-**2026-10-15 当前前端已上线联系我们二维码和登录页 Logo。** 入口为 [Kingdom 3D Vision](http://8.136.35.33:19080)，release `dtwin-ui-20261015-contact-c25d708`，应用提交 `c25d708e007550e7199706ecc84755b4ead6de73`。公网接口、真实 HTTP 浏览器和联系入口专项验收通过；二维码与用户原图一致。只重建本项目 Nginx，后端继续使用 `dtwin/backend:43ec0a9-amd64`，其余 6 个本项目服务和 24 个其他业务容器未重启。回滚目标为 `dtwin-ui-20261014-brand-6cbe0f7`，详见 [本轮部署记录](DEPLOYMENT.md#2026-10-15-联系我们与登录页-logo-更新)。
+**2026-10-15 当前前端已补齐登录页联系我们和顶部 Logo。** release `dtwin-ui-20261015-login-748a262`，应用提交 `748a2624cd9f706d9df8e7531fb2b47261688431`。登录页与宣传页共用原始二维码；登录页品牌入口在窄屏首屏可见，点击返回宣传页。仅更新前端，回滚到 `dtwin-ui-20261015-contact-c25d708`，完整验证与隔离边界见 [登录页修正部署记录](DEPLOYMENT.md#2026-10-15-登录页联系入口与顶部品牌修正)。
+
+**2026-10-15 此前上线宣传页联系我们二维码和登录卡片 Logo。** 入口为 [Kingdom 3D Vision](http://8.136.35.33:19080)，release `dtwin-ui-20261015-contact-c25d708`，应用提交 `c25d708e007550e7199706ecc84755b4ead6de73`。公网接口、真实 HTTP 浏览器和联系入口专项验收通过；二维码与用户原图一致。只重建本项目 Nginx，后端继续使用 `dtwin/backend:43ec0a9-amd64`，其余 6 个本项目服务和 24 个其他业务容器未重启。回滚目标为 `dtwin-ui-20261014-brand-6cbe0f7`，详见 [本轮部署记录](DEPLOYMENT.md#2026-10-15-联系我们与登录页-logo-更新)。
 
 **2026-10-14 此前已将品牌统一为 Kingdom 3D Vision。** 入口为 [Kingdom 3D Vision](http://8.136.35.33:19080)，release `dtwin-ui-20261014-brand-6cbe0f7`，应用提交 `6cbe0f735085c7a10e4b83752f8858e3b66c8ab5`。已通过构建、公网接口、真实 HTTP 浏览器及 IFC/DXF 转换验收。此次只重建本项目 Nginx；后端保持 `dtwin/backend:43ec0a9-amd64`，其余本项目和其他业务容器未重启。回滚目标为上一版 `dtwin-ui-20261014-ai-1ca1834`，详见 [品牌更新部署记录](DEPLOYMENT.md#2026-10-14-品牌名称大小写更新)。
 
