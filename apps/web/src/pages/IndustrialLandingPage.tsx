@@ -4,6 +4,7 @@ import { LocalIcon } from "../canvas/LocalIcon";
 import type { ModelCameraView } from "../canvas/types";
 import { PRODUCT_NAME } from "../product-config";
 import { ProductLogo } from "../components/ProductLogo";
+import { ContactPopover } from "../components/ContactPopover";
 import { ThemeToggle } from "../theme/ThemeToggle";
 import { demoDevices, getDemoSelection, industrialDemoNode } from "./industrial-demo-scene";
 import { PrecisionMotionDemo } from "./PrecisionMotionDemo";
@@ -118,7 +119,22 @@ export default function IndustrialLandingPage() {
   return (
     <div className="delivery-landing" ref={page}>
       <a className="delivery-skip" href="#industrial-main" onClick={(event) => { event.preventDefault(); document.getElementById("industrial-main")?.focus(); }}>跳到主要内容</a>
-      <header className="delivery-header" ref={header}><div className="delivery-header-inner"><a href="#/" aria-label={`${PRODUCT_NAME} 首页`}><Brand /></a><nav aria-label="主导航"><button type="button" className="delivery-foundation-nav" onClick={() => scrollToSection("industrial-foundation")}>AI 场景底座</button><button type="button" onClick={() => scrollToSection("industrial-demo")}>场景体验</button><button type="button" onClick={() => scrollToSection("industrial-motion")}>动作案例</button><button type="button" onClick={() => scrollToSection("industrial-gallery")}>宣传画面</button></nav><div className="delivery-header-actions"><ThemeToggle /><a className="delivery-nav-cta" href="#/projects">进入平台<Arrow direction="up-right" framed /></a></div></div></header>
+      <header className="delivery-header" ref={header}>
+        <div className="delivery-header-inner">
+          <a href="#/" aria-label={`${PRODUCT_NAME} 首页`}><Brand /></a>
+          <nav aria-label="主导航">
+            <button type="button" className="delivery-foundation-nav" onClick={() => scrollToSection("industrial-foundation")}>AI 场景底座</button>
+            <button type="button" onClick={() => scrollToSection("industrial-demo")}>场景体验</button>
+            <button type="button" onClick={() => scrollToSection("industrial-motion")}>动作案例</button>
+            <button type="button" onClick={() => scrollToSection("industrial-gallery")}>宣传画面</button>
+          </nav>
+          <div className="delivery-header-actions">
+            <ContactPopover />
+            <ThemeToggle />
+            <a className="delivery-nav-cta" href="#/projects">进入平台<Arrow direction="up-right" framed /></a>
+          </div>
+        </div>
+      </header>
       <main id="industrial-main" tabIndex={-1}>
         <section className="delivery-hero delivery-container">
           <div className="delivery-flow-field delivery-hero-flow" aria-hidden="true" />

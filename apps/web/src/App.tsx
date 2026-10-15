@@ -375,6 +375,10 @@ function AuthPage({ setupRequired, onSuccess }: AuthPageProps) {
         </a>
       </section>
       <section className="auth-card">
+        <a className="auth-brand" href="#/" aria-label={`${PRODUCT_NAME} 产品宣传页`}>
+          <ProductLogo />
+          <span><strong>{PRODUCT_NAME}</strong><small>3D 数字孪生交付平台</small></span>
+        </a>
         <p className="eyebrow">{setupRequired ? "First setup" : "Sign in"}</p>
         <h2>{setupRequired ? "初始化平台管理员" : "登录"}</h2>
         {setupRequired ? (

@@ -7089,6 +7089,24 @@ input:focus {
   font-size: 0.7rem;
 }
 
+.auth-brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 28px;
+  padding-bottom: 24px;
+  border-bottom: 1px solid var(--ui-border);
+  color: var(--ui-text-strong);
+  text-decoration: none;
+}
+
+.auth-brand .product-logo { width: 72px; }
+.auth-brand > span { min-width: 0; }
+.auth-brand strong { display: block; font-size: 1.05rem; line-height: 1.45; }
+.auth-brand small { display: block; margin-top: 5px; color: var(--ui-text-muted); font-size: .72rem; }
+.auth-brand:hover strong { color: var(--ui-accent); }
+.auth-brand:focus-visible { outline: 2px solid var(--ui-accent); outline-offset: 6px; border-radius: 6px; }
+
 .auth-product-link {
   display: inline-flex;
   justify-self: start;

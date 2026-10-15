@@ -91,7 +91,7 @@
 .delivery-skip:focus { top: 12px; }
 .delivery-header { position: sticky; top: 0; z-index: 50; background: var(--delivery-header-glass); border-bottom: 1px solid var(--ui-border); box-shadow: 0 10px 35px #274b7c0a; backdrop-filter: blur(20px) saturate(1.35); -webkit-backdrop-filter: blur(20px) saturate(1.35); }
 .delivery-header-inner { width: min(1392px, calc(100% - 80px)); height: 76px; margin: auto; display: flex; align-items: center; justify-content: space-between; gap: 30px; }
-.delivery-header-actions { display: flex; align-items: center; flex-shrink: 0; gap: 12px; }
+.delivery-header-actions { position: relative; display: flex; align-items: center; flex-shrink: 0; gap: 12px; }
 .delivery-brand { display: inline-flex; align-items: center; gap: 12px; font-size: 20px; font-weight: 750; letter-spacing: -.6px; line-height: 1.15; white-space: nowrap; }
 .delivery-brand small { display: block; font-weight: 500; font-size: 10px; letter-spacing: 2px; margin-top: 7px; color: var(--delivery-muted); }
 .delivery-header nav { display: flex; align-items: center; gap: 22px; }
@@ -319,10 +319,15 @@
   .delivery-format-tag { top: 14px; right: 14px; }
   .delivery-final-cta { flex-direction: column; align-items: flex-start; }
 }
+@media (max-width: 880px) {
+  .delivery-header nav { display: none; }
+}
 @media (max-width: 800px) {
   .delivery-container, .delivery-header-inner { width: calc(100% - 40px); }
   .delivery-header-inner { height: auto; min-height: 73px; padding-block: 12px; flex-wrap: wrap; column-gap: 16px; row-gap: 12px; }
   .delivery-header-actions { margin-left: auto; gap: 8px; }
+  .delivery-header .contact-popover { position: static; display: flex; align-items: center; align-self: stretch; }
+  .delivery-header .contact-popover-trigger { padding-inline: 10px; font-size: 12px; }
   .delivery-brand { font-size: 17px; }
   .delivery-brand small { font-size: 8px; letter-spacing: 1.5px; }
   .delivery-brand .product-logo { width: 72px; }
@@ -405,6 +410,11 @@
   .delivery-format { padding: 27px; }
   .delivery-format-mark { margin-bottom: 25px; }
   .delivery-steps h3 { font-size: 17px; }
+}
+@media (max-width: 360px) {
+  .delivery-header-actions { gap: 6px; }
+  .delivery-header .contact-popover-trigger { padding-inline: 8px; }
+  .delivery-header .ui-theme-toggle > span { display: none; }
 }
 @media (prefers-reduced-motion: reduce) {
   .delivery-landing *, .delivery-landing *::before, .delivery-landing *::after { scroll-behavior: auto !important; transition: none !important; animation: none !important; }
