@@ -38,6 +38,8 @@
     "test:twin-workspace": "node scripts/test-twin-workspace-browser.mjs",
     "test:twin-actions": "node scripts/test-twin-actions.mjs",
     "test:twin-actions-api": "node scripts/test-twin-actions-api.mjs",
+    "test:iot-embed:browser": "node scripts/test-iot-embed-browser.mjs",
+    "test:iot-embed": "node scripts/test-iot-embed.mjs",
     "test:linked-canvas": "node scripts/test-linked-canvas.mjs",
     "test:ui-theme": "node scripts/test-ui-theme.mjs",
     "test:select-browser": "node scripts/test-select-browser.mjs",

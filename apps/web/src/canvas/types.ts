@@ -428,6 +428,7 @@ export type AssetDetailProps = {
 };
 
 export type CanvasNode = {
+  iotBinding?: import("../../../../shared/iot-embed").IotBinding;
   interaction?: CanvasNodeInteraction;
   id: string;
   type: CanvasNodeType;

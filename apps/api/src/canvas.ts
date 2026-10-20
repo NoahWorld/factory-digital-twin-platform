@@ -1,6 +1,7 @@
 import { findBuiltinModel } from "../../../shared/builtin-models";
 import { findBuiltinImage } from "../../../shared/builtin-images";
 import { parseCanvasNodeInteraction, type CanvasNodeInteraction } from "../../../shared/twin-actions";
+import { parseIotBinding, type IotBinding } from "../../../shared/iot-embed";
 import { validateTwinActionReferences } from "./twin-action-references";
 import { parseModelPresentation, type ModelPresentation } from "../../../shared/model-presentation";
 import { AppError, canAccessModule, hasGlobalRole, type AppEnv, type AuthenticatedUser, type DatabaseResult } from "./auth";
@@ -395,6 +396,7 @@ export type AssetDetailProps = {
 
 export type CanvasNode = {
   interaction?: CanvasNodeInteraction;
+  iotBinding?: IotBinding;
   id: string;
   type: CanvasNodeType;
   x: number;
@@ -1511,6 +1513,11 @@ const validateNode = (value: unknown): CanvasNode => {
     if (!interaction.ok) invalid("invalid_canvas_interaction", `Node ${validated.id}: ${interaction.message}`);
     if (interaction.ok) validated.interaction = interaction.value;
   }
+  if (Object.hasOwn(node, "iotBinding")) {
+    const binding = parseIotBinding(node.iotBinding, type);
+    if (!binding.ok) invalid("invalid_canvas_iot_binding", `Node ${validated.id}: ${binding.message}`);
+    if (binding.ok) validated.iotBinding = binding.value;
+  }
 
   if (!Number.isInteger(validated.zIndex)) {
     invalid("invalid_canvas_node", "node.zIndex must be an integer.");
@@ -1619,6 +1626,9 @@ export const applyCanvasPatch = async (
   user: AuthenticatedUser,
   patch: CanvasPatch,
 ): Promise<CanvasDocument> => {
+  if (patch.upsertNodes.some((node) => Object.hasOwn(node, "iotBinding"))) {
+    throw new AppError(501, "canvas_iot_binding_not_supported", "This server does not support IoT canvas bindings; use the current Java backend.");
+  }
   const sceneProjectIds = [...new Set(
     patch.upsertNodes
       .filter((node) => node.type === "scene-3d")

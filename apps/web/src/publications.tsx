@@ -5,6 +5,7 @@ import type { StandaloneSceneDocument } from "../../../shared/standalone-3d";
 import type { TwinAction } from "../../../shared/twin-actions";
 import { errorMessage, request, reportError } from "./api";
 import { CanvasSurface } from "./canvas/CanvasSurface";
+import { useIotEmbed } from "./canvas/useIotEmbed";
 import { RoomAlarmSceneNode } from "./scene/RoomAlarmSceneNode";
 import { standaloneRendererNode } from "./canvas/standalone-renderer-node";
 import type { ProjectAsset } from "./canvas/assets";
@@ -155,6 +156,7 @@ export function PublicationRunPage({ projectId, versionId }: { projectId: string
   const root = snapshot?.projects[projectId] ?? null;
   const isCanvas = root?.project.projectType === "2d";
   const canvas = root ? (isCanvas ? root.document as CanvasDocument : snapshot?.projects[(root.document as StandaloneSceneDocument).linked2dProjectId ?? ""]?.document as CanvasDocument | undefined) : null;
+  const iotRuntime = useIotEmbed(isCanvas ? canvas ?? null : null, isCanvas);
   const assets = useMemo(() => root ? (isCanvas ? root.assets : snapshot?.projects[canvas?.projectId ?? ""]?.assets ?? EMPTY_PUBLICATION_ASSETS) : EMPTY_PUBLICATION_ASSETS, [root, isCanvas, snapshot, canvas?.projectId]);
   const runtimeProjectId = canvas?.projectId ?? null;
   const runtimeConnections = useAssetRuntimeConnections({
@@ -210,6 +212,7 @@ export function PublicationRunPage({ projectId, versionId }: { projectId: string
       </header>
       {isCanvas && canvas ? <CanvasSurface
         document={canvas} editable={false} modelInteractionEnabled runtimeControlsEnabled
+        iotRuntimeNodes={iotRuntime.nodes}
         selectedNodeId={null} selectedModelSceneNodePath={null}
         embeddedSceneSelection={embeddedSelection} onEmbeddedSceneSelectionChange={setEmbeddedSelection}
         modelFocusRequest={focus} onEmbeddedSceneActions={(selection, steps) => {

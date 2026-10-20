@@ -5,6 +5,7 @@ import { errorMessage, request, reportError } from "../api";
 import { ComponentPalette } from "../canvas/ComponentPalette";
 import { ComponentInspector } from "../canvas/ComponentInspector";
 import { CanvasSurface } from "../canvas/CanvasSurface";
+import { useIotEmbed } from "../canvas/useIotEmbed";
 import { isRuntimeNodeVisible } from "../canvas/runtime-projection";
 import { projectAssetsPath, type ProjectAsset, type ProjectAssetListResponse } from "../canvas/assets";
 import type { EmbeddedSceneRuntimeSelection } from "../canvas/EmbeddedSceneNode";
@@ -48,6 +49,7 @@ const runtimeAppearances: Partial<Record<DeviceVisualStatus, ModelNodeAppearance
 
 export function CanvasPage({ initialAssetId, initialTemplateId, mode, projectId, publicView = false }: CanvasPageProps) {
   const [document, setDocument] = useState<CanvasDocument | null>(null);
+  const iotRuntime = useIotEmbed(document, mode === "preview");
   const [projectName, setProjectName] = useState("");
   const [canEdit, setCanEdit] = useState(false);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
@@ -616,6 +618,7 @@ export function CanvasPage({ initialAssetId, initialTemplateId, mode, projectId,
       <div className={`canvas-workbench${mode === "preview" ? " is-preview" : ""}`}>
         {mode === "edit" ? <ComponentPalette editable={editable} onDragStart={startPaletteDrag} /> : null}
         <CanvasSurface
+          iotRuntimeNodes={iotRuntime.nodes}
           document={document}
           editable={editable}
           presentation={mode === "preview" ? "viewport" : "canvas"}

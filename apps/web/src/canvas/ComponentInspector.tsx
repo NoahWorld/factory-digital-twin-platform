@@ -1,4 +1,5 @@
 import { Select } from "../components/Select";
+import { IotBindingInspector } from "./IotBindingInspector";
 import { useEffect, useMemo, useState } from "react";
 import { BasicNodeInspector } from "./BasicNodeInspector";
 import { AssetDetailInspector } from "./AssetDetailInspector";
@@ -632,10 +633,17 @@ function ComponentConfigurationInspector({
 
 export function ComponentInspector(props: ComponentInspectorProps) {
   const { node, editable, onNodeChange } = props;
-  if (!node) return <ComponentConfigurationInspector {...props} />;
+  const [componentError, setComponentError] = useState<string | null>(null);
+  const [iotError, setIotError] = useState<string | null>(null);
+  useEffect(() => {
+    props.onValidationChange(componentError ?? iotError);
+    return () => props.onValidationChange(null);
+  }, [componentError, iotError, props.onValidationChange]);
+  if (!node) return <ComponentConfigurationInspector {...props} onValidationChange={setComponentError} />;
   return (
     <div className="component-inspector-stack">
-      <ComponentConfigurationInspector {...props} />
+      <ComponentConfigurationInspector {...props} onValidationChange={setComponentError} />
+      <IotBindingInspector key={node.id} node={node} document={props.canvasDocument} editable={editable} onNodeChange={onNodeChange} onValidationChange={setIotError} />
       <section className="inspector-section canvas-interaction-inspector">
         <div className="inspector-section-title"><strong>联动事件</strong><span>预览态生效</span></div>
         {node.type === "model-3d" || node.type === "scene-3d" ? (

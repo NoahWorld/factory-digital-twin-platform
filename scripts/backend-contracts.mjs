@@ -125,6 +125,17 @@ try{
  const idPattern='^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}(?![\\s\\S])';
  const printable='^[^\\u0000-\\u001f\\u007f-\\u009f]*(?![\\s\\S])';
  const field=(type,key,bounds)=>constrain(definitions[type].properties[key],bounds);
+ const {IOT_BINDING_LIMITS,IOT_BINDABLE_NODE_TYPES}=require(join(temp,'shared/iot-embed.js'));
+ // Match JS trim(), including Unicode spaces; Java regex \s has a narrower default set.
+ const iotWhitespace='\\u0009-\\u000d\\u0020\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000\\ufeff';
+ const iotPointPattern='^(?!['+iotWhitespace+'])[^\\u0000-\\u001f\\u007f]*[^'+iotWhitespace+'\\u0000-\\u001f\\u007f](?![\\s\\S])';
+ field('IotBinding','pointKey',{minLength:1,maxLength:IOT_BINDING_LIMITS.maxPointKeyLength,pattern:iotPointPattern});
+ field('IotBinding','staleAfterSeconds',{type:'integer',minimum:1,maximum:IOT_BINDING_LIMITS.maxStaleAfterSeconds});
+ definitions.CanvasNode.allOf.push(
+   {if:{required:['iotBinding']},then:{properties:{type:{enum:IOT_BINDABLE_NODE_TYPES}}}},
+   {if:{required:['iotBinding','type'],properties:{type:{const:'radial-gauge'}}},then:{properties:{iotBinding:{properties:{valueType:{const:'number'}}}}}},
+ );
+ write('iot-binding-limits.json',IOT_BINDING_LIMITS);
  field('StandaloneScenePatch','decorations',{maxItems:D.maximumDecorations});
  field('StandaloneScenePatch','roomAlarms',{maxItems:A.maximumRules});
  for(const type of ['SceneDecoration','RoomAlarmRule']) {

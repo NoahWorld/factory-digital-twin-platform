@@ -1,5 +1,8 @@
 import { memo, useCallback, useEffect, useRef, useState, type CSSProperties, type DragEvent, type ReactNode, type PointerEvent as ReactPointerEvent } from "react";
 import { BasicNode } from "./BasicNode";
+import { IotPointUnavailable } from "./IotPointUnavailable";
+import type { IotRuntimeNode } from "./iot-runtime";
+import "./iot-embed.css";
 import { ChartNode } from "./ChartNode";
 import { DashboardNode } from "./DashboardNode";
 import { DecorationNode } from "./DecorationNode";
@@ -47,6 +50,7 @@ type ActiveResize = {
 type ActiveInteraction = ActiveDrag | ActiveResize;
 
 type CanvasNodeViewProps = {
+  iotUnavailable?: string | null;
   previewMode: boolean;
   overlay: boolean;
   editable: boolean;
@@ -89,7 +93,7 @@ const hasGeometryChanged = (previous: CanvasNode, next: CanvasNode) => (
 
 const ignoreEmbeddedSceneSelection = () => undefined;
 
-const CanvasNodeView = memo(function CanvasNodeView({ editable, overlay, previewMode, runtimeControlsEnabled, embeddedSceneSelection, modelInteractionEnabled, node, onEmbeddedSceneSelectionChange, onEmbeddedSceneActions, onNodeActions, modelFocusRequest, onModelSceneChange, onModelSceneNodeSelect, projectId, renderZIndex, runtimeAppearanceOverrides, runtimeAsset, runtimeAssetConnection, runtimeAssetError, runtimeAssetLoading, selected, selectedModelSceneNodePath, onPointerDown, onResizePointerDown }: CanvasNodeViewProps) {
+const CanvasNodeView = memo(function CanvasNodeView({ iotUnavailable, editable, overlay, previewMode, runtimeControlsEnabled, embeddedSceneSelection, modelInteractionEnabled, node, onEmbeddedSceneSelectionChange, onEmbeddedSceneActions, onNodeActions, modelFocusRequest, onModelSceneChange, onModelSceneNodeSelect, projectId, renderZIndex, runtimeAppearanceOverrides, runtimeAsset, runtimeAssetConnection, runtimeAssetError, runtimeAssetLoading, selected, selectedModelSceneNodePath, onPointerDown, onResizePointerDown }: CanvasNodeViewProps) {
   const actionable = previewMode && runtimeControlsEnabled && !editable && (node.interaction?.clickActions.length ?? 0) > 0 && node.props.disabled !== true;
   const keyboardAction = actionable && !runtimeControlNodeTypes.has(node.type);
   return (
@@ -112,7 +116,7 @@ const CanvasNodeView = memo(function CanvasNodeView({ editable, overlay, preview
       tabIndex={keyboardAction ? 0 : undefined}
       style={{ height: node.height, transform: `translate3d(${node.x}px, ${node.y}px, 0)`, width: node.width, zIndex: renderZIndex, pointerEvents: overlay ? runtimeNodeCapturesPointer(node) ? "auto" : "none" : undefined, cursor: actionable ? "pointer" : undefined }}
     >
-      {isOrnamentNodeType(node.type) ? <OrnamentNode node={node} /> : isShapeNodeType(node.type)
+      {iotUnavailable ? <IotPointUnavailable node={node} message={iotUnavailable} /> : isOrnamentNodeType(node.type) ? <OrnamentNode node={node} /> : isShapeNodeType(node.type)
         ? <ShapeNode node={node} />
         : isDecorationNodeType(node.type)
           ? <DecorationNode node={node} />
@@ -175,6 +179,7 @@ const CanvasNodeView = memo(function CanvasNodeView({ editable, overlay, preview
 });
 
 type CanvasSurfaceProps = {
+  iotRuntimeNodes?: Record<string, IotRuntimeNode>;
   previewMode?: boolean;
   children?: ReactNode;
   presentation?: "canvas" | "overlay" | "viewport";
@@ -211,7 +216,7 @@ const isCanvasBackdropNode = (node: CanvasNode, document: CanvasDocument) => (
   && node.height >= document.height
 );
 
-export function CanvasSurface({ children, document, editable, previewMode = !editable, presentation = "canvas", runtimeControlsEnabled = true, embeddedSceneSelection = null, modelInteractionEnabled = false, selectedNodeId, selectedModelSceneNodePath, onCreateNode, onEmbeddedSceneSelectionChange = ignoreEmbeddedSceneSelection, onEmbeddedSceneActions, onNodeActions, modelFocusRequest, onModelSceneChange, onModelSceneNodeSelect, onNodeChange, onSelectNode, runtimeAppearanceOverrides = {}, runtimeNodeVisibility = {}, runtimeTextOverrides = {}, runtimeAsset = null, runtimeAssetConnection, runtimeAssetError = null, runtimeAssetLoading = false }: CanvasSurfaceProps) {
+export function CanvasSurface({ iotRuntimeNodes = {}, children, document, editable, previewMode = !editable, presentation = "canvas", runtimeControlsEnabled = true, embeddedSceneSelection = null, modelInteractionEnabled = false, selectedNodeId, selectedModelSceneNodePath, onCreateNode, onEmbeddedSceneSelectionChange = ignoreEmbeddedSceneSelection, onEmbeddedSceneActions, onNodeActions, modelFocusRequest, onModelSceneChange, onModelSceneNodeSelect, onNodeChange, onSelectNode, runtimeAppearanceOverrides = {}, runtimeNodeVisibility = {}, runtimeTextOverrides = {}, runtimeAsset = null, runtimeAssetConnection, runtimeAssetError = null, runtimeAssetLoading = false }: CanvasSurfaceProps) {
   const overlay = presentation === "overlay";
   const fitViewport = presentation === "viewport";
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -419,9 +424,11 @@ export function CanvasSurface({ children, document, editable, previewMode = !edi
         >
           {!overlay ? <div aria-hidden="true" className="canvas-theme-pattern" /> : null}
           {document.nodes.filter((node) => (!overlay || isOverlayNode(node)) && (!previewMode || isRuntimeNodeVisible(node, runtimeNodeVisibility))).map((sourceNode) => {
-            const node = previewMode ? projectRuntimeNode(sourceNode, runtimeTextOverrides) : sourceNode;
+            const iotNode = previewMode && Object.prototype.hasOwnProperty.call(iotRuntimeNodes, sourceNode.id) ? iotRuntimeNodes[sourceNode.id] : undefined;
+            const node = iotNode ? iotNode.node : previewMode ? projectRuntimeNode(sourceNode, runtimeTextOverrides) : sourceNode;
             return (
             <CanvasNodeView
+              iotUnavailable={iotNode?.unavailable}
               editable={editable}
               previewMode={previewMode}
               overlay={overlay}
