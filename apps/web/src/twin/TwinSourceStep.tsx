@@ -39,7 +39,6 @@ export function TwinSourceStep({ projectId, config, onChange, onContinue, onInsp
   if (!connection) return <p role="alert" className="twin-error">接口配置缺失，请在高级配置中修正，或重新载入配置。</p>;
   if (connection.redacted) return <section className="twin-card"><h3>{connection.protocol === "websocket" ? "WebSocket 订阅" : "REST 轮询"}</h3><p className="twin-readonly">当前账号只能查看模型效果，接口地址与订阅信息由数据网关保护。</p></section>;
   const patch = (change: Partial<TwinApiConnection>) => onChange({ ...config, connection: { ...connection, ...change } });
-  const sample = (protocol: TwinApiConnection["protocol"]) => onChange({ ...config, connection: { protocol, url: `/api/v1/test-business/handling-cell/${protocol === "rest" ? "state" : "live"}`, timestampPath: "timestamp", intervalMs: 500, timeoutMs: 5000 } });
   const inspect = async () => {
     if (checking || twinApiConnectionErrors(connection).length) return;
     const controller = new AbortController(); pending.current = controller;
@@ -61,8 +60,6 @@ export function TwinSourceStep({ projectId, config, onChange, onContinue, onInsp
         }}><option value="rest">REST 轮询</option><option value="websocket">WebSocket 订阅</option></Select></label>
         <label className="twin-wide"><span>接口地址</span><input value={connection.url} maxLength={2048} placeholder={connection.protocol === "rest" ? "https://业务服务地址/api/state" : "wss://业务服务地址/live"} onChange={event => patch({ url: event.target.value })} /></label>
       </div>
-      <div className="twin-source-examples"><span>先试用后端测试接口：</span><button type="button" className="secondary-button compact-button" onClick={() => sample("rest")}>填写 REST 示例</button><button type="button" className="secondary-button compact-button" onClick={() => sample("websocket")}>填写 WebSocket 示例</button></div>
-      <p className="twin-help">示例是后端实际生成的搬运工位数据，包含小车位置 agv.positionM 和机械臂转角 robot.angleDeg。真实业务接入时替换接口地址和字段即可。</p>
       <details className="twin-advanced"><summary>连接高级设置</summary><div className="twin-fields">
         <label><span>采样时间字段</span><input value={connection.timestampPath} maxLength={256} placeholder="timestamp" onChange={event => patch({ timestampPath: event.target.value })} /></label>
         {connection.protocol === "rest" ? <label><span>轮询间隔（毫秒）</span><input type="number" min={200} max={60000} value={Number.isFinite(connection.intervalMs) ? connection.intervalMs : ""} onChange={event => patch({ intervalMs: event.target.value.trim() === "" ? NaN : Number(event.target.value) })} /></label> : null}

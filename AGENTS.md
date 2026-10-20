@@ -5,6 +5,23 @@
 ## 分支约定
 
 - 用户于 2026-10-20 再次明确：所有修改统一在 `main` 分支进行，不自行创建新分支（包括 `codex/*`）。这是本项目的明确分支约定；只有用户后续明确要求时才能更改。分支整理必须保留已有提交和未提交改动，确认合并及远端同步完成后再删除旧分支。
+- 用户于 2026-10-20 后续明确要求从 `main` 创建 IoT 集成专用前端分支，基线为 `61c71a1`，最终指定分支名为 `iot-3d`，不使用 `codex/` 前缀。原本地 `codex/iot-3d-integration` 已重命名，不保留同名旧分支。该分支后续工作留在 `iot-3d`；上条 `main` 约定继续适用于原独立产品。
+- 本分支目标是仅保留 DTwin 前端，登录身份、权限和用户管理统一由 IoT 提供，不再依赖独立 DTwin 后端；项目、场景、资源元数据及发布能力由 IoT 后端承接，文件存储使用 IoT 的 MinIO。没有 IoT 会话时返回 IoT 登录流程，不能将“不提供独立登录页”实现成匿名业务访问。
+- 用户明确 IoT 暂时不能升级。本分支不得以升级 IoT 的 Java、Spring、数据库访问框架或原前端构建链为前提；所需孪生接口须按现有 IoT 技术栈实现，不能直接引入原 DTwin Java 21 后端或其运行依赖。DTwin 前端保持独立构建。新增接口、数据表和上线发布仍属后续实施范围，不得将“不升级技术栈”表述为“无需改动 IoT 后端”。
+- 当前已完成第一阶段前端适配，IoT 孪生业务接口、数据表、MinIO 授权和真实数据联调仍待实施。不得把前端构建或隔离接口测试通过表述为真实后端迁移完成。不得改动独立后端仓库或删除其数据。
+
+## `iot-3d` 当前实施规则（优先于下文原独立产品历史说明）
+
+- 活跃 pnpm workspace 仅为 `apps/web`。前端保持 React 19 / TypeScript 5 / Vite 7 / Three.js，已用 Node 24.0.2、pnpm 10.0.0 验证。`pnpm dev:web` 使用 5173，`pnpm check` / `pnpm build` 仅检查或构建前端。`apps/api`、`apps/backend`、旧部署脚本仅留作历史参考，本分支不得运行它们恢复独立身份或存储。
+- 统一部署路径 `/twin/`，从 IoT 同源入口访问；开发时 IoT 8000 将 `/twin` 代理到 5173 并保留路径。IoT 仍使用原 Node 16 / Umi 2 / React 16 构建链，两个前端分别构建和部署。直接访问 5173 不共享 8000 的 localStorage。
+- 身份只读取 IoT `x-access-token`，通过 `X-Access-Token` 调用 `/authorize/me` 验证；无会话引导至 IoT，401 失效，403 展示拒绝。不再提供登录、初始化管理员、用户管理、独立退出或匿名分享页。前端不得按用户名、旧平台角色或本地缓存授予权限。
+- 当前能力映射为 `twin-project:query/save` 与 `twin-resource:query`，这些 IoT 权限尚待注册和分配。项目范围、编辑/删除、资源写入等最终由 IoT 服务端校验；沿用响应中的 `projectRole` / `editable` 控制界面，不在 DTwin 新增用户或角色系统。
+- 全部 JSON API 走 `src/api.ts`，将逻辑 `/api/v1/*` 映射到开发 `/cloud/twin/*`、生产 `/cloudPro/api/twin/*`，要求 `{status:200,result}`；拒绝旧裸 JSON 和身份接口，不允许静默切回原后端。业务 404 必须与孪生模块未实现区分，日志不包含令牌、签名 URL、查询串或原始响应体。
+- 模型、图片、音视频及封面先由 IoT 鉴权，再获取 30 秒以上、5 分钟以内的临时访问地址；文件使用 IoT MinIO，元数据保存在 IoT。所有私有资源经过 `src/iot/resources.ts`，禁止公开桶、永久链接和前端 MinIO 密钥。内置演示模型仍是明确列举的公开静态文件。
+- WebSocket 使用 IoT 签发的单次项目票据（最长 60 秒），不将登录令牌放进 URL。授权、上传、保存错误显式呈现，不填充伪造业务数据。关闭场景须取消未完成授权；切换账号不得接受旧请求结果。
+- 3D 项目默认优先，保留 2D 画布用于叠加详情和联合展示。原独立后端的业务示例、AI/BIM 转换及模型压缩入口已撤下；历史实现不代表 IoT 已支持。现有设备资产、数据源和报警契约仍需映射到 IoT，未实现新的 IoT 设备选择器。
+- 同一 IoT 身份在窗口聚焦时重新验证不能卸载编辑器、丢弃未保存草稿；临时授权校验失败时禁用交互并允许重试，账号或权限变化应重新隔离工作区。资源未加载完不得生成“成功”的空封面。
+- 接口与部署的当前契约见 [IoT 接入说明](docs/iot-integration.md)。验证入口：`pnpm test:iot-integration`、`pnpm test:iot-integration:browser`、`pnpm test:api-errors`、`pnpm test:project-covers`、`pnpm test:scene-runtime`、`pnpm test:twin-drive`、`pnpm test:uuid`。浏览器用隔离契约数据，不代表 IoT/MinIO 已联通。
 
 ## 产品定位
 

@@ -1,179 +1,46 @@
-# 工厂数字孪生交付平台
+# DTwin · IoT 三维前端
 
-面向交付人员的工厂数字孪生项目生成器，用行业模板、标准 glTF 2.x 模型、资产台账与统一数据契约，快速交付 **2D + 3D 组合大屏**。
+`iot-3d` 从 `main` 的 `61c71a1` 创建，用现有 DTwin 三维编辑与渲染能力承载产线数字孪生。前端独立构建、挂载到 IoT 同源 `/twin/`；登录、权限、项目和资源服务由 IoT 提供，文件存储使用 IoT MinIO。
 
-## 当前结构
+**当前状态：前端适配已完成，IoT 孪生业务接口尚待实现和联调。** 未接入时会显示缺少权限或接口，不会退回独立 DTwin 后端或模拟成功。此分支不提供独立登录、用户管理或匿名分享。
 
-```text
-apps/
-  web/       React + Vite 的配置台与运行态前端
-  api/       现有 Cloudflare Worker API，绑定 D1 项目配置库
-  backend/   历史 Java 快照，仅作参考；运行目标为独立后端仓库
-deploy/local/ Docker Compose：API、采集、任务、PostgreSQL、Valkey、S3
-```
+## 开发
 
-现有 Cloudflare 验证环境资源：
-
-- Worker：`factory-digital-twin-api`
-- 公网地址：`https://factory-digital-twin-api.resetshi.workers.dev/`
-- D1：`factory-digital-twin-config`
-- D1 UUID：`69d2f423-b115-4dfc-b347-41d70f214c67`
-- R2 目标绑定配置：`PROJECT_FILES` → `factory-digital-twin-project-files`。2026-09-18 迁移核对时该账号尚未启用 R2，D1 也没有用户上传资源记录，因此本次没有 R2 对象需要迁移。
-
-## Java 后端本地启动（2026-09-17 新增）
-
-2026-09-27 起，Java 开发及构建使用 [factory-digital-twin-backend/main](https://github.com/NoahWorld/factory-digital-twin-backend)。将它与本平台仓库放在同一父目录，或设置绝对路径 `TWIN_BACKEND_DIR`。`backend:contracts`、`backend:verify` 与 Compose 均指向独立仓库；不要继续修改这里的 `apps/backend` 快照。房间报警、植物/河流、静态地图与轻量军事对象的使用及验证见 [场景扩展](docs/scene-extensions.md)。
-
-本地首版已实现并验证，完整命令、接口、限制与备份方法见 [Java 后端说明](./apps/backend/README.md)。2026-09-18 已将 Cloudflare D1 的云端业务快照，以及旧 Wrangler 本地状态中的 3D 工厂、组合大屏和资源，迁入本地 PostgreSQL/SeaweedFS；迁移结果与边界见 [Cloudflare 到本地迁移记录](./docs/cloudflare-to-local-migration.md)。下方原有能力说明仍包含 Worker 特有功能，不能当作 Java 全量迁移清单。
+本仓库已使用 Node 24.0.2、pnpm 10.0.0 验证。IoT 前端继续使用自己的 Node 16 / npm 8，无需升级。
 
 ```bash
-pnpm backend:init
-pnpm backend:up
-pnpm backend:bootstrap
-pnpm dev:web:java
-```
-
-打开 http://127.0.0.1:5173/#/projects ，使用 `admin` 登录；随机密码保存在被 Git 忽略的 `deploy/local/.local/admin.json`。本机已完成构建与初始化。后续修改 Java 时执行 `pnpm backend:verify`（clean + verify）和 `pnpm backend:up:prebuilt`，避免已删除的类或已改名的迁移残留在部署包中。`pnpm backend:down` 停止本项目服务并保留数据卷。
-
-模型运动接入使用后端真实 REST / WebSocket 业务接口，按“连接接口 → 绑定动作 → 检查效果”配置。模板中心的“接口驱动搬运单元”可创建 AGV 与机械臂示例；旧平台模拟执行模块已停用。接口、字段、故障行为和验证见 [业务接口驱动模型](docs/data-driven-twin.md)。
-
-工程文件导入入口为「顶部导航 AI 场景底座 → 工程底座」，资源库顶部也提供专题入口：BIM 的 IFC 保留已有三维构件，二维 CAD 的 DXF 按明确图层用途、单位和高度生成 GLB。上传前展示文件要求与 CAD 示例，后台检查和转换任务可以关闭面板后继续查看；成功产物进入项目模型库。DWG / RVT 须先导出 DXF / IFC。输入规范、兼容范围、文件限额、验证入口及无外网镜像交付见 [BIM / CAD 工程底座](docs/engineering-imports.md)。此能力由独立 Java 后端提供，历史 Cloudflare Worker 不支持。
-
-2026-10-13 工程底座已部署到 [DTwin](http://8.136.35.33:19080)，**生产验收通过**。运行版本为 `dtwin-engineering-20261013-968009b`，前端应用提交 `968009b3a0c452fcad56612c7bcbc27a4b43347c`、后端应用提交 `43ec0a91e2becea96274ee0290a062ff4382e936`；后续验收脚本与文档提交不改变上述运行产物。转换算力来自后端 worker 的 CPU 与内存，Python 几何依赖已内置，现场转换无需外网；文件输入上限 100 MiB、GLB 输出上限 25 MiB。服务器原生断网测试、真实 IFC/DXF 导入和几何核验、普通 HTTP 浏览器及工程界面验收均通过，原有业务数据与 24 个其他业务容器状态核对一致。证据及兼容范围见 [服务器部署记录](deploy/server/DEPLOYMENT.md)。
-
-## 已实现的第一期基础能力
-
-- 用户身份：首个平台管理员初始化、管理员账号 `admin` 或已绑定邮箱登录、服务端会话 Cookie 与退出登录。
-- 权限边界：平台管理员、交付负责人、只读用户三个全局角色；管理员可在工作台“用户管理”中创建、查看、编辑和删除账号，调整全局角色与 2D／3D 模块授权，重设密码并恢复已删除账号。删除会立即停用账号、撤销会话并保留审计及项目关联记录。模块授权控制可进入的项目类型，项目内的负责人、可编辑、只读成员关系继续决定项目范围与操作。既有账号迁移后保留两个模块，新账号需明确勾选；服务端在每次请求时检查最新授权。
-- 项目：受权限保护的项目列表与新建草稿项目；创建人自动成为项目负责人。项目负责人和平台管理员可删除项目，拥有编辑权限的成员可修改名称；删除会同步清理画布、模型/图片/视频/音频元数据、对象存储文件、资产、数据源和成员关系，对象存储清理异常会明确返回警告。
-- 资源库：工作台顶部“资源库”进入 `#/resources`，按有权访问的项目统一展示系统内置模型，以及项目上传到对象存储的模型、图片、视频和音频。所有资源都可在页内预览，3D 模型复用画布渲染器并播放文件内嵌动画。系统资源前后端均禁止删除；用户资源删除时服务端重新统计画布引用，有关联会明确警告“删除可能导致无法展示”，只有再次确认后才会删除，且保留画布中的失效引用用于问题定位。“AI 场景底座”当前提供极速背景和工程底座两个独立入口，各自展示输入、产出、可用状态及文件要求；写实漫游因服务器暂不具备 GPU 重建条件而隐藏。
-
-  - **极速背景**：单张 PNG/JPEG/WebP 生成固定视角纹理平面 GLB。此生成实现目前只在历史 Worker 中，当前 Java 后端尚未实现；界面读取真实服务能力，未接入时禁止上传生成。
-  - **写实漫游（暂时隐藏，未开放）**：保留独立素材任务 → COLMAP 相机定位 → gsplat GPU 重建 → Gaussian PLY → 浏览器自由漫游的实现。支持一段 MP4/WebM 或 8–120 张照片，以及上传恢复、后台进度、失败重试与取消。**当前无 NVIDIA GPU 服务器，界面不提供上传或查看入口；具备 GPU 部署和真实重建验收条件后再确认恢复开放。** 结果独立于 GLB 工程模型，不包含碰撞与测量标定。技术、部署与验证边界见 [写实漫游](docs/site-capture.md)。
-  - **工程底座**：由独立 Java 后端和转换服务将 IFC / DXF 转成 GLB，详见上方工程文件导入说明。
-- 2D 画布：项目卡片封面进入画布编辑，卡片右下角眼睛按钮可直接进入预览，无需先打开编辑页。固定 1920 × 1080 交付画布支持折线图、柱状图、指标卡、环形进度、进度排行、状态矩阵、矩形、圆形、大屏标题、背景点缀，以及雷达扫描、数据流光、电路脉冲、能量核心、工业流线和网格扫描六种科技/工业动画点缀，也支持时间日期、标题、小卡片背景、小图标背景、纯文本、文字超链接、图片、轮播图、按钮、全屏切换、Switch、多选框、单选框和下拉菜单从组件面板拖入。动画点缀在系统开启“减少动态效果”时会自动静止；纯文本支持关闭、水平和垂直滚动；图片和轮播图使用独立项目资源，链接、按钮、全屏切换和表单控件只在预览态响应。全屏切换会让当前画布视口进入或退出浏览器全屏；全屏时采用等比例铺满（cover），不同宽高比下居中裁切边缘，不拉伸画布也不保留黑边。组件移动时自动吸附并显示辅助线，选中后可从四角自适应缩放并配置内容、颜色和静态数据。工具栏可一键应用深色、浅色或用户自选色主题，画布与所有非 3D 组件会联动更新，3D 模型的背景、灯光和材质配置保持独立；主题修改不会自动保存，确认后仍需显式保存画布。
-- 大屏模板：工作台顶部“模板”进入 `#/templates` 模板中心，也可从画布工具栏就近打开；内置装备修理、装备保障、生产运营、能耗安全 4 套可编辑模板。模板中心只用于创建新项目，不选择或覆盖已有项目；画布工具栏内的模板入口仍用于替换当前本地布局，两种流程都需要显式保存。所有预设指标都标记为“示例数据”。
-- 宣传与行业入口：`#/` 展示带可交互工厂模型的 3D 工业宣传页，`#/industrial` 是兼容入口。公开页面不依赖登录或业务 API。首屏入口和 AI 场景底座专题介绍 IFC / DXF 转 GLB；“进入 AI 场景底座”跳转到 `#/resources?tool=scene-foundation`，登录后保留进入意图，按当前项目权限打开功能中心。行业示例明确标记为场景示例，不冒充真实客户案例；工作台 `#/templates` 可按现有模板场景分类筛选。
-- 3D 场景组件：从组件面板拖入 3D 模型视窗后，通过画布右侧摘要进入独立 3D 编辑页。一个组件可组合最多 32 个模型实例，每个实例可独立设置名称、显隐、位置、旋转和缩放；第一个实例作为主模型，支持对象点击、节点树双向选择、临时包围框高亮和节点级变换/外观/资产绑定。批量场景共享一个 WebGL 渲染器、相机、灯光、控制器和动画循环，相同模型资源只解析一次并复用几何与材质；离开视口时暂停帧更新。独立 3D 项目编辑页选中实例后显示红 X、绿 Y、蓝 Z 三维操作轴，可用鼠标沿轴或平面移动，也可切换缩放并沿各轴或等比调整；W/R 可切换工具，右侧数值输入继续用于精确修改。拖动期间视角控制自动暂停，松开鼠标后将结果写入场景草稿，仍需点击“保存场景”才持久化。独立页还支持背景、灯光、网格、视角、可持久化的整机显示比例和自动旋转配置。视口滚轮缩放只用于临时查看，整机显示比例会随画布保存并在预览中还原。所有实例中含有的 glTF 内嵌动画由同一循环播放，可配置播放开关和速度，编辑器与预览复用同一设置。“保存并返回”增量写回同一个画布节点，不维护第二份 3D 数据。服务端检查格式、版本、文件体积、节点/网格/材质/纹理/动画数量、实例数量、资源引用一致性与重复节点名；模型资源写入 R2，画布只保存去重资源 ID 和轻量实例配置。旧的单模型画布继续兼容。
-- 资产台账与模型映射：项目内维护稳定业务编号 `assetId`，可将唯一命名的模型节点新建并绑定到资产，也可绑定已有未映射资产；支持修改资产信息和解除节点绑定，解绑不会删除资产台账记录。重复 `assetId`、重复模型节点及未知字段由服务端明确拒绝。
-- 数据源配置：画布工具栏可打开项目级数据源面板，创建和修改 REST 轮询或 WebSocket 连接元数据。已保存的 REST 数据源可以由有编辑权限的交付人员执行连接测试，并在受控范围内发现标量 JSON 字段路径、类型和样例；测试复用运行态的显式开关、主机白名单、超时、禁止重定向和 256 KiB 响应上限。REST 配置保存轮询周期、请求超时与可选的源时间戳 JSON 路径，WebSocket 配置保存心跳与最大重连间隔；明文账号、密码、Token 和 API Key 不进入 URL 或前端配置，只允许引用服务端凭据。WebSocket 执行、凭据解析和生产级调度仍未实现。
-- 资产指标映射：在独立 3D 编辑器中为已绑定资产配置项目数据源、唯一指标键、JSON 字段路径、值类型、单位与数据过期时间。映射独立按行保存，不进入画布 JSON。预览态会按映射读取 REST JSON，严格校验字段与类型，并通过同一 `assetId` 驱动模型状态颜色和点击后的 2D 指标详情；采集失败会保留最后成功值用于诊断，同时明确标记设备失联和重连次数。配置源时间戳后，即使接口仍返回 HTTP 200，时间戳超过 `staleAfterSeconds` 也会明确显示“数据陈旧”。
-- 画布存储：画布元数据与组件节点分表保存，移动单个组件只提交增量节点；模型、图片和实时数据不写入大 JSON，只保留经过同项目归属校验的资源与数据绑定引用。
-- 项目封面：2D、3D 均使用项目真实画面的 960 × 540 PNG 截图，复用正式画布与 3D 渲染器，包含实际模型、材质、场景背景和已保存视角，不再生成概念 SVG。保存后封面变为待更新，有编辑权限的用户回到列表时依次补拍；模型或图片加载失败会明确提示并支持重试。PNG 单独保存在 PostgreSQL `project_covers`，通过受权限保护的版本 URL 展示，不写入文档节点，也不占模型对象存储。详见 [封面机制](docs/project-covers.md)。
-- 可迁移性：用户、角色、会话和项目成员均为应用自身的 schema 与 API 契约，不依赖 Cloudflare 登录产品；独立部署实现采用 Java + PostgreSQL。2026-09-18 已迁移云端 D1 和旧 Wrangler 本地状态中的项目、画布、场景与资源；旧密码散列和会话没有迁入，项目所有权显式映射给本地管理员。
-
-管理员可从工作台“用户管理”进入 `#/users`，搜索和筛选用户卡片，点击卡片在设置弹窗中编辑资料、角色、模块权限与密码，也可删除或恢复账号；修改在点击保存后统一生效。项目成员分配页面仍是下一阶段配置台功能，不以公开注册替代权限管理。
-
-## 可组装的示例生产车间
-
-新建 **3D 场景** 项目，在空场景点击「搭建示例车间」，再点击「保存场景」。新版包含 21 类原创 GLB、98 个独立实例、内嵌 PBR 贴图、设备细节与投影，以及机械臂和 AGV 的循环演示动画。初版模型继续保留，旧示例可点击「替换为新版示例车间」后显式保存。地坪现为 v3 单层分区网格，避免地面色块与标线的深度冲突；既有布局可点击「更新内置模型」只升级资源引用并保存。所有模型也可从资源库单独复用。详见 [模型、场景和再生成说明](./demo-assets/workshop-kit/README.md)。
-
-## 项目自带的 AQUA HELIX 模型
-
-在画布添加或选中「3D 模型」，打开现有 3D 编辑器，在右侧「内置样例」点击「使用此样例」。模型随项目静态资源提供，无需上传或配置 R2；普通上传资源仍使用原有存储与权限流程。
-
-检查面板支持摄影棚金属质感、透明/实体/内部外壳视图、水流粒子与波纹、动画启停和速度、组件拆解。零件保持独立，可在节点树中搜索、选择、编辑或绑定项目资产。检查设置与原有节点覆盖一起随画布版本保存，画布预览使用同一渲染组件。
-
-GLB、Blender 源文件、规格与再生成步骤见 [AQUA HELIX 样例说明](./demo-assets/aqua-helix-hd/README.md)。这份原创模型是演示结构，不作为制造图纸或流体仿真结果。
-
-## 原有 Worker 本地启动
-
-安装依赖后，先准备本地 Worker 的初始化令牌。此令牌只用来创建**唯一的首个管理员**，绝不能提交到 Git：
-
-```bash
-cp apps/api/.dev.vars.example apps/api/.dev.vars
-```
-
-修改 `apps/api/.dev.vars` 中的 `BOOTSTRAP_TOKEN` 为足够长的随机值，再在仓库根目录执行：
-
-```bash
-pnpm install
-pnpm --filter @factory-twin/api db:migrate:local
-pnpm dev:api
-```
-
-在另一个终端启动前端：
-
-```bash
+pnpm install --frozen-lockfile
 pnpm dev:web
 ```
 
-如需运行“一台设备 → REST → 字段映射 → 3D 状态 → 2D 详情 → 失联”的本地模拟验证，再开一个终端启动模拟设备：
+DTwin 在 `127.0.0.1:5173` 启动。另按 IoT 项目自身说明启动前后端，从已登录的 IoT 站点打开 `/twin/`，例如 `http://localhost:8000/twin/`。IoT 开发代理需将 `/twin` 原样转发到 5173，`/cloud` 继续转发到 IoT 后端 18848。
 
-```bash
-pnpm dev:mock
-```
+必须使用与 IoT 登录相同的协议、主机和端口；直接访问 5173 不共享 8000 的登录态。DTwin 只读取现有 `x-access-token`，通过 `/authorize/me` 校验权限，不创建自己的账号或会话。
 
-本地 Worker 还必须设置 `RUNTIME_POLLING_ENABLED=true`，并把 `127.0.0.1:8790` 加入 `RUNTIME_ALLOWED_HOSTS`。完整配置字段、状态切换和中断/恢复命令见 [本地 REST 设备联动测试](./docs/local-rest-device-runtime-test.md)。这些开关默认关闭，不能把任意 URL 抓取能力直接暴露到公网。
+可选环境配置见 [apps/web/.env.example](apps/web/.env.example)，复制到 `apps/web/.env.local` 后按现场填写。开发 API 默认 `/cloud`，生产默认 `/cloudPro/api`；MinIO 的浏览器访问来源需显式配置。不得向 `VITE_*` 写入 MinIO 密钥或登录令牌。
 
-打开 `http://localhost:5173` 会先进入带可交互工厂模型的公开 3D 产品页，该页面不依赖 API 或登录状态。点击“进入平台”后进入受保护的项目路由；首次部署且数据库中没有用户时会显示“初始化平台管理员”，输入 `.dev.vars` 中的初始化令牌后创建唯一的首个管理员。该管理员的固定登录账号是 `admin`，也可继续使用初始化时填写的邮箱；密码仍只使用初始化时设置的值，仓库不提供默认密码。
-
-当前本地与 Cloudflare 验证环境仍处于可清理的测试阶段，账号密码长度暂按 6 至 256 个字符校验；转入真实生产数据前必须提高密码强度要求并轮换测试账号。
-
-本地前端通过 Vite 代理以同源方式访问 `/api`，从而能正确使用 HttpOnly 会话 Cookie。正式部署也应让前端与 API 位于同一站点或经同一反向代理暴露；不要把 `workers.dev` 域名写进组件代码。
-
-当前 Cloudflare 验证环境由同一个 Worker 同域承载 Vite 静态前端与 `/api`。先构建 `apps/web/dist`，再从 `apps/api` 部署 Worker；Wrangler 会上传前端静态资源，并只让 `/api/*` 和 `/health` 优先进入 Worker 代码。
-
-产品展示名称统一由 `VITE_PRODUCT_NAME` 配置，未设置时默认为 `Kingdom 3D Vision`。如需覆盖名称或在单独的同源 API 网关下运行，可参考 `apps/web/.env.example`，在 `apps/web/.env.local` 设置：
-
-```dotenv
-VITE_PRODUCT_NAME="Kingdom 3D Vision"
-VITE_API_BASE_URL=/
-```
-
-## 界面浅色 / 深色
-
-登录页右上角、工作台导航及编辑器工具栏提供统一的界面主题切换。未手动选择时跟随系统外观，手动切换会保存在当前浏览器，并同步到同源页签；“跟随系统”可恢复自动选择。该设置仅影响平台界面，不会修改项目的画布配色、模板内容或 3D 模型材质。要修改交付看板配色，请在画布中使用“主题”并显式保存。
-
-主题状态、色板完整性及文字对比度回归：`pnpm test:ui-theme`。
-
-## 验证
+## 构建与验证
 
 ```bash
 pnpm check
 pnpm build
-pnpm test:ui-theme
-pnpm test:auth
-pnpm test:resources
-pnpm test:scene-background
-pnpm test:models
-pnpm test:ornaments
+pnpm test:iot-integration
+pnpm test:api-errors
+pnpm test:project-covers
+pnpm test:scene-runtime
+pnpm test:twin-drive
+pnpm test:uuid
 ```
 
-`test:auth` 验证 `admin` 与邮箱双路径登录、密码失败、初始化写入及旧管理员迁移；`test:resources` 验证资源引用去重统计、系统资源不可删除、媒体文件签名校验、关联资源显式确认删除和媒体表迁移；`test:scene-background` 验证 AI 场景底座组件的文件类型、数量、体积、命名、尺寸边界和历史 Worker 内嵌纹理 GLB 结构（不代表当前 Java 后端已提供生成接口）；`test:models` 验证内置 GLB 哈希、节点命名、动画循环、单模型兼容、批量实例契约、共享配置校验与资源分流。需要真实 Worker 验证时，在**单独的临时本地数据库**完成迁移并设置临时初始化令牌，再执行 `pnpm smoke:models http://127.0.0.1:端口 临时令牌`；此脚本会初始化验收账号、创建验收项目并保留其画布供浏览器检查，不能对真实项目数据库执行。
+构建只生成 `apps/web/dist`。`pnpm test:iot-integration:browser` 使用 Playwright 和隔离接口数据验证页面；可通过 `PLAYWRIGHT_MODULE_PATH` / `CHROMIUM_EXECUTABLE` 指定已有测试运行环境。它不会访问真实 IoT/MinIO，也不能替代现场联调。
 
+## 当前范围
 
-场景底座的额外验证：
+- 保留三维编辑器、内置模型、场景搭建、模板、项目封面、2D 看板与详情联动，默认进入 3D 项目。
+- 全部业务请求交给 IoT，私有资源先授权再获取短期下载地址；WebSocket 消费 IoT 签发的单次项目票据。
+- 原独立后端的 AI/BIM 转换、模型压缩、测试业务模板和匿名分享入口已撤下。
+- IoT 仍需实现孪生权限、项目/场景、资源元数据与 MinIO 接口，以及设备属性、报警和订阅映射；目前未完成真实产线的数据接通。
 
-- `pnpm test:scene-background:browser`：真实页面搭配隔离的内存 API fixture，检查三个独立入口、浅色/深色及桌面/手机布局、素材预检、导入进度、部分失败和能力检查重试。需要可用的 Playwright；可通过 `PLAYWRIGHT_MODULE_PATH` 指向已安装模块，使用本机 Chrome。不会操作真实项目。
-- `pnpm test:scene-background:live`：只允许连接 `http://127.0.0.1:18080` 的本地 Java 服务，读取 `deploy/local/.local/admin.json`，需要本机 `ffmpeg` 与 `cwebp`。创建隔离项目，验证 8 张照片、MP4/WebM 的实际上传、列表、下载字节/SHA-256 一致性及错误边界，结束清理自己的项目和会话。报告写入被 Git 忽略的 `deploy/local/.local/scene-background-live/`。测试素材仅用于传输/格式验收，不是摄影测量数据集，也不验证尚未接入的重建质量。
+接口约定、同源部署、MinIO 与下一步验收见 [IoT 接入说明](docs/iot-integration.md)。长期规则见 [AGENTS.md](AGENTS.md)，产品方向见 [实施方案](工厂数字孪生平台-启动准备与首期方案.md)。
 
-数据库迁移包括 `0001_initial.sql`（项目、资产与数据配置）、`0002_access_control.sql`（用户、角色、会话与项目成员）、`0003_canvas_foundation.sql`（画布元数据与组件节点）、`0004_canvas_shape_nodes.sql`（基础图形）、`0005_canvas_decoration_nodes.sql`（大屏点缀组件）、`0006_model_assets_and_3d_node.sql`（模型资源与 3D 组件）、`0007_dashboard_components.sql`（指标卡、环形进度、进度排行与状态矩阵）、`0008_canvas_themes.sql`（画布主题元数据）、`0009_basic_components_and_image_assets.sql`（基础内容/交互组件与图片资源）、`0010_analytics_and_business_components.sql`（行业图表与业务组件）、`0011_visual_theme_and_panel_frame.sql`（视觉主题与科技面板）、`0012_card_titles_and_icons.sql`（卡片标题与本地图标）、`0013_animated_decorations.sql`（科技/工业动画点缀）、`0014_fullscreen_toggle.sql`（全屏切换组件）、`0015_resource_library_media.sql`（视频/音频资源元数据）、`0016_admin_login_name.sql`（首个平台管理员账号与账号唯一索引）、`0017_scene_background_models.sql`（场景背景模型来源及生成参数）、`0018_standalone_3d_projects.sql`（独立 3D 项目、场景与实例）和 `0019_standalone_3d_instance_presentation.sql`（实例外观与动画）。部署依赖新表或节点类型的 API 前必须先显式应用对应迁移；资源库的视频和音频接口依赖 `0015`，`admin` 账号登录依赖 `0016`，背景模型生成接口依赖 `0017`，独立 3D 场景依赖 `0018`，实例外观与动画依赖 `0019`。用户上传模型、图片、视频和音频还要求账号先在 Cloudflare 控制台完成 R2 订阅开通，再创建 R2 桶：
-
-```bash
-npx wrangler r2 bucket create factory-digital-twin-project-files
-```
-
-创建新迁移后显式应用：
-
-```bash
-pnpm --filter @factory-twin/api db:migrate:remote
-```
-
-账号未启用 R2 时，云验证配置不声明 `PROJECT_FILES` 绑定：页面、身份、项目、模板、内置公开模型与不依赖上传文件的 2D 画布仍可部署，但 `/health` 明确返回 `degraded`；用户上传模型、图片、视频和音频的上传/读取会分别返回对应的 `503 *_storage_not_configured` 错误。不得把文件改存 D1 或用假成功绕过这一限制。
-
-当前公网环境已设置 `BOOTSTRAP_TOKEN`，值只保存在 Cloudflare Worker 的受控密钥配置中，不进入仓库或前端。数据库还没有用户时，可以使用该令牌创建唯一的首个管理员；创建完成后初始化接口会自动关闭。首个管理员的固定登录名是 `admin`，但没有默认密码；不得在源码、迁移或前端中写入任何密码或真实令牌。
-
-产品范围、数据约束与开发规则见 [AGENTS.md](./AGENTS.md) 和 [启动准备方案](./工厂数字孪生平台-启动准备与首期方案.md)。
-
-### 3D 组件控制面板
-
-选中 3D 组件，在画布属性栏或独立 3D 编辑器中勾选“展示控制面板”，保存画布后在项目预览生效。旧组件默认关闭。面板支持外壳透明/实体/隐藏、动画播放与速度、水流粒子、组件拆解和灯光质感；不支持的模型功能会禁用。查看者可收起面板或点击“恢复预设”，操作只影响本次查看，不修改已保存配置。初始效果仍在 3D 编辑器中设定并保存。
-
-### 前端场景运行层
-
-[流体 3D 行业案例 · 第二版](./demo-assets/fluid-cases-v2/README.md)已原地升级为四流方坯连铸生产区、双列污水处理与再生水厂、三塔双回路循环水站，包含 29 个模型模块、26 台业务设备、三套独立看板，以及模拟源、可复现更新脚本、初版快照与浏览器验收记录。
-
-[厂房评估与选型](./docs/厂房场景架构评估与技术选型.md)记录架构局限、技术决定及后端待办。[前端场景运行架构](./docs/frontend-scene-runtime.md)说明资源所有权、增量实例、相机、拾取和诊断。[Rapier 前端行走](./docs/frontend-rapier-navigation.md)提供碰撞配置样例、组件入口与当前限制。[2D + 3D 智能车间联动 Demo](./docs/2d-3d-workshop-demo.md)记录本地项目入口、设备绑定和验收结果。
-
-运行层回归：`pnpm test:scene-runtime`；浏览器回归：`node scripts/test-scene-runtime-browser.mjs`（需预装 Playwright/Chromium，配置见架构文档）。前端基础验证：`pnpm --filter @factory-twin/web check` 和 `pnpm --filter @factory-twin/web build`。
+`apps/api`、`apps/backend` 与旧部署脚本仅保留历史参考，已不属于本分支的运行流程；独立产品原说明见 [历史归档](docs/legacy-standalone-readme.md)。原独立后端仓库及其数据未改动。

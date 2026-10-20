@@ -1,11 +1,8 @@
-import { FormEvent, lazy, Suspense, useEffect, useState, type KeyboardEvent } from "react";
-import { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH } from "../../../shared/auth-constraints";
+import { FormEvent, lazy, Suspense, useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { standaloneSceneRoutePath, type ProjectType } from "../../../shared/standalone-3d";
-import { apiUrl, ApiRequestError, errorMessage, publicShareToken, request } from "./api";
-import { LoginShowcase } from "./auth/LoginShowcase";
+import { apiUrl, ApiRequestError, errorMessage, request } from "./api";
 import { useNotifications } from "./components/NotificationProvider";
-import { AccountMenu } from "./components/AccountMenu";
-import { reportError, UserFacingError } from "./api";
+import { reportError } from "./api";
 import { canvasRoutePath, projectListRoutePath, projectTemplateCanvasPath, projectTemplateScenePath } from "./canvas/routes";
 import { getSceneTemplate, isSceneTemplateId, type SceneTemplateId, type ProjectTemplate } from "./scene/scene-templates";
 import {
@@ -17,42 +14,20 @@ import { CanvasPage } from "./pages/CanvasPage";
 import { ResourcesPage } from "./pages/ResourcesPage";
 import { PublicationRunPage } from "./publications";
 import { TemplatesPage } from "./pages/TemplatesPage";
-import { UsersPage } from "./pages/UsersPage";
 import { PRODUCT_NAME } from "./product-config";
 import { ProductLogo } from "./components/ProductLogo";
-import { ContactPopover } from "./components/ContactPopover";
 import { ThemeToggle } from "./theme/ThemeToggle";
 import type { CoverProject } from "./covers/ProjectCoverQueue";
-import { BUSINESS_API_EXAMPLE_ID } from "./twin/business-api-example";
-import { populateBusinessApiExample, prepareBusinessApiExample } from "./twin/create-business-example";
+
+import { IOT_HOME_PATH, IOT_LOGIN_PATH } from "./iot/config";
+import { loadIotIdentity, type IotUser } from "./iot/identity";
+import { IOT_SESSION_EVENT, IOT_TOKEN_KEY, readIotToken } from "./iot/session";
+import { ResourceImage } from "./iot/ResourceMedia";
 
 const ProjectCoverQueue = lazy(() => import("./covers/ProjectCoverQueue"));
 
 const Model3DEditorPage = lazy(() => import("./pages/Model3DEditorPage"));
-const IndustrialLandingPage = lazy(() => import("./pages/IndustrialLandingPage"));
 const Standalone3DProjectPage = lazy(() => import("./pages/Standalone3DProjectPage"));
-
-function isProductLandingRoute(): boolean {
-  const hash = window.location.hash;
-  return hash === "" || hash === "#/" || hash === "#/industrial";
-}
-
-type Capability = {
-  canCreateProject: boolean;
-  canManageUsers: boolean;
-  canAccess2D: boolean;
-  canAccess3D: boolean;
-};
-
-type CurrentUser = {
-  id: string;
-  email: string;
-  loginName: string | null;
-  displayName: string;
-  roles: string[];
-  modules: ProjectType[];
-  capabilities: Capability;
-};
 
 type Project = CoverProject & {
   id: string;
@@ -63,16 +38,6 @@ type Project = CoverProject & {
   projectRole: "owner" | "editor" | "viewer" | null;
   coverUrl: string | null;
   projectType: ProjectType;
-};
-
-type BootstrapStatusResponse = {
-  setupRequired: boolean;
-  requestId: string;
-};
-
-type UserResponse = {
-  user: CurrentUser;
-  requestId: string;
 };
 
 type ProjectsResponse = {
@@ -92,16 +57,6 @@ type DeleteProjectResponse = {
   deletedModelObjectCount: number;
   warning: string | null;
   requestId: string;
-};
-
-type PublicationResponse = {
-  published: boolean;
-  project: Project;
-  shareToken?: string;
-  publishedAt?: string;
-  publishedRevision?: number;
-  scopeCount?: number;
-  revokedCount?: number;
 };
 
 const projectStatusText: Record<Project["status"], string> = {
@@ -177,229 +132,6 @@ function ActionIcon({ name }: ActionIconProps) {
   );
 }
 
-type LoginFormProps = {
-  onSuccess: (user: CurrentUser) => void;
-};
-
-function LoginForm({ onSuccess }: LoginFormProps) {
-  const [identifier, setIdentifier] = useState("");
-  const [password, setPassword] = useState("");
-  const notify = useNotifications();
-  const [submitting, setSubmitting] = useState(false);
-
-  const submit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setSubmitting(true);
-
-    try {
-      const result = await request<UserResponse>("/api/v1/auth/login", {
-        method: "POST",
-        body: JSON.stringify({ identifier, password }),
-      });
-      setPassword("");
-      notify.success("登录成功。", { key: "auth" });
-      onSuccess(result.user);
-    } catch (reason) {
-      notify.error(reason, { key: "auth" });
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  return (
-    <form className="auth-form" onSubmit={submit}>
-      <label>
-        <span>账号</span>
-        <input
-          autoComplete="username"
-          disabled={submitting}
-          maxLength={254}
-          onChange={(event) => setIdentifier(event.target.value)}
-          required
-          type="text"
-          value={identifier}
-        />
-      </label>
-      <label>
-        <span>密码</span>
-        <input
-          autoComplete="current-password"
-          disabled={submitting}
-          maxLength={MAX_PASSWORD_LENGTH}
-          minLength={MIN_PASSWORD_LENGTH}
-          onChange={(event) => setPassword(event.target.value)}
-          required
-          type="password"
-          value={password}
-        />
-      </label>
-      <button className="primary-button" disabled={submitting} type="submit">
-        {submitting ? "正在登录…" : "登录平台"}
-      </button>
-    </form>
-  );
-}
-
-type BootstrapFormProps = {
-  onSuccess: (user: CurrentUser) => void;
-};
-
-function BootstrapForm({ onSuccess }: BootstrapFormProps) {
-  const [displayName, setDisplayName] = useState("");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [bootstrapToken, setBootstrapToken] = useState("");
-  const notify = useNotifications();
-  const [submitting, setSubmitting] = useState(false);
-
-  const submit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-
-    if (password !== confirmPassword) {
-      notify.warning("两次输入的密码不一致。", { key: "auth" });
-      return;
-    }
-
-    setSubmitting(true);
-
-    try {
-      const result = await request<UserResponse>("/api/v1/auth/bootstrap", {
-        method: "POST",
-        headers: { "x-bootstrap-token": bootstrapToken },
-        body: JSON.stringify({ displayName, email, password }),
-      });
-      setPassword("");
-      setConfirmPassword("");
-      setBootstrapToken("");
-      notify.success("管理员已创建。", { key: "auth" });
-      onSuccess(result.user);
-    } catch (reason) {
-      notify.error(reason, { key: "auth" });
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  return (
-    <form className="auth-form" onSubmit={submit}>
-      <label>
-        <span>管理员姓名</span>
-        <input
-          autoComplete="name"
-          disabled={submitting}
-          maxLength={80}
-          minLength={2}
-          onChange={(event) => setDisplayName(event.target.value)}
-          placeholder="例如：张三"
-          required
-          value={displayName}
-        />
-      </label>
-      <label>
-        <span>管理员邮箱</span>
-        <input
-          autoComplete="email"
-          disabled={submitting}
-          onChange={(event) => setEmail(event.target.value)}
-          placeholder="name@company.com"
-          required
-          type="email"
-          value={email}
-        />
-      </label>
-      <label>
-        <span>登录密码</span>
-        <input
-          autoComplete="new-password"
-          disabled={submitting}
-          maxLength={MAX_PASSWORD_LENGTH}
-          minLength={MIN_PASSWORD_LENGTH}
-          onChange={(event) => setPassword(event.target.value)}
-          placeholder={`至少 ${MIN_PASSWORD_LENGTH} 位`}
-          required
-          type="password"
-          value={password}
-        />
-      </label>
-      <label>
-        <span>确认密码</span>
-        <input
-          autoComplete="new-password"
-          disabled={submitting}
-          maxLength={MAX_PASSWORD_LENGTH}
-          minLength={MIN_PASSWORD_LENGTH}
-          onChange={(event) => setConfirmPassword(event.target.value)}
-          required
-          type="password"
-          value={confirmPassword}
-        />
-      </label>
-      <label>
-        <span>初始化令牌</span>
-        <input
-          autoComplete="off"
-          disabled={submitting}
-          onChange={(event) => setBootstrapToken(event.target.value)}
-          placeholder="来自 API 的 BOOTSTRAP_TOKEN"
-          required
-          type="password"
-          value={bootstrapToken}
-        />
-      </label>
-      <button className="primary-button" disabled={submitting} type="submit">
-        {submitting ? "正在初始化…" : "创建首个管理员"}
-      </button>
-    </form>
-  );
-}
-
-type AuthPageProps = {
-  setupRequired: boolean;
-  onSuccess: (user: CurrentUser) => void;
-};
-
-function AuthPage({ setupRequired, onSuccess }: AuthPageProps) {
-  return (
-    <div className="auth-page">
-      <header className="auth-header">
-        <a className="auth-brand" href="#/" aria-label={`${PRODUCT_NAME} 产品宣传页`}>
-          <ProductLogo />
-          <span><strong>{PRODUCT_NAME}</strong><small>3D 数字孪生交付平台</small></span>
-        </a>
-        <div className="auth-header-actions">
-          <ThemeToggle />
-          <ContactPopover />
-        </div>
-      </header>
-      <main className="auth-shell">
-        <section className="auth-intro">
-          <p className="eyebrow">Factory Digital Twin</p>
-          <h1><span>工厂数字孪生</span><span>交付平台</span></h1>
-          <p className="auth-description">
-            面向交付人员的 2D + 3D 项目配置台。<br />
-            统一配置场景、资产与数据。
-          </p>
-          <LoginShowcase />
-          <a className="auth-product-link" href="#/">
-            查看产品介绍 <span aria-hidden="true">→</span>
-          </a>
-        </section>
-        <section className="auth-card">
-          <p className="eyebrow">{setupRequired ? "First setup" : "Sign in"}</p>
-          <h2>{setupRequired ? "初始化平台管理员" : "登录"}</h2>
-          {setupRequired ? (
-            <p className="auth-copy">
-              仅在还没有任何用户时可执行。首个管理员账号固定为 admin，初始化令牌不会被保存到浏览器。
-            </p>
-          ) : null}
-          {setupRequired ? <BootstrapForm onSuccess={onSuccess} /> : <LoginForm onSuccess={onSuccess} />}
-        </section>
-      </main>
-    </div>
-  );
-}
-
 type CreateProjectDialogProps = {
   allowedModules: ProjectType[];
   initialProjectType: ProjectType;
@@ -420,11 +152,7 @@ function CreateProjectDialog({
   const [projectType, setProjectType] = useState<ProjectType>(initialProjectType);
   const notify = useNotifications();
   const [submitting, setSubmitting] = useState(false);
-  const [createdExampleProject, setCreatedExampleProject] = useState<Project | null>(null);
-  const [creationProgress, setCreationProgress] = useState("");
   const [creationError, setCreationError] = useState<string | null>(null);
-  const isBusinessExample = templateId?.projectType === "3d" && templateId.id === BUSINESS_API_EXAMPLE_ID;
-  const close = () => createdExampleProject ? onCreated(createdExampleProject, null) : onClose();
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -432,23 +160,12 @@ function CreateProjectDialog({
     setCreationError(null);
 
     try {
-      let project = createdExampleProject;
-      if (!project) {
-        if (isBusinessExample) {
-          setCreationProgress("正在检查测试业务接口…");
-          await prepareBusinessApiExample();
-        }
-        setCreationProgress("正在创建项目…");
-        const result = await request<ProjectResponse>("/api/v1/projects", {
-          method: "POST",
-          body: JSON.stringify({ name, projectType: templateId?.projectType ?? projectType }),
-        });
-        project = result.project;
-        if (isBusinessExample) setCreatedExampleProject(project);
-      }
-      if (isBusinessExample) await populateBusinessApiExample(project.id, setCreationProgress);
-      notify.success(isBusinessExample ? "接口驱动示例已创建，模型将跟随后端反馈运动。" : "项目已创建。");
-      onCreated(project, isBusinessExample ? null : templateId);
+      const result = await request<ProjectResponse>("/api/v1/projects", {
+        method: "POST",
+        body: JSON.stringify({ name, projectType: templateId?.projectType ?? projectType }),
+      });
+      notify.success("项目已创建。");
+      onCreated(result.project, templateId);
     } catch (reason) {
       setCreationError(errorMessage(reason));
       notify.error(reason);
@@ -460,14 +177,12 @@ function CreateProjectDialog({
   return (
     <div aria-modal="true" className="dialog-backdrop" role="dialog">
       <form className="dialog-card" onSubmit={submit}>
-        <button aria-label="关闭" className="dialog-close" disabled={submitting} onClick={close} type="button">
+        <button aria-label="关闭" className="dialog-close" disabled={submitting} onClick={onClose} type="button">
           ×
         </button>
         <h2>{template ? "使用模板创建项目" : "创建空白项目"}</h2>
         <p>
-          {isBusinessExample
-            ? "创建独立示例项目，自动保存场景、接口和模型动作绑定。模型使用后端返回的数据运动；不会修改现有项目。"
-            : template
+          {template
             ? `将创建一个新 ${templateId?.projectType === "3d" ? "3D 场景" : "2D 看板"}项目，并载入“${template.name}”模板。确认效果后请显式保存，封面会根据已保存内容生成。`
             : "新项目默认处于草稿状态，创建人自动成为项目负责人。"}
         </p>
@@ -490,7 +205,7 @@ function CreateProjectDialog({
           <span>项目名称</span>
           <input
             autoFocus
-            disabled={submitting || createdExampleProject !== null}
+            disabled={submitting}
             maxLength={100}
             minLength={2}
             onChange={(event) => setName(event.target.value)}
@@ -499,14 +214,14 @@ function CreateProjectDialog({
             value={name}
           />
         </label>
-        {creationError ? <p className="error-message" role="alert">{createdExampleProject ? "项目已创建，示例尚未完成。可重试，或打开已创建项目检查。" : ""}{creationError}</p> : null}
-        {submitting ? <p role="status">{creationProgress}</p> : null}
+        {creationError ? <p className="error-message" role="alert">{creationError}</p> : null}
+        {submitting ? <p role="status">正在创建项目…</p> : null}
         <div className="dialog-actions">
-          <button className="secondary-button" disabled={submitting} onClick={close} type="button">
-            {createdExampleProject ? "打开已创建项目" : "取消"}
+          <button className="secondary-button" disabled={submitting} onClick={onClose} type="button">
+            取消
           </button>
           <button className="primary-button" disabled={submitting} type="submit">
-            {submitting ? "正在创建…" : createdExampleProject ? "重试完成示例" : template ? "创建并进入编辑器" : "创建草稿项目"}
+            {submitting ? "正在创建…" : template ? "创建并进入编辑器" : "创建草稿项目"}
           </button>
         </div>
       </form>
@@ -628,107 +343,11 @@ function DeleteProjectDialog({
   );
 }
 
-function PublicationDialog({ project, onClose, onChanged }: {
-  project: Project;
-  onClose: () => void;
-  onChanged: (result: PublicationResponse) => void;
-}) {
-  const notify = useNotifications();
-  const [publication, setPublication] = useState<PublicationResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState(false);
-  const [confirmRevoke, setConfirmRevoke] = useState(false);
-  const [copied, setCopied] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let active = true;
-    void request<PublicationResponse>(`/api/v1/projects/${encodeURIComponent(project.id)}/publication`)
-      .then((result) => { if (active) setPublication(result); })
-      .catch((reason) => { if (active) setError(errorMessage(reason)); })
-      .finally(() => { if (active) setLoading(false); });
-    return () => { active = false; };
-  }, [project.id]);
-
-  const shareUrl = publication?.shareToken
-    ? `${window.location.origin}${window.location.pathname}#/share/${publication.shareToken}`
-    : null;
-
-  const changePublication = async (method: "POST" | "DELETE") => {
-    setBusy(true);
-    setError(null);
-    try {
-      const result = await request<PublicationResponse>(`/api/v1/projects/${encodeURIComponent(project.id)}/publication`, { method });
-      setPublication(result);
-      setConfirmRevoke(false);
-      setCopied(false);
-      onChanged(result);
-    } catch (reason) {
-      notify.error(reason);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const copyLink = async () => {
-    if (!shareUrl) return;
-    try {
-      await navigator.clipboard.writeText(shareUrl);
-      setCopied(true);
-      notify.success("链接已复制。");
-      setError(null);
-    } catch (reason) {
-      reportError(reason);
-      notify.error(new UserFacingError("复制失败，请手动选择并复制链接。"));
-    }
-  };
-
-  return (
-    <div aria-modal="true" className="dialog-backdrop" role="dialog">
-      <div className="dialog-card publication-dialog">
-        <button aria-label="关闭" className="dialog-close" disabled={busy} onClick={onClose} type="button">×</button>
-        <p className="eyebrow">项目发布</p>
-        <h2>{project.name}</h2>
-        {loading ? <p>正在读取发布状态…</p> : null}
-        {!loading && publication?.published && shareUrl ? <>
-          <p>任何获得此链接的人都可以免登录查看当前保存的项目。</p>
-          <label className="publication-link-label" htmlFor="publication-share-link">公开链接</label>
-          <input id="publication-share-link" className="publication-link-input" readOnly value={shareUrl} onFocus={(event) => event.currentTarget.select()} />
-          <div className="publication-link-actions">
-            <button className="primary-button compact-button" disabled={busy} onClick={() => void copyLink()} type="button">{copied ? "已复制" : "复制链接"}</button>
-            <a className="secondary-button compact-button" href={shareUrl} rel="noreferrer" target="_blank">打开链接</a>
-          </div>
-          <p className="publication-meta">发布于 {formatDate(publication.publishedAt ?? project.updatedAt)}</p>
-          {confirmRevoke ? <div className="publication-confirm"><p>取消后，此链接立即失效。</p><button className="danger-button compact-button" disabled={busy} onClick={() => void changePublication("DELETE")} type="button">确认取消发布</button><button className="secondary-button compact-button" disabled={busy} onClick={() => setConfirmRevoke(false)} type="button">保留发布</button></div> : null}
-          <div className="dialog-actions">
-            <button className="secondary-button" disabled={busy} onClick={() => setConfirmRevoke(true)} type="button">取消发布</button>
-            <button className="secondary-button" disabled={busy} onClick={() => void changePublication("POST")} type="button">重新发布</button>
-          </div>
-          <p className="publication-meta">重新发布会生成新链接，旧链接立即失效。</p>
-        </> : null}
-        {!loading && publication && !publication.published ? <>
-          <p>发布后会生成免登录访问链接，链接持有者可以查看项目及其关联展示内容。</p>
-          <div className="dialog-actions">
-            <button className="secondary-button" disabled={busy} onClick={onClose} type="button">关闭</button>
-            <button className="primary-button" disabled={busy} onClick={() => void changePublication("POST")} type="button">{busy ? "正在发布…" : "发布项目"}</button>
-          </div>
-        </> : null}
-        <FormNotice error={error} />
-      </div>
-    </div>
-  );
-}
-
-type WorkspaceProps = {
-  user: CurrentUser;
-  onLogout: () => Promise<void>;
-};
-
 function AccessDenied({ module }: { module: string }) {
   return <main className="canvas-page-state error-state">
     <p className="eyebrow">Access denied</p>
     <h1>没有{module}访问权限</h1>
-    <p>请联系平台管理员为账号分配相应模块权限。</p>
+    <p>请联系 IoT 管理员为账号分配相应模块权限。</p>
     <a className="secondary-button" href="#/projects">返回项目</a>
   </main>;
 }
@@ -738,7 +357,6 @@ type WorkspaceRoute =
   | { kind: "templates" }
   | { kind: "resources"; tool?: "scene-foundation" }
   | { kind: "publication-run"; projectId: string; versionId?: string }
-  | { kind: "users" }
   | { kind: "canvas"; projectId: string; mode: "edit" | "preview"; templateId?: CanvasTemplateId; initialAssetId?: string }
   | { kind: "standalone-scene"; projectId: string; mode: "edit" | "preview"; templateId?: SceneTemplateId }
   | { kind: "model-editor"; projectId: string; nodeId: string }
@@ -769,8 +387,8 @@ const currentWorkspaceRoute = (): WorkspaceRoute => {
     return { kind: "publication-run", projectId: decodeURIComponent(publicationMatch[1]),
       versionId: publicationMatch[2] ? decodeURIComponent(publicationMatch[2]) : undefined };
   }
-  if (window.location.hash === "#/users") {
-    return { kind: "users" };
+  if (window.location.hash === "#/users" || window.location.hash.startsWith("#/share/")) {
+    return { kind: "invalid", message: "此入口已停用，请从 IoT 进入数字孪生项目。" };
   }
   const standaloneSceneMatch = window.location.hash.match(/^#\/projects\/([^/]+)\/(scene|scene-preview)(?:\?([^#]*))?$/);
   if (standaloneSceneMatch) {
@@ -817,12 +435,12 @@ const routeProjectType = (route: WorkspaceRoute): ProjectType | undefined =>
     : route.kind === "standalone-scene" ? "3d"
       : route.kind === "canvas" || route.kind === "model-editor" ? "2d" : undefined;
 
-function Workspace({ user, onLogout }: WorkspaceProps) {
+function Workspace({ user }: { user: IotUser }) {
   const notify = useNotifications();
   const [route, setRoute] = useState<WorkspaceRoute>(currentWorkspaceRoute);
   const [projects, setProjects] = useState<Project[]>([]);
   const [preferredProjectType, setPreferredProjectType] = useState<ProjectType>(() =>
-    routeProjectType(route) ?? (user.modules.includes("2d") ? "2d" : "3d"));
+    routeProjectType(route) ?? "3d");
   const projectTypeFilter = route.kind === "projects" ? route.projectType ?? preferredProjectType : preferredProjectType;
   const [loadingProjects, setLoadingProjects] = useState(true);
   const [projectError, setProjectError] = useState<string | null>(null);
@@ -830,8 +448,6 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
   const [createProjectTemplateId, setCreateProjectTemplateId] = useState<ProjectTemplate | null>(null);
   const [renamingProject, setRenamingProject] = useState<Project | null>(null);
   const [deletingProject, setDeletingProject] = useState<Project | null>(null);
-  const [publishingProject, setPublishingProject] = useState<Project | null>(null);
-  const [loggingOut, setLoggingOut] = useState(false);
 
   useEffect(() => {
     const updateRoute = () => setRoute(currentWorkspaceRoute());
@@ -845,7 +461,8 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
   }, [route, user.modules]);
 
   useEffect(() => {
-    if (route.kind !== "projects" && route.kind !== "resources") return;
+    if (!user.modules.length || (route.kind !== "projects" && route.kind !== "resources")) return;
+    if (route.kind === "resources" && !user.capabilities.canAccessResources) return;
     let active = true;
     let inFlight = false;
     const controller = new AbortController();
@@ -885,20 +502,7 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
       window.removeEventListener("focus", refreshVisibleProjects);
       document.removeEventListener("visibilitychange", refreshVisibleProjects);
     };
-  }, [route.kind]);
-
-  const logout = async () => {
-    setLoggingOut(true);
-
-    try {
-      await onLogout();
-      notify.success("已退出登录。", { key: "auth" });
-    } catch (reason) {
-      notify.error(reason, { key: "auth" });
-    } finally {
-      setLoggingOut(false);
-    }
-  };
+  }, [route.kind, user]);
 
   const createProject = (project: Project, templateId: ProjectTemplate | null) => {
     setProjects((current) => [project, ...current]);
@@ -943,16 +547,6 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
     } else notify.success("项目已永久删除。");
   };
 
-  const changedPublication = (result: PublicationResponse) => {
-    setProjects((current) => current.map((project) => project.id === result.project.id ? result.project : project));
-    notify.success(result.published ? "项目已发布。" : "项目已取消发布。");
-    if ((result.revokedCount ?? 0) > 1) {
-      void request<ProjectsResponse>("/api/v1/projects")
-        .then((response) => setProjects(response.projects))
-        .catch((reason) => setProjectError(errorMessage(reason)));
-    }
-  };
-
   const projectCounts = {
     "2d": projects.filter((project) => project.projectType === "2d").length,
     "3d": projects.filter((project) => project.projectType === "3d").length,
@@ -994,6 +588,7 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
   }
 
   if (route.kind === "publication-run") {
+    if (!user.modules.length) return <AccessDenied module="项目发布版本" />;
     return <PublicationRunPage key={`${route.projectId}:${route.versionId ?? "active"}`}
       projectId={route.projectId} versionId={route.versionId} />;
   }
@@ -1027,56 +622,31 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
     );
   }
 
-  const isPlatformAdmin = user.roles.includes("platform_admin");
 
   return (
     <main className="workspace-shell">
       <header className="topbar">
         <div className="topbar-main">
-          <a
-            aria-label={`${PRODUCT_NAME} 产品宣传页（在新标签页打开）`}
-            className="brand"
-            href="#/"
-            rel="noopener noreferrer"
-            target="_blank"
-            title="查看产品宣传页（在新标签页打开）"
-          >
+          <a aria-label="返回 IoT" className="brand" href={IOT_HOME_PATH} target="_top">
             <ProductLogo />
             <span className="brand-name"><strong>{PRODUCT_NAME}</strong><small>交付工作台</small></span>
           </a>
           <nav aria-label="主导航" className="topbar-nav">
             <a aria-current={route.kind === "projects" ? "page" : undefined} href={projectListRoutePath(preferredProjectType)}>项目</a>
             {user.modules.length > 0 ? <a aria-current={route.kind === "templates" ? "page" : undefined} href="#/templates">模板</a> : null}
-            {user.modules.length > 0 ? <a aria-current={route.kind === "resources" && !route.tool ? "page" : undefined} href="#/resources">资源库</a> : null}
-            {user.modules.length > 0 ? <a aria-current={route.kind === "resources" && route.tool === "scene-foundation" ? "page" : undefined} className="scene-foundation-nav-link" href="#/resources?tool=scene-foundation"><span aria-hidden="true">✦</span>AI 场景底座</a> : null}
+            {user.capabilities.canAccessResources ? <a aria-current={route.kind === "resources" ? "page" : undefined} href="#/resources">静态资源</a> : null}
           </nav>
         </div>
         <div className="user-menu">
-          {user.capabilities.canManageUsers ? (
-            <a aria-current={route.kind === "users" ? "page" : undefined} className="user-management-link" href="#/users">
-              <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none">
-                <circle cx="9" cy="8" r="3" />
-                <path d="M3 20v-2a6 6 0 0 1 12 0v2M16 5a3 3 0 0 1 0 6m2 3a5 5 0 0 1 3 4v2" />
-              </svg>
-              <span>用户管理</span>
-            </a>
-          ) : null}
           <ThemeToggle />
-          <AccountMenu
-            key={route.kind}
-            displayName={user.displayName}
-            roleLabel={isPlatformAdmin ? "平台管理员" : "交付账号"}
-            loggingOut={loggingOut}
-            onLogout={() => void logout()}
-          />
+          <span className="iot-identity">{user.displayName} · IoT 账号</span>
+          <a className="secondary-button compact-button" href={IOT_HOME_PATH} target="_top">返回 IoT</a>
         </div>
       </header>
 
-      {route.kind === "users" ? (
-        user.capabilities.canManageUsers ? <UsersPage currentUserId={user.id} /> : <AccessDenied module="用户管理" />
-      ) : route.kind === "templates" && user.modules.length === 0 ? (
+      {route.kind === "templates" && user.modules.length === 0 ? (
         <AccessDenied module="项目模板" />
-      ) : route.kind === "resources" && user.modules.length === 0 ? (
+      ) : route.kind === "resources" && !user.capabilities.canAccessResources ? (
         <AccessDenied module="资源库" />
       ) : route.kind === "templates" ? (
         <TemplatesPage
@@ -1086,7 +656,6 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
         />
       ) : route.kind === "resources" ? (
         <ResourcesPage
-          isPlatformAdmin={isPlatformAdmin}
           loadingProjects={loadingProjects}
           projectError={projectError}
           projects={projects}
@@ -1101,7 +670,7 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
         />
       ) : user.modules.length === 0 ? (
         <section aria-label="项目" className="workspace-content" id="projects">
-          <div className="state-card error-state"><h2>尚未获得模块权限</h2><p>请联系平台管理员授予 2D 看板或 3D 场景权限。</p></div>
+          <div className="state-card error-state"><h2>尚未获得模块权限</h2><p>请联系 IoT 管理员授予 2D 看板或 3D 场景权限。</p></div>
         </section>
       ) : (
       <section aria-label="项目" className="workspace-content" id="projects">
@@ -1152,7 +721,7 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
 
 
         {!loadingProjects && !projectError ? <Suspense fallback={null}>
-          <ProjectCoverQueue projects={projects} isAdmin={isPlatformAdmin}
+          <ProjectCoverQueue projects={projects}
             onComplete={(updated) => setProjects((current) => current.map((project) => project.id === updated.id ? { ...project, ...updated } : project))} />
         </Suspense> : null}
 
@@ -1201,7 +770,7 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
                 <ActionIcon name="add" />
               </button>
             ) : (
-              <p className="permission-note">当前账号不能创建项目，请联系平台管理员分配角色或模块权限。</p>
+              <p className="permission-note">当前账号不能创建项目，请联系 IoT 管理员分配角色或模块权限。</p>
             )}
           </section>
         ) : null}
@@ -1231,10 +800,9 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
             role="tabpanel"
           >
             {visibleProjects.map((project) => {
-              const canRename = isPlatformAdmin
-                || project.projectRole === "owner"
+              const canRename = project.projectRole === "owner"
                 || project.projectRole === "editor";
-              const canDelete = isPlatformAdmin || project.projectRole === "owner";
+              const canDelete = project.projectRole === "owner";
               const editPath = project.projectType === "3d"
                 ? standaloneSceneRoutePath(project.id, "edit")
                 : canvasRoutePath(project.id, "canvas");
@@ -1249,7 +817,7 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
                     href={editPath}
                   >
                     {project.coverUrl ? (
-                      <img alt={`${project.name} 项目封面`} src={apiUrl(project.coverUrl)} />
+                      <ResourceImage alt={`${project.name} 项目封面`} src={apiUrl(project.coverUrl)} />
                     ) : (
                       <span className="project-card-cover-empty">
                         <i aria-hidden="true">{project.projectType === "3d" ? "⬡" : "◇"}</i>
@@ -1269,17 +837,6 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
                     <footer>
                       <span>更新于 {formatDate(project.updatedAt)}</span>
                       <div className="project-card-actions">
-                        {canRename && project.status !== "archived" ? (
-                          <button
-                            aria-label={`${project.status === "published" ? "管理" : "发布"} ${project.name} 的公开链接`}
-                            className="icon-button project-action"
-                            onClick={() => setPublishingProject(project)}
-                            title={project.status === "published" ? "管理发布" : "发布项目"}
-                            type="button"
-                          >
-                            <ActionIcon name="share" />
-                          </button>
-                        ) : null}
                         {canRename ? (
                           <button
                             aria-label={`修改 ${project.name} 的名称`}
@@ -1354,150 +911,87 @@ function Workspace({ user, onLogout }: WorkspaceProps) {
           project={deletingProject}
         />
       ) : null}
-      {publishingProject ? (
-        <PublicationDialog
-          onChanged={changedPublication}
-          onClose={() => setPublishingProject(null)}
-          project={publishingProject}
-        />
-      ) : null}
+
     </main>
   );
 }
 
-function PublicProject({ token }: { token: string }) {
-  const [project, setProject] = useState<Project | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let active = true;
-    setProject(null);
-    setError(null);
-    void request<{ project: Project }>(`/api/v1/publications?share=${encodeURIComponent(token)}`)
-      .then((result) => { if (active) setProject(result.project); })
-      .catch((reason) => {
-        if (active) setError(reason instanceof ApiRequestError && reason.code === "publication_not_found"
-          ? "此公开链接不存在或已取消发布。" : errorMessage(reason));
-      });
-    return () => { active = false; };
-  }, [token]);
-
-  if (error) return <main className="canvas-page-state error-state"><h1>无法打开项目</h1><p>{error}</p></main>;
-  if (!project) return <main className="canvas-page-state"><h1>正在打开项目…</h1></main>;
-  if (project.projectType === "2d") return <CanvasPage key={token} mode="preview" projectId={project.id} publicView />;
-  return <Suspense fallback={<main className="canvas-page-state"><h1>正在打开 3D 场景…</h1></main>}>
-    <Standalone3DProjectPage key={token} mode="preview" projectId={project.id} publicView />
-  </Suspense>;
-}
-
 export function App() {
-  const [showProductLanding, setShowProductLanding] = useState(isProductLandingRoute);
-  const [shareToken, setShareToken] = useState(publicShareToken);
+  const [user, setUser] = useState<IotUser | null>(null);
   const [initializing, setInitializing] = useState(true);
-  const [setupRequired, setSetupRequired] = useState(false);
-  const [user, setUser] = useState<CurrentUser | null>(null);
   const [initializationError, setInitializationError] = useState<string | null>(null);
+  const [retry, setRetry] = useState(0);
+  const identityVersion = useRef(0);
+  const sessionToken = useRef<string | null>(null);
 
   useEffect(() => {
-    const updatePublicRoute = () => {
-      setShowProductLanding(isProductLandingRoute());
-      setShareToken(publicShareToken());
-    };
-
-    window.addEventListener("hashchange", updatePublicRoute);
-    return () => window.removeEventListener("hashchange", updatePublicRoute);
-  }, []);
-
-  useEffect(() => {
-    if (showProductLanding || shareToken) {
-      return;
-    }
-
+    let controller: AbortController | null = null;
     let active = true;
-    setInitializing(true);
-    setInitializationError(null);
-
-    void (async () => {
-      try {
-        const bootstrap = await request<BootstrapStatusResponse>("/api/v1/auth/bootstrap-status");
-
-        if (!active) {
-          return;
+    const verify = () => {
+      controller?.abort();
+      controller = new AbortController();
+      const version = ++identityVersion.current;
+      const token = readIotToken();
+      const changedAccount = token !== sessionToken.current;
+      sessionToken.current = token;
+      setInitializationError(null);
+      if (!token) { setUser(null); setInitializing(false); return; }
+      // Background checks must not discard unsaved scene edits on window focus.
+      if (changedAccount) { setUser(null); setInitializing(true); }
+      void loadIotIdentity(controller.signal).then(identity => {
+        if (active && version === identityVersion.current) {
+          setUser(previous => JSON.stringify(previous) === JSON.stringify(identity) ? previous : identity);
         }
-
-        setSetupRequired(bootstrap.setupRequired);
-
-        if (!bootstrap.setupRequired) {
-          try {
-            const currentUser = await request<UserResponse>("/api/v1/auth/me");
-
-            if (active) {
-              setUser(currentUser.user);
-            }
-          } catch (reason) {
-            if (!(reason instanceof ApiRequestError) || reason.code !== "unauthenticated") {
-              throw reason;
-            }
-          }
-        }
-      } catch (reason) {
-        if (active) {
-          setInitializationError(errorMessage(reason));
-        }
-      } finally {
-        if (active) {
-          setInitializing(false);
-        }
-      }
-    })();
-
+      }).catch(reason => {
+        if (!active || version !== identityVersion.current) return;
+        if (reason instanceof ApiRequestError && reason.code === "unauthenticated") setUser(null);
+        else setInitializationError(errorMessage(reason));
+      }).finally(() => {
+        if (active && version === identityVersion.current) setInitializing(false);
+      });
+    };
+    const expired = () => {
+      ++identityVersion.current;
+      controller?.abort();
+      setUser(null);
+      setInitializing(false);
+      setInitializationError(null);
+    };
+    const changed = (event: StorageEvent) => { if (event.key === IOT_TOKEN_KEY || event.key === null) verify(); };
+    const visible = () => { if (document.visibilityState === "visible") verify(); };
+    verify();
+    window.addEventListener(IOT_SESSION_EVENT, expired);
+    window.addEventListener("storage", changed);
+    window.addEventListener("focus", verify);
+    document.addEventListener("visibilitychange", visible);
     return () => {
       active = false;
+      controller?.abort();
+      window.removeEventListener(IOT_SESSION_EVENT, expired);
+      window.removeEventListener("storage", changed);
+      window.removeEventListener("focus", verify);
+      document.removeEventListener("visibilitychange", visible);
     };
-  }, [showProductLanding, shareToken]);
+  }, [retry]);
 
-  const authenticated = (nextUser: CurrentUser) => {
-    setSetupRequired(false);
-    setUser(nextUser);
-  };
-
-  const logout = async () => {
-    await request<null>("/api/v1/auth/logout", { method: "POST" });
-    setUser(null);
-  };
-
-  if (showProductLanding) {
-    return (
-      <Suspense fallback={<main className="loading-shell"><h1>正在打开产品介绍…</h1></main>}>
-        <IndustrialLandingPage />
-      </Suspense>
-    );
-  }
-
-  if (shareToken) return <PublicProject token={shareToken} />;
-
-  if (initializing) {
-    return (
-      <main className="loading-shell">
-        <p className="eyebrow">Factory Digital Twin</p>
-        <h1>正在验证访问状态…</h1>
-      </main>
-    );
-  }
-
-  if (initializationError) {
-    return (
-      <main className="loading-shell">
-        <p className="eyebrow">Connection error</p>
-        <h1>无法连接身份服务</h1>
-        <p>{initializationError}</p>
-      </main>
-    );
-  }
-
-  if (!user) {
-    return <AuthPage onSuccess={authenticated} setupRequired={setupRequired} />;
-  }
-
-  return <Workspace onLogout={logout} user={user} />;
+  if (initializing) return <main className="loading-shell"><h1>正在验证 IoT 会话…</h1></main>;
+  if (initializationError && !user) return <main className="loading-shell">
+    <h1>无法读取 IoT 授权</h1><p role="alert">{initializationError}</p>
+    <button className="primary-button" type="button" onClick={() => setRetry(value => value + 1)}>重新连接</button>
+    <a className="secondary-button" href={IOT_HOME_PATH} target="_top">返回 IoT</a>
+  </main>;
+  if (!user) return <main className="loading-shell">
+    <h1>请先登录 IoT</h1><p>数字孪生使用 IoT 的登录状态与权限。</p>
+    <a className="primary-button" href={IOT_LOGIN_PATH} target="_top">前往 IoT 登录</a>
+    <button className="secondary-button" type="button" onClick={() => setRetry(value => value + 1)}>已登录，重新验证</button>
+  </main>;
+  return <>
+    {initializationError ? <div className="iot-session-error" role="alert">
+      <strong>IoT 授权验证失败，当前草稿已保留。</strong><span>{initializationError}</span>
+      <button type="button" onClick={() => setRetry(value => value + 1)}>重新验证</button>
+    </div> : null}
+    <div inert={Boolean(initializationError)}>
+      <Workspace key={JSON.stringify([user.id, user.modules, user.capabilities])} user={user} />
+    </div>
+  </>;
 }

@@ -1,3 +1,4 @@
+import { loadResourceBytes } from "../iot/resources";
 import { errorMessage, reportError } from "../api";
 import {
   memo,
@@ -530,9 +531,12 @@ const SingleModel3DNode = memo(function SingleModel3DNode({
       const decoders = createModelLoader(renderer);
       const loader = decoders.loader;
       let modelLoadSettled = false;
-      loader.load(
-        modelAssetContentUrl(projectId, assetId),
-        (gltf) => {
+      const modelRequest = new AbortController();
+      void loadResourceBytes(modelAssetContentUrl(projectId, assetId), modelRequest.signal)
+        .then(buffer => {
+          modelRequest.signal.throwIfAborted();
+          return loader.parseAsync(buffer, "");
+        }).then((gltf) => {
           modelLoadSettled = true;
           if (cancelled || contextLost) {
             decoders.dispose();
@@ -911,21 +915,21 @@ const SingleModel3DNode = memo(function SingleModel3DNode({
           setLoadedScene({ scene: { assetId, ...sceneTree }, animationCount: gltf.animations.length });
           onSceneChange?.(node.id, { assetId, ...sceneTree });
           setLoadState({ status: "ready" });
-        },
-        undefined,
-        (reason) => {
+        }).catch((reason) => {
           modelLoadSettled = true;
-          if (cancelled) decoders.dispose();
-          if (!cancelled) {
+          if (cancelled || contextLost) decoders.dispose();
+          if (!cancelled && !contextLost) {
+            modelReady = false;
+            reportError(reason, { operation: "model.load", projectId, assetId, canvasNodeId: node.id });
             onSceneChange?.(node.id, null);
             setLoadState({ status: "error", message: `模型加载失败：${errorText(reason)}` });
           }
-        },
-      );
+        });
 
       const handleContextLost = (event: Event) => {
         event.preventDefault();
         contextLost = true;
+        modelRequest.abort();
         modelReady = false;
         renderer.setAnimationLoop(null);
         // Prevent later property effects from reporting readiness for this lost renderer.
@@ -937,6 +941,7 @@ const SingleModel3DNode = memo(function SingleModel3DNode({
       dispose = () => {
         if (disposed) return;
         disposed = true;
+        modelRequest.abort();
         modelReady = false;
         unregisterCoverSurface?.();
         unregisterCoverSurface = null;

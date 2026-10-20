@@ -2,6 +2,7 @@ import { findBuiltinModel } from "../../../../shared/builtin-models";
 import { apiUrl } from "../api";
 import { publicationResourceUrl } from "../publication-runtime";
 import type { ResourceUsage } from "./resource-usage";
+import { publicAssetUrl } from "../iot/resources";
 
 export type ModelInspection = {
   format: "glb" | "gltf";
@@ -75,10 +76,11 @@ export type ModelAssetDeletionResponse = {
 export const modelAssetsPath = (projectId: string): string =>
   `/api/v1/projects/${encodeURIComponent(projectId)}/model-assets`;
 
-export const modelAssetContentUrl = (projectId: string, assetId: string): string =>
-  findBuiltinModel(assetId)?.contentPath
-    ?? publicationResourceUrl(assetId)
+export const modelAssetContentUrl = (projectId: string, assetId: string): string => {
+  const builtin = findBuiltinModel(assetId);
+  return builtin ? publicAssetUrl(builtin.contentPath) : publicationResourceUrl(assetId)
     ?? apiUrl(`${modelAssetsPath(projectId)}/${encodeURIComponent(assetId)}/content`);
+};
 
 export const modelAssetPath = (projectId: string, assetId: string): string =>
   `${modelAssetsPath(projectId)}/${encodeURIComponent(assetId)}`;

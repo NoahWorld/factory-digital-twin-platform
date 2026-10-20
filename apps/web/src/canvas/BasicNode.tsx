@@ -1,3 +1,4 @@
+import { ResourceImage } from "../iot/ResourceMedia";
 import { errorMessage, reportError, UserFacingError } from "../api";
 import { useNotifications } from "../components/NotificationProvider";
 import { Select } from "../components/Select";
@@ -95,7 +96,7 @@ function ImageNode({ node, projectId, props }: { node: CanvasNode; projectId: st
       style={{ backgroundColor: props.backgroundColor, borderColor: props.borderColor, borderRadius: props.borderRadius }}
     >
       {assetId && failedAssetId !== assetId ? (
-        <img
+        <ResourceImage
           alt={props.alt}
           draggable={false}
           onError={() => setFailedAssetId(assetId)}
@@ -137,7 +138,7 @@ function CarouselNode({ editable, node, projectId, props }: { editable: boolean;
       style={{ backgroundColor: props.backgroundColor, borderColor: props.borderColor, borderRadius: props.borderRadius }}
     >
       {assetId && failedAssetId !== assetId ? (
-        <img
+        <ResourceImage
           alt={`${props.alt} ${activeIndex + 1}`}
           draggable={false}
           onError={() => setFailedAssetId(assetId)}

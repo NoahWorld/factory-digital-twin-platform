@@ -1,3 +1,5 @@
+import { ResourceImage, ResourceVideo, ResourceAudio } from "../iot/ResourceMedia";
+import { publicAssetUrl } from "../iot/resources";
 import { Select } from "../components/Select";
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { findBuiltinModel } from "../../../../shared/builtin-models";
@@ -33,21 +35,6 @@ import {
 } from "../canvas/media-assets";
 import { Model3DNode } from "../canvas/Model3DNode";
 import { createCanvasNode, type CanvasNode } from "../canvas/types";
-import {
-  sceneBackgroundsPath,
-  type SceneBackgroundGenerationRequest,
-  type SceneBackgroundGenerationResponse,
-} from "../canvas/scene-backgrounds";
-import { SceneBackgroundWizard } from "./SceneBackgroundWizard";
-import { SiteCaptureWizard } from "./SiteCaptureWizard";
-import { EngineeringImportWizard } from "./EngineeringImportWizard";
-import {
-  SITE_CAPTURE_RELEASED,
-  type SceneBackgroundMode,
-  type SceneBackgroundMovement,
-  type SceneBackgroundQuality,
-} from "./scene-background";
-
 export type ResourceProject = {
   id: string;
   name: string;
@@ -55,7 +42,6 @@ export type ResourceProject = {
 };
 
 type ResourcesPageProps = {
-  isPlatformAdmin: boolean;
   loadingProjects: boolean;
   projectError: string | null;
   projects: ResourceProject[];
@@ -144,10 +130,10 @@ const previewModelNode = (item: Extract<ResourceItem, { kind: "model" }>): Canva
 
 function ResourceVisual({ item, projectId }: { item: ResourceItem; projectId: string }) {
   if (item.kind === "image") {
-    return <img alt="" loading="lazy" src={contentUrl(projectId, item)} />;
+    return <ResourceImage alt="" loading="lazy" src={contentUrl(projectId, item)} />;
   }
   if (item.kind === "video") {
-    return <video aria-label={`${itemName(item)} 视频缩略预览`} muted preload="metadata" src={contentUrl(projectId, item)} />;
+    return <ResourceVideo aria-label={`${itemName(item)} 视频缩略预览`} muted preload="metadata" src={contentUrl(projectId, item)} />;
   }
   if (item.kind === "audio") {
     return (
@@ -158,7 +144,7 @@ function ResourceVisual({ item, projectId }: { item: ResourceItem; projectId: st
   }
   const builtin = findBuiltinModel(item.asset.id);
   return builtin ? (
-    <img alt="" loading="lazy" src={builtin.thumbnailPath} />
+    <img alt="" loading="lazy" src={publicAssetUrl(builtin.thumbnailPath)} />
   ) : (
     <span className="resource-model-visual" aria-hidden="true"><i>3D</i><b>MODEL</b></span>
   );
@@ -200,14 +186,14 @@ function ResourcePreviewDialog({
               selectedSceneNodePath={null}
             />
           ) : item.kind === "image" ? (
-            <img alt={itemName(item)} src={url} />
+            <ResourceImage alt={itemName(item)} src={url} />
           ) : item.kind === "video" ? (
-            <video autoPlay controls src={url}>当前浏览器无法播放该视频。</video>
+            <ResourceVideo autoPlay controls src={url}>当前浏览器无法播放该视频。</ResourceVideo>
           ) : (
             <div className="resource-audio-player">
               <span className="resource-audio-disc" aria-hidden="true">♪</span>
               <strong>{itemName(item)}</strong>
-              <audio autoPlay controls src={url}>当前浏览器无法播放该音频。</audio>
+              <ResourceAudio autoPlay controls src={url}>当前浏览器无法播放该音频。</ResourceAudio>
             </div>
           )}
         </div>
@@ -258,7 +244,6 @@ function ResourceDeleteDialog({
 }
 
 export function ResourcesPage({
-  isPlatformAdmin,
   loadingProjects,
   projectError,
   projects,
@@ -273,17 +258,10 @@ export function ResourcesPage({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [previewItem, setPreviewItem] = useState<ResourceItem | null>(null);
   const [deleteItem, setDeleteItem] = useState<ResourceItem | null>(null);
-  const [backgroundWizardOpen, setBackgroundWizardOpen] = useState(false);
-  const [engineeringWizardOpen, setEngineeringWizardOpen] = useState(false);
-  const [captureWizardOpen, setCaptureWizardOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [generatingImageAssetId, setGeneratingImageAssetId] = useState<string | null>(null);
-  const [compressingModelAssetId, setCompressingModelAssetId] = useState<string | null>(null);
   const [uploadingKind, setUploadingKind] = useState<ResourceKind | null>(null);
   const [reloadVersion, setReloadVersion] = useState(0);
-  const importedWizardImages = useRef(new WeakMap<File, ImageAsset>());
   const resourceLoadId = useRef(0);
-  const foundationEntryHandled = useRef(false);
   const currentProjectId = useRef(selectedProjectId);
   currentProjectId.current = selectedProjectId;
 
@@ -321,35 +299,10 @@ export function ResourcesPage({
 
   const selectedProject = projects.find((project) => project.id === selectedProjectId) ?? null;
   const canEdit = Boolean(selectedProject) && (
-    isPlatformAdmin
-    || selectedProject?.projectRole === "owner"
+    selectedProject?.projectRole === "owner"
     || selectedProject?.projectRole === "editor"
   );
   const filteredItems = items.filter((item) => item.kind === filter);
-
-  useEffect(() => {
-    if (!openSceneFoundation) {
-      if (foundationEntryHandled.current) {
-        setBackgroundWizardOpen(false);
-        setEngineeringWizardOpen(false);
-        setCaptureWizardOpen(false);
-        foundationEntryHandled.current = false;
-      }
-      return;
-    }
-    if (foundationEntryHandled.current || loadingProjects || projectError || !canEdit || uploadingKind !== null) return;
-    foundationEntryHandled.current = true;
-    setPreviewItem(null);
-    setDeleteItem(null);
-    setBackgroundWizardOpen(true);
-  }, [openSceneFoundation, loadingProjects, projectError, canEdit, uploadingKind]);
-
-  const closeSceneFoundation = () => {
-    setBackgroundWizardOpen(false);
-    setEngineeringWizardOpen(false);
-    setCaptureWizardOpen(false);
-    onCloseSceneFoundation?.();
-  };
 
   const refreshAfterMutation = async (message: string, tone: "success" | "warning" = "success") => {
     const loadId = currentProjectId.current === selectedProjectId ? ++resourceLoadId.current : null;
@@ -371,48 +324,14 @@ export function ResourcesPage({
     }
   };
 
-  const generateMeshopt = async (asset: ModelAsset): Promise<void> => {
-    if (!selectedProjectId || !canEdit) return;
-    setCompressingModelAssetId(asset.id);
-    try {
-      const result = await request<ModelAssetUploadResponse>(
-        `${modelAssetsPath(selectedProjectId)}/${encodeURIComponent(asset.id)}/meshopt-versions`,
-        { method: "POST" },
-      );
-      await refreshAfterMutation(`已生成 Meshopt 压缩版本“${result.modelAsset.originalFilename}”。原模型保留，可在场景中选择新版本。`);
-    } catch (reason) {
-      notify.error(reason);
-    } finally {
-      setCompressingModelAssetId(null);
-    }
-  };
-
-  const uploadImageFile = async (file: File): Promise<ImageAsset> => {
-    if (!selectedProjectId) throw new Error("没有选中的项目，无法上传资源。");
-    const response = await request<ImageAssetUploadResponse>(
-      `${imageAssetsPath(selectedProjectId)}?filename=${encodeURIComponent(file.name)}`,
-      {
-        method: "POST",
-        headers: { "content-type": file.type || "application/octet-stream" },
-        body: file,
-      },
-    );
-    return response.imageAsset;
-  };
-
   const uploadAssetFile = async (kind: ResourceKind, file: File): Promise<void> => {
     if (!selectedProjectId) throw new Error("没有选中的项目，无法上传资源。");
-    const path = `${kind === "model" ? modelAssetsPath(selectedProjectId)
-      : kind === "image" ? imageAssetsPath(selectedProjectId)
-        : mediaAssetsPath(selectedProjectId)}?filename=${encodeURIComponent(file.name)}`;
-    const options: RequestInit = {
-      method: "POST",
-      headers: { "content-type": file.type || "application/octet-stream" },
-      body: file,
-    };
-    if (kind === "model") await request<ModelAssetUploadResponse>(path, options);
-    else if (kind === "image") await uploadImageFile(file);
-    else await request<MediaAssetUploadResponse>(path, options);
+    const collection = kind === "model" ? modelAssetsPath(selectedProjectId)
+      : kind === "image" ? imageAssetsPath(selectedProjectId) : mediaAssetsPath(selectedProjectId);
+    await request<ModelAssetUploadResponse | ImageAssetUploadResponse | MediaAssetUploadResponse>(
+      `${collection}?filename=${encodeURIComponent(file.name)}`,
+      { method: "POST", headers: { "content-type": file.type || "application/octet-stream" }, body: file },
+    );
   };
 
   const upload = async (kind: ResourceKind, event: ChangeEvent<HTMLInputElement>) => {
@@ -428,81 +347,6 @@ export function ResourcesPage({
       notify.error(reason);
     } finally {
       setUploadingKind(null);
-    }
-  };
-
-  const requestSceneBackground = async (
-    sourceImageAssetId: string,
-    input: Omit<SceneBackgroundGenerationRequest, "sourceImageAssetId">,
-  ) => request<SceneBackgroundGenerationResponse>(sceneBackgroundsPath(selectedProjectId), {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ ...input, sourceImageAssetId }),
-  });
-
-  const createSceneBackground = async (input: {
-    files: readonly File[];
-    knownScaleMeters: number | null;
-    mode: SceneBackgroundMode;
-    movement: SceneBackgroundMovement;
-    name: string;
-    quality: SceneBackgroundQuality;
-    onProgress?: (progress: { completed: number; total: number; filename: string }) => void;
-  }) => {
-    if (!selectedProjectId || !canEdit) {
-      throw new Error("当前项目不可编辑，无法创建场景底座。");
-    }
-    if (input.files.length === 0) throw new Error("没有可用的场景底座素材。");
-
-    if (input.mode === "single-image") {
-      const file = input.files[0];
-      setUploadingKind("image");
-      let sourceImage = importedWizardImages.current.get(file) ?? null;
-      try {
-        if (!sourceImage) {
-          sourceImage = await uploadImageFile(file);
-          importedWizardImages.current.set(file, sourceImage);
-        }
-        const response = await requestSceneBackground(sourceImage.id, {
-          knownScaleMeters: input.knownScaleMeters,
-          movement: input.movement === "free" ? "limited" : input.movement,
-          name: input.name,
-          quality: input.quality,
-        });
-        setFilter("model");
-        await refreshAfterMutation(`原图“${file.name}”已入库，并生成背景模型“${response.modelAsset.originalFilename}”。`);
-      } catch (reason) {
-        if (sourceImage) {
-          setReloadVersion((value) => value + 1);
-          notify.warning("原图已入库，但背景模型尚未生成。可保留素材并重试生成。");
-        }
-        throw reason;
-      } finally {
-        setUploadingKind(null);
-      }
-      return;
-    }
-
-    throw new Error("写实漫游必须通过独立任务工作区创建。");
-  };
-
-  const generateFromExistingImage = async (asset: ImageAsset) => {
-    if (!selectedProjectId || !canEdit || generatingImageAssetId) return;
-    const baseName = asset.originalFilename.replace(/\.[^.]+$/u, "").trim();
-    setGeneratingImageAssetId(asset.id);
-    try {
-      const response = await requestSceneBackground(asset.id, {
-        knownScaleMeters: null,
-        movement: "fixed",
-        name: `${baseName || "现场"}背景模型`,
-        quality: "balanced",
-      });
-      setFilter("model");
-      await refreshAfterMutation(`已从“${asset.originalFilename}”生成“${response.modelAsset.originalFilename}”。`);
-    } catch (reason) {
-      notify.error(reason);
-    } finally {
-      setGeneratingImageAssetId(null);
     }
   };
 
@@ -537,37 +381,10 @@ export function ResourcesPage({
 
   return (
     <section aria-label="资源库" className="workspace-content resource-library" id="resources">
-      <section aria-labelledby="scene-foundation-banner-title" className="scene-foundation-banner">
-        <div className="scene-foundation-banner-copy">
-          <div className="scene-foundation-banner-label"><span aria-hidden="true">✦</span> 工程模型转换</div>
-          <h2 id="scene-foundation-banner-title">AI 场景底座</h2>
-          <p className="scene-foundation-banner-lead">把工程图纸，变成三维场景。</p>
-          <p>导入 IFC / DXF，确认建模参数，后台生成 GLB，直接入库用于场景搭建。</p>
-        </div>
-        <div aria-label="BIM IFC、CAD DXF 转为 GLB 三维模型" className="scene-foundation-banner-flow">
-          <div className="scene-foundation-banner-inputs"><span><b>BIM</b> IFC</span><span><b>CAD</b> DXF</span></div>
-          <span aria-hidden="true" className="scene-foundation-banner-arrow">→</span>
-          <div className="scene-foundation-banner-output">
-            <svg aria-hidden="true" viewBox="0 0 64 64" fill="none"><path d="M32 5 57 19 32 34 7 19 32 5Z"/><path d="M7 19v27l25 14 25-14V19M32 34v26M20 12l25 14v27M44 12 20 27v26"/></svg>
-            <span><b>GLB</b> 三维模型</span>
-          </div>
-        </div>
-        <div className="scene-foundation-banner-action">
-          <button
-            aria-label="AI 场景底座，进入功能中心"
-            className="primary-button scene-foundation-banner-button"
-            disabled={!canEdit || Boolean(projectError) || uploadingKind !== null}
-            onClick={() => {
-              setPreviewItem(null);
-              setDeleteItem(null);
-              setBackgroundWizardOpen(true);
-            }}
-            type="button"
-          >进入功能中心 <span aria-hidden="true">↗</span></button>
-          <p>{projectError ? "项目加载失败，请先恢复项目访问。" : !selectedProject ? "先创建或加入项目，再开始转换。" : !canEdit ? "当前项目为只读，请选择可编辑的项目。" : uploadingKind !== null ? "正在上传文件，请稍候。" : "先了解文件要求，再开始创建。"}</p>
-          {!projectError && projects.length === 0 ? <a href="#/projects">前往项目 →</a> : null}
-        </div>
-      </section>
+      {openSceneFoundation ? <section className="state-card"><h2>工程转换尚未接入 IoT</h2>
+        <p>当前支持上传已有的模型、图片和媒体文件。</p>
+        <button type="button" className="secondary-button" onClick={onCloseSceneFoundation}>返回静态资源</button>
+      </section> : null}
       {projects.length > 0 ? (
         <div className="resource-scope-toolbar">
           <label className="resource-project-select">
@@ -576,9 +393,6 @@ export function ResourcesPage({
               setSelectedProjectId(value);
               setPreviewItem(null);
               setDeleteItem(null);
-              setBackgroundWizardOpen(false);
-              setEngineeringWizardOpen(false);
-              setCaptureWizardOpen(false);
             }}>
               {projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
             </Select>
@@ -667,22 +481,6 @@ export function ResourcesPage({
                       </dl>
                       <footer>
                         <button className="secondary-button" onClick={() => setPreviewItem(item)} type="button">预览</button>
-                        {item.kind === "model" && canEdit && !systemResource && !item.asset.compression ? (
-                          <button className="secondary-button" disabled={compressingModelAssetId !== null}
-                            onClick={() => void generateMeshopt(item.asset)} type="button">
-                            {compressingModelAssetId === item.asset.id ? "压缩中…" : "生成 Meshopt 版本"}
-                          </button>
-                        ) : null}
-                        {item.kind === "image" && canEdit ? (
-                          <button
-                            className="secondary-button"
-                            disabled={generatingImageAssetId !== null}
-                            onClick={() => void generateFromExistingImage(item.asset)}
-                            type="button"
-                          >
-                            {generatingImageAssetId === item.asset.id ? "生成中…" : "生成背景"}
-                          </button>
-                        ) : null}
                         <button
                           className="resource-delete-button"
                           disabled={systemResource || !canEdit}
@@ -704,26 +502,6 @@ export function ResourcesPage({
 
       {previewItem && selectedProjectId ? <ResourcePreviewDialog item={previewItem} onClose={() => setPreviewItem(null)} projectId={selectedProjectId} /> : null}
       {deleteItem ? <ResourceDeleteDialog item={deleteItem} onClose={() => setDeleteItem(null)} onConfirm={() => void confirmDelete()} submitting={deleting} /> : null}
-      {selectedProject && canEdit ? <EngineeringImportWizard
-        key={`engineering-${selectedProject.id}`}
-        open={engineeringWizardOpen}
-        projectId={selectedProject.id}
-        projectName={selectedProject.name}
-        onClose={closeSceneFoundation}
-        onBack={() => { setEngineeringWizardOpen(false); setBackgroundWizardOpen(true); }}
-        onCompleted={() => { setFilter("model"); setReloadVersion((value) => value + 1); }}
-        onPreview={(asset) => { closeSceneFoundation(); setPreviewItem({ kind: "model", asset }); }}
-      /> : null}
-      {SITE_CAPTURE_RELEASED && selectedProject && canEdit ? <SiteCaptureWizard key={`capture-${selectedProject.id}`} open={captureWizardOpen} projectId={selectedProject.id} projectName={selectedProject.name} onClose={closeSceneFoundation} onBack={() => { setCaptureWizardOpen(false); setBackgroundWizardOpen(true); }} /> : null}
-      {backgroundWizardOpen && selectedProject && canEdit ? (
-        <SceneBackgroundWizard
-          onClose={closeSceneFoundation}
-          onCreate={createSceneBackground}
-          onCapture={() => { setBackgroundWizardOpen(false); setCaptureWizardOpen(true); }}
-          onEngineering={() => { setBackgroundWizardOpen(false); setEngineeringWizardOpen(true); }}
-          projectName={selectedProject.name}
-        />
-      ) : null}
     </section>
   );
 }

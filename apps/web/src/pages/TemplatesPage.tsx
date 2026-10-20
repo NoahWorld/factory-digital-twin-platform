@@ -17,7 +17,7 @@ export function TemplatesPage({
 }: TemplatesPageProps) {
   const templateCategories = ["全部", ...new Set(canvasTemplates.map((template) => template.category))];
   const [activeCategory, setActiveCategory] = useState("全部");
-  const [projectType, setProjectType] = useState<"2d" | "3d">(() => allowedModules.includes("2d") ? "2d" : "3d");
+  const [projectType, setProjectType] = useState<"2d" | "3d">(() => allowedModules.includes("3d") ? "3d" : "2d");
   const changeTabWithKeyboard = (event: KeyboardEvent<HTMLButtonElement>) => {
     const type = event.key === "ArrowLeft" || event.key === "Home" ? "2d" : event.key === "ArrowRight" || event.key === "End" ? "3d" : null;
     if (!type || !allowedModules.includes(type)) return;
@@ -34,7 +34,7 @@ export function TemplatesPage({
       {!canCreateProject ? (
         <section className="state-card template-permission-note">
           <h2>当前账号不能创建项目</h2>
-          <p>你仍可浏览模板；需要由平台管理员或交付经理创建新项目。</p>
+          <p>你仍可浏览模板；创建项目需要由 IoT 管理员授予相应权限。</p>
         </section>
       ) : null}
 
@@ -81,7 +81,7 @@ export function TemplatesPage({
       />
       </div> : null}
       {allowedModules.includes("3d") ? <div aria-labelledby="template-kind-3d" hidden={projectType !== "3d"} id="template-panel-3d" role="tabpanel">
-        <SceneTemplateGallery editable={canCreateProject} onApply={(id) => onCreateFromTemplate({ projectType: "3d", id })} actionLabel="用模板创建 3D 项目" includeApiExamples />
+        <SceneTemplateGallery editable={canCreateProject} onApply={(id) => onCreateFromTemplate({ projectType: "3d", id })} actionLabel="用模板创建 3D 项目" />
       </div> : null}
     </section>
   );

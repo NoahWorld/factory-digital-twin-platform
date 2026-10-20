@@ -25,7 +25,7 @@ export async function waitForCoverContent(root: HTMLElement, signal: AbortSignal
     const loading = root.querySelector('[data-cover-state="loading"]');
     const images = [...root.querySelectorAll("img")];
     const broken = images.find((img) => img.complete && img.naturalWidth === 0);
-    if (broken) throw new Error(`项目图片加载失败：${broken.getAttribute("src")}`);
+    if (broken) throw new Error("项目图片加载失败，无法截图。");
     if (!loading && images.every((img) => img.complete)) {
       await abortable(Promise.all(images.map((img) => img.decode())), signal);
       await abortable(frame(), signal);
@@ -64,9 +64,9 @@ export async function captureProjectContent(root: HTMLElement, type: "2d" | "3d"
       width, height, scale: COVER_WIDTH / width, type: "image/png", font: false,
       style: { transform: "none", margin: "0" },
       fetch: {
-        requestInit: { credentials: "include", signal },
-        placeholderImage: (image) => {
-          const message = `截图资源读取失败：${image.getAttribute("src") ?? image.getAttribute("href")}`;
+        requestInit: { credentials: "omit", referrerPolicy: "no-referrer", redirect: "error", signal },
+        placeholderImage: () => {
+          const message = "截图资源读取失败，请检查项目图片的访问授权。";
           resourceErrors.push(message);
           throw new Error(message);
         },

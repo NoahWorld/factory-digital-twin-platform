@@ -27,6 +27,10 @@ export class UserFacingError extends Error {
 
 // Codes are the API contract. Never infer a cause from arbitrary server messages.
 const userMessages: Readonly<Record<string, string>> = {
+  iot_twin_endpoint_unavailable: "IoT 尚未提供此数字孪生接口，请联系管理员完成接口接入。",
+  iot_session_changed: "IoT 账号已变化，请重新打开当前页面。",
+  iot_resource_access_invalid: "资源下载授权无效或已过期，请重新加载。",
+  iot_feature_unavailable: "此功能尚未接入 IoT，暂不可用。",
   site_capture_unavailable: "GPU 重建服务尚未就绪。素材已保留，服务就绪后可开始生成。",
   site_capture_not_found: "写实漫游任务不存在，请重新读取任务列表。",
   site_capture_state_conflict: "任务状态已变化，请重新读取后再操作。",
@@ -80,7 +84,7 @@ const userMessages: Readonly<Record<string, string>> = {
   engineering_precision_loss: "源坐标过大或几何过细，无法保留所需精度。请启用坐标居中，必要时拆分或调整模型后重试。",
   engineering_unit_mismatch: "选定单位与文件声明不一致，请检查图纸单位。",
   invalid_credentials: "账号或密码不正确，请重新输入。",
-  unauthenticated: "登录状态已失效，请重新登录。",
+  unauthenticated: "IoT 登录状态已失效，请返回 IoT 登录。",
   login_rate_limited: "登录尝试过于频繁，请 15 分钟后重试。",
   forbidden: "你没有操作权限，请联系管理员。",
   permission_denied: "你没有操作权限，请联系管理员。",

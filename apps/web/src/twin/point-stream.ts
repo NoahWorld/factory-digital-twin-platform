@@ -56,6 +56,8 @@ export class TwinPointStream implements TwinDriveLiveSource {
   private heartbeat: ReturnType<typeof setInterval> | null = null;
   private lastMessageAt = 0;
   private stopped = true;
+  private opening = 0;
+  private ticketRequest: AbortController | null = null;
   private transportRetries = 0;
   private revision: number | null = null;
   private sourceKind: "simulator" | "api" = "simulator";
@@ -65,7 +67,7 @@ export class TwinPointStream implements TwinDriveLiveSource {
   private subscriptionTimeout: ReturnType<typeof setTimeout> | null = null;
   private pending = new Map<string, { resolve: () => void; reject: (error: Error) => void; timeout: ReturnType<typeof setTimeout> }>();
 
-  constructor(private readonly url: string, private readonly projectId: string, private readonly onConfigChanged: () => void) {}
+  constructor(private readonly url: string | ((signal: AbortSignal) => Promise<string>), private readonly projectId: string, private readonly onConfigChanged: () => void) {}
   getState = (): TwinStreamState => this.state;
   setRevision = (revision: number) => { this.revision = revision; };
   setConfiguration = (revision: number, points: TwinPoint[], source: "simulator" | "api" = "simulator") => {
@@ -95,7 +97,23 @@ export class TwinPointStream implements TwinDriveLiveSource {
   private open() {
     if (this.stopped) return;
     this.update({ connected: false, phase: this.transportRetries ? "reconnecting" : "connecting" });
-    const socket = new WebSocket(this.url);
+    if (typeof this.url === "string") { this.openSocket(this.url); return; }
+    this.ticketRequest?.abort();
+    const controller = new AbortController();
+    this.ticketRequest = controller;
+    const opening = ++this.opening;
+    void this.url(controller.signal).then(url => {
+      if (!this.stopped && this.opening === opening) this.openSocket(url);
+    }).catch(reason => {
+      if (this.stopped || this.opening !== opening) return;
+      // Authorization failures do not trigger unauthenticated WebSocket fallbacks.
+      this.stopped = true;
+      reportError(reason, { operation: "twin-stream.authorize", projectId: this.projectId });
+      this.update({ phase: "error", connected: false, error: errorMessage(reason) });
+    });
+  }
+  private openSocket(url: string) {
+    const socket = new WebSocket(url);
     this.socket = socket;
     this.subscriptionRequested = false;
     this.subscriptionReady = false;
@@ -212,6 +230,9 @@ export class TwinPointStream implements TwinDriveLiveSource {
   }
   close = () => {
     this.stopped = true;
+    ++this.opening;
+    this.ticketRequest?.abort();
+    this.ticketRequest = null;
     if (this.retryTimer) clearTimeout(this.retryTimer);
     if (this.heartbeat) clearInterval(this.heartbeat);
     if (this.subscriptionTimeout) clearTimeout(this.subscriptionTimeout);

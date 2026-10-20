@@ -1,3 +1,4 @@
+import { publicAssetUrl } from "../iot/resources";
 import { createUuid } from "../uuid";
 import { Select } from "../components/Select";
 import { useNotifications } from "../components/NotificationProvider";
@@ -639,7 +640,7 @@ export function Model3DInspector({
       <section className="inspector-section model-builtin-library" aria-label="内置模型样例">
         <div className="inspector-section-title"><strong>内置样例</strong><span>项目自带 · 无需上传</span></div>
         {builtinModels.map((sample) => <article className={`model-builtin-card${selectedAssetId === sample.id ? " is-active" : ""}`} key={sample.id}>
-          <img src={sample.thumbnailPath} alt={sample.name} loading="lazy" />
+          <img src={publicAssetUrl(sample.thumbnailPath)} alt={sample.name} loading="lazy" />
           <div><strong>{sample.name}</strong><p>{sample.description}</p>
             <button className="secondary-button" type="button" disabled={!editable || uploading || selectedAssetId === sample.id}
               onClick={() => chooseAsset(sample.id)}>{selectedAssetId === sample.id ? "正在使用" : "使用此样例"}</button>

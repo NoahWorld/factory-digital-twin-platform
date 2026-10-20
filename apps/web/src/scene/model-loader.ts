@@ -6,6 +6,7 @@ import { MeshoptDecoder } from "three/examples/jsm/libs/meshopt_decoder.module.j
 import { MeshBVH } from "three-mesh-bvh";
 import { buildModelSceneTree } from "../canvas/model-scene";
 import { modelAssetContentUrl } from "../canvas/model-assets";
+import { loadResourceBytes } from "../iot/resources";
 
 export const disposeModelResources = (root: Object3D) => {
   const geometries = new Set<BufferGeometry>();
@@ -52,9 +53,7 @@ export function createSceneModelLoader(projectId: string, renderer: WebGLRendere
       const startedAt = performance.now();
       let gltf: GLTF | undefined;
       try {
-        const response = await fetch(resolveModelUrl(assetId), { signal, credentials: "same-origin" });
-        if (!response.ok) throw new Error(`HTTP ${response.status} ${response.statusText}`);
-        const buffer = await response.arrayBuffer();
+        const buffer = await loadResourceBytes(resolveModelUrl(assetId), signal);
         signal.throwIfAborted();
         // Uploaded glTF is self-contained by contract; external URI models are rejected by the API.
         gltf = await decoders.loader.parseAsync(buffer, "");

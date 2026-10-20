@@ -102,9 +102,10 @@ await check("renderer errors and alerts reject with their visible diagnostic", a
   });
 });
 
-await check("broken images reject with the failed resource URL", async () => {
-  await withSurface({ images: [testImage({ naturalWidth: 0, source: "/missing-cover.png" })] }, async ({ root }) => {
-    await assert.rejects(waitForCoverContent(root, new AbortController().signal), /项目图片加载失败：\/missing-cover\.png/);
+await check("broken images fail without exposing a signed resource URL", async () => {
+  await withSurface({ images: [testImage({ naturalWidth: 0, source: "/private-cover.png?X-Amz-Signature=private" })] }, async ({ root }) => {
+    await assert.rejects(waitForCoverContent(root, new AbortController().signal), (error) =>
+      error.message === "项目图片加载失败，无法截图。" && !error.message.includes("Signature"));
   });
 });
 

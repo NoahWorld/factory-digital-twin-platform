@@ -1,3 +1,4 @@
+import { publicAssetUrl } from "../iot/resources";
 import { useEffect, useRef, useState } from "react";
 import { findBuiltinModel } from "../../../../shared/builtin-models";
 import type { ModelAsset } from "./model-assets";
@@ -30,7 +31,7 @@ export function ModelAssetThumbnail({ asset, name, onPreview }: {
         <img alt={`${name} 缩略图`} decoding="async" draggable={false} height={64} loading="lazy" onError={() => {
           console.error("Model thumbnail failed to load.", { modelAssetId: asset.id, thumbnail });
           setFailed(true);
-        }} src={thumbnail} width={64} />
+        }} src={publicAssetUrl(thumbnail)} width={64} />
       ) : <span>缩略图</span> : <span>{failed ? "缩略图加载失败" : "暂无缩略图"}<small>点击预览</small></span>}
     </button>
   );

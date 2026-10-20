@@ -33,14 +33,17 @@ export default defineConfig(({ mode }) => {
   const productName = resolveProductName(environment.VITE_PRODUCT_NAME);
 
   return {
+    base: "/twin/",
     plugins: [productNameHtmlPlugin(productName), react(), decoderAssets()],
     server: {
       host: "127.0.0.1",
       port: 5173,
+      strictPort: true,
       proxy: {
-        "/api": {
-          target: environment.VITE_DEV_API_TARGET || "http://127.0.0.1:8787",
+        "/cloud": {
+          target: environment.IOT_DEV_API_TARGET || "http://127.0.0.1:18848",
           changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/cloud(?=\/|$)/, ""),
           ws: true,
         },
       },

@@ -12,7 +12,7 @@ try {
   const outfile = join(temporary, "test.mjs");
   await build({ entryPoints: [fileURLToPath(new URL("../apps/web/tests/api-errors.test.mjs", import.meta.url))],
     outfile, bundle: true, platform: "node", format: "esm", logLevel: "warning",
-    define: { "import.meta.env.VITE_API_BASE_URL": '""' } });
+    define: { "import.meta.env": JSON.stringify({DEV:true,BASE_URL:"/twin/"}) } });
   execFileSync(process.execPath, ["--test", outfile], { stdio: "inherit" });
 } finally {
   await rm(temporary, { recursive: true, force: true });

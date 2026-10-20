@@ -90,14 +90,14 @@ function CoverCapture({ project, onComplete, onError }: {
 }
 
 /** One disposable renderer at a time; project cards remain ordinary cached images. */
-export default function ProjectCoverQueue({ projects, isAdmin, onComplete }: {
-  projects: CoverProject[]; isAdmin: boolean; onComplete: (project: CoverProject) => void;
+export default function ProjectCoverQueue({ projects, onComplete }: {
+  projects: CoverProject[]; onComplete: (project: CoverProject) => void;
 }) {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [retrying, setRetrying] = useState(false);
   const [retryError, setRetryError] = useState<string | null>(null);
   const eligible = projects.filter((project) => project.coverStatus === "pending"
-    && (isAdmin || project.projectRole === "owner" || project.projectRole === "editor"));
+    && (project.projectRole === "owner" || project.projectRole === "editor"));
   const current = eligible.find((project) => !errors[taskKey(project)]);
   const failed = eligible.filter((project) => errors[taskKey(project)]);
   const retry = async () => {

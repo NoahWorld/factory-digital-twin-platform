@@ -9303,3 +9303,7 @@ dialog.model-asset-preview-dialog::backdrop { background: rgba(var(--ui-shadow-r
     left: 12px;
   }
 }
+
+/* IoT authorization failures keep the current draft visible but block editing. */
+.iot-session-error { position: sticky; top: 0; z-index: 10000; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; padding: 16px; background: #fff3dd; color: #713f12; }
+.iot-resource-state { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 12px; }

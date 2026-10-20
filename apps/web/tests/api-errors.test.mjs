@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { beforeEach, test } from "node:test";
 import { ApiRequestError, UserFacingError, errorMessage, errorPresentation, reportError, request } from "../src/api";
 
+globalThis.window = {};
+
 function respond(t, response) {
   return t.mock.method(globalThis, "fetch", async () => response);
 }
@@ -20,6 +22,12 @@ async function rejected(promise) {
 }
 
 beforeEach(t => {
+  const target = new EventTarget();
+  target.localStorage = {getItem: key => key === "x-access-token" ? "fixture-iot-token" : null};
+  target.location = {origin:"http://localhost:8000",protocol:"http:",hash:""};
+  const previousWindow = globalThis.window;
+  globalThis.window = target;
+  t.after(() => { globalThis.window = previousWindow; });
   // Production diagnostics are exercised and inspected without printing error fixtures.
   t.mock.method(console, "error", () => {});
 });
@@ -40,38 +48,17 @@ function assertUserSafe(error, forbidden = []) {
   return message;
 }
 
-function shareWindow(t, token) {
-  const descriptor = Object.getOwnPropertyDescriptor(globalThis, "window");
-  Object.defineProperty(globalThis, "window", {
-    configurable: true, value: { location: { hash: `#/share/${token}` } },
-  });
-  t.after(() => {
-    if (descriptor) Object.defineProperty(globalThis, "window", descriptor);
-    else delete globalThis.window;
-  });
-}
-
-test("401 retains authentication codes and distinguishes login failure from missing or expired session", async t => {
-  for (const [code, raw, pattern] of [
-    ["invalid_credentials", "Invalid account or password.", /账号或密码/],
-    ["unauthenticated", "Session expired or was revoked.", /未登录|登录状态/],
-  ]) {
-    await t.test(code, async t => {
-      respond(t, failure(401, code, raw, { body: { requestId: "request-auth" } }));
-      const error = await rejected(request("/api/v1/auth/login", { method: "POST" }));
-      assert.ok(error instanceof ApiRequestError);
-      assert.equal(error.code, code);
-      assert.equal(error.context.status, 401);
-      assert.equal(error.requestId, "request-auth");
-      assert.equal(error.message, raw);
-      assert.match(errorPresentation(error).message, pattern);
-      assert.match(errorMessage(error), pattern);
-      assert.ok(!errorMessage(error).includes(raw));
-      assertUserSafe(error, [raw]);
-      assert.equal(error.context.method, "POST");
-      assert.equal(error.context.path, "/api/v1/auth/login");
-    });
-  }
+test("401 expires the IoT session with safe diagnostics", async t => {
+  const fetch = respond(t, failure(401, "unauthenticated", "Session expired.", {body:{requestId:"request-auth"}}));
+  let expired = 0;
+  window.addEventListener("iot-session-changed", () => expired++);
+  const error = await rejected(request("/api/v1/projects"));
+  assert.equal(fetch.mock.callCount(), 1);
+  assert.equal(error.code, "unauthenticated");
+  assert.equal(error.context.status, 401);
+  assert.equal(error.requestId, "request-auth");
+  assert.match(assertUserSafe(error), /IoT.*登录/);
+  assert.ok(expired >= 1);
 });
 
 test("a missing test-business endpoint identifies the backend update while retaining diagnostics", async t => {
@@ -79,7 +66,7 @@ test("a missing test-business endpoint identifies the backend update while retai
   const error = await rejected(request("/api/v1/test-business/handling-cell/state"));
   assert.equal(error.context.status, 404);
   assert.equal(error.requestId, "request-source");
-  assert.match(assertUserSafe(error), /测试业务接口尚未启用.*更新后端/);
+  assert.match(assertUserSafe(error), /IoT.*接口/);
   assert.doesNotMatch(errorPresentation(new ApiRequestError("not_found", undefined, "No route", { status: 404, path: "/api/v1/projects/missing" })).message, /更新后端/);
 });
 
@@ -147,7 +134,7 @@ test("request ID falls back to the response header only when the JSON ID is abse
       respond(t, failure(401, "invalid_credentials", "Invalid account or password.", {
         body: { requestId: bodyId }, headers: { "X-Request-Id": "request-header" },
       }));
-      const error = await rejected(request("/api/v1/auth/login"));
+      const error = await rejected(request("/api/v1/projects"));
       assert.equal(error.requestId, bodyId === "request-body" ? bodyId : "request-header");
     });
   }
@@ -157,7 +144,7 @@ test("HTML gateway errors preserve HTTP status without displaying the proxy HTML
   respond(t, new Response("<html>private-proxy-error-page</html>", {
     status: 502, headers: { "content-type": "text/html", "X-Request-Id": "request-gateway" },
   }));
-  const error = await rejected(request("/api/v1/auth/login", { method: "POST" }));
+  const error = await rejected(request("/api/v1/projects", { method: "POST" }));
   assert.ok(error instanceof ApiRequestError);
   assert.equal(error.code, "request_failed");
   assert.equal(error.context.status, 502);
@@ -198,7 +185,7 @@ test("empty 204, 205 and HEAD successes do not try parsing their optional JSON c
       await t.test(`${status} ${method} ${contentType ?? "no content type"}`, async t => {
         const headers = contentType ? { "content-type": contentType } : {};
         respond(t, new Response(null, { status, headers }));
-        assert.equal(await request("/api/v1/auth/logout", { method }), null);
+        assert.equal(await request("/api/v1/projects", { method }), null);
       });
     }
   }
@@ -206,14 +193,14 @@ test("empty 204, 205 and HEAD successes do not try parsing their optional JSON c
 
 test("valid JSON succeeds and retains normal credential and request options", async t => {
   const payload = { user: { id: "test-user", role: "platform_admin" } };
-  const fetch = respond(t, new Response(JSON.stringify(payload), {
+  const fetch = respond(t, new Response(JSON.stringify({status:200,result:payload}), {
     headers: { "content-type": "application/json; charset=utf-8" },
   }));
-  assert.deepEqual(await request("/api/v1/auth/login", { method: "POST", body: "{}" }), payload);
+  assert.deepEqual(await request("/api/v1/projects", { method: "POST", body: "{}" }), payload);
   assert.equal(fetch.mock.callCount(), 1);
   const [url, options] = fetch.mock.calls[0].arguments;
-  assert.equal(url, "/api/v1/auth/login");
-  assert.equal(options.credentials, "include");
+  assert.equal(url, "/cloud/twin/projects");
+  assert.equal(options.credentials, "omit");
   assert.equal(options.method, "POST");
   assert.equal(options.headers.get("content-type"), "application/json");
 });
@@ -221,7 +208,7 @@ test("valid JSON succeeds and retains normal credential and request options", as
 test("fetch connection errors retain their cause and safe path but no request secrets", async t => {
   const cause = new TypeError("Failed to fetch");
   const fetch = t.mock.method(globalThis, "fetch", async () => { throw cause; });
-  const error = await rejected(request("/api/v1/auth/login?token=fixture-query-token#fixture-fragment", {
+  const error = await rejected(request("/api/v1/projects?token=fixture-query-token", {
     method: "post", body: '{"password":"fixture-body-password"}',
     headers: { authorization: "Bearer fixture-header-token" },
   }));
@@ -232,7 +219,7 @@ test("fetch connection errors retain their cause and safe path but no request se
   assert.equal(error.context.status, undefined);
   assert.equal(error.requestId, undefined);
   assert.equal(error.context.method, "POST");
-  assert.equal(error.context.path, "/api/v1/auth/login");
+  assert.equal(error.context.path, "/cloud/twin/projects");
   assert.match(errorPresentation(error).message, /网络|响应/);
   assertUserSafe(error, [cause.message]);
   assert.doesNotMatch(JSON.stringify({ context: error.context, presentation: errorPresentation(error) }),
@@ -288,7 +275,7 @@ test("intentional cancellation and custom screenshot timeout reasons are not rew
 test("unknown validation codes keep original field constraints only for diagnostics", async t => {
   const raw = "displayName must contain 1–100 printable characters.";
   respond(t, failure(400, "invalid_input", raw, { body: { requestId: "request-field" } }));
-  const error = await rejected(request("/api/v1/users", { method: "POST" }));
+  const error = await rejected(request("/api/v1/projects", { method: "POST" }));
   assert.equal(error.code, "invalid_input");
   assert.match(errorPresentation(error).message, /输入.*要求/);
   assert.equal(error.message, raw);
@@ -311,38 +298,23 @@ test("malformed error envelopes cannot inject non-string diagnostics or hide HTT
       respond(t, new Response(JSON.stringify(payload), {
         status: 400, headers: { "content-type": "application/json", "X-Request-Id": "request-envelope" },
       }));
-      const error = await rejected(request("/api/v1/users"));
+      const error = await rejected(request("/api/v1/projects"));
       assert.equal(error.code, "request_failed");
       assert.equal(error.context.status, 400);
       assert.equal(error.requestId, "request-envelope");
-      assert.match(error.message, /HTTP 400/);
+      assert.match(error.message, /status 400/);
       assertUserSafe(error, [error.message]);
     });
   }
 });
 
-test("public reads use their share token only in the request, never in diagnostic paths", async t => {
-  shareWindow(t, "fixture-share-token");
-  const fetch = respond(t, failure(404, "publication_not_found", "Publication not found."));
-  const error = await rejected(request("/api/v1/projects/example?cursor=fixture-cursor"));
-  const [url, options] = fetch.mock.calls[0].arguments;
-  assert.equal(url, "/api/v1/publications/projects/example?cursor=fixture-cursor&share=fixture-share-token");
-  assert.equal(options.credentials, "omit");
-  assert.equal(error.context.method, "GET");
-  assert.equal(error.context.path, "/api/v1/projects/example");
-  assert.doesNotMatch(JSON.stringify(errorPresentation(error)), /fixture-share-token|fixture-cursor/);
-});
-
-test("public writes are explicitly rejected before any network request", async t => {
-  shareWindow(t, "fixture-share-token");
-  const fetch = t.mock.method(globalThis, "fetch", async () => { throw new Error("Unexpected network request"); });
-  const error = await rejected(request("/api/v1/projects/example", { method: "PUT", body: "{}" }));
+test("standalone auth, users and anonymous publications are rejected without network calls", async t => {
+  const fetch = t.mock.method(globalThis, "fetch", async () => { throw new Error("Unexpected request"); });
+  for (const path of ["/api/v1/auth/login", "/api/v1/users", "/api/v1/publications/projects/p"]) {
+    await assert.rejects(request(path), /已停用/);
+  }
   assert.equal(fetch.mock.callCount(), 0);
-  assert.equal(error.code, "publication_read_only");
-  assert.match(errorPresentation(error).message, /仅供查看/);
-  assert.doesNotMatch(JSON.stringify(errorPresentation(error)), /fixture-share-token/);
 });
-
 
 test("explicit reviewed local errors retain actionable copy without technical details", () => {
   const message = "请先保存当前修改，再进入预览。";
@@ -369,7 +341,7 @@ test("unknown string and object errors cannot expose raw browser or backend diag
 test("diagnostics retain traceable API metadata once per Error object without raw secrets", () => {
   const raw = "password=private-raw-password; SQLSTATE private-database; authorization=private-header";
   const error = new ApiRequestError("internal_error", "trace-private-fixture", raw, {
-    status: 500, method: "POST", path: "/api/v1/projects",
+    status: 500, method: "POST", path: "/cloud/twin/projects",
     cause: new Error("private-cause-content"),
   });
   const before = console.error.mock.callCount();
@@ -383,7 +355,7 @@ test("diagnostics retain traceable API metadata once per Error object without ra
   assert.equal(diagnostic.code, "internal_error");
   assert.equal(diagnostic.status, 500);
   assert.equal(diagnostic.method, "POST");
-  assert.equal(diagnostic.path, "/api/v1/projects");
+  assert.equal(diagnostic.path, "/cloud/twin/projects");
   assert.equal(diagnostic.requestId, "trace-private-fixture");
   assert.doesNotMatch(JSON.stringify(diagnostic), /private-raw|private-database|private-header|private-cause|password|authorization|stack/);
   reportError(new ApiRequestError("internal_error", "trace-next-occurrence", raw, error.context));
@@ -488,13 +460,13 @@ test("runtime diagnostic names use Error classes instead of arbitrary mutable na
 
 test("request diagnostics never copy request bodies, authentication headers or query strings", async t => {
   t.mock.method(globalThis, "fetch", async () => { throw new TypeError("Failed to fetch"); });
-  const error = await rejected(request("/api/v1/auth/login?token=private-query#private-fragment", {
+  const error = await rejected(request("/api/v1/projects?token=private-query", {
     method: "POST", body: '{"password":"private-password"}',
     headers: { authorization: "Bearer private-token" },
   }));
   reportError(error);
   const diagnostic = console.error.mock.calls.at(-1).arguments[1];
-  assert.equal(diagnostic.path, "/api/v1/auth/login");
+  assert.equal(diagnostic.path, "/cloud/twin/projects");
   assert.equal(diagnostic.code, "network_error");
   assert.equal(diagnostic.status, undefined);
   assert.doesNotMatch(JSON.stringify(diagnostic), /private-|password|authorization|token|fragment/);
@@ -507,8 +479,8 @@ test("multipart upload uses the browser boundary and authenticated API transport
   const mocked = t.mock.method(globalThis, "fetch", async (_url, init) => {
     assert.equal(init.body, form);
     assert.equal(init.headers.has("content-type"), false);
-    assert.equal(init.credentials, "include");
-    return new Response(JSON.stringify({ import: { id: "job-1" } }), { status: 202, headers: { "content-type": "application/json" } });
+    assert.equal(init.credentials, "omit");
+    return new Response(JSON.stringify({ status:200, result:{ import: { id: "job-1" } } }), { status: 202, headers: { "content-type": "application/json" } });
   });
   assert.deepEqual(await request("/api/v1/projects/project-1/engineering-imports", { method: "POST", body: form }), { import: { id: "job-1" } });
   assert.equal(mocked.mock.callCount(), 1);
