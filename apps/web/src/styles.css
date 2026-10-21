@@ -849,6 +849,28 @@ input:focus {
   gap: 16px;
 }
 
+.dashboard-case-section {
+  margin-bottom: 32px;
+}
+
+.dashboard-case-section .project-card-body {
+  grid-template-rows: auto auto 1fr auto;
+}
+
+.dashboard-case-section .project-card h3 {
+  margin: 12px 0 8px;
+  font-size: 0.9375rem;
+  line-height: 1.5;
+}
+
+.dashboard-case-section .project-card p {
+  margin: 0 0 16px;
+  color: var(--ui-text-muted);
+  font-size: 0.8125rem;
+  font-weight: 400;
+  line-height: 1.6;
+}
+
 .project-card {
   display: grid;
   min-height: 322px;

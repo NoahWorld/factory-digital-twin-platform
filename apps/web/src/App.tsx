@@ -24,8 +24,11 @@ import { IOT_HOME_PATH, IOT_LOGIN_PATH } from "./iot/config";
 import { loadIotIdentity, type IotUser } from "./iot/identity";
 import { IOT_SESSION_EVENT, IOT_TOKEN_KEY, readIotToken } from "./iot/session";
 import { ResourceImage } from "./iot/ResourceMedia";
+import { dashboardCases } from "./dashboard/dashboard-cases";
 
 const ProjectCoverQueue = lazy(() => import("./covers/ProjectCoverQueue"));
+
+const MetalSaltDashboard = lazy(() => import("./dashboard/MetalSaltDashboard"));
 
 const Model3DEditorPage = lazy(() => import("./pages/Model3DEditorPage"));
 const Standalone3DProjectPage = lazy(() => import("./pages/Standalone3DProjectPage"));
@@ -350,6 +353,7 @@ function AccessDenied({ module }: { module: string }) {
 }
 
 type WorkspaceRoute =
+  | { kind: "metal-salt-dashboard"; projectId: string }
   | { kind: "projects"; projectType?: ProjectType }
   | { kind: "templates" }
   | { kind: "resources"; tool?: "scene-foundation" }
@@ -387,6 +391,8 @@ const currentWorkspaceRoute = (): WorkspaceRoute => {
   if (window.location.hash === "#/users" || window.location.hash.startsWith("#/share/")) {
     return { kind: "invalid", message: "此入口已停用，请从 IoT 进入数字孪生项目。" };
   }
+  const dashboardMatch = window.location.hash.match(/^#\/projects\/([^/]+)\/metal-salt-dashboard$/);
+  if (dashboardMatch) return { kind: "metal-salt-dashboard", projectId: decodeURIComponent(dashboardMatch[1]) };
   const standaloneSceneMatch = window.location.hash.match(/^#\/projects\/([^/]+)\/(scene|scene-preview)(?:\?([^#]*))?$/);
   if (standaloneSceneMatch) {
     const templateValue = new URLSearchParams(standaloneSceneMatch[3] ?? "").get("template");
@@ -590,6 +596,12 @@ function Workspace({ user }: { user: IotUser }) {
       projectId={route.projectId} versionId={route.versionId} />;
   }
 
+  if (route.kind === "metal-salt-dashboard") {
+    return <Suspense fallback={<main className="canvas-page-state"><h1>正在准备产线看板…</h1></main>}>
+      <MetalSaltDashboard key={route.projectId} projectId={route.projectId} />
+    </Suspense>;
+  }
+
   if (route.kind === "standalone-scene") {
     if (!user.modules.includes("3d")) return <AccessDenied module="3D 场景" />;
     return (
@@ -712,6 +724,30 @@ function Workspace({ user }: { user: IotUser }) {
         </div>
 
 
+
+        {!loadingProjects && !projectError && dashboardCases.some(entry => projects.some(project => project.id === entry.sourceProjectId && project.projectType === "3d")) ? (
+          <section className="dashboard-case-section" aria-label="展示看板案例">
+            <h2>展示看板</h2>
+            <div className="project-grid">
+              {dashboardCases.map(entry => {
+                const source = projects.find(project => project.id === entry.sourceProjectId && project.projectType === "3d");
+                if (!source) return null;
+                const href = `#/projects/${encodeURIComponent(source.id)}/${entry.route}`;
+                return <article className="project-card project-card-3d" key={entry.key}>
+                  <a className="project-card-cover" href={href} aria-label={`打开 ${entry.title}`}>
+                    {source.coverUrl ? <ResourceImage alt={`${entry.title}的三维车间`} src={apiUrl(source.coverUrl)} /> : <span className="project-card-cover-empty"><strong>打开产线展示看板</strong></span>}
+                  </a>
+                  <div className="project-card-body">
+                    <div className="project-card-header"><span className="project-type-tag is-3d">3D 看板</span><span>模拟演示</span></div>
+                    <h3>{entry.title}</h3>
+                    <p>车间全景 · 七台设备参数 · 点击查看详情</p>
+                    <footer><span>场景：{source.name}</span><a className="secondary-button compact-button" href={href}>打开看板</a></footer>
+                  </div>
+                </article>;
+              })}
+            </div>
+          </section>
+        ) : null}
 
         {!loadingProjects && !projectError ? <Suspense fallback={null}>
           <ProjectCoverQueue projects={projects}

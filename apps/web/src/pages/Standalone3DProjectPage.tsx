@@ -1,3 +1,4 @@
+import { metalSaltDemo } from "../dashboard/metal-salt-demo";
 import { loadIotProjects } from "../iot/projects";
 import { useNotifications } from "../components/NotificationProvider";
 import { createUuid } from "../uuid";
@@ -954,6 +955,7 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
         </div>
         <div className="standalone-toolbar-group is-delivery" role="group" aria-label="保存与交付">
           <span className="standalone-toolbar-label">保存与交付</span>
+          {metalSaltDemo.devices.every(device => draftScene.instances.some(instance => instance.label.replace(/\s/g, "") === device.label.replace(/\s/g, ""))) ? <a className="secondary-button compact-button" href={`#/projects/${encodeURIComponent(projectId)}/metal-salt-dashboard`} target="_blank" rel="noopener noreferrer" title="使用已保存场景打开金属盐模拟展示看板">产线看板</a> : null}
           <a className="secondary-button compact-button" href={standaloneSceneRoutePath(projectId, "preview")} target="_blank" rel="noopener noreferrer" title="在新页签中预览" onClick={(event) => { if (dirty) { event.preventDefault(); notify.warning(fluidEditor.session ? "请先应用流体路径并保存场景，再进入预览。" : "请先保存场景，再预览已保存的配置。"); if (fluidEditor.session) setInspectorView("fluid"); } }}>预览</a>
           <PublicationPanel projectId={projectId} canEdit={editable} disabled={dirty || saving || !!fluidEditor.session} />
           <button className="primary-button compact-button" disabled={!dirty || saving || !editable || extrasPending} onClick={() => void save()} type="button">

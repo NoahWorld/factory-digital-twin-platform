@@ -1,0 +1,168 @@
+.salt-dashboard {
+  --salt-bg: #071525;
+  --salt-panel: #0a2034;
+  --salt-text: #e9f6ff;
+  --salt-muted: #a1bed2;
+  --salt-cyan: #69d9f4;
+  --salt-green: #6de0b5;
+  --salt-line: #285069;
+  position: relative; isolation: isolate; width: 100%; min-height: 720px; height: 100dvh;
+  overflow: hidden; background: var(--salt-bg); color: var(--salt-text);
+  font-family: "PingFang SC", "Microsoft YaHei", sans-serif; font-variant-numeric: tabular-nums;
+  color-scheme: dark;
+}
+.salt-dashboard * { box-sizing: border-box; }
+.salt-dashboard ::selection { background: #17617e; color: #fff; }
+.salt-dashboard :focus-visible { outline: 2px solid var(--salt-cyan); outline-offset: 4px; }
+.salt-dashboard button, .salt-dashboard a { font: inherit; color: inherit; }
+.salt-dashboard button { cursor: pointer; border: 1px solid var(--salt-line); background: #0d263a; border-radius: 4px; }
+.salt-dashboard button:hover, .salt-dashboard button[aria-pressed="true"] { background: #153b52; border-color: var(--salt-cyan); }
+.salt-dashboard a { text-decoration: none; text-underline-offset: 4px; }
+.salt-dashboard a:hover { color: var(--salt-cyan); text-decoration: underline; }
+.salt-header { position: relative; z-index: 3; height: 110px; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 24px; padding: 0 30px; border-bottom: 1px solid var(--salt-line); background: linear-gradient(180deg,#112d45 0%,#071525 100%); }
+.salt-header::after { content: ""; position: absolute; bottom: -2px; left: 32%; right: 32%; height: 3px; background: var(--salt-cyan); clip-path: polygon(0 0,100% 0,98% 100%,2% 100%); }
+.salt-title { text-align: center; }
+.salt-title h1 { margin: 0; font-size: clamp(26px,2.35vw,44px); font-weight: 650; letter-spacing: .12em; line-height: 1.3; }
+.salt-title p { margin: 7px 0 0; font-size: 12px; letter-spacing: .2em; color: var(--salt-muted); }
+.salt-header-side { display: flex; align-items: center; gap: 20px; font-size: 12px; }
+.salt-header-end { justify-content: flex-end; }
+.salt-header-end button { padding: 8px 12px; white-space: nowrap; }
+.salt-header time { color: var(--salt-muted); display: grid; gap: 2px; text-align: right; white-space: nowrap; }
+.salt-header time b { color: var(--salt-text); font-size: 20px; font-weight: 500; }
+.salt-demo-badge { color: #f1cc81; border: 1px solid #76613b; padding: 5px 9px; white-space: nowrap; }
+.salt-scene { position: absolute; inset: 170px 280px 140px; z-index: 0; }
+.salt-scene .model-3d-node { position: absolute; inset: 0; }
+.salt-scene .model-3d-renderer { width: 100%; height: 100%; }
+.salt-scene .model-3d-message { z-index: 1; }
+.salt-overview { position: absolute; top: 135px; left: 25%; right: 25%; z-index: 1; display: flex; align-items: center; justify-content: space-around; pointer-events: none; }
+.salt-overview > div { display: grid; gap: 5px; }
+.salt-overview strong { color: var(--salt-cyan); font-size: 35px; line-height: 1.1; font-weight: 500; }
+.salt-overview strong small { font-size: 12px; margin-left: 7px; color: var(--salt-muted); }
+.salt-overview > div > span { font-size: 12px; color: var(--salt-muted); }
+.salt-overview-status { border-left: 1px solid var(--salt-line); padding-left: 22px; }
+.salt-running { display: inline-flex; align-items: center; gap: 7px; color: var(--salt-green) !important; font-size: 11px; white-space: nowrap; }
+.salt-running::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+.salt-column { position: absolute; z-index: 2; top: 140px; bottom: 112px; width: clamp(240px,20vw,356px); display: flex; flex-direction: column; gap: 13px; }
+.salt-left { left: 28px; }
+.salt-right { right: 28px; }
+.salt-column > h2 { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin: 0 0 2px; padding-bottom: 12px; border-bottom: 1px solid var(--salt-cyan); font-size: 18px; font-weight: 600; }
+.salt-column > h2 span { font-size: 9px; font-weight: 400; color: var(--salt-muted); letter-spacing: .06em; }
+.salt-dashboard .salt-device { text-align: left; display: block; width: 100%; padding: 16px 18px; background: linear-gradient(110deg,#0c263bee,#0b2036cc); border: 1px solid var(--salt-line); border-radius: 0; flex: 1; max-height: 175px; min-height: 120px; }
+.salt-dashboard .salt-device.is-selected { border-color: var(--salt-cyan); background: #12374d; }
+.salt-device-heading { display: flex; justify-content: space-between; gap: 8px; align-items: center; }
+.salt-device-heading strong { font-size: 20px; font-weight: 550; }
+.salt-device-stage { display: flex; justify-content: space-between; font-size: 10px; color: var(--salt-muted); margin-top: 7px; }
+.salt-device-stage > span { color: var(--salt-cyan); }
+.salt-metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 16px; }
+.salt-metrics > span { display: grid; gap: 4px; }
+.salt-metric-label { color: var(--salt-muted); font-size: 11px; }
+.salt-metric-value { font-size: clamp(22px,1.65vw,30px); line-height: 1.2; color: var(--salt-text); }
+.salt-metric-value small { color: var(--salt-muted); font-size: 11px; margin-left: 6px; }
+.salt-guide { margin-top: 5px; padding: 12px 0 0; border-top: 1px solid var(--salt-line); }
+.salt-guide h3 { font-size: 15px; margin: 0 0 8px; font-weight: 500; }
+.salt-guide p { color: var(--salt-muted); font-size: 12px; line-height: 1.7; margin: 0 0 12px; }
+.salt-guide > div { display: flex; align-items: center; justify-content: space-between; font-size: 12px; }
+.salt-guide i { color: var(--salt-cyan); font-style: normal; }
+.salt-scene-controls { position: absolute; z-index: 2; bottom: 120px; left: 27%; right: 27%; display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; }
+.salt-scene-controls button { padding: 8px 15px; font-size: 12px; }
+.salt-scene-controls > span { width: 100%; text-align: center; margin-top: 3px; font-size: 11px; color: var(--salt-muted); }
+.salt-footer { position: absolute; z-index: 3; bottom: 0; width: 100%; min-height: 85px; padding: 16px 28px; display: flex; align-items: center; gap: 20px; background: #0a1c2d; border-top: 1px solid var(--salt-line); }
+.salt-footer > span { font-size: 12px; color: var(--salt-muted); white-space: nowrap; }
+.salt-footer nav { display: flex; flex: 1; justify-content: center; gap: 8px; }
+.salt-footer nav button { position: relative; flex: 1; max-width: 165px; padding: 12px 6px; font-size: 12px; background: transparent; border-color: transparent; border-bottom-color: var(--salt-line); border-radius: 0; white-space: nowrap; }
+.salt-footer nav button + button::before { content: "›"; position: absolute; left: -8px; color: var(--salt-cyan); }
+.salt-footer small { color: var(--salt-cyan); font-size: 10px; margin-right: 7px; }
+.salt-footer p { color: #e8c784; font-size: 10px; }
+.salt-detail { position: absolute; z-index: 4; left: 25%; right: 25%; bottom: 205px; padding: 22px; background: #0b2236fa; border: 1px solid #4c89a7; }
+.salt-detail-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+.salt-detail h2 { font-size: 24px; margin: 0; line-height: 1.3; }
+.salt-detail h2 span { font-size: 12px; color: var(--salt-muted); margin-left: 14px; font-weight: 400; }
+.salt-detail-head p { color: var(--salt-green); margin: 6px 0 0; font-size: 12px; }
+.salt-detail-head button { padding: 6px 10px; font-size: 12px; }
+.salt-detail-copy { color: var(--salt-muted); font-size: 12px; margin: 16px 0; line-height: 1.6; }
+.salt-detail-data { display: grid; grid-template-columns: 1fr 1.45fr; gap: 24px; }
+.salt-detail dl { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin: 0; }
+.salt-detail dt { font-size: 11px; color: var(--salt-muted); }
+.salt-detail dd { font-size: 24px; margin: 4px 0 0; }
+.salt-detail dd small { font-size: 10px; margin-left: 4px; color: var(--salt-muted); }
+.salt-trend { margin: 0; min-width: 0; }
+.salt-trend figcaption { font-size: 12px; display: flex; justify-content: space-between; gap: 12px; }
+.salt-trend figcaption span { font-size: 10px; color: var(--salt-muted); }
+.salt-trend svg { display: block; width: 100%; margin-top: 7px; overflow: visible; }
+.salt-trend line { stroke: var(--salt-line); stroke-width: 1; }
+.salt-trend text { fill: var(--salt-muted); font-size: 11px; }
+.salt-trend polyline { fill: none; stroke: var(--salt-cyan); stroke-width: 2.5; stroke-linejoin: round; }
+.salt-detail-note { font-size: 10px; color: #e8c784; margin: 16px 0 0; padding-top: 12px; border-top: 1px solid var(--salt-line); }
+.salt-state { margin: 12vh auto; text-align: center; max-width: 600px; padding: 24px; }
+.salt-state h2 { font-size: 24px; }
+.salt-state p { color: var(--salt-muted); line-height: 1.7; }
+.salt-state button { padding: 10px 18px; }
+.salt-state small { display: block; margin-top: 12px; }
+.salt-control-error { position: absolute; top: 115px; z-index: 5; left: 30%; right: 30%; background: #522c1b; padding: 12px; font-size: 13px; }
+.salt-control-error button { margin-left: 12px; }
+@media (min-width: 1700px) {
+  .salt-scene { left: 330px; right: 330px; }
+  .salt-column { gap: 18px; }
+  .salt-device-heading strong { font-size: 23px; }
+  .salt-metric-label { font-size: 13px; }
+  .salt-column > h2 { font-size: 21px; }
+  .salt-column > h2 span { font-size: 11px; }
+  .salt-device-stage, .salt-running { font-size: 12px; }
+  .salt-guide p, .salt-guide > div { font-size: 14px; }
+}
+@media (max-height: 850px) and (min-width: 1101px) {
+  .salt-header { height: 90px; }
+  .salt-overview { top: 112px; }
+  .salt-scene { top: 145px; bottom: 120px; }
+  .salt-dashboard .salt-device { padding: 10px 15px; min-height: 110px; }
+  .salt-metrics { margin-top: 8px; }
+  .salt-column { gap: 8px; top: 110px; bottom: 90px; }
+  .salt-column > h2 { padding-bottom: 8px; }
+  .salt-footer { min-height: 70px; padding-top: 10px; padding-bottom: 10px; }
+  .salt-scene-controls { bottom: 90px; }
+  .salt-detail { bottom: 175px; }
+  .salt-guide { padding-top: 8px; }
+  .salt-guide p { margin-bottom: 8px; }
+}
+@media (max-width: 1100px) {
+  .salt-dashboard { height: auto; min-height: 100dvh; overflow: visible; display: grid; grid-template-columns: 1fr 1fr; gap: 18px; padding: 0 18px; }
+  .salt-header { grid-column: 1 / -1; margin: 0 -18px; padding: 0 18px; gap: 12px; }
+  .salt-header-side { gap: 10px; }
+  .salt-overview { position: static; grid-column: 1 / -1; padding: 8px 0; }
+  .salt-scene { position: relative; inset: auto; grid-column: 1 / -1; grid-row: 3; height: 55vw; min-height: 310px; max-height: 620px; }
+  .salt-column { position: static; width: auto; gap: 12px; }
+  .salt-left { grid-column: 1; grid-row: 5; }
+  .salt-right { grid-column: 2; grid-row: 5; }
+  .salt-scene-controls { position: static; grid-column: 1 / -1; grid-row: 4; margin-bottom: 12px; }
+  .salt-dashboard .salt-device { min-height: 142px; }
+  .salt-detail { position: fixed; left: 8%; right: 8%; bottom: 24px; max-height: 85dvh; overflow-y: auto; }
+  .salt-footer { position: static; grid-column: 1 / -1; flex-wrap: wrap; padding: 16px 0; }
+  .salt-footer nav { flex-wrap: wrap; min-width: 100%; }
+  .salt-footer nav button { flex: 1 1 23%; }
+  .salt-footer nav button + button::before { content: none; }
+  .salt-footer p { margin: 0; }
+  .salt-state { grid-column: 1 / -1; }
+}
+@media (max-width: 600px) {
+  .salt-header { display: flex; flex-wrap: wrap; height: auto; min-height: 160px; padding: 16px; justify-content: space-between; }
+  .salt-title { order: -1; width: 100%; margin-bottom: 14px; }
+  .salt-title h1 { font-size: 26px; }
+  .salt-header time { display: none; }
+  .salt-overview-status { display: none !important; }
+  .salt-overview strong { font-size: 28px; }
+  .salt-column > h2 { display: block; font-size: 16px; }
+  .salt-column > h2 span { display: block; margin-top: 8px; font-size: 9px; }
+  .salt-device-heading { flex-wrap: wrap; }
+  .salt-device-heading strong { font-size: 17px; }
+  .salt-dashboard .salt-device { padding: 12px; min-height: 210px; }
+  .salt-device-stage > span { display: none; }
+  .salt-metrics { grid-template-columns: 1fr; gap: 10px; }
+  .salt-metric-value { font-size: 23px; }
+  .salt-guide > div { flex-wrap: wrap; gap: 8px; }
+  .salt-detail { left: 12px; right: 12px; padding: 18px; }
+  .salt-detail-data { grid-template-columns: 1fr; }
+  .salt-detail h2 { font-size: 21px; }
+  .salt-detail h2 span { display: block; margin: 4px 0; }
+  .salt-footer nav button { font-size: 11px; }
+  .salt-control-error { position: fixed; left: 16px; right: 16px; top: 16px; }
+}
