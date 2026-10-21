@@ -1,0 +1,82 @@
+[
+  {
+    "id": "reactor",
+    "name": "反应釜",
+    "description": "立式夹套搅拌釜",
+    "filename": "反应釜.0a4dc2ba2f25.glb",
+    "sha256": "0a4dc2ba2f25c2cb92fa95faef9686f6e18dc2562a0fdb087e67fdf22d3e5986",
+    "byteSize": 667300,
+    "triangles": 35992,
+    "nodeCount": 159,
+    "meshCount": 48,
+    "dimensionsM": [
+      2.003,
+      3.8,
+      1.89
+    ],
+    "unit": "metre",
+    "up": "Y",
+    "simulation": true,
+    "animations": 0
+  },
+  {
+    "id": "cleaning-vessel",
+    "name": "清洗釜",
+    "description": "带循环泵与喷淋组件的立式清洗釜",
+    "filename": "清洗釜.7ca44ff8f675.glb",
+    "sha256": "7ca44ff8f675b506e0ac8edb7457ac5cd4c46fde3276e3a3f886d211410beffe",
+    "byteSize": 573104,
+    "triangles": 50620,
+    "nodeCount": 120,
+    "meshCount": 44,
+    "dimensionsM": [
+      2.093,
+      2.966,
+      1.485
+    ],
+    "unit": "metre",
+    "up": "Y",
+    "simulation": true,
+    "animations": 0
+  },
+  {
+    "id": "solid-liquid-separator",
+    "name": "固液分离器",
+    "description": "卧式螺旋离心分离机示意",
+    "filename": "固液分离器.8c96d335c9f2.glb",
+    "sha256": "8c96d335c9f2b0438139997be59d737e9fb680f34fd05a1f62cec048c240fbee",
+    "byteSize": 327388,
+    "triangles": 17200,
+    "nodeCount": 111,
+    "meshCount": 33,
+    "dimensionsM": [
+      3.81,
+      1.635,
+      1.486
+    ],
+    "unit": "metre",
+    "up": "Y",
+    "simulation": true,
+    "animations": 0
+  },
+  {
+    "id": "disperser",
+    "name": "分散机",
+    "description": "液压升降式高速分散机与敞口桶",
+    "filename": "分散机.79cb532ac467.glb",
+    "sha256": "79cb532ac46742b3687930096cc1ddb1cc8b0d2728f88180ec8d47475fb1f3eb",
+    "byteSize": 254208,
+    "triangles": 8232,
+    "nodeCount": 93,
+    "meshCount": 31,
+    "dimensionsM": [
+      2.281,
+      3.28,
+      1.4
+    ],
+    "unit": "metre",
+    "up": "Y",
+    "simulation": true,
+    "animations": 0
+  }
+]
