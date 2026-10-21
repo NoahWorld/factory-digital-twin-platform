@@ -1,3 +1,4 @@
+import { loadIotProjects } from "../iot/projects";
 import { useEffect, useMemo, useState } from "react";
 import { standaloneScenePath, type StandaloneSceneDocument } from "../../../../shared/standalone-3d";
 import { errorMessage, request } from "../api";
@@ -27,7 +28,7 @@ export function useLinkedTwinScenes(projectId: string, document: CanvasDocument 
     setLoading(true);
     setError(null);
     void (async () => {
-      const response = await request<{ projects: { id: string; name: string; projectType: "2d" | "3d" }[] }>("/api/v1/projects");
+      const response = await loadIotProjects<{ id: string; name: string; projectType: "2d" | "3d" }>();
       const candidates = response.projects.filter((project) => project.projectType === "3d");
       const references = new Set(referencedIds.split("|").filter(Boolean));
       const result: TwinActionScene[] = [];

@@ -105,7 +105,7 @@ export function PublicationPanel({ projectId, canEdit, disabled }: { projectId: 
         <button aria-label="关闭发布版本" className="dialog-close" disabled={busy} onClick={() => setOpen(false)} type="button">×</button>
         <h2>发布版本与回滚</h2>
         <p>发布会冻结已保存的项目文档、关联场景、设备配置和资源引用。创建版本后再选择激活。</p>
-        {canEdit ? draft ? <p>当前草稿修订版 {draft.documentRevision} · {draft.projectCount} 个项目 · {draft.resourceCount} 个资源</p> : <p>正在读取草稿…</p> : null}
+        {canEdit ? draft ? <p>当前草稿修订版 {draft.documentRevision} · {draft.projectCount} 个项目 · {draft.resourceCount} 个资源</p> : !error ? <p>正在读取草稿…</p> : null : null}
         {canEdit ? <div className="publication-create">
           <input aria-label="版本名称" disabled={busy || disabled || !draft} maxLength={100} onChange={(event) => setTitle(event.target.value)} placeholder="版本名称（可选）" value={title} />
           <button className="primary-button" disabled={busy || disabled || !draft} onClick={() => void create()} type="button">创建快照</button>

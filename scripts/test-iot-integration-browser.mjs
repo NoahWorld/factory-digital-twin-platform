@@ -23,7 +23,8 @@ const server = await createServer({
   root: fileURLToPath(new URL("../apps/web", import.meta.url)),
   configFile: fileURLToPath(new URL("../apps/web/vite.config.ts", import.meta.url)),
   cacheDir,
-  server: { host: "127.0.0.1", port: Number(process.env.IOT_INTEGRATION_TEST_PORT || 5219), strictPort: true },
+  // This isolated fixture server must not connect to the live development HMR port.
+  server: { host: "127.0.0.1", port: Number(process.env.IOT_INTEGRATION_TEST_PORT || 5219), strictPort: true, hmr: false },
   plugins: [{
     name: "isolated-iot-contract-fixtures",
     configureServer(vite) {
@@ -50,7 +51,7 @@ const server = await createServer({
           ] });
         }
         if (path === "/cloud/twin/projects" && req.method === "GET") {
-          return mode === "missing-module" ? send(null, 404) : send({ projects: [project] });
+          return mode === "missing-module" ? send(null, 404) : send({ projects: [project], nextOffset: null });
         }
         if (path === "/cloud/twin/projects/test-line/cover.png/access") {
           return send({ url: "/__test_cover.png", expiresAt: Date.now() + 120_000 });
@@ -75,7 +76,8 @@ try {
   page.on("pageerror", error => pageErrors.push(error.message));
   const origin = new URL(server.resolvedUrls.local[0]).origin;
   await page.goto(`${origin}/twin/`);
-  await page.getByRole("heading", { name: "请先登录 IoT" }).waitFor();
+  await page.getByRole("heading", { name: "当前浏览器未登录 IoT" }).waitFor();
+  await page.getByText(`当前访问地址：${origin}`, { exact: true }).waitFor();
   assert.equal(await page.locator('input[type="password"]').count(), 0);
   assert.equal(requests.length, 0, "anonymous visits must not load business data");
   assert.equal(await page.getByRole("link", { name: "前往 IoT 登录" }).getAttribute("href"), "/user/login");
@@ -114,7 +116,9 @@ try {
   await page.getByText("IoT 尚未提供此数字孪生接口，请联系管理员完成接口接入。", { exact: true }).waitFor();
   mode = "ungranted";
   await page.evaluate(() => window.dispatchEvent(new Event("focus")));
-  await page.getByRole("heading", { name: "尚未获得模块权限" }).waitFor();
+  await page.reload();
+  await page.getByRole("heading", { name: "测试产线", exact: true }).waitFor();
+  assert.equal(await page.getByText("尚未获得模块权限").count(), 0);
 
   mode = "authorized";
   await page.goto(`${origin}/twin/#/users`);
@@ -124,8 +128,13 @@ try {
   assert.equal(requests.some(item => /\/auth\/|\/users|\/publications\/projects/.test(item.path)), false);
   mode = "expired";
   await page.evaluate(() => window.dispatchEvent(new Event("focus")));
-  await page.getByRole("heading", { name: "请先登录 IoT" }).waitFor();
+  await page.getByRole("heading", { name: "IoT 登录已失效" }).waitFor();
   assert.equal(await page.getByRole("heading", { name: "测试产线", exact: true }).count(), 0);
+  await page.evaluate(() => {
+    localStorage.removeItem("x-access-token");
+    window.dispatchEvent(new StorageEvent("storage", { key: "x-access-token" }));
+  });
+  await page.getByRole("heading", { name: "当前浏览器未登录 IoT" }).waitFor();
 
   for (const path of ["/twin/branding/kingdom-logo.png", "/twin/decoders/draco/draco_decoder.wasm"]) {
     const result = await fetch(`${origin}${path}`);

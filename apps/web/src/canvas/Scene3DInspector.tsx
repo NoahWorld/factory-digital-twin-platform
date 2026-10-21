@@ -1,3 +1,4 @@
+import { loadIotProjects } from "../iot/projects";
 import { Select } from "../components/Select";
 import { useEffect, useMemo, useState } from "react";
 import { errorMessage, request } from "../api";
@@ -10,10 +11,6 @@ type ProjectSummary = {
   projectType: "2d" | "3d";
 };
 
-type ProjectsResponse = {
-  projects: ProjectSummary[];
-  requestId: string;
-};
 
 export function Scene3DInspector({
   editable,
@@ -48,7 +45,7 @@ export function Scene3DInspector({
     let active = true;
     setLoading(true);
     setLoadError(null);
-    void request<ProjectsResponse>("/api/v1/projects")
+    void loadIotProjects<ProjectSummary>()
       .then((result) => {
         if (active) setProjects(result.projects);
       })

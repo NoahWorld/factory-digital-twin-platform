@@ -57,8 +57,8 @@ export function TwinSourceStep({ projectId, config, onChange, onContinue, onInsp
           if (protocol === connection.protocol) return;
           const { subscribeMessage: _removed, ...rest } = connection;
           onChange({ ...config, connection: { ...rest, protocol: protocol as TwinApiConnection["protocol"], url: "" } });
-        }}><option value="rest">REST 轮询</option><option value="websocket">WebSocket 订阅</option></Select></label>
-        <label className="twin-wide"><span>接口地址</span><input value={connection.url} maxLength={2048} placeholder={connection.protocol === "rest" ? "https://业务服务地址/api/state" : "wss://业务服务地址/live"} onChange={event => patch({ url: event.target.value })} /></label>
+        }}><option value="rest">REST 轮询</option></Select></label>
+        <label className="twin-wide"><span>IoT 设备数据地址</span><input value={connection.url} maxLength={2048} placeholder="/iot/devices/设备ID/snapshot" onChange={event => patch({ url: event.target.value })} /></label>
       </div>
       <details className="twin-advanced"><summary>连接高级设置</summary><div className="twin-fields">
         <label><span>采样时间字段</span><input value={connection.timestampPath} maxLength={256} placeholder="timestamp" onChange={event => patch({ timestampPath: event.target.value })} /></label>
@@ -68,7 +68,7 @@ export function TwinSourceStep({ projectId, config, onChange, onContinue, onInsp
           const { subscribeMessage: _removed, ...without } = connection;
           onChange({ ...config, connection: event.target.value === "" ? without : { ...connection, subscribeMessage: event.target.value } });
         }} /></label> : null}
-      </div><p className="twin-help">由后端采集接口数据。外部业务地址需由管理员在服务端允许连接。</p></details>
+      </div><p className="twin-help">读取 IoT 设备最新上报数据。多个设备 ID 用逗号分隔；无需额外登录或配置凭据。</p></details>
       <div className="twin-row"><button type="button" className="secondary-button" disabled={checking || twinApiConnectionErrors(connection).length > 0} onClick={() => void inspect()}>{checking ? "正在读取接口…" : "检查接口并读取字段"}</button>{checking ? <span className="twin-help" role="status">正在等待真实接口响应。</span> : null}</div>
       {error ? <p className="twin-error" role="alert">🔴 接口检查失败：{error}</p> : null}
       {result ? <div className="twin-source-result" role="status"><p className="twin-success">已读取接口 · 采样时间 {new Date(result.timestamp).toLocaleTimeString()}</p><div className="twin-source-fields">{result.fields.map(field => <span key={field.path}><code>{field.path}</code><small>{String(field.value)}</small></span>)}</div><p className="twin-help">下一步选择数值或布尔字段，让模型动作跟随它变化。</p></div> : null}

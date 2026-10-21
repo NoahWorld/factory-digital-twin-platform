@@ -7,21 +7,22 @@
 - 用户于 2026-10-20 再次明确：所有修改统一在 `main` 分支进行，不自行创建新分支（包括 `codex/*`）。这是本项目的明确分支约定；只有用户后续明确要求时才能更改。分支整理必须保留已有提交和未提交改动，确认合并及远端同步完成后再删除旧分支。
 - 用户于 2026-10-20 后续明确要求从 `main` 创建 IoT 集成专用前端分支，基线为 `61c71a1`，最终指定分支名为 `iot-3d`，不使用 `codex/` 前缀。原本地 `codex/iot-3d-integration` 已重命名，不保留同名旧分支。该分支后续工作留在 `iot-3d`；上条 `main` 约定继续适用于原独立产品。
 - 本分支目标是仅保留 DTwin 前端，登录身份、权限和用户管理统一由 IoT 提供，不再依赖独立 DTwin 后端；项目、场景、资源元数据及发布能力由 IoT 后端承接，文件存储使用 IoT 的 MinIO。没有 IoT 会话时返回 IoT 登录流程，不能将“不提供独立登录页”实现成匿名业务访问。
-- 用户明确 IoT 暂时不能升级。本分支不得以升级 IoT 的 Java、Spring、数据库访问框架或原前端构建链为前提；所需孪生接口须按现有 IoT 技术栈实现，不能直接引入原 DTwin Java 21 后端或其运行依赖。DTwin 前端保持独立构建。新增接口、数据表和上线发布仍属后续实施范围，不得将“不升级技术栈”表述为“无需改动 IoT 后端”。
-- 当前已完成第一阶段前端适配，IoT 孪生业务接口、数据表、MinIO 授权和真实数据联调仍待实施。不得把前端构建或隔离接口测试通过表述为真实后端迁移完成。不得改动独立后端仓库或删除其数据。
+- 用户明确 IoT 暂时不能升级。本分支不得以升级 IoT 的 Java、Spring、数据库访问框架或原前端构建链为前提；所需孪生接口须按现有 IoT 技术栈实现，不能直接引入原 DTwin Java 21 后端或其运行依赖。DTwin 前端保持独立构建。IoT 后端在当前 `huanggang-jinshuyan` 分支新增孪生模块；本地实现不等于已经上线发布。
+- 用户于 2026-10-21 明确取消额外孪生授权要求：IoT 登录成功即可使用 2D/3D、项目和静态资源；不新增孪生用户或权限分配。IoT 后端已新增项目、画布/场景、资源、发布快照及设备数据适配；真实设备联调仍需现场设备上报，不能拿隔离测试代替现场数据验证。不得改动独立后端仓库或删除其数据。
 
 ## `iot-3d` 当前实施规则（优先于下文原独立产品历史说明）
 
 - 活跃 pnpm workspace 仅为 `apps/web`。前端保持 React 19 / TypeScript 5 / Vite 7 / Three.js，已用 Node 24.0.2、pnpm 10.0.0 验证。`pnpm dev:web` 使用 5173，`pnpm check` / `pnpm build` 仅检查或构建前端。`apps/api`、`apps/backend`、旧部署脚本仅留作历史参考，本分支不得运行它们恢复独立身份或存储。
-- 统一部署路径 `/twin/`，从 IoT 同源入口访问；开发时 IoT 8000 将 `/twin` 代理到 5173 并保留路径。IoT 仍使用原 Node 16 / Umi 2 / React 16 构建链，两个前端分别构建和部署。直接访问 5173 不共享 8000 的 localStorage。
+- 统一部署路径 `/twin/`，从 IoT 同源入口访问；开发时 IoT 8000 将 `/twin` 以 HTTP 代理到 5173 并保留路径；Vite HMR 直接连接 5173。不要启用 `/twin` 的 Umi 2 WebSocket 代理，否则升级处理器冲突可导致 8000 进程退出。IoT 仍使用原 Node 16 / Umi 2 / React 16 构建链，两个前端分别构建和部署。直接访问 5173 不共享 8000 的 localStorage。
 - 身份只读取 IoT `x-access-token`，通过 `X-Access-Token` 调用 `/authorize/me` 验证；无会话引导至 IoT，401 失效，403 展示拒绝。不再提供登录、初始化管理员、用户管理、独立退出或匿名分享页。前端不得按用户名、旧平台角色或本地缓存授予权限。
-- 当前能力映射为 `twin-project:query/save` 与 `twin-resource:query`，这些 IoT 权限尚待注册和分配。项目范围、编辑/删除、资源写入等最终由 IoT 服务端校验；沿用响应中的 `projectRole` / `editable` 控制界面，不在 DTwin 新增用户或角色系统。
+- 会话复用要求同一浏览器用户配置与同源地址，Chrome 与 Codex 内置浏览器不共享登录状态。登录提示区分“当前浏览器未登录”与“IoT 登录已失效”，显示当前访问地址但不输出令牌。
+- 不再要求 `twin-project` / `twin-resource` 权限。有效 IoT 身份即可使用两个编辑器；IoT 后端按现有租户隔离，非租户账号共用 system 工作区。`projectRole:owner` / `editable:true` 是兼容旧 DTO 的编辑能力，不代表新建项目成员制度。设备访问仍经过 IoT 原设备控制器及其原有权限校验。
 - 全部 JSON API 走 `src/api.ts`，将逻辑 `/api/v1/*` 映射到开发 `/cloud/twin/*`、生产 `/cloudPro/api/twin/*`，要求 `{status:200,result}`；拒绝旧裸 JSON 和身份接口，不允许静默切回原后端。业务 404 必须与孪生模块未实现区分，日志不包含令牌、签名 URL、查询串或原始响应体。
 - 模型、图片、音视频及封面先由 IoT 鉴权，再获取 30 秒以上、5 分钟以内的临时访问地址；文件使用 IoT MinIO，元数据保存在 IoT。所有私有资源经过 `src/iot/resources.ts`，禁止公开桶、永久链接和前端 MinIO 密钥。内置演示模型仍是明确列举的公开静态文件。
-- WebSocket 使用 IoT 签发的单次项目票据（最长 60 秒），不将登录令牌放进 URL。授权、上传、保存错误显式呈现，不填充伪造业务数据。关闭场景须取消未完成授权；切换账号不得接受旧请求结果。
-- 3D 项目默认优先，保留 2D 画布用于叠加详情和联合展示。原独立后端的业务示例、AI/BIM 转换及模型压缩入口已撤下；历史实现不代表 IoT 已支持。现有设备资产、数据源和报警契约仍需映射到 IoT，未实现新的 IoT 设备选择器。
+- 实时状态使用有界 REST 轮询，直接读取 IoT 保存的设备最新属性及采样时间；不再申请 WebSocket 票据。请求按超时取消，错误退避最多 6 次后停止，展示重试次数。关闭场景取消请求，切换账号拒绝旧响应；不填充伪造数据。
+- 3D 项目默认优先，保留 2D 画布用于叠加详情和联合展示。原独立后端的业务示例、AI/BIM 转换及模型压缩入口已撤下；历史实现不代表 IoT 已支持。数据源仅接受逻辑地址 `/iot/devices/{设备ID列表}/snapshot`，从 IoT 读取数据；2D 点位格式 `设备ID/属性ID`。未实现新的 IoT 设备选择器，设备 ID 需明确配置。
 - 同一 IoT 身份在窗口聚焦时重新验证不能卸载编辑器、丢弃未保存草稿；临时授权校验失败时禁用交互并允许重试，账号或权限变化应重新隔离工作区。资源未加载完不得生成“成功”的空封面。
-- 接口与部署的当前契约见 [IoT 接入说明](docs/iot-integration.md)。验证入口：`pnpm test:iot-integration`、`pnpm test:iot-integration:browser`、`pnpm test:api-errors`、`pnpm test:project-covers`、`pnpm test:scene-runtime`、`pnpm test:twin-drive`、`pnpm test:uuid`。浏览器用隔离契约数据，不代表 IoT/MinIO 已联通。
+- 接口与部署的当前契约见 [IoT 接入说明](docs/iot-integration.md)。验证入口：`pnpm test:iot-integration`、`pnpm test:iot-integration:browser`、`pnpm test:api-errors`、`pnpm test:project-covers`、`pnpm test:scene-runtime`、`pnpm test:twin-drive`、`pnpm test:uuid`。隔离浏览器脚本不代替真实 IoT/MinIO 验收；本地验证记录见接入说明。
 
 ## 产品定位
 
@@ -158,6 +159,8 @@
 - Java 后端的发布版本由 Flyway `V4__meshopt_publications.sql` 建立不可变快照，覆盖已保存的 2D/3D 文档、关联项目、资产与资源引用；创建前核对草稿哈希和资源内容，激活及回滚使用当前指针修订版并记录审计。固定版本运行页必须读取对应快照，不得回读最新草稿；资源被发布引用后不可删除。实时指标按快照中的数据源与映射配置采集，仍是实时数据，不属于静态快照内容。此版本快照与 `V7__project_publications.sql` 的公开分享链接是独立功能，后者读取项目当前已保存内容。
 
 ## 模型与性能规则
+
+- 化工设备模拟资源（反应釜、清洗釜、卧式固液分离器、分散机）由 `node scripts/generate-chemical-equipment.mjs` 生成，文件及说明位于 `demo-assets/chemical-equipment/`。这是可上传到 IoT/MinIO 的普通独立 GLB，采用米制/Y-up、稳定唯一节点与内容哈希文件名；不改内置白名单，不自动绑定真实设备或生成业务观测值。
 
 - Java 模型资源可生成独立的 Meshopt GLB 版本，源模型保留且不能在派生版本存在时删除。压缩产物必须保留 glTF 解码兼容性和来源 SHA-256，失败显式返回错误；Worker 源码位于 `apps/backend/meshopt/src`，提交的 `worker.mjs` 用该目录内的 `npm ci && npm run build` 再生成。容器必须携带 Node 与该 Worker，压缩端点不能静默降级为原始模型。
 - 内置公开样例使用 `shared/builtin-models.ts` 的固定 ID 白名单，包括 `builtin:aqua-helix-hd-v1` 及 `shared/workshop-models.ts` 中的 21 类当前车间模型（地坪 v3，其余 v2）、`shared/workshop-models-v1.ts` 保留的 13 类初版模型，以及 `shared/workshop-models-legacy.ts` 保留的 v2 地坪。模型保存在 `apps/web/public/models/`，GLB 文件名含内容哈希；画布仍只保存 ID，API 在项目授权后认可该白名单。未知内置 ID 必须报错，禁止将任意 URL 当作内置模型。此静态分发仅适用于项目自带的公开演示资产；用户上传继续使用原有项目归属、权限、大小检查和 R2 流程。样例源文件和生成说明见 `demo-assets/aqua-helix-hd/README.md` 与 `demo-assets/workshop-kit/README.md`。

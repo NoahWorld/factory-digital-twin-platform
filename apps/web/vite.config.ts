@@ -39,6 +39,8 @@ export default defineConfig(({ mode }) => {
       host: "127.0.0.1",
       port: 5173,
       strictPort: true,
+      // Keep Vite HMR away from the legacy Umi 2 WebSocket proxy.
+      hmr: { host: "127.0.0.1", clientPort: 5173, protocol: "ws" },
       proxy: {
         "/cloud": {
           target: environment.IOT_DEV_API_TARGET || "http://127.0.0.1:18848",

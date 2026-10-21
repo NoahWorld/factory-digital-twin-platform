@@ -1,13 +1,13 @@
 import { useState } from "react";
 import type { TwinDriveDocument } from "../../../../shared/twin-drive";
 import type { TwinDriveDiagnostics } from "../scene/twin-drive-runtime";
-import type { TwinPointStream, TwinStreamState } from "./point-stream";
+import type { TwinDriveLiveSource, TwinStreamState } from "./point-stream";
 import { feedbackLabel } from "./feedback-label";
 import "./twin-drive.css";
 
 export function TwinDriveConsole({ document, loading, error, stream, diagnostics, onConfigure, onReload, onReconnect }: {
   document: TwinDriveDocument | null; loading: boolean; error: string | null;
-  source: TwinPointStream; stream: TwinStreamState; diagnostics: TwinDriveDiagnostics | null;
+  source: TwinDriveLiveSource; stream: TwinStreamState; diagnostics: TwinDriveDiagnostics | null;
   onConfigure?: () => void; onReload: () => void; onReconnect: () => void;
 }) {
   const [open, setOpen] = useState(true);

@@ -4,8 +4,8 @@ import { apiUrl, request } from "../src/api";
 import { parseIotIdentity } from "../src/iot/identity";
 import { readIotToken, IOT_SESSION_EVENT } from "../src/iot/session";
 import { publicAssetUrl, resolveResourceAccess, loadResourceBytes, validateResourceAccess, invalidateResourceAccess } from "../src/iot/resources";
-import { iotStreamUrl } from "../src/iot/stream";
-import { TwinPointStream } from "../src/twin/point-stream";
+import { IotPointStream } from "../src/iot/point-stream";
+import { loadIotProjects } from "../src/iot/projects";
 import { builtinModels } from "../../../shared/builtin-models";
 
 let storage;
@@ -22,6 +22,20 @@ beforeEach(t => {
   });
   t.after(() => { globalThis.window = previous; });
   t.mock.method(console, "error", () => {});
+});
+
+test("project lists read all pages and stop on inconsistent pagination", async t => {
+  const fetch = t.mock.method(globalThis, "fetch", async url => url.endsWith("offset=0")
+    ? response({ projects: [{ id: "one" }], nextOffset: 1 })
+    : response({ projects: [{ id: "two" }], nextOffset: null }));
+  assert.deepEqual(await loadIotProjects(), { projects: [{ id: "one" }, { id: "two" }] });
+  assert.equal(fetch.mock.callCount(), 2);
+  for (const nextOffset of [0, -1, undefined, 1.5]) {
+    fetch.mock.mockImplementation(async () => response({ projects: [], nextOffset }));
+    await assert.rejects(loadIotProjects(), { code: "invalid_response" });
+  }
+  fetch.mock.mockImplementation(async url => response({ projects: [{ id: "same" }], nextOffset: url.endsWith("offset=0") ? 1 : null }));
+  await assert.rejects(loadIotProjects(), { code: "invalid_response" });
 });
 
 test("missing or invalid IoT session never starts a business request", async t => {
@@ -85,17 +99,19 @@ test("responses from a previous account are rejected", async t => {
   await assert.rejects(request("/api/v1/projects"), { code: "iot_session_changed" });
 });
 
-test("identity grants only explicit IoT permissions, never account name or old platform role", () => {
-  const user = { id: "admin", name: "Administrator", role: "platform_admin" };
-  assert.deepEqual(parseIotIdentity({ user, permissions: [] }).modules, []);
-  const reader = parseIotIdentity({ user, permissions: [{ id: "twin-project", actions: ["query"] }] });
-  assert.deepEqual(reader.modules, ["3d", "2d"]);
-  assert.equal(reader.capabilities.canCreateProject, false);
-  assert.equal(reader.capabilities.canAccessResources, false);
-  const editor = parseIotIdentity({ user, permissions: [{ id: "twin-project", actions: ["query", "save"] }, { id: "twin-resource", actions: ["query"] }] });
-  assert.equal(editor.capabilities.canCreateProject, true);
-  assert.equal(editor.capabilities.canAccessResources, true);
-  assert.throws(() => parseIotIdentity({ user, permissions: [{ id: "twin-project", actions: "query" }] }), { code: "invalid_response" });
+test("every authenticated IoT account enters both editors without new module permissions", () => {
+  for (const identity of [
+    { user: { id: "ordinary", name: "普通用户" }, permissions: [] },
+    { user: { id: "admin", name: "超级管理员" } },
+    { user: { id: "operator", name: "操作员" }, permissions: [{ id: "device", actions: ["query"] }] },
+  ]) {
+    const user = parseIotIdentity(identity);
+    assert.deepEqual(user.modules, ["3d", "2d"]);
+    assert.deepEqual(user.capabilities, { canCreateProject: true, canAccessResources: true });
+  }
+  for (const identity of [null, {}, { user: { id: "", name: "伪造身份" } }, { user: { id: "x" } }]) {
+    assert.throws(() => parseIotIdentity(identity), { code: "invalid_response" });
+  }
 });
 
 test("resource grants reject untrusted origins, tokens, mixed content and invalid lifetimes", () => {
@@ -164,32 +180,44 @@ test("only exact built-in resources load without a session and retain the deploy
   assert.equal(fetch.mock.callCount(), 0);
 });
 
-test("stream connection uses a short-lived ticket and never exposes the IoT session in its URL", async t => {
-  t.mock.method(globalThis, "fetch", async (url, init) => {
-    assert.equal(url, "/cloud/twin/projects/p/twin-drive/stream-ticket");
-    assert.equal(init.method, "POST");
+const snapshot = (sequence = 1, revision = 2) => ({ type: "snapshot", projectId: "p", revision, sequence,
+  timestamp: new Date().toISOString(), source: "api", status: "running", points: {}, procedure: null });
+
+test("IoT polling uses the existing session and stops after scene close", async t => {
+  let resolveRead, signal;
+  t.mock.method(globalThis, "fetch", (url, init) => {
+    assert.equal(url, "/cloud/twin/projects/p/twin-drive/snapshot");
     assert.equal(init.headers.get("x-access-token"), readIotToken());
-    return response({ ticket: "a".repeat(32), expiresAt: Date.now() + 30_000 });
+    signal = init.signal;
+    return new Promise(resolve => { resolveRead = resolve; });
   });
-  const url = new URL(await iotStreamUrl("p"));
-  assert.equal(url.protocol, "wss:");
-  assert.equal(url.searchParams.get("projectId"), "p");
-  assert.equal(url.searchParams.get("ticket"), "a".repeat(32));
-  assert.ok(!url.href.includes(readIotToken()));
-  t.mock.method(globalThis, "fetch", async () => response({ ticket: "a".repeat(32), expiresAt: Date.now() + 3600_000 }));
-  await assert.rejects(iotStreamUrl("p"), { code: "invalid_response" });
+  const source = new IotPointStream("p", () => assert.fail("unexpected revision change"));
+  source.setConfiguration(2, [], "api"); source.connect(); source.close();
+  assert.equal(signal.aborted, true);
+  resolveRead(response(snapshot())); await nextTick();
+  assert.equal(source.getState().snapshot, null);
+  assert.equal(source.getState().phase, "idle");
 });
 
-test("closing a scene during authorization cannot open a late WebSocket", async t => {
-  const previous = globalThis.WebSocket;
-  let opened = 0, resolveUrl;
-  globalThis.WebSocket = class { constructor() { opened++; } };
-  t.after(() => { globalThis.WebSocket = previous; });
-  const source = new TwinPointStream(() => new Promise(resolve => { resolveUrl = resolve; }), "p", () => {});
-  source.connect();
-  source.close();
-  resolveUrl("wss://iot.example.test/cloud/twin/twin-drive?ticket=fixture");
-  await nextTick();
-  assert.equal(opened, 0);
-  assert.equal(source.getState().phase, "idle");
+test("valid IoT samples become live and changed revisions stop before applying values", async t => {
+  let changed = 0;
+  t.mock.method(globalThis, "fetch", async () => response(snapshot()));
+  const source = new IotPointStream("p", () => changed++);
+  t.after(source.close);
+  source.setConfiguration(2, [], "api"); source.connect(); await nextTick();
+  assert.equal(source.getState().phase, "live");
+  assert.equal(source.getState().snapshot.sequence, 1);
+  source.close(); source.setConfiguration(3, [], "api"); source.connect(); await nextTick();
+  assert.equal(changed, 1); assert.equal(source.getState().phase, "error");
+  assert.equal(source.getState().snapshot, null);
+});
+
+test("expired IoT login stops polling without retry or fabricated data", async t => {
+  const fetch = t.mock.method(globalThis, "fetch", async () => new Response("", { status: 401 }));
+  const source = new IotPointStream("p", () => {}); t.after(source.close);
+  source.setConfiguration(2, [], "api"); source.connect(); await nextTick();
+  assert.equal(source.getState().phase, "error");
+  assert.equal(source.getState().connected, false);
+  assert.equal(source.getState().snapshot, null);
+  assert.equal(fetch.mock.callCount(), 1);
 });

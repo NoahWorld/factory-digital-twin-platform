@@ -27,6 +27,16 @@ export class UserFacingError extends Error {
 
 // Codes are the API contract. Never infer a cause from arbitrary server messages.
 const userMessages: Readonly<Record<string, string>> = {
+  iot_device_not_found: "IoT 中没有找到此设备，请检查设备 ID。",
+  iot_device_data_pending: "IoT 设备尚未上报属性数据，请检查设备连接。",
+  iot_data_timeout: "IoT 数据读取超时，请稍后重试。",
+  revision_conflict: "数据已被其他操作更新，请重新加载后再保存。",
+  project_reference_unavailable: "关联项目不存在或正在删除，请检查项目关联。",
+  project_deleting: "项目正在删除，请重试删除以完成资源清理。",
+  publication_draft_changed: "草稿或关联数据已变化，请重新打开发布面板。",
+  iot_twin_storage_unavailable: "IoT 对象存储未就绪，请检查 MinIO 连接。",
+  iot_twin_storage_policy_invalid: "孪生资源存储桶配置异常，请检查服务端日志。",
+  resource_referenced: "该资源仍被画布或场景使用，请先移除引用再删除。",
   iot_twin_endpoint_unavailable: "IoT 尚未提供此数字孪生接口，请联系管理员完成接口接入。",
   iot_session_changed: "IoT 账号已变化，请重新打开当前页面。",
   iot_resource_access_invalid: "资源下载授权无效或已过期，请重新加载。",
@@ -107,7 +117,7 @@ const userMessages: Readonly<Record<string, string>> = {
   network_error: "连接失败，请检查网络后重试。",
   invalid_response: "服务返回异常，请稍后重试。",
   publication_read_only: "公开链接仅供查看，请登录后编辑。",
-  publication_not_found: "公开链接已失效，请联系项目负责人。",
+  publication_not_found: "此发布版本不存在或尚未激活，请检查版本列表。",
   source_origin_denied: "接口地址未获允许，请联系管理员添加业务来源。",
   invalid_source_url: "接口地址无效，请检查地址和连接方式。",
   invalid_subscription_json: "订阅消息格式不正确，请填写有效的 JSON。",

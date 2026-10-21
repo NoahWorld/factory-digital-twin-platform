@@ -40,7 +40,7 @@ const emptyDraft = (): DataSourceDraft => ({
   url: "",
   intervalSeconds: "10",
   timeoutMs: "5000",
-  timestampPath: "",
+  timestampPath: "timestamp",
   heartbeatSeconds: "30",
   reconnectMaxSeconds: "60",
   credentialRef: "",
@@ -169,7 +169,7 @@ export function DataSourcePanel({
             intervalSeconds: requiredInteger(draft.intervalSeconds, "轮询周期"),
             timeoutMs: requiredInteger(draft.timeoutMs, "请求超时"),
             timestampPath: draft.timestampPath || null,
-            credentialRef: draft.credentialRef || null,
+            credentialRef: null,
           }
         : {
             url: draft.url,
@@ -178,7 +178,7 @@ export function DataSourcePanel({
               draft.reconnectMaxSeconds,
               "最大重连间隔",
             ),
-            credentialRef: draft.credentialRef || null,
+            credentialRef: null,
           };
       const result = await request<DataSourceResponse>(
         draft.id
@@ -325,11 +325,11 @@ export function DataSourcePanel({
                   value={draft.sourceType}
                 >
                   <option value="rest_polling">REST 轮询</option>
-                  <option value="websocket">WebSocket</option>
+
                 </Select>
               </label>
               <label className="is-wide">
-                <span>{draft.sourceType === "rest_polling" ? "HTTP(S) 地址" : "WS(S) 地址"}</span>
+                <span>IoT 设备数据地址</span>
                 <input
                   disabled={formDisabled}
                   maxLength={2048}
@@ -339,11 +339,11 @@ export function DataSourcePanel({
                   }))}
                   placeholder={
                     draft.sourceType === "rest_polling"
-                      ? "http://gateway.local/api/equipment/state"
+                      ? "/iot/devices/设备ID/snapshot"
                       : "ws://gateway.local/realtime"
                   }
                   required
-                  type="url"
+                  type="text"
                   value={draft.url}
                 />
               </label>
@@ -368,7 +368,7 @@ export function DataSourcePanel({
                     <span>请求超时（毫秒）</span>
                     <input
                       disabled={formDisabled}
-                      max={30000}
+                      max={15000}
                       min={500}
                       onChange={(event) => setDraft((current) => ({
                         ...current,
@@ -381,7 +381,7 @@ export function DataSourcePanel({
                     />
                   </label>
                   <label className="is-wide">
-                    <span>数据时间戳路径（建议配置）</span>
+                    <span>IoT 采样时间字段</span>
                     <input
                       disabled={formDisabled}
                       maxLength={256}
@@ -389,7 +389,7 @@ export function DataSourcePanel({
                         ...current,
                         timestampPath: event.target.value,
                       }))}
-                      placeholder="例如：$.timestamp"
+                      placeholder="timestamp"
                       value={draft.timestampPath}
                     />
                     <small>用于识别接口仍返回 200、但现场数据已停止更新的情况。</small>
@@ -429,28 +429,11 @@ export function DataSourcePanel({
                   </label>
                 </>
               )}
-              <label className="is-wide">
-                <span>服务端凭据引用（可选）</span>
-                <input
-                  autoComplete="off"
-                  disabled={formDisabled}
-                  maxLength={120}
-                  onChange={(event) => setDraft((current) => ({
-                    ...current,
-                    credentialRef: event.target.value,
-                  }))}
-                  pattern="[A-Za-z0-9][A-Za-z0-9._:-]*"
-                  placeholder="例如：factory-a-api"
-                  value={draft.credentialRef}
-                />
-              </label>
             </div>
 
             <div className="data-source-security-note">
-              <strong>凭据不会保存在这里</strong>
-              <p>
-                账号、Token 与 API Key 必须由服务端密钥存储按引用提供，不能写进 URL、前端配置或 Git。
-              </p>
+              <strong>使用当前 IoT 登录状态</strong>
+              <p>数据由 IoT 后端读取；设备访问范围沿用 IoT 的现有权限，无需配置独立账号或凭据。</p>
             </div>
 
             {probeResult ? (

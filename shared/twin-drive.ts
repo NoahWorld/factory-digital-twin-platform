@@ -88,20 +88,14 @@ export function twinApiConnectionErrors(connection: TwinApiConnection, allowEmpt
   if (!twinSourcePathValid(connection.timestampPath)) errors.push("采样时间字段无效，例如 timestamp");
   if (!Number.isInteger(connection.intervalMs) || connection.intervalMs < 200 || connection.intervalMs > 60000) errors.push("采集间隔须为 200–60000 毫秒");
   if (!Number.isInteger(connection.timeoutMs) || connection.timeoutMs < 500 || connection.timeoutMs > 30000) errors.push("接口超时须为 500–30000 毫秒");
-  const internal = connection.protocol === "rest" ? "/api/v1/test-business/handling-cell/state" : "/api/v1/test-business/handling-cell/live";
-  if (connection.redacted !== undefined && typeof connection.redacted !== "boolean") errors.push("接口地址可见状态无效");
-  if (connection.redacted && (connection.url !== "" || connection.subscribeMessage !== undefined)) errors.push("只读接口配置不能暴露私有地址或订阅消息");
-  if (!(connection.redacted && connection.url === "") && !(allowEmpty && connection.url === "") && connection.url !== internal) {
-    try {
-      const url = new URL(connection.url);
-      const protocols = connection.protocol === "rest" ? ["http:", "https:"] : ["ws:", "wss:"];
-      if (!protocols.includes(url.protocol) || !url.hostname || url.username || url.password || url.hash || connection.url.length > 2048 || [...url.searchParams.keys()].some(key => /(?:token|secret|password|credential|api[-_]?key|authorization)/i.test(key))) errors.push("接口地址无效；协议须匹配，凭据不能放在地址中");
-    } catch { errors.push("请填写完整接口地址，或选择内置测试接口"); }
+  if (connection.protocol !== "rest") errors.push("IoT 数据使用 REST 轮询");
+  if (connection.url.startsWith('/iot/devices/') && connection.url.endsWith('/snapshot')) {
+    const ids = connection.url.slice(13, -9).split(',');
+    if (ids.length > 64 || new Set(ids).size !== ids.length) errors.push("最多选择 64 个不同的 IoT 设备");
   }
-  if (connection.subscribeMessage !== undefined) {
-    if (connection.protocol !== "websocket" || connection.subscribeMessage.length > 8192) errors.push("订阅消息仅用于 WebSocket，不能超过 8192 字符");
-    try { const parsed: unknown = JSON.parse(connection.subscribeMessage); if (!parsed || typeof parsed !== "object") errors.push("订阅消息须为 JSON 对象或数组"); } catch { errors.push("订阅消息不是有效 JSON"); }
-  }
+  if (connection.timestampPath !== "timestamp") errors.push("IoT 采样时间字段为 timestamp");
+  if (!(allowEmpty && connection.url === "") && !/^\/iot\/devices\/[A-Za-z0-9_.:-]+(?:,[A-Za-z0-9_.:-]+)*\/snapshot$/.test(connection.url)) errors.push("请输入 /iot/devices/设备ID/snapshot，多个设备ID用逗号分隔");
+  if (connection.subscribeMessage !== undefined || connection.redacted) errors.push("IoT 数据源不使用订阅消息或独立访问凭据");
   return errors;
 }
 

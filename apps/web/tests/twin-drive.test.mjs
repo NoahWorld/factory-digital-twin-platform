@@ -32,7 +32,7 @@ function setup(config, records) {
   };
   return { runtime, state, reports, feed };
 }
-const config = () => ({ ...emptyTwinDriveConfig(), enabled: true, connection: { ...emptyTwinDriveConfig().connection, url: '/api/v1/test-business/handling-cell/state' } });
+const config = () => ({ ...emptyTwinDriveConfig(), enabled: true, connection: { ...emptyTwinDriveConfig().connection, url: '/iot/devices/device/snapshot' } });
 const legacyConfig = () => { const { connection, ...base } = config(); return { ...base, source: 'simulator' }; };
 const position = node => new Vector3().setFromMatrixPosition(node.matrix).toArray();
 const near = (actual, expected, epsilon = 1e-9) => actual.forEach((value, i) => assert.ok(Math.abs(value - expected[i]) < epsilon, `${actual} != ${expected}`));
@@ -340,13 +340,10 @@ for (const condition of ['disconnected', 'stale', 'missing', 'error', 'idle', 'p
   for (const url of ['/internal/private', 'https://user:password@example.test/state', 'https://example.test/state?api_key=hidden', 'https://example.test/state#part', 'ws://example.test/state']) {
     assert.ok(twinApiConnectionErrors({ ...c.connection, url }).length, url);
   }
-  for (const protocol of ['rest', 'websocket']) {
-    const connection = { ...c.connection, protocol, url: `/api/v1/test-business/handling-cell/${protocol === 'rest' ? 'state' : 'live'}` };
-    assert.deepEqual(twinApiConnectionErrors(connection), []);
-    assert.deepEqual(twinApiConnectionErrors({ ...connection, url: '', redacted: true }), [], 'authorized read projection does not require private upstream URL');
-    assert.ok(twinApiConnectionErrors({ ...connection, redacted: true }).length, 'redacted projection cannot also expose an upstream address');
-    assert.ok(twinApiConnectionErrors({ ...connection, intervalMs: 199 }).length);
-    assert.ok(twinApiConnectionErrors({ ...connection, timeoutMs: 30001 }).length);
+  const connection = { ...c.connection, protocol: 'rest', url: '/iot/devices/device,sensor-2/snapshot' };
+  assert.deepEqual(twinApiConnectionErrors(connection), []);
+  for (const patch of [{ protocol: 'websocket' }, { url: '', redacted: true }, { intervalMs: 199 }, { timeoutMs: 30001 }, { url: '/iot/devices/a,a/snapshot' }]) {
+    assert.ok(twinApiConnectionErrors({ ...connection, ...patch }).length, JSON.stringify(patch));
   }
   c.points[0].sourcePath = 'agv.positionM'; c.points[0].topic = 'platform/axis';
   assert.match(twinDriveErrors(c).join(), /不需要 Topic/); delete c.points[0].topic;

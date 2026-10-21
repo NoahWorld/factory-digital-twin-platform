@@ -1,3 +1,4 @@
+import { loadIotProjects } from "../iot/projects";
 import { useNotifications } from "../components/NotificationProvider";
 import { createUuid } from "../uuid";
 import {
@@ -90,10 +91,6 @@ type SceneResponse = {
   scene: StandaloneSceneDocument;
 };
 
-type ProjectsResponse = {
-  projects: ProjectSummary[];
-  requestId: string;
-};
 
 type ScenePatch = {
   decorations?: SceneDecoration[];
@@ -211,7 +208,7 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
     void Promise.all([
       request<SceneResponse>(standaloneScenePath(projectId)),
       request<ModelAssetListResponse>(modelAssetsPath(projectId)),
-      request<ProjectsResponse>("/api/v1/projects"),
+      loadIotProjects<ProjectSummary>(),
     ]).then(([sceneResult, modelResult, projectResult]) => {
       if (!active) return;
       setProjectName(sceneResult.project.name);

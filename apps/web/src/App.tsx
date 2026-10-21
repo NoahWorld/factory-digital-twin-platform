@@ -1,3 +1,4 @@
+import { loadIotProjects } from "./iot/projects";
 import { FormEvent, lazy, Suspense, useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { standaloneSceneRoutePath, type ProjectType } from "../../../shared/standalone-3d";
 import { apiUrl, ApiRequestError, errorMessage, request } from "./api";
@@ -40,10 +41,6 @@ type Project = CoverProject & {
   projectType: ProjectType;
 };
 
-type ProjectsResponse = {
-  projects: Project[];
-  requestId: string;
-};
 
 type ProjectResponse = {
   project: Project;
@@ -331,7 +328,7 @@ function DeleteProjectDialog({
         <button aria-label="关闭" className="dialog-close" disabled={submitting} onClick={onClose} type="button">×</button>
         <p className="eyebrow">Delete project</p>
         <h2>删除“{project.name}”？</h2>
-        <p>项目场景、模型元数据、资产、数据源和成员关系都会被永久删除，此操作不可撤销。</p>
+        <p>项目场景、模型元数据、资产和数据源都会被永久删除，此操作不可撤销。</p>
         <div className="dialog-actions">
           <button className="secondary-button" disabled={submitting} onClick={onClose} type="button">取消</button>
           <button className="danger-button" disabled={submitting} type="submit">
@@ -471,7 +468,7 @@ function Workspace({ user }: { user: IotUser }) {
       inFlight = true;
       if (initial) setLoadingProjects(true);
       setProjectError(null);
-      void request<ProjectsResponse>("/api/v1/projects", { signal: controller.signal })
+      void loadIotProjects<Project>(controller.signal)
       .then((result) => {
         if (active) {
           setProjects(result.projects);
@@ -668,10 +665,6 @@ function Workspace({ user }: { user: IotUser }) {
             }
           }}
         />
-      ) : user.modules.length === 0 ? (
-        <section aria-label="项目" className="workspace-content" id="projects">
-          <div className="state-card error-state"><h2>尚未获得模块权限</h2><p>请联系 IoT 管理员授予 2D 看板或 3D 场景权限。</p></div>
-        </section>
       ) : (
       <section aria-label="项目" className="workspace-content" id="projects">
         <div className="project-type-tabs-shell">
@@ -920,6 +913,7 @@ export function App() {
   const [user, setUser] = useState<IotUser | null>(null);
   const [initializing, setInitializing] = useState(true);
   const [initializationError, setInitializationError] = useState<string | null>(null);
+  const [sessionFailure, setSessionFailure] = useState<"missing" | "expired" | null>(null);
   const [retry, setRetry] = useState(0);
   const identityVersion = useRef(0);
   const sessionToken = useRef<string | null>(null);
@@ -935,16 +929,25 @@ export function App() {
       const changedAccount = token !== sessionToken.current;
       sessionToken.current = token;
       setInitializationError(null);
-      if (!token) { setUser(null); setInitializing(false); return; }
+      if (!token) {
+        setSessionFailure("missing");
+        setUser(null);
+        setInitializing(false);
+        return;
+      }
       // Background checks must not discard unsaved scene edits on window focus.
       if (changedAccount) { setUser(null); setInitializing(true); }
       void loadIotIdentity(controller.signal).then(identity => {
         if (active && version === identityVersion.current) {
+          setSessionFailure(null);
           setUser(previous => JSON.stringify(previous) === JSON.stringify(identity) ? previous : identity);
         }
       }).catch(reason => {
         if (!active || version !== identityVersion.current) return;
-        if (reason instanceof ApiRequestError && reason.code === "unauthenticated") setUser(null);
+        if (reason instanceof ApiRequestError && reason.code === "unauthenticated") {
+          setSessionFailure(readIotToken() ? "expired" : "missing");
+          setUser(null);
+        }
         else setInitializationError(errorMessage(reason));
       }).finally(() => {
         if (active && version === identityVersion.current) setInitializing(false);
@@ -953,6 +956,7 @@ export function App() {
     const expired = () => {
       ++identityVersion.current;
       controller?.abort();
+      setSessionFailure("expired");
       setUser(null);
       setInitializing(false);
       setInitializationError(null);
@@ -981,7 +985,12 @@ export function App() {
     <a className="secondary-button" href={IOT_HOME_PATH} target="_top">返回 IoT</a>
   </main>;
   if (!user) return <main className="loading-shell">
-    <h1>请先登录 IoT</h1><p>数字孪生使用 IoT 的登录状态与权限。</p>
+    <h1>{sessionFailure === "expired" ? "IoT 登录已失效" : "当前浏览器未登录 IoT"}</h1>
+    <p>{sessionFailure === "expired"
+      ? "IoT 拒绝了当前登录状态，请重新登录后再进入数字孪生。"
+      : "当前页面没有读到 IoT 登录状态。请在同一浏览器、同一地址登录后重新验证。"}</p>
+    <p>当前访问地址：{window.location.origin}</p>
+    <p>不同浏览器或浏览器用户的登录状态不共享。</p>
     <a className="primary-button" href={IOT_LOGIN_PATH} target="_top">前往 IoT 登录</a>
     <button className="secondary-button" type="button" onClick={() => setRetry(value => value + 1)}>已登录，重新验证</button>
   </main>;

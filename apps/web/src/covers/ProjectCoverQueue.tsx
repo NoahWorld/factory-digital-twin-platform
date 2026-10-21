@@ -1,3 +1,4 @@
+import { loadIotProjects } from "../iot/projects";
 import { useEffect, useRef, useState } from "react";
 import { STANDALONE_3D_LIMITS, standaloneScenePath, type StandaloneSceneDocument } from "../../../../shared/standalone-3d";
 import { errorMessage, request } from "../api";
@@ -105,7 +106,7 @@ export default function ProjectCoverQueue({ projects, onComplete }: {
     setRetryError(null);
     try {
       // Refresh both revisions before retrying: another editor may have saved the scene.
-      const latest = await request<{ projects: CoverProject[] }>("/api/v1/projects");
+      const latest = await loadIotProjects<CoverProject>();
       latest.projects.forEach(onComplete);
       setErrors({});
     } catch (reason) {

@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { twinDrivePath, type TwinDriveDocument } from "../../../../shared/twin-drive";
 import { errorMessage, request } from "../api";
-import { iotStreamUrl } from "../iot/stream";
-import { TwinPointStream, type TwinStreamState } from "./point-stream";
+import { IotPointStream } from "../iot/point-stream";
+import { type TwinStreamState } from "./point-stream";
 
 export function useTwinDrive(projectId: string, { live = true }: { live?: boolean } = {}) {
   const [document, setDocument] = useState<TwinDriveDocument | null>(null);
@@ -17,7 +17,7 @@ export function useTwinDrive(projectId: string, { live = true }: { live?: boolea
   // Each saved revision has a distinct observation stream and sequence fence.
   const documentRevision = document?.projectId === projectId ? document.revision : null;
   const source = useMemo(() => {
-    return new TwinPointStream(signal => iotStreamUrl(projectId, signal), projectId, reload);
+    return new IotPointStream(projectId, reload);
   }, [projectId, reload, connectionEpoch, documentRevision]);
   const [stream, setStream] = useState<TwinStreamState>(() => source.getState());
   const currentProject = useRef(projectId);
@@ -47,7 +47,7 @@ export function useTwinDrive(projectId: string, { live = true }: { live?: boolea
 
   const enabled = document?.projectId === projectId && document.config.enabled;
   useEffect(() => {
-    if (live && enabled && document?.config.source === "api") { source.setConfiguration(document.revision, document.config.points, document.config.source); source.connect(); }
+    if (live && enabled && document?.config.source === "api") { source.setConfiguration(document.revision, document.config.points, document.config.source, document.config.connection?.intervalMs, document.config.connection?.timeoutMs); source.connect(); }
     return () => source.close();
   }, [enabled, document, source, live]);
 
