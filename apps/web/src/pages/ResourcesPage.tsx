@@ -1,5 +1,5 @@
 import { ResourceImage, ResourceVideo, ResourceAudio } from "../iot/ResourceMedia";
-import { publicAssetUrl } from "../iot/resources";
+import { ModelAssetThumbnail } from "../canvas/ModelAssetThumbnail";
 import { Select } from "../components/Select";
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { findBuiltinModel } from "../../../../shared/builtin-models";
@@ -128,25 +128,20 @@ const previewModelNode = (item: Extract<ResourceItem, { kind: "model" }>): Canva
   };
 };
 
-function ResourceVisual({ item, projectId }: { item: ResourceItem; projectId: string }) {
+function ResourceVisual({ item, projectId, onPreview }: { item: ResourceItem; projectId: string; onPreview: () => void }) {
+  if (item.kind === "model") {
+    return <ModelAssetThumbnail asset={item.asset} name={itemName(item)} onPreview={onPreview} projectId={projectId} variant="card" />;
+  }
   if (item.kind === "image") {
     return <ResourceImage alt="" loading="lazy" src={contentUrl(projectId, item)} />;
   }
   if (item.kind === "video") {
     return <ResourceVideo aria-label={`${itemName(item)} 视频缩略预览`} muted preload="metadata" src={contentUrl(projectId, item)} />;
   }
-  if (item.kind === "audio") {
-    return (
-      <span className="resource-audio-visual" aria-hidden="true">
-        <i /><i /><i /><i /><i /><i /><i /><i /><i />
-      </span>
-    );
-  }
-  const builtin = findBuiltinModel(item.asset.id);
-  return builtin ? (
-    <img alt="" loading="lazy" src={publicAssetUrl(builtin.thumbnailPath)} />
-  ) : (
-    <span className="resource-model-visual" aria-hidden="true"><i>3D</i><b>MODEL</b></span>
+  return (
+    <span className="resource-audio-visual" aria-hidden="true">
+      <i /><i /><i /><i /><i /><i /><i /><i /><i />
+    </span>
   );
 }
 
@@ -456,10 +451,10 @@ export function ResourcesPage({
                 const systemResource = item.asset.source === "system";
                 return (
                   <article className="resource-card" key={`${item.kind}:${item.asset.id}`}>
-                    <button className="resource-card-preview" onClick={() => setPreviewItem(item)} type="button">
-                      <ResourceVisual item={item} projectId={selectedProjectId} />
+                    {item.kind === "model" ? <ResourceVisual item={item} projectId={selectedProjectId} onPreview={() => setPreviewItem(item)} /> : <button className="resource-card-preview" onClick={() => setPreviewItem(item)} type="button">
+                      <ResourceVisual item={item} projectId={selectedProjectId} onPreview={() => setPreviewItem(item)} />
                       <span className="resource-preview-hint">点击预览</span>
-                    </button>
+                    </button>}
                     <div className="resource-card-body">
                       <div className="resource-card-tags">
                         <span>{kindLabels[item.kind]}</span>

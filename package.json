@@ -12,6 +12,7 @@
     "test:fluids": "node scripts/test-fluids.mjs",
     "test:scene-runtime": "node scripts/test-scene-runtime.mjs",
     "test:project-covers": "node scripts/test-project-covers.mjs",
+    "test:model-asset-covers": "node scripts/test-model-asset-covers.mjs",
     "test:twin-drive": "node scripts/test-twin-drive.mjs",
     "test:twin-actions": "node scripts/test-twin-actions.mjs",
     "test:iot-embed:browser": "node scripts/test-iot-embed-browser.mjs",
