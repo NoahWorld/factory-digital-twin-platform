@@ -24,7 +24,7 @@
 - 同一 IoT 身份在窗口聚焦时重新验证不能卸载编辑器、丢弃未保存草稿；临时授权校验失败时禁用交互并允许重试，账号或权限变化应重新隔离工作区。资源未加载完不得生成“成功”的空封面。
 - 接口与部署的当前契约见 [IoT 接入说明](docs/iot-integration.md)。验证入口：`pnpm test:iot-integration`、`pnpm test:iot-integration:browser`、`pnpm test:api-errors`、`pnpm test:project-covers`、`pnpm test:model-asset-covers`、`pnpm test:scene-runtime`、`pnpm test:twin-drive`、`pnpm test:uuid`。隔离浏览器脚本不代替真实 IoT/MinIO 验收；本地验证记录见接入说明。
 
-- 金属盐参观展示看板位于 `#/projects/{id}/metal-salt-dashboard`，复用当前 IoT 已保存场景及共享 3D renderer，严格只读。七设备的模拟参数配置独立保存在 `src/dashboard/metal-salt-demo.ts`，必须明确标识模拟，不能写入 IoT 设备数据或用作真实请求失败的兜底；缺失/重名/隐藏设备须报错。规则与入口见 [金属盐看板](docs/metal-salt-dashboard.md)。
+- 金属盐参观展示看板位于 `#/projects/{id}/metal-salt-dashboard`，复用当前 IoT 已保存场景及共享 3D renderer，严格只读。七设备的模拟参数配置独立保存在 `src/dashboard/metal-salt-demo.ts`，必须明确标识模拟，不能写入 IoT 设备数据或用作真实请求失败的兜底；缺失/重名/隐藏设备须报错。看板在读取场景后以 `chemicalWorkshopScene` 展示预设化工环境（替换 `builtin:workshop-*` 配景，保留 IoT 设备及管道），不回写原场景。默认全屏背景与正面低俯角镜头，展示镜头 `cameraFraming` 仅由可信前端传入，不加入保存契约。规则与入口见 [金属盐看板](docs/metal-salt-dashboard.md)。
 
 ## 产品定位
 

@@ -28,3 +28,10 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 - 完成评审 disposition：`ship`。最后修复复核的桌面主体、全屏失败提示、720 高裁切均为 resolved；不将这三项结果扩大为未测路径保证。
 - 全屏成功路径未验证；仅浏览器拒绝后的明确提示已验证。
 - 文档复核实际查看 `desktop-1920.png` 与 `mobile-detail.png`，其余截图及验证范围见功能文档。全局 DESIGN.md / design.json 的既有缺失仅记录，未扩大本次写入范围。
+
+## 2026-10-22 化工产线调整
+
+- 用户要求覆盖此前中央小场景布局：桌面采用全视口 3D 背景，正面对准产线，低俯角展示；化工管廊与围堰替换物流配景。
+- 信息按订单进度、设备工艺与启停、批次质量、环境公用工程组织；保持模拟标识与只读边界。
+- 实际验收覆盖 1080p、720p 和手机，修复 720p 状态行及质量面板拥挤。未引入交付位图，新增三维资源由仓库脚本生成。
+- 本轮完成评审：`ship`。模型完整性、三维运行时、类型检查与构建通过；最终浏览器预览见 `.impeccable/review/chemical-dashboard-desktop.png`。实际浏览器全屏成功路径沿用此前未验证边界；本轮已验证的是 Canvas 铺满浏览器视口。

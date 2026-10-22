@@ -1,3 +1,4 @@
+import { chemicalWorkshopModel } from "./chemical-workshop-model";
 import { workshopLegacyModels } from "./workshop-models-legacy";
 import { workshopModels } from "./workshop-models";
 import { workshopModels as workshopModelsV1 } from "./workshop-models-v1";
@@ -5,6 +6,7 @@ import { handlingCellModels } from "./handling-cell-models";
 
 /** Bundled, public demonstration assets. IDs and content hashes are immutable per version. */
 export const builtinModels = [
+  chemicalWorkshopModel,
   {
     "id": "builtin:aqua-helix-hd-v1",
     "name": "AQUA HELIX · 水冷机组",

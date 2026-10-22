@@ -3,16 +3,17 @@ import { standaloneScenePath, standaloneSceneRoutePath, STANDALONE_3D_LIMITS, ty
 import { errorMessage, reportError, request, UserFacingError } from "../api";
 import { Model3DNode } from "../canvas/Model3DNode";
 import { standaloneRendererNode } from "../canvas/standalone-renderer-node";
-import { bindDemoDevices, demoValue, metalSaltDemo, type DemoDevice } from "./metal-salt-demo";
+import { bindDemoDevices, demoValue, metalSaltDemo, demoProduction, demoEnvironment, demoUtilities, deviceOperation, deviceMetricValue, type DemoDevice } from "./metal-salt-demo";
 import "./metal-salt-dashboard.css";
+import { chemicalWorkshopScene } from "./chemical-workshop-scene";
 
 const ignoreNodeSelection = () => undefined;
 type LoadedScene = { scene: StandaloneSceneDocument; bindings: Map<string, string> };
 
 function Trend({ device, tick, index }: { device: DemoDevice; tick: number; index: number }) {
   const metric = device.metrics[0];
-  const values = Array.from({ length: 31 }, (_, i) => demoValue(metric, tick - 30 + i, index));
-  const low = metric.base - metric.amplitude * 1.5;
+  const values = Array.from({ length: 31 }, (_, i) => deviceMetricValue(device, metric, tick - 30 + i, index));
+  const low = device.key === "dispersion-b" ? 0 : metric.base - metric.amplitude * 1.5;
   const high = metric.base + metric.amplitude * 1.5;
   const points = values.map((value, i) => `${46 + i * 14.4},${104 - (value - low) / (high - low) * 76}`).join(" ");
   return <figure className="salt-trend">
@@ -33,7 +34,7 @@ export default function MetalSaltDashboard({ projectId }: { projectId: string })
   const [tick, setTick] = useState(0);
   const [paused, setPaused] = useState(false);
   const [now, setNow] = useState(() => new Date());
-  const [view, setView] = useState<"isometric" | "top">("isometric");
+  const [view, setView] = useState<"front" | "top">("front");
   const [reset, setReset] = useState(0);
   const [fullScreen, setFullScreen] = useState(false);
   const [wideScreen, setWideScreen] = useState(() => window.matchMedia("(min-width: 1101px)").matches);
@@ -83,9 +84,9 @@ export default function MetalSaltDashboard({ projectId }: { projectId: string })
   }, []);
   useEffect(() => { if (selectedKey) detailTitle.current?.focus({ preventScroll: true }); }, [selectedKey]);
 
-  const rendererNode = useMemo(() => loaded ? standaloneRendererNode({ ...loaded.scene, settings: {
+  const rendererNode = useMemo(() => loaded ? standaloneRendererNode({ ...chemicalWorkshopScene(loaded.scene), settings: {
     ...loaded.scene.settings, backgroundColor: "#071525", backgroundOpacity: 0, autoRotate: false,
-    cameraView: view, modelScale: wideScreen ? 1.5 : 1.12,
+    cameraView: view, cameraFov: 42, modelScale: wideScreen ? 2.1 : 1.2, showGrid: false,
   } }) : null, [loaded, view, wideScreen]);
   const selectInstance = useCallback((_node: string, instanceId: string | null) => {
     if (!instanceId || !loaded) return;
@@ -111,17 +112,18 @@ export default function MetalSaltDashboard({ projectId }: { projectId: string })
     }
   };
 
-  const devicePanel = (device: DemoDevice, index: number) => <button
+  const devicePanel = (device: DemoDevice, index: number) => { const operation = deviceOperation(device, index); return <button
     className={`salt-device${selectedKey === device.key ? " is-selected" : ""}`} key={device.key}
     ref={element => { if (element) deviceButtons.current.set(device.key, element); else deviceButtons.current.delete(device.key); }}
     aria-label={`查看${device.label}详情`} aria-pressed={selectedKey === device.key}
     onClick={() => setSelectedKey(device.key)} type="button">
-    <span className="salt-device-heading"><strong>{device.label}</strong><span className="salt-running">运行中</span></span>
+    <span className="salt-device-heading"><strong>{device.label}</strong><span className={operation.started ? "salt-running" : "salt-standby"}>{operation.state} · {operation.mode}</span></span>
     <span className="salt-device-stage">{String(index + 1).padStart(2, "0")} / {device.stage}<span>查看详情 ↗</span></span>
-    <span className="salt-metrics">{device.metrics.slice(0, 2).map((metric, i) => <span key={metric.label}>
-      <span className="salt-metric-label">{metric.label}</span><span className="salt-metric-value">{demoValue(metric, tick, index + i).toFixed(metric.digits)}<small>{metric.unit}</small></span>
+    <span className="salt-metrics">{device.metrics.map((metric, i) => <span key={metric.label}>
+      <span className="salt-metric-label">{metric.label}</span><span className="salt-metric-value">{deviceMetricValue(device, metric, tick, index + i).toFixed(metric.digits)}<small>{metric.unit}</small></span>
     </span>)}</span>
-  </button>;
+    <span className="salt-device-status"><span>{operation.tag}</span><span>启停：{operation.started ? "启动" : "停止"}</span><span>联锁：{operation.interlock}</span></span>
+  </button>; };
 
   return <main className="salt-dashboard" ref={root} onKeyDown={event => { if (event.key === "Escape" && selected) closeDetails(); }}>
     <header className="salt-header">
@@ -133,31 +135,34 @@ export default function MetalSaltDashboard({ projectId }: { projectId: string })
       <div className="salt-scene" aria-label="可交互的三维生产车间">
         <Model3DNode key={`${projectId}:${reset}`} node={rendererNode} projectId={projectId}
           editable={false} interactive cameraControlsEnabled runtimeControlsEnabled={false}
+          cameraFraming={view === "front" ? {direction: [0,.46,1], targetOffset: [0,-1.2,0]} : undefined}
           maximumModelInstances={STANDALONE_3D_LIMITS.maximumInstances} selectionStyle="runtime"
           selectedModelInstanceId={selectedKey ? loaded.bindings.get(selectedKey) : null}
           onModelInstanceSelect={selectInstance} onSceneNodeSelect={ignoreNodeSelection} selectedSceneNodePath={null}
           decorations={loaded.scene.decorations} staticMap={loaded.scene.staticMap} fluids={loaded.scene.fluids} />
       </div>
-      <section className="salt-overview" aria-label="产线概况">
-        <div><strong>07<small>台</small></strong><span>工艺设备</span></div>
-        <div><strong>04<small>段</small></strong><span>核心工序</span></div>
-        <div><strong>06<small>段</small></strong><span>连接管道</span></div>
-        <div className="salt-overview-status"><span className="salt-running">{paused ? "模拟已暂停" : "模拟运行中"}</span><span>反应 / 清洗 / 分离 / 分散</span></div>
+      <section className="salt-overview" aria-label="生产订单概况">
+        <div><span>当前订单</span><strong className="salt-order-id">{demoProduction.order}</strong><span>{demoProduction.product} · {demoProduction.shift}</span></div>
+        <div><span>本批产出 / 计划</span><strong>{demoProduction.completedKg}<small>/ {demoProduction.plannedKg} kg</small></strong><progress aria-label="订单完成率" value={demoProduction.completedKg} max={demoProduction.plannedKg}/></div>
+        <div><span>完成率</span><strong>70<small>%</small></strong><span>计划 {demoProduction.startedAt}—{demoProduction.dueAt}</span></div>
+        <div><span className="salt-running">{paused ? "模拟已暂停" : "6 台运行 · 1 台待机"}</span><span>批次 {demoProduction.batch}</span><span>活动告警 0 · 联锁就绪</span></div>
       </section>
       <aside className="salt-column salt-left" aria-label="反应与清洗设备模拟数据"><h2>反应与清洗<span>PROCESS / 01—03</span></h2>{metalSaltDemo.devices.slice(0, 3).map(devicePanel)}
-        <section className="salt-guide"><h3>产线工艺概览</h3><p>反应物料经两级清洗、固液分离后进入分散工序，呈直角布局。</p><div><span>反应</span><i>→</i><span>清洗</span><i>→</i><span>分离</span><i>→</i><span>分散</span></div></section>
+        <section className="salt-process-panel"><h3>批次与质量</h3><dl><div><dt>生产批次</dt><dd>{demoProduction.batch}</dd></div><div><dt>抽检单号</dt><dd>{demoProduction.sample}</dd></div><div><dt>产品纯度</dt><dd>{demoProduction.purity}</dd></div><div><dt>金属回收率</dt><dd>{demoProduction.recovery}</dd></div><div><dt>质量判定</dt><dd>{demoProduction.inspection}</dd></div></dl></section>
       </aside>
       <aside className="salt-column salt-right" aria-label="分离与分散设备模拟数据"><h2>分离与分散<span>PROCESS / 04—07</span></h2>{metalSaltDemo.devices.slice(3).map((device, i) => devicePanel(device, i + 3))}</aside>
+      <section className="salt-bottom-data" aria-label="环境与公用工程模拟数据">{[["车间环境",demoEnvironment],["公用工程",demoUtilities]].map(([title, metrics]) => <div className="salt-utility-group" key={String(title)}><h2>{String(title)}</h2><dl>{(metrics as typeof demoEnvironment).map((metric,i)=><div key={metric.label}><dt>{metric.label}</dt><dd>{demoValue(metric,tick,i).toFixed(metric.digits)}<small>{metric.unit}</small></dd></div>)}</dl></div>)}</section>
       <div className="salt-scene-controls" role="group" aria-label="场景展示控制">
-        <button type="button" onClick={() => { setView("isometric"); setReset(value => value + 1); }}>全景复位</button>
-        <button type="button" aria-pressed={view === "top"} onClick={() => setView(value => value === "top" ? "isometric" : "top")}>俯视布局</button>
+        <button type="button" onClick={() => { setView("front"); setReset(value => value + 1); }}>产线正视</button>
+        <button type="button" aria-pressed={view === "top"} onClick={() => setView(value => value === "top" ? "front" : "top")}>俯视布局</button>
         <button type="button" aria-pressed={paused} onClick={() => setPaused(value => !value)}>{paused ? "继续模拟" : "暂停模拟"}</button>
         <span>拖拽旋转 · 滚轮缩放 · 点击设备查看详情</span>
       </div>
       {selected ? <section className="salt-detail" role="region" aria-label={`${selected.label}详情`}>
-        <div className="salt-detail-head"><div><h2 tabIndex={-1} ref={detailTitle}>{selected.label}<span>设备详情</span></h2><p>{selected.stage} · 模拟运行</p></div><button type="button" aria-label="关闭设备详情" onClick={closeDetails}>关闭 ×</button></div>
+        <div className="salt-detail-head"><div><h2 tabIndex={-1} ref={detailTitle}>{selected.label}<span>设备详情</span></h2><p>{selected.stage} · {deviceOperation(selected,selectedIndex).state} · 自动模式</p></div><button type="button" aria-label="关闭设备详情" onClick={closeDetails}>关闭 ×</button></div>
+        <dl className="salt-detail-context"><div><dt>订单号</dt><dd>{demoProduction.order}</dd></div><div><dt>批次号</dt><dd>{demoProduction.batch}</dd></div><div><dt>设备编号</dt><dd>{deviceOperation(selected,selectedIndex).tag}</dd></div><div><dt>累计运行</dt><dd>{deviceOperation(selected,selectedIndex).runHours} h</dd></div><div><dt>启停 / 联锁</dt><dd>{deviceOperation(selected,selectedIndex).started ? "启动" : "停止"} / 就绪</dd></div><div><dt>机旁湿度</dt><dd>{demoValue(deviceOperation(selected,selectedIndex).humidity,tick,selectedIndex)} %RH</dd></div><div><dt>驱动转速</dt><dd>{deviceMetricValue(selected,deviceOperation(selected,selectedIndex).rpm,tick,selectedIndex + Math.max(0, selected.metrics.findIndex(metric => metric.unit === "rpm")))} rpm</dd></div><div><dt>下次保养</dt><dd>{deviceOperation(selected,selectedIndex).maintenance}</dd></div></dl>
         <p className="salt-detail-copy">{selected.description}</p>
-        <div className="salt-detail-data"><dl>{selected.metrics.map((metric, i) => <div key={metric.label}><dt>{metric.label}</dt><dd>{demoValue(metric, tick, selectedIndex + i).toFixed(metric.digits)}<small>{metric.unit}</small></dd></div>)}</dl><Trend device={selected} index={selectedIndex} tick={tick} /></div>
+        <div className="salt-detail-data"><dl>{selected.metrics.map((metric, i) => <div key={metric.label}><dt>{metric.label}</dt><dd>{deviceMetricValue(selected, metric, tick, selectedIndex + i).toFixed(metric.digits)}<small>{metric.unit}</small></dd></div>)}</dl><Trend device={selected} index={selectedIndex} tick={tick} /></div>
         <p className="salt-detail-note">演示参数与趋势仅用于参观讲解，未连接现场设备，不作为生产控制依据。</p>
       </section> : null}
       <footer className="salt-footer"><span>工艺路径</span><nav aria-label="按工序查看设备">{metalSaltDemo.devices.map((device, i) => <button type="button" key={device.key} aria-pressed={selectedKey === device.key} onClick={() => setSelectedKey(device.key)}><small>{String(i + 1).padStart(2, "0")}</small>{device.label}</button>)}</nav><p>模拟演示 · 非现场实时数据</p></footer>

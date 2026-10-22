@@ -55,6 +55,8 @@ export type Model3DNodeProps = {
   onTwinTargetPick?: (targets: TwinTarget[]) => void;
   walkScene?: WalkSceneConfig;
   cameraControlsEnabled?: boolean;
+  /** Trusted presentation-only framing; never persisted to the scene. Batch scenes only. */
+  cameraFraming?: { direction: [number, number, number]; targetOffset: [number, number, number] };
   runtimeControlsEnabled?: boolean;
   editable: boolean;
   interactive?: boolean;

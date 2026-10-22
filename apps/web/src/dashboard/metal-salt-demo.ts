@@ -32,3 +32,26 @@ export function bindDemoDevices(instances: StandaloneSceneInstance[]): Map<strin
   }
   return bindings;
 }
+
+/** All order/process values below are explicit visitor-demo fixtures, not IoT records. */
+export const demoProduction = {
+  order: 'MO-20261022-008', batch: 'MS-261022-A03', product: '金属盐中间体',
+  line: '金属分离一线', shift: '白班 · A 组', plannedKg: 2400, completedKg: 1680,
+  startedAt: '08:00', dueAt: '16:00', purity: '99.2%', recovery: '96.8%',
+  sample: 'QC-261022-036', inspection: '本批抽检合格',
+};
+export const demoEnvironment = [metric('车间温度','°C',26.4,.4),metric('相对湿度','%RH',52.6,1.2),metric('冷却水压力','MPa',.32,.008,3),metric('排风量','m³/h',4860,40,0)];
+export const demoUtilities = [metric('总有功功率','kW',42.6,1.2),metric('累计用电','kWh',186.4,0),metric('工艺用水','m³',12.8,0),metric('压缩空气','MPa',.62,.01,2)];
+export function deviceOperation(device: DemoDevice, index: number) {
+  const standby = device.key === 'dispersion-b';
+  return { state: standby ? '待机' : '运行', started: !standby, mode: '自动',
+    tag: `MS-${String(index+1).padStart(3,'0')}`, runHours: standby ? '2.1' : (4.2+index*.3).toFixed(1),
+    interlock: '就绪', alarm: '无告警', maintenance: '2026-11-05',
+    humidity: metric('机旁湿度','%RH',50+index,.8),
+    rpm: device.metrics.find(item=>item.unit==='rpm') ?? metric('驱动转速','rpm',960-index*15,8,0),
+  };
+}
+export function deviceMetricValue(device: DemoDevice, metric: DemoMetric, tick: number, phase: number) {
+  if (device.key === 'dispersion-b' && ['rpm','kW','A','%'].includes(metric.unit)) return 0;
+  return demoValue(metric,tick,phase);
+}
