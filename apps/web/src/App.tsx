@@ -14,6 +14,7 @@ import {
   type CanvasTemplateId,
 } from "./canvas/templates";
 import { CanvasPage } from "./pages/CanvasPage";
+import { ModelAssetCoverSession } from "./canvas/model-asset-covers";
 import { ResourcesPage } from "./pages/ResourcesPage";
 import { PublicationRunPage } from "./publications";
 import { TemplatesPage } from "./pages/TemplatesPage";
@@ -1499,5 +1500,5 @@ export function App() {
     return <AuthPage onSuccess={authenticated} setupRequired={setupRequired} />;
   }
 
-  return <Workspace onLogout={logout} user={user} />;
+  return <ModelAssetCoverSession key={user.id} userId={user.id}><Workspace onLogout={logout} user={user} /></ModelAssetCoverSession>;
 }

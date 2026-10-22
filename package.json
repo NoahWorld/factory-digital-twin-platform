@@ -45,6 +45,7 @@
     "test:select-browser": "node scripts/test-select-browser.mjs",
     "test:runtime-ui": "node scripts/test-runtime-ui.mjs",
     "test:project-covers": "node scripts/test-project-covers.mjs",
+    "test:model-asset-covers": "node scripts/test-model-asset-covers.mjs",
     "test:composable-dashboard": "node scripts/test-composable-dashboard.mjs",
     "backend:init": "node scripts/init-local.mjs",
     "backend:contracts": "node scripts/backend-contracts.mjs",

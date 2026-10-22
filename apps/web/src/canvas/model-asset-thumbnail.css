@@ -1,0 +1,22 @@
+.resource-card-preview.model-asset-cover > img {
+  object-fit: contain;
+}
+
+.model-asset-cover-status {
+  display: grid;
+  gap: 4px;
+  padding: 8px;
+  color: var(--ui-text-muted);
+  font-size: 0.75rem;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.model-asset-cover-status small {
+  color: var(--ui-accent);
+  font-size: inherit;
+}
+
+[data-model-cover-state="error"] .model-asset-cover-status {
+  color: var(--ui-danger);
+}
