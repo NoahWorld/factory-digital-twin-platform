@@ -11,6 +11,8 @@ import assert from 'node:assert/strict';
 import {backendDirectory} from './backend-target.mjs';
 const root=fileURLToPath(new URL('..',import.meta.url));
 const require=createRequire(new URL('../apps/web/package.json',import.meta.url));
+const iot=process.argv.includes('--iot');
+if(iot&&!process.argv.includes('--backend-dir'))throw new Error('IoT export requires an explicit --backend-dir pointing to cloud_server_pro.');
 const ts=require('typescript');
 const files=['apps/api/src/canvas.ts','apps/api/src/standalone-scenes.ts','apps/api/src/assets.ts','apps/api/src/data-sources.ts','apps/api/src/asset-data-bindings.ts','shared/canvas-ornaments.ts','shared/twin-drive.ts'];
 const program=ts.createProgram(files.map(f=>join(root,f)),{strict:true,target:ts.ScriptTarget.ES2022,skipLibCheck:true,moduleResolution:ts.ModuleResolutionKind.Node10});
@@ -99,7 +101,12 @@ const kinds=checker.getTypeFromTypeNode(aliases.get('CanvasNodeType').aliasSymbo
 assert.deepEqual(Object.values(groups).flat().sort(),kinds.types.map(t=>t.value).sort(),'Every canvas kind must have exactly one props validator');
 definitions.CanvasNode.properties.props={type:'object'};
 definitions.CanvasNode.allOf=Object.entries(groups).map(([name,types])=>({if:{required:['type'],properties:{type:{enum:types}}},then:{properties:{props:schema(aliases.get(name))}}}));
-const output=join(backendDirectory(),'src/main/resources/contracts');mkdirSync(output,{recursive:true});
+if(iot){
+ definitions.CanvasNodeType.anyOf.push({const:'process-pipe'});
+ definitions.CanvasNode.properties.stateBinding=schema(aliases.get('StateBinding'));
+ definitions.CanvasNode.allOf.push({if:{required:['type'],properties:{type:{const:'process-pipe'}}},then:{properties:{props:schema(aliases.get('PipeProps'))}}});
+}
+const output=join(backendDirectory(),iot?'jetlinks-standalone/src/main/resources/twin-contracts':'src/main/resources/contracts');mkdirSync(output,{recursive:true});
 const fingerprints=Object.fromEntries(program.getSourceFiles().filter(s=>s.fileName.startsWith(root)&&!s.fileName.includes('node_modules')).map(s=>[s.fileName.slice(root.length),createHash('sha256').update(s.text).digest('hex')]));
 function write(name,value){const contents=JSON.stringify(value,null,2)+'\n';const path=join(output,name);if(process.argv.includes('--check')){if(readFileSync(path,'utf8')!==contents)throw new Error('Contract drift: '+name+'; run pnpm backend:contracts');}else writeFileSync(path,contents);}
 // Shared authored geometry is also the backend's kinematic source of truth.
@@ -125,6 +132,22 @@ try{
  const idPattern='^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}(?![\\s\\S])';
  const printable='^[^\\u0000-\\u001f\\u007f-\\u009f]*(?![\\s\\S])';
  const field=(type,key,bounds)=>constrain(definitions[type].properties[key],bounds);
+ if(iot){
+   field('StateBinding','pointKey',{minLength:3,maxLength:200,pattern:'^[A-Za-z0-9_.:-]+/[A-Za-z_][A-Za-z0-9_]*(?![\\s\\S])'});
+   field('StateBinding','staleAfterSeconds',{type:'integer',minimum:1,maximum:86400});
+   field('StateBinding','states',{minItems:1,maxItems:8});
+   field('ProcessState','label',{minLength:1,maxLength:80,pattern:FLUID_LABEL_PATTERN});
+   field('ProcessState','color',{pattern:FLUID_COLOR_PATTERN});
+   field('ProcessState','speed',{minimum:0,maximum:30});
+   field('ProcessState','value',{maxLength:1000});
+   field('PipeProps','label',{minLength:1,maxLength:80,pattern:FLUID_LABEL_PATTERN});
+   field('PipeProps','color',{pattern:FLUID_COLOR_PATTERN});
+   field('PipeProps','width',{minimum:2,maximum:40});
+   field('PipeProps','speed',{minimum:0,maximum:30});
+   field('PipeProps','waypoints',{maxItems:32});
+   for(const type of ['PipePoint','PipeEndpoint'])for(const key of ['x','y'])field(type,key,{minimum:0,maximum:16384});
+   field('PipeEndpoint','nodeId',{minLength:1,maxLength:120});
+ }
  const {IOT_BINDING_LIMITS,IOT_BINDABLE_NODE_TYPES}=require(join(temp,'shared/iot-embed.js'));
  // Match JS trim(), including Unicode spaces; Java regex \s has a narrower default set.
  const iotWhitespace='\\u0009-\\u000d\\u0020\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000\\ufeff';
@@ -207,7 +230,7 @@ try{
  write('builtin-images.json',createRequire(import.meta.url)(join(temp,'shared/builtin-images.js')).builtinImages);
  const source=readFileSync(join(root,'apps/api/src/canvas.ts'),'utf8');
  const minSizes=Object.fromEntries([...source.slice(source.indexOf('const minimumNodeSizes'),source.indexOf('const invalid')).matchAll(/(?:"([\w-]+)"|(\w+)):\s*\{ width: (\d+), height: (\d+) \}/g)].map(m=>[m[1]??m[2],[Number(m[3]),Number(m[4])]]));
- minSizes['card-title']=[120,32];minSizes['vector-icon']=[24,24];write('canvas-minimum-sizes.json',minSizes);
+ minSizes['card-title']=[120,32];minSizes['vector-icon']=[24,24];if(iot)minSizes['process-pipe']=[1,1];write('canvas-minimum-sizes.json',minSizes);
  write('scene-limits.json',createRequire(import.meta.url)(join(temp,'shared/standalone-3d.js')).STANDALONE_3D_LIMITS);
 }finally{rmSync(temp,{recursive:true,force:true});}
 console.log('Backend contracts '+(process.argv.includes('--check')?'verified':'generated')+'.');

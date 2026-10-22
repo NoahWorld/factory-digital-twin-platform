@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } fro
 import { errorMessage, request, reportError } from "../api";
 import { ComponentPalette } from "../canvas/ComponentPalette";
 import { ComponentInspector } from "../canvas/ComponentInspector";
+import { validatePipeReferences } from "../../../../shared/process-control";
+import { buildIotPointManifest } from "../../../../shared/iot-embed";
 import { CanvasSurface } from "../canvas/CanvasSurface";
 import { useIotEmbed } from "../canvas/useIotEmbed";
 import { isRuntimeNodeVisible } from "../canvas/runtime-projection";
@@ -439,6 +441,8 @@ export function CanvasPage({ initialAssetId, initialTemplateId, mode, projectId,
 
   const deleteSelectedNode = () => {
     if (!document || !selectedNodeId || !document.nodes.some((node) => node.id === selectedNodeId)) return;
+    const remaining = validatePipeReferences(document.nodes.filter(node => node.id !== selectedNodeId));
+    if (!remaining.ok) { notify.warning(`无法删除组件：删除后${remaining.message}`); return; }
     setDocument({ ...document, nodes: document.nodes.filter((node) => node.id !== selectedNodeId) });
     dirtyNodeIdsRef.current.delete(selectedNodeId);
     deletedNodeIdsRef.current.add(selectedNodeId);
@@ -452,6 +456,9 @@ export function CanvasPage({ initialAssetId, initialTemplateId, mode, projectId,
       return false;
     }
     if (!document || !dirty || saving || !canEdit) return !dirty;
+    const references = validatePipeReferences(document.nodes);
+    const manifest = buildIotPointManifest(document.nodes);
+    if (!references.ok || !manifest.ok) { notify.warning(!references.ok ? references.message : !manifest.ok ? manifest.message : "配置无效"); return false; }
     for (const node of document.nodes) {
       if (node.interaction === undefined) continue;
       const parsed = parseCanvasNodeInteraction(node.interaction);

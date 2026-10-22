@@ -48,6 +48,7 @@ const groups: PaletteGroup[] = [
       { type: "event-timeline", description: "流程与操作记录", icon: "◷" },
   ] },
   { id: "shape", label: "基础图形", items: [
+      { type: "process-pipe", description: "连接设备、编辑路径与流向", icon: "↳" },
       { type: "rectangle", description: "可配置填充和圆角", icon: (<i className="palette-shape-icon is-rectangle" />) },
       { type: "circle", description: "固定比例缩放", icon: (<i className="palette-shape-icon is-circle" />) },
   ] },

@@ -17,6 +17,7 @@
     "test:twin-actions": "node scripts/test-twin-actions.mjs",
     "test:iot-embed:browser": "node scripts/test-iot-embed-browser.mjs",
     "test:iot-embed": "node scripts/test-iot-embed.mjs",
+    "test:process-control": "node scripts/test-process-control.mjs",
     "test:linked-canvas": "node scripts/test-linked-canvas.mjs",
     "test:ui-theme": "node scripts/test-ui-theme.mjs",
     "test:runtime-ui": "node scripts/test-runtime-ui.mjs",

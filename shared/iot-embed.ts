@@ -1,4 +1,5 @@
-/** Optional 2D point input. These values never become canvas configuration. */
+import { parseStateBinding } from "./process-control";
+/** Optional point input. These values never become saved configuration. */
 export const IOT_EMBED_CHANNEL = "kingdom.iot.points" as const;
 export const IOT_EMBED_VERSION = 1 as const;
 export const IOT_MAX_POINTS = 500;
@@ -33,17 +34,19 @@ export function parseIotBinding(value: unknown, nodeType: string): IotResult<Iot
   return { ok: true, value: { pointKey: value.pointKey, valueType: value.valueType, staleAfterSeconds: value.staleAfterSeconds } };
 }
 
-export function buildIotPointManifest(nodes: readonly { id: string; type: string; iotBinding?: unknown }[]): IotResult<IotPoint[]> {
+export function buildIotPointManifest(nodes: readonly { id: string; type: string; iotBinding?: unknown; stateBinding?: unknown }[]): IotResult<IotPoint[]> {
   const points = new Map<string, IotPoint>();
   for (const node of nodes) {
-    if (node.iotBinding === undefined) continue;
-    const parsed = parseIotBinding(node.iotBinding, node.type);
+    for (const field of ["iotBinding", "stateBinding"] as const) {
+    if (node[field] === undefined) continue;
+    const parsed = field === "iotBinding" ? parseIotBinding(node.iotBinding, node.type) : parseStateBinding(node.stateBinding);
     if (!parsed.ok) return { ok: false, message: `组件 ${node.id}：${parsed.message}` };
     const binding = parsed.value;
     const previous = points.get(binding.pointKey);
     if (previous && previous.valueType !== binding.valueType) return { ok: false, message: `点位 ${binding.pointKey} 在多个组件中的数据类型不一致。` };
     points.set(binding.pointKey, { key: binding.pointKey, valueType: binding.valueType, staleAfterSeconds: Math.min(previous?.staleAfterSeconds ?? binding.staleAfterSeconds, binding.staleAfterSeconds) });
     if (points.size > IOT_MAX_POINTS) return { ok: false, message: `每个画面最多绑定 ${IOT_MAX_POINTS} 个不同点位。` };
+    }
   }
   return { ok: true, value: [...points.values()] };
 }

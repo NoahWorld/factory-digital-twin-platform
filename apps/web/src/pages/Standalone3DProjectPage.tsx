@@ -24,6 +24,7 @@ import {
 import type { TwinAction } from "../../../../shared/twin-actions";
 import { FLUID_LIMITS, parseFluids, type FluidDefinition, type FluidKind } from "../../../../shared/fluids";
 import { FluidEditor, FluidLayers, useFluidEditor } from "../scene/FluidEditor";
+import { useIotEmbed, useIotFluids } from "../canvas/useIotEmbed";
 import { errorMessage, request, reportError } from "../api";
 import { findBuiltinModel, latestBuiltinModel } from "../../../../shared/builtin-models";
 import { Select } from "../components/Select";
@@ -178,6 +179,8 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
 
   }, []);
   const fluidEditor = useFluidEditor({ fluids: draftScene?.fluids, onChange: updateFluids, enabled: editable && mode === "edit" && !saving });
+  const fluidRuntime = useIotFluids(draftScene, mode === "preview");
+  const linkedIotRuntime = useIotEmbed(linkedCanvas, mode === "preview");
   const draftSceneRef = useRef<StandaloneSceneDocument | null>(null);
   const layerTreeRef = useRef<HTMLDivElement | null>(null);
   const fluidLayerRef = useRef<HTMLDivElement | null>(null);
@@ -856,7 +859,7 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
       editable={false}
       interactive
       instanceTransformMode={mode === "edit" && !showTwinEditor && editable && !saving && !extrasPending && extrasSelection?.kind !== "map" && !fluidEditor.selectedId && !fluidEditor.session ? instanceTransformMode : null}
-      fluids={mode === "edit" ? fluidEditor.previewFluids : draftScene.fluids}
+      fluids={mode === "edit" ? fluidEditor.previewFluids : fluidRuntime.fluids}
       selectedFluidId={mode === "edit" ? fluidEditor.selectedId : null}
       fluidEditor={mode === "edit" ? fluidEditor.rendererEditor : null}
       onFluidPoint={mode === "edit" ? fluidEditor.onPoint : undefined}
@@ -892,9 +895,11 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
       <main className="standalone-3d-preview" aria-label={`${projectName}预览`}>
         <section className="standalone-3d-preview-stage" data-canvas-fullscreen-root>
           {sceneView}
+          {fluidRuntime.errors.length ? <div className="process-runtime-error" role="status">{fluidRuntime.errors.map(e => <div key={e}>{e}</div>)}</div> : null}
           <RoomAlarmStatusPanel rules={renderExtras.current.roomAlarms} statuses={roomStatuses} />
           {linkedCanvas ? <CanvasSurface
             document={linkedCanvas} editable={false} presentation="overlay"
+            iotRuntimeNodes={linkedIotRuntime.nodes}
             selectedNodeId={null} selectedModelSceneNodePath={null}
             onCreateNode={ignoreSceneNodeSelection} onModelSceneNodeSelect={ignoreSceneNodeSelection}
             onNodeChange={ignoreSceneNodeSelection} onSelectNode={ignoreSceneNodeSelection}

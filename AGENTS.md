@@ -20,9 +20,12 @@
 - 全部 JSON API 走 `src/api.ts`，将逻辑 `/api/v1/*` 映射到开发 `/cloud/twin/*`、生产 `/cloudPro/api/twin/*`，要求 `{status:200,result}`；拒绝旧裸 JSON 和身份接口，不允许静默切回原后端。业务 404 必须与孪生模块未实现区分，日志不包含令牌、签名 URL、查询串或原始响应体。
 - 模型、图片、音视频及封面先由 IoT 鉴权，再获取 30 秒以上、5 分钟以内的临时访问地址；文件使用 IoT MinIO，元数据保存在 IoT。所有私有资源经过 `src/iot/resources.ts`，禁止公开桶、永久链接和前端 MinIO 密钥。内置演示模型仍是明确列举的公开静态文件。
 - 实时状态使用有界 REST 轮询，直接读取 IoT 保存的设备最新属性及采样时间；不再申请 WebSocket 票据。请求按超时取消，错误退避最多 6 次后停止，展示重试次数。关闭场景取消请求，切换账号拒绝旧响应；不填充伪造数据。
+- 工艺管路与状态规则的共享契约为 `shared/process-control.ts`。2D `process-pipe` 使用画布绝对坐标、设备边缘锚点与最多 32 个途经点；设备移动/缩放后重新计算锚点，删除被连接设备前须解除管路引用。每个 2D 组件及 3D 流体可配置一个 `stateBinding`，按顺序匹配最多 8 条类型严格的规则；数字支持比较，文本/布尔只支持相等。运行态不改写保存文档，缺失、陈旧、类型不符、未匹配或请求失败必须明确提示，管路/流体变灰并停止。
+- 2D `/canvas/runtime` 与 3D `/scene/runtime` 共用点位清单、原 IoT 设备权限和采样时间；单文档最多 500 个点位、64 个设备。同一点位的类型须一致、陈旧阈值取最严格值，发布版使用冻结映射。速度为视觉倍率，不是实测流量；尚未实现从 2D 管路自动生成 3D 管道或下发控制命令。
 - 3D 项目默认优先，保留 2D 画布用于叠加详情和联合展示。原独立后端的业务示例、AI/BIM 转换及模型压缩入口已撤下；历史实现不代表 IoT 已支持。数据源仅接受逻辑地址 `/iot/devices/{设备ID列表}/snapshot`，从 IoT 读取数据；2D 点位格式 `设备ID/属性ID`。未实现新的 IoT 设备选择器，设备 ID 需明确配置。
 - 同一 IoT 身份在窗口聚焦时重新验证不能卸载编辑器、丢弃未保存草稿；临时授权校验失败时禁用交互并允许重试，账号或权限变化应重新隔离工作区。资源未加载完不得生成“成功”的空封面。
 - 接口与部署的当前契约见 [IoT 接入说明](docs/iot-integration.md)。验证入口：`pnpm test:iot-integration`、`pnpm test:iot-integration:browser`、`pnpm test:api-errors`、`pnpm test:project-covers`、`pnpm test:model-asset-covers`、`pnpm test:scene-runtime`、`pnpm test:twin-drive`、`pnpm test:uuid`。隔离浏览器脚本不代替真实 IoT/MinIO 验收；本地验证记录见接入说明。
+- 管路/状态改动运行 `pnpm test:process-control`、`pnpm test:iot-embed`、`pnpm test:iot-integration`、`pnpm check`、`pnpm build`。导出 IoT 后端契约使用 `node scripts/backend-contracts.mjs --iot --backend-dir <IoT后端路径>`，追加 `--check` 校验同步；不得运行默认导出去修改原独立后端。
 
 - 金属盐参观展示看板位于 `#/projects/{id}/metal-salt-dashboard`，复用当前 IoT 已保存场景及共享 3D renderer，严格只读。七设备的模拟参数配置独立保存在 `src/dashboard/metal-salt-demo.ts`，必须明确标识模拟，不能写入 IoT 设备数据或用作真实请求失败的兜底；缺失/重名/隐藏设备须报错。看板在读取场景后以 `chemicalWorkshopScene` 展示预设化工环境（替换 `builtin:workshop-*` 配景，保留 IoT 设备及管道），不回写原场景。默认全屏背景与正面低俯角镜头，展示镜头 `cameraFraming` 仅由可信前端传入，不加入保存契约。规则与入口见 [金属盐看板](docs/metal-salt-dashboard.md)。
 

@@ -1,5 +1,6 @@
 import { memo, useCallback, useEffect, useRef, useState, type CSSProperties, type DragEvent, type ReactNode, type PointerEvent as ReactPointerEvent } from "react";
 import { BasicNode } from "./BasicNode";
+import { ProcessPipe } from "./ProcessPipe";
 import { IotPointUnavailable } from "./IotPointUnavailable";
 import type { IotRuntimeNode } from "./iot-runtime";
 import "./iot-embed.css";
@@ -50,6 +51,8 @@ type ActiveResize = {
 type ActiveInteraction = ActiveDrag | ActiveResize;
 
 type CanvasNodeViewProps = {
+  stateColor?: string;
+  stateLabel?: string;
   iotUnavailable?: string | null;
   previewMode: boolean;
   overlay: boolean;
@@ -93,7 +96,7 @@ const hasGeometryChanged = (previous: CanvasNode, next: CanvasNode) => (
 
 const ignoreEmbeddedSceneSelection = () => undefined;
 
-const CanvasNodeView = memo(function CanvasNodeView({ iotUnavailable, editable, overlay, previewMode, runtimeControlsEnabled, embeddedSceneSelection, modelInteractionEnabled, node, onEmbeddedSceneSelectionChange, onEmbeddedSceneActions, onNodeActions, modelFocusRequest, onModelSceneChange, onModelSceneNodeSelect, projectId, renderZIndex, runtimeAppearanceOverrides, runtimeAsset, runtimeAssetConnection, runtimeAssetError, runtimeAssetLoading, selected, selectedModelSceneNodePath, onPointerDown, onResizePointerDown }: CanvasNodeViewProps) {
+const CanvasNodeView = memo(function CanvasNodeView({ stateColor, stateLabel, iotUnavailable, editable, overlay, previewMode, runtimeControlsEnabled, embeddedSceneSelection, modelInteractionEnabled, node, onEmbeddedSceneSelectionChange, onEmbeddedSceneActions, onNodeActions, modelFocusRequest, onModelSceneChange, onModelSceneNodeSelect, projectId, renderZIndex, runtimeAppearanceOverrides, runtimeAsset, runtimeAssetConnection, runtimeAssetError, runtimeAssetLoading, selected, selectedModelSceneNodePath, onPointerDown, onResizePointerDown }: CanvasNodeViewProps) {
   const actionable = previewMode && runtimeControlsEnabled && !editable && (node.interaction?.clickActions.length ?? 0) > 0 && node.props.disabled !== true;
   const keyboardAction = actionable && !runtimeControlNodeTypes.has(node.type);
   return (
@@ -165,6 +168,7 @@ const CanvasNodeView = memo(function CanvasNodeView({ iotUnavailable, editable, 
                 />
               )
             : <ChartNode node={node} />}
+      {stateLabel ? <span className="process-state-badge" style={{ borderColor: stateColor }}>{stateLabel}</span> : null}
       {editable && selected ? resizeHandles.map(({ direction, label }) => (
         <button
           aria-label={label}
@@ -220,6 +224,7 @@ export function CanvasSurface({ iotRuntimeNodes = {}, children, document, editab
   const overlay = presentation === "overlay";
   const fitViewport = presentation === "viewport";
   const viewportRef = useRef<HTMLDivElement>(null);
+  const pipeDiagnosticsRef = useRef<HTMLElement>(null);
   const surfaceRef = useRef<HTMLDivElement>(null);
   const verticalGuideRef = useRef<HTMLDivElement>(null);
   const horizontalGuideRef = useRef<HTMLDivElement>(null);
@@ -227,6 +232,9 @@ export function CanvasSurface({ iotRuntimeNodes = {}, children, document, editab
   const animationFrameRef = useRef<number | null>(null);
   const scaleRef = useRef(1);
   const [scale, setScale] = useState(1);
+  const [movingNode, setMovingNode] = useState<CanvasNode | null>(null);
+  const pipeErrors = previewMode ? document.nodes.filter(node => node.type === "process-pipe" && (!overlay || isOverlayNode(node)) && isRuntimeNodeVisible(node, runtimeNodeVisibility) && iotRuntimeNodes[node.id]?.unavailable).map(node => ({ id: node.id, label: String(node.props.label), message: iotRuntimeNodes[node.id].unavailable })) : [];
+  const hasPipeErrors = pipeErrors.length > 0;
   const surfaceStyle = {
     "--canvas-theme-accent": document.theme.accentColor,
     "--canvas-theme-background": document.theme.backgroundColor,
@@ -251,20 +259,22 @@ export function CanvasSurface({ iotRuntimeNodes = {}, children, document, editab
       const isFullscreen = fullscreenElement === viewport || (overlay && fullscreenElement !== null && fullscreenElement.contains(viewport));
       // A dashboard must keep its authored edges visible, including in native fullscreen.
       const scaleMode = fitViewport ? "contain" : isFullscreen ? "cover" : overlay ? "contain" : "editor";
-      const nextScale = canvasViewportScale(viewport.clientWidth, viewport.clientHeight, document.width, document.height, scaleMode);
+      const diagnosticsHeight = pipeDiagnosticsRef.current ? pipeDiagnosticsRef.current.offsetHeight + 12 : 0;
+      const nextScale = canvasViewportScale(viewport.clientWidth, Math.max(1, viewport.clientHeight - diagnosticsHeight), document.width, document.height, scaleMode);
       scaleRef.current = nextScale;
       setScale(nextScale);
     };
 
     const observer = new ResizeObserver(updateScale);
     observer.observe(viewport);
+    if (pipeDiagnosticsRef.current) observer.observe(pipeDiagnosticsRef.current);
     globalThis.document.addEventListener("fullscreenchange", updateScale);
     updateScale();
     return () => {
       observer.disconnect();
       globalThis.document.removeEventListener("fullscreenchange", updateScale);
     };
-  }, [document.height, document.width, fitViewport, overlay]);
+  }, [document.height, document.width, fitViewport, overlay, hasPipeErrors]);
 
   const hideGuides = useCallback(() => {
     if (verticalGuideRef.current) verticalGuideRef.current.style.display = "none";
@@ -284,6 +294,7 @@ export function CanvasSurface({ iotRuntimeNodes = {}, children, document, editab
       active.element.style.width = `${resizedNode.width}px`;
       active.element.style.height = `${resizedNode.height}px`;
       active.element.style.transform = `translate3d(${resizedNode.x}px, ${resizedNode.y}px, 0)`;
+      setMovingNode(resizedNode);
       return resizedNode;
     }
 
@@ -292,6 +303,7 @@ export function CanvasSurface({ iotRuntimeNodes = {}, children, document, editab
     const snapped = snapNodePosition(rawX, rawY, active.node, active.targets, document.width, document.height);
     active.snapped = snapped;
     active.element.style.transform = `translate3d(${snapped.x}px, ${snapped.y}px, 0)`;
+    setMovingNode({ ...active.node, x: snapped.x, y: snapped.y });
 
     if (verticalGuideRef.current) {
       verticalGuideRef.current.style.display = snapped.verticalGuide === null ? "none" : "block";
@@ -332,6 +344,7 @@ export function CanvasSurface({ iotRuntimeNodes = {}, children, document, editab
         : active.resizedNode);
       active.element.classList.remove("is-dragging", "is-resizing");
       activeInteractionRef.current = null;
+      setMovingNode(null);
       hideGuides();
       if (hasGeometryChanged(active.node, changedNode)) onNodeChange(changedNode);
     };
@@ -409,7 +422,8 @@ export function CanvasSurface({ iotRuntimeNodes = {}, children, document, editab
   };
 
   return (
-    <div className={`canvas-viewport${overlay ? " is-overlay" : ""}${fitViewport ? " is-full-viewport" : ""}`} data-canvas-fullscreen-root={overlay ? undefined : true} ref={viewportRef} style={overlay ? { background: "transparent", pointerEvents: "none" } : fitViewport ? { background: document.theme.backgroundColor } : undefined}>
+    <div className={`canvas-viewport${overlay ? " is-overlay" : ""}${fitViewport ? " is-full-viewport" : ""}${hasPipeErrors ? " has-pipe-errors" : ""}`} data-canvas-fullscreen-root={overlay ? undefined : true} ref={viewportRef} style={overlay ? { background: "transparent", pointerEvents: "none" } : fitViewport ? { background: document.theme.backgroundColor } : undefined}>
+      {hasPipeErrors ? <section className="process-pipe-diagnostics" ref={pipeDiagnosticsRef} role="status" aria-label="管路状态异常"><ul>{pipeErrors.map(item => <li key={item.id}><strong>{item.label}</strong>：{item.message}</li>)}</ul></section> : null}
       <div className="canvas-scale-frame" style={{ height: document.height * scale, width: document.width * scale }}>
         <div
           className={`canvas-surface${editable ? " is-editable" : " is-preview"}`}
@@ -426,8 +440,12 @@ export function CanvasSurface({ iotRuntimeNodes = {}, children, document, editab
           {document.nodes.filter((node) => (!overlay || isOverlayNode(node)) && (!previewMode || isRuntimeNodeVisible(node, runtimeNodeVisibility))).map((sourceNode) => {
             const iotNode = previewMode && Object.prototype.hasOwnProperty.call(iotRuntimeNodes, sourceNode.id) ? iotRuntimeNodes[sourceNode.id] : undefined;
             const node = iotNode ? iotNode.node : previewMode ? projectRuntimeNode(sourceNode, runtimeTextOverrides) : sourceNode;
+            if (iotNode?.visible === false) return null;
+            if (node.type === "process-pipe") return <ProcessPipe key={node.id} node={node} document={movingNode ? { ...document, nodes: document.nodes.map(n => n.id === movingNode.id ? movingNode : n) } : document} editable={editable} selected={node.id === selectedNodeId} onSelect={() => onSelectNode(node.id)} onChange={onNodeChange} error={iotNode?.unavailable} stateLabel={iotNode?.stateLabel} />;
             return (
             <CanvasNodeView
+              stateColor={iotNode?.stateColor}
+              stateLabel={iotNode?.stateLabel}
               iotUnavailable={iotNode?.unavailable}
               editable={editable}
               previewMode={previewMode}

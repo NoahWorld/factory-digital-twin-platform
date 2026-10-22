@@ -156,7 +156,7 @@ export function PublicationRunPage({ projectId, versionId }: { projectId: string
   const root = snapshot?.projects[projectId] ?? null;
   const isCanvas = root?.project.projectType === "2d";
   const canvas = root ? (isCanvas ? root.document as CanvasDocument : snapshot?.projects[(root.document as StandaloneSceneDocument).linked2dProjectId ?? ""]?.document as CanvasDocument | undefined) : null;
-  const iotRuntime = useIotEmbed(isCanvas ? canvas ?? null : null, isCanvas);
+  const iotRuntime = useIotEmbed(canvas ?? null, Boolean(canvas));
   const assets = useMemo(() => root ? (isCanvas ? root.assets : snapshot?.projects[canvas?.projectId ?? ""]?.assets ?? EMPTY_PUBLICATION_ASSETS) : EMPTY_PUBLICATION_ASSETS, [root, isCanvas, snapshot, canvas?.projectId]);
   const runtimeProjectId = canvas?.projectId ?? null;
   const runtimeConnections = useAssetRuntimeConnections({
@@ -245,7 +245,7 @@ export function PublicationRunPage({ projectId, versionId }: { projectId: string
           },
           onSceneNodeSelect: ignore, projectId, runtimeControlsEnabled: false,
           selectedModelInstanceId: selectedInstanceId, selectedSceneNodePath: null }} />
-        {canvas ? <CanvasSurface document={canvas} editable={false} presentation="overlay"
+        {canvas ? <CanvasSurface document={canvas} editable={false} presentation="overlay" iotRuntimeNodes={iotRuntime.nodes}
           selectedNodeId={null} selectedModelSceneNodePath={null}
           onCreateNode={ignore} onModelSceneNodeSelect={ignore} onNodeChange={ignore} onSelectNode={ignore}
           onNodeActions={(node: CanvasNode) => execute(node.interaction?.clickActions ?? [], `组件 ${node.id}`)}

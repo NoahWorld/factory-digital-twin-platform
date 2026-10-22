@@ -1,7 +1,9 @@
+import { parseStateBinding, type StateBinding } from "./process-control";
 /** Persisted procedural fluid visuals. Coordinates are in scene-local, Y-up units. */
 export type FluidKind = "gas" | "liquid" | "molten";
 export type FluidPoint = [number, number, number];
 export type FluidDefinition = {
+  stateBinding?: StateBinding;
   id: string;
   label: string;
   kind: FluidKind;
@@ -58,10 +60,14 @@ export const parseFluids = (input: unknown): { ok: true; value: FluidDefinition[
     const context = `fluids[${index}]`;
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) return fail(`${context} must be an object.`);
     const value = raw as Record<string, unknown>;
-    const unknown = Object.keys(value).find((key) => !fields.has(key));
+    const unknown = Object.keys(value).find((key) => !fields.has(key) && key !== "stateBinding");
     if (unknown) return fail(`${context}.${unknown} is not supported.`);
     const missing = [...fields].find((key) => !Object.hasOwn(value, key));
     if (missing) return fail(`${context}.${missing} is required.`);
+    if (value.stateBinding !== undefined) {
+      const binding = parseStateBinding(value.stateBinding);
+      if (!binding.ok) return fail(`${context}.stateBinding: ${binding.message}`);
+    }
     if (typeof value.id !== "string" || !new RegExp(FLUID_ID_PATTERN).test(value.id)) return fail(`${context}.id must be a stable identifier.`);
     if (ids.has(value.id)) return fail(`${context}.id duplicates ${value.id}.`);
     ids.add(value.id);
