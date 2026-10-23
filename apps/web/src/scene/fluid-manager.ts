@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { parseFluids, type FluidDefinition } from "../../../../shared/fluids";
+import { createFluidTube, createStreamPath, type FluidPath } from "./fluid-path";
 
 const TAU = Math.PI * 2;
 const MAX_PARTICLES = 256;
@@ -94,9 +95,9 @@ type FluidRecord = {
   group: THREE.Group;
   pathBounds: THREE.Box3;
   localBounds: THREE.Box3;
-  curve: THREE.CatmullRomCurve3;
   length: number;
   samples: THREE.Vector3[];
+  fractions: number[];
   normals: THREE.Vector3[];
   binormals: THREE.Vector3[];
   surface: THREE.ShaderMaterial | null;
@@ -137,13 +138,21 @@ function createRecord(definition: FluidDefinition): FluidRecord {
     // A tiny path around a large scene coordinate otherwise loses its tangents
     // in subtraction, and separate tube rings collapse to the same GPU position.
     const origin = new THREE.Vector3(...definition.points[0]);
-    const curve = new THREE.CatmullRomCurve3(definition.points.map((point) => new THREE.Vector3(...point).sub(origin)), false, "centripetal");
-    const segments = THREE.MathUtils.clamp((definition.points.length - 1) * 24, 48, 768);
-    curve.arcLengthDivisions = segments * 4;
-    const length = curve.getLength();
-    if (!Number.isFinite(length) || length <= 0) throw new Error("路径数值长度必须是正的有限值");
-    const samples = curve.getSpacedPoints(segments);
-    const frames = curve.computeFrenetFrames(segments, false);
+    const points = definition.points.map((point) => new THREE.Vector3(...point).sub(origin));
+    const budget = THREE.MathUtils.clamp((definition.points.length - 1) * 24, 48, 768);
+    let path: FluidPath;
+    if (definition.mode === "stream") {
+      path = createStreamPath(points, budget);
+    } else {
+      // Free diffusion retains its smooth plume; continuous flow follows pipe runs.
+      const curve = new THREE.CatmullRomCurve3(points, false, "centripetal");
+      curve.arcLengthDivisions = budget * 4;
+      const length = curve.getLength();
+      if (!Number.isFinite(length) || length <= 0) throw new Error("路径数值长度必须是正的有限值");
+      path = { length, samples: curve.getSpacedPoints(budget), fractions: Array.from({ length: budget + 1 }, (_, i) => i / budget), ...curve.computeFrenetFrames(budget, false) };
+    }
+    const { length, samples, fractions, normals, binormals } = path;
+    const segments = samples.length - 1;
     const group = new THREE.Group();
     group.position.copy(origin);
     group.userData.fluidId = definition.id;
@@ -153,7 +162,7 @@ function createRecord(definition: FluidDefinition): FluidRecord {
     localBounds.expandByScalar(envelopeRadius(definition, 1) * 2);
     let surface: THREE.ShaderMaterial | null = null;
     if (definition.kind !== "gas" && definition.mode === "stream") {
-      const geometry = new THREE.TubeGeometry(curve, segments, definition.radius, 10, false);
+      const geometry = createFluidTube(path, 10, () => definition.radius);
       geometries.push(geometry);
       surface = new THREE.ShaderMaterial({
         vertexShader: surfaceVertex, fragmentShader: surfaceFragment,
@@ -173,19 +182,12 @@ function createRecord(definition: FluidDefinition): FluidRecord {
 
     // Shader-moved quads cannot use Mesh.raycast. An undrawn tapering tube supplies
     // reliable world-space hits; the caller still sorts it against model occluders.
-    const pickGeometry = new THREE.TubeGeometry(curve, segments, 1, 8, false);
+    const pickGeometry = createFluidTube(path, 8, (fraction) => {
+      const age = definition.direction === "forward" ? fraction : 1 - fraction;
+      return envelopeRadius(definition, age) * (definition.kind === "gas" ? 1.2 : 1);
+    });
     geometries.push(pickGeometry);
     const pickPositions = pickGeometry.getAttribute("position");
-    const vertex = new THREE.Vector3();
-    for (let i = 0; i <= segments; i++) {
-      const age = definition.direction === "forward" ? i / segments : 1 - i / segments;
-      const width = envelopeRadius(definition, age) * (definition.kind === "gas" ? 1.2 : 1);
-      for (let ring = 0; ring <= 8; ring++) {
-        const index = i * 9 + ring;
-        vertex.fromBufferAttribute(pickPositions, index).sub(samples[i]).multiplyScalar(width).add(samples[i]);
-        pickPositions.setXYZ(index, vertex.x, vertex.y, vertex.z);
-      }
-    }
     // Close only the invisible pick volume so vertical/axial views can select a
     // flow through its source or destination, while the visible stream stays open.
     const startCap = pickPositions.count;
@@ -245,8 +247,8 @@ function createRecord(definition: FluidDefinition): FluidRecord {
     particleMesh.raycast = () => { /* Picking uses the path envelope above. */ };
     group.add(particleMesh);
     return {
-      definition, signature: shapeSignature(definition), group, pathBounds, localBounds, curve, length,
-      samples, normals: frames.normals, binormals: frames.binormals, surface, particles,
+      definition, signature: shapeSignature(definition), group, pathBounds, localBounds, length,
+      samples, fractions, normals, binormals, surface, particles,
       particleGeometry, centers, sizes, fades, seeds, geometries, materials, phase: 0,
     };
   } catch (error) {
@@ -308,26 +310,36 @@ export class FluidManager {
   }
 
   private writeParticles(record: FluidRecord) {
-    const { definition, samples, normals, binormals, seeds, centers, sizes, fades } = record;
+    const { definition, samples, fractions, normals, binormals, seeds, centers, sizes, fades } = record;
     const last = samples.length - 1;
     for (let index = 0; index < seeds.length; index++) {
       const age = (index / seeds.length + record.phase) % 1;
       const pathT = definition.direction === "forward" ? age : 1 - age;
-      const sample = pathT * last;
-      const left = Math.min(Math.floor(sample), last - 1);
-      const mix = sample - left;
+      // Samples retain elbows and are not equally spaced; locate by distance so
+      // motion neither shortcuts a corner nor slows down around short branches.
+      let left = 0, right = last;
+      while (right - left > 1) {
+        const middle = (left + right) >>> 1;
+        if (fractions[middle] < pathT) left = middle;
+        else right = middle;
+      }
+      const mix = (pathT - fractions[left]) / (fractions[right] - fractions[left]);
       this.center.lerpVectors(samples[left], samples[left + 1], mix);
       this.normal.lerpVectors(normals[left], normals[left + 1], mix).normalize();
       this.binormal.lerpVectors(binormals[left], binormals[left + 1], mix).normalize();
       const width = envelopeRadius(definition, age);
       const angle = seeds[index] * TAU + Math.sin(age * TAU + seeds[index] * 12) * 0.35;
-      const lateral = width * Math.sqrt(hashSeed(index, 19417)) * (definition.mode === "diffuse" || definition.kind === "gas" ? 0.7 : 0.88);
-      this.center.addScaledVector(this.normal, Math.cos(angle) * lateral).addScaledVector(this.binormal, Math.sin(angle) * lateral);
-      centers.setXYZ(index, this.center.x, this.center.y, this.center.z);
       // Steam has overlapping soft clouds; liquids have distinct droplets; molten
       // particles have additive hot cores. Shape choice remains independent of kind.
       const size = definition.kind === "gas" ? width * (0.95 + seeds[index] * 0.45)
         : definition.radius * (definition.mode === "diffuse" ? 0.45 : 0.24) * (0.65 + seeds[index] * 0.7);
+      const drift = width * (definition.mode === "diffuse" || definition.kind === "gas" ? 0.7 : 0.88);
+      // The fragment shader clips each billboard to a disk. Reserve its radius
+      // inside continuous flow rather than letting its edge cross the pipe wall.
+      const lateral = Math.sqrt(hashSeed(index, 19417)) * (definition.mode === "stream" ? Math.min(drift, width - size / 2) : drift);
+      this.normal.multiplyScalar(Math.cos(angle)).addScaledVector(this.binormal, Math.sin(angle)).normalize();
+      this.center.addScaledVector(this.normal, lateral);
+      centers.setXYZ(index, this.center.x, this.center.y, this.center.z);
       sizes.setX(index, size);
       // A particle dies at its destination and is re-emitted invisibly at its source.
       // Its wrap never draws a segment travelling backward across the path.
