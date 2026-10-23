@@ -59,6 +59,7 @@ export type SceneInput = {
   selectedInstanceId: string | null;
   selectionStyle: SceneSelectionStyle;
   controlsEnabled: boolean;
+  cameraFraming?: { direction: [number, number, number]; targetOffset: [number, number, number] };
   instanceTransformMode: InstanceTransformMode | null;
   modelFocusRequest?: { instanceId: string; requestId: string } | null;
   twinTargetSelection?: TwinTarget | null;
@@ -203,6 +204,7 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
     let cameraInitialized = false;
     let emptyCameraInitialized = false;
     let previousView = initial.settings.cameraView;
+    let previousFraming = JSON.stringify(initial.cameraFraming);
     const sceneCenter = new THREE.Vector3();
     const clippingCenter = new THREE.Vector3();
     let frameCount = 0;
@@ -481,8 +483,14 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
           : settings.cameraView === "isometric-left"
             ? new THREE.Vector3(-1.35, 0.78, 1.78)
             : new THREE.Vector3(1.35, 0.9, 1.65);
+      const framing = desired.cameraFraming;
+      if (framing) {
+        if (![...framing.direction, ...framing.targetOffset].every(Number.isFinite) || Math.hypot(...framing.direction) < 0.001) throw new Error("展示相机方向或目标偏移无效");
+        direction.set(...framing.direction);
+      }
       camera.up.set(0, 1, 0);
       const center = currentSceneCenter(new THREE.Vector3());
+      if (framing) center.add(new THREE.Vector3(...framing.targetOffset));
       camera.position.copy(direction.normalize().multiplyScalar(distance).add(center));
       controls.target.copy(center);
       cameraInitialized = true;
@@ -572,7 +580,9 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
       camera.fov = settings.cameraFov;
       camera.zoom = settings.modelScale;
       camera.updateProjectionMatrix();
-      if (previousView !== settings.cameraView) fitCameraToScene();
+      const framing = JSON.stringify(desired.cameraFraming);
+      if (previousView !== settings.cameraView || previousFraming !== framing) fitCameraToScene();
+      previousFraming = framing;
       previousView = settings.cameraView;
     };
 
@@ -964,7 +974,8 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
           } else onSnapshot(null);
         } else manager.cancelPending();
         const instancesChanged = graphChanged || JSON.stringify(appliedInput?.instances) !== JSON.stringify(next.instances);
-        const settingsChanged = JSON.stringify(appliedInput?.settings) !== JSON.stringify(next.settings);
+        const settingsChanged = JSON.stringify(appliedInput?.settings) !== JSON.stringify(next.settings)
+          || JSON.stringify(appliedInput?.cameraFraming) !== JSON.stringify(next.cameraFraming);
         const modelKey = (value: SceneInput | null) => JSON.stringify(value && [
           value.settings.presentation,
           value.settings.transformOverrides,

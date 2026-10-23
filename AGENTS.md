@@ -169,6 +169,8 @@
 
 ## 开发与质量要求
 
+- 化工车间生成器与原生组合看板组装方法见 [化工车间复用](docs/chemical-workshop-authoring.md)。生成设备是示意资源，私有照片和生成 GLB 不自动入库；内置公共背景修改需同步 Java 生成契约。批量视窗的 `cameraFraming` 仅用于可信展示镜头，不持久化，省略时保持原相机行为。
+
 - 连续流 `mode: "stream"` 沿保存路径点的折线运行，保留所有弯头；曲面、拾取体、粒子及距离纹理使用同一套采样和累计距离，粒子软边须包含在配置半径内。禁止用平滑样条让管内流动偏离直管，也不能只增加均匀采样点来掩盖短管段拐角被跳过的问题。扩散流保留平滑路径与扩散行为；回归纳入 `pnpm test:fluids`。
 
 - 当前技术栈：pnpm workspace；`apps/web` 为 React + Vite + TypeScript；运行后端为独立 `factory-digital-twin-backend` 的 Java 21 + Spring Boot，`deploy/local` 为 Docker Compose。`apps/api` 为历史 TypeScript Cloudflare Worker + D1，`apps/backend` 为历史 Java 快照。启动和验证命令以根目录 `README.md` 与各应用 `package.json` 为准。
