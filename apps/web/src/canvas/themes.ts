@@ -165,6 +165,7 @@ export const applyCanvasThemeToNode = (
     };
   }
 
+  if (node.type === "process-pipe") return { ...node, props: { ...node.props, color: theme.accentColor } };
   const exhaustiveCheck: never = node.type;
   throw new Error(`Unsupported canvas node theme target: ${exhaustiveCheck}`);
 };

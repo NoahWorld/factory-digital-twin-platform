@@ -2,6 +2,7 @@ import { createUuid } from "../uuid";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { FLUID_LIMITS, createFluidDefinition, parseFluids, type FluidDefinition, type FluidKind, type FluidPoint } from "../../../../shared/fluids";
 import { Select } from "../components/Select";
+import { StateBindingEditor } from "../components/StateBindingEditor";
 import "./fluid-editor.css";
 
 export const fluidKindLabels: Record<FluidKind, string> = { gas: "气体", liquid: "液体", molten: "熔融体" };
@@ -192,6 +193,7 @@ function FluidNumberField({ label, value, min, max, step = 0.1, disabled, onChan
 }
 
 export function FluidEditor({ editor, sceneAnimationsEnabled, sceneAnimationSpeed }: { editor: FluidEditorController; sceneAnimationsEnabled?: boolean; sceneAnimationSpeed?: number }) {
+  const stateValidation = useCallback((error: string | null) => editor.setFieldError("stateBinding", error), [editor.setFieldError]);
   const fluid = editor.selected;
   const session = editor.session;
   if (!fluid) return <div className="fluid-editor"><p className="standalone-property-note">在“模型库 → 流体”中添加气体、液体或熔融体，再绘制流向路径。</p>{editor.error ? <p className="fluid-error" role="alert">{editor.error}</p> : null}</div>;
@@ -268,5 +270,6 @@ export function FluidEditor({ editor, sceneAnimationsEnabled, sceneAnimationSpee
         : "场景全局动画当前已关闭，流体保持暂停。可在“场景属性 → 动态”开启全局动画。"}</p> : null}
     </section>
     {!session ? pathEditor : null}
+    <StateBindingEditor key={fluid.id} binding={fluid.stateBinding} disabled={disabled} onChange={stateBinding => editor.update({ stateBinding })} onValidationChange={stateValidation} />
   </div>;
 }

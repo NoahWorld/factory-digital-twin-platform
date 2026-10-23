@@ -91,7 +91,7 @@ definitions.TwinVector.items.forEach(item=>Object.assign(item,{minimum:-1e6,maxi
 const groups={
  ChartProps:['line-chart','bar-chart','area-chart','pie-chart','donut-chart','radar-chart'],ShapeProps:['rectangle','circle'],
  DecorationProps:['screen-title','background-decoration','datetime','section-title','card-background','icon-background','radar-sweep','data-stream','circuit-pulse','energy-core','industrial-flow','scan-grid'],
- PanelFrameProps:['panel-frame'],MetricCardProps:['metric-card'],RadialGaugeProps:['radial-gauge'],ProgressListProps:['progress-list'],StatusGridProps:['status-grid'],RankingListProps:['ranking-list'],AlarmListProps:['alarm-list'],DataTableProps:['data-table'],EventTimelineProps:['event-timeline'],PlainTextProps:['plain-text'],TextLinkProps:['text-link'],ImageProps:['image'],CarouselProps:['carousel'],ButtonProps:['button'],FullscreenToggleProps:['fullscreen-toggle'],SwitchProps:['switch'],CheckboxGroupProps:['checkbox-group'],RadioGroupProps:['radio-group'],SelectProps:['select'],Model3DProps:['model-3d'],Scene3DProps:['scene-3d'],AssetDetailProps:['asset-detail'],CardTitleProps:['card-title'],VectorIconProps:['vector-icon']
+ PanelFrameProps:['panel-frame'],MetricCardProps:['metric-card'],RadialGaugeProps:['radial-gauge'],ProgressListProps:['progress-list'],StatusGridProps:['status-grid'],RankingListProps:['ranking-list'],AlarmListProps:['alarm-list'],DataTableProps:['data-table'],EventTimelineProps:['event-timeline'],PlainTextProps:['plain-text'],TextLinkProps:['text-link'],ImageProps:['image'],CarouselProps:['carousel'],ButtonProps:['button'],FullscreenToggleProps:['fullscreen-toggle'],SwitchProps:['switch'],CheckboxGroupProps:['checkbox-group'],RadioGroupProps:['radio-group'],SelectProps:['select'],Model3DProps:['model-3d'],Scene3DProps:['scene-3d'],AssetDetailProps:['asset-detail'],CardTitleProps:['card-title'],VectorIconProps:['vector-icon'],PipeProps:['process-pipe']
 };
 // Validate props only against the declared kind. Validating the entire props union as well
 // produces unrelated errors from every other component when the selected schema fails.
@@ -136,6 +136,29 @@ try{
    {if:{required:['iotBinding','type'],properties:{type:{const:'radial-gauge'}}},then:{properties:{iotBinding:{properties:{valueType:{const:'number'}}}}}},
  );
  write('iot-binding-limits.json',IOT_BINDING_LIMITS);
+ const {PROCESS_CONTROL_LIMITS:P}=require(join(temp,'shared/process-control.js'));
+ field('StateBinding','pointKey',{minLength:1,maxLength:IOT_BINDING_LIMITS.maxPointKeyLength,pattern:iotPointPattern});
+ field('StateBinding','staleAfterSeconds',{type:'integer',minimum:1,maximum:IOT_BINDING_LIMITS.maxStaleAfterSeconds});
+ field('StateBinding','states',{minItems:1,maxItems:P.maximumStates});
+ definitions.StateBinding.allOf=['number','string','boolean'].map(valueType=>({
+   if:{properties:{valueType:{const:valueType}}},
+   then:{properties:{states:{items:{properties:{value:{type:valueType},...(valueType==='number'?{}:{operator:{const:'eq'}})}}}}},
+ }));
+ const processLabelPattern='^(?=[\\s\\S]*[^'+iotWhitespace+'])[^\\u0000-\\u001f\\u007f]*(?![\\s\\S])';
+ for(const type of ['ProcessState','PipeProps']) {
+   field(type,'label',{minLength:1,maxLength:P.maximumLabelLength,pattern:processLabelPattern});
+   field(type,'color',{pattern:FLUID_COLOR_PATTERN});
+   field(type,'speed',{minimum:0,maximum:P.maximumSpeed});
+ }
+ definitions.ProcessState.properties.value.anyOf.filter(entry=>entry.type==='string').forEach(entry=>Object.assign(entry,{minLength:1,maxLength:P.maximumStringValueLength}));
+ field('PipeProps','width',{minimum:P.minimumWidth,maximum:P.maximumWidth});
+ field('PipeProps','waypoints',{maxItems:P.maximumWaypoints});
+ for(const type of ['PipePoint','PipeEndpoint'])for(const key of ['x','y'])field(type,key,{minimum:0,maximum:P.maximumCoordinate});
+ field('PipeEndpoint','nodeId',{minLength:1,maxLength:P.maximumNodeIdLength});
+ definitions.CanvasNode.allOf.push({if:{required:['type'],properties:{type:{const:'process-pipe'}}},then:{
+   not:{required:['interaction']},properties:{resourceRefs:{maxItems:0},dataBindingRefs:{maxItems:0}},
+ }});
+ write('process-control-limits.json',{...P,maximumPointKeyLength:IOT_BINDING_LIMITS.maxPointKeyLength,maximumPoints:IOT_BINDING_LIMITS.maxPointCount});
  field('StandaloneScenePatch','decorations',{maxItems:D.maximumDecorations});
  field('StandaloneScenePatch','roomAlarms',{maxItems:A.maximumRules});
  for(const type of ['SceneDecoration','RoomAlarmRule']) {

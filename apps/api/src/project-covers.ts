@@ -1,5 +1,6 @@
 import { isOrnamentNodeType } from "../../../shared/canvas-ornaments";
 import { renderOrnamentSvg } from "../../../shared/ornament-svg";
+import { pipeRoute, type PipeProps } from "../../../shared/process-control";
 import {
   type AssetDetailProps,
   type BasicAppearanceProps,
@@ -33,7 +34,7 @@ import {
 const COVER_WIDTH = 480;
 const COVER_HEIGHT = 270;
 const MAX_RENDERED_NODES = 160;
-const COVER_RENDERER_VERSION = 6;
+const COVER_RENDERER_VERSION = 7;
 
 const escapeXml = (value: string): string =>
   value.replace(/[&<>"']/gu, (character) => ({
@@ -484,6 +485,14 @@ const renderBasic = (node: CanvasNode, canvas: CanvasDocument): string => {
 };
 
 const renderNode = (node: CanvasNode, canvas: CanvasDocument): string => {
+  if (node.type === "process-pipe") {
+    const props = node.props as PipeProps;
+    const scaleX = COVER_WIDTH / canvas.width;
+    const scaleY = COVER_HEIGHT / canvas.height;
+    const route = pipeRoute(props, canvas.nodes);
+    const path = route.map((point, index) => `${index ? "L" : "M"} ${(point.x * scaleX).toFixed(2)} ${(point.y * scaleY).toFixed(2)}`).join(" ");
+    return `<path d="${path}" fill="none" stroke="${escapeXml(props.color)}" stroke-width="${(props.width * Math.min(scaleX, scaleY)).toFixed(2)}" stroke-linejoin="round" stroke-linecap="round"/>`;
+  }
   if (isOrnamentNodeType(node.type)) {
     const box = scaledBox(node, canvas);
     return `<svg x="${box.x}" y="${box.y}" width="${box.width}" height="${box.height}">${renderOrnamentSvg(node.type, node.props as Record<string, unknown>, node.width, node.height, node.id)}</svg>`;

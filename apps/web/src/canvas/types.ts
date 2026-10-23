@@ -1,4 +1,5 @@
 import { createUuid } from "../uuid";
+import { createPipeProps, type StateBinding } from "../../../../shared/process-control";
 import { defaultModelPresentation, parseModelPresentation, type ModelPresentation } from "../../../../shared/model-presentation";
 import { isOrnamentNodeType, ornamentDefaults, ornamentDefaultSizes, ornamentMinimumSizes, type OrnamentNodeType } from "../../../../shared/canvas-ornaments";
 import type { StandaloneSceneInstanceAnimation, StandaloneSceneInstanceAppearance } from "../../../../shared/standalone-3d";
@@ -53,6 +54,7 @@ export type BasicNodeType =
   | "radio-group"
   | "select";
 export type CanvasNodeType =
+  | "process-pipe"
   | OrnamentNodeType
   | ChartNodeType
   | ShapeNodeType
@@ -428,6 +430,7 @@ export type AssetDetailProps = {
 };
 
 export type CanvasNode = {
+  stateBinding?: StateBinding;
   iotBinding?: import("../../../../shared/iot-embed").IotBinding;
   interaction?: CanvasNodeInteraction;
   id: string;
@@ -959,6 +962,7 @@ const basicDefaults: Record<BasicNodeType, BasicProps> = {
 };
 
 export const componentLabels: Record<CanvasNodeType, string> = {
+  "process-pipe": "工艺管路",
   "card-title": "卡片标题",
   "vector-icon": "矢量图标",
   "line-chart": "折线图",
@@ -1006,6 +1010,7 @@ export const componentLabels: Record<CanvasNodeType, string> = {
 };
 
 export const defaultNodeSizes: Record<CanvasNodeType, { width: number; height: number }> = {
+  "process-pipe": { width: 280, height: 140 },
   ...ornamentDefaultSizes,
   "line-chart": { width: 520, height: 300 },
   "bar-chart": { width: 520, height: 300 },
@@ -1052,6 +1057,7 @@ export const defaultNodeSizes: Record<CanvasNodeType, { width: number; height: n
 };
 
 export const minimumNodeSizes: Record<CanvasNodeType, { width: number; height: number }> = {
+  "process-pipe": { width: 1, height: 1 },
   ...ornamentMinimumSizes,
   "line-chart": { width: 240, height: 160 },
   "bar-chart": { width: 240, height: 160 },
@@ -1179,7 +1185,7 @@ export const createCanvasNode = (
   zIndex: number,
 ): CanvasNode => {
   const size = defaultNodeSizes[type];
-  const props = isOrnamentNodeType(type) ? { ...ornamentDefaults[type] } : isChartNodeType(type)
+  const props = type === "process-pipe" ? { ...createPipeProps(x, y) } : isOrnamentNodeType(type) ? { ...ornamentDefaults[type] } : isChartNodeType(type)
     ? (() => {
         const defaults = chartDefaults[type];
         return { ...defaults, categories: [...defaults.categories], values: [...defaults.values] };
@@ -1233,6 +1239,7 @@ export const createCanvasNode = (
 };
 
 export const isCanvasNodeType = (value: string): value is CanvasNodeType =>
+  value === "process-pipe" ||
   isOrnamentNodeType(value) ||
   isChartNodeType(value) ||
   isShapeNodeType(value) ||

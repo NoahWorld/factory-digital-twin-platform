@@ -167,3 +167,69 @@ test("API validation preserves optional bindings and leaves legacy nodes unmodif
   await assert.rejects(applyCanvasPatch(env, "project", {}, patch), (error) => error.status === 501 && error.code === "canvas_iot_binding_not_supported");
   assert.equal(touchedDatabase, false, "legacy backend must reject unsupported bindings before any writes");
 });
+
+function embedHost() {
+  const sent = [], listeners = new Set(), frames = new Map();
+  let frameId = 0;
+  const parent = { postMessage(data, origin) { sent.push({ data, origin }); } };
+  const host = {
+    parent,
+    addEventListener(type, fn) { assert.equal(type, 'message'); listeners.add(fn); },
+    removeEventListener(type, fn) { listeners.delete(fn); },
+    requestAnimationFrame(fn) { frames.set(++frameId, fn); return frameId; },
+    cancelAnimationFrame(id) { frames.delete(id); },
+  };
+  return { host, sent, listeners, receive(data, origin = 'https://iot.test', source = parent) { for (const fn of listeners) fn({ data, origin, source }); }, flush() { const ready = [...frames.values()]; frames.clear(); for (const fn of ready) fn(); } };
+}
+
+test('canvas and embedded scenes share one trusted host handshake, union and stream', async () => {
+  const { IotEmbedSession } = await import('../src/canvas/iot-embed-session');
+  const fake = embedHost(), session = new IotEmbedSession(fake.host, 'https://iot.test');
+  let canvasState, sceneState;
+  const offCanvas = session.subscribe({ ok: true, value: [{ key: 'temperature', valueType: 'number', staleAfterSeconds: 60 }] }, s => { canvasState = s; });
+  const offScene = session.subscribe({ ok: true, value: [{ key: 'temperature', valueType: 'number', staleAfterSeconds: 10 }, { key: 'pump.running', valueType: 'boolean', staleAfterSeconds: 20 }] }, s => { sceneState = s; });
+  await Promise.resolve();
+  assert.equal(fake.listeners.size, 1);
+  assert.equal(fake.sent.length, 1);
+  assert.equal(fake.sent[0].data.type, 'request-hello');
+  fake.receive(message('hello'), 'https://evil.test');
+  fake.receive(message('hello'), 'https://iot.test', {});
+  assert.equal(fake.sent.length, 1);
+  fake.receive(message('hello'));
+  assert.deepEqual(fake.sent.at(-1).data.points, [{ key: 'temperature', valueType: 'number', staleAfterSeconds: 10 }, { key: 'pump.running', valueType: 'boolean', staleAfterSeconds: 20 }]);
+  const time = Date.now();
+  fake.receive(message('status', { status: 'connected', retryCount: 0 }));
+  fake.receive(message('snapshot', { values: [point('temperature', 45, time), point('pump.running', true, time)] }));
+  fake.flush();
+  assert.equal(canvasState, sceneState);
+  assert.equal(sceneState.values['pump.running'].value, true);
+  assert.equal(canvasState.values.temperature.value, 45);
+  assert.equal(canvasState.error, null);
+  offScene();
+  await Promise.resolve();
+  assert.equal(fake.sent.at(-1).data.type, 'request-hello');
+  fake.receive(message('updates', { values: [point('pump.running', false, time)] }));
+  fake.flush();
+  assert.equal(canvasState.sessionId, null, 'manifest changes invalidate values from the old session');
+  fake.receive(message('hello', { sessionId: 'canvas-only' }));
+  assert.deepEqual(fake.sent.at(-1).data.points, [{ key: 'temperature', valueType: 'number', staleAfterSeconds: 60 }]);
+  offCanvas();
+  assert.equal(fake.listeners.size, 0);
+});
+
+test('cross-scene point conflicts and the combined 500-point budget fail the entire handshake', async () => {
+  const { IotEmbedSession } = await import('../src/canvas/iot-embed-session');
+  for (const extra of [[{ key: 'point-0', valueType: 'string', staleAfterSeconds: 10 }], [{ key: 'extra', valueType: 'number', staleAfterSeconds: 10 }]]) {
+    const fake = embedHost(), session = new IotEmbedSession(fake.host, 'https://iot.test');
+    let first, second;
+    const offFirst = session.subscribe({ ok: true, value: Array.from({ length: 500 }, (_, i) => ({ key: `point-${i}`, valueType: 'number', staleAfterSeconds: 60 })) }, s => { first = s; });
+    const offSecond = session.subscribe({ ok: true, value: extra }, s => { second = s; });
+    await Promise.resolve();
+    fake.receive(message('hello'));
+    assert.equal(first.status, 'error');
+    assert.equal(first, second);
+    assert.match(fake.sent.at(-1).data.error, /类型不一致|最多绑定 500/);
+    assert.deepEqual(fake.sent.at(-1).data.points, []);
+    offSecond(); offFirst();
+  }
+});

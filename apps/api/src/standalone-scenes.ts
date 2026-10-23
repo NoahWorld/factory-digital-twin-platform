@@ -590,6 +590,9 @@ export const applyStandaloneScenePatch = async (
   user: AuthenticatedUser,
   patch: StandaloneScenePatch,
 ): Promise<StandaloneSceneDocument> => {
+  if (patch.fluids?.some((fluid) => Object.hasOwn(fluid, "stateBinding"))) {
+    throw new AppError(501, "scene_state_binding_not_supported", "This server does not support fluid state bindings; use the current Java backend.");
+  }
   if (["decorations", "roomAlarms", "staticMap"].some(key => Object.hasOwn(patch, key))) {
     throw new AppError(501, "scene_extensions_not_supported", "This server does not support scene decorations or room alarms; use the current Java backend.");
   }

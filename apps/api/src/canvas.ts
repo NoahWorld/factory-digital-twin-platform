@@ -2,6 +2,7 @@ import { findBuiltinModel } from "../../../shared/builtin-models";
 import { findBuiltinImage } from "../../../shared/builtin-images";
 import { parseCanvasNodeInteraction, type CanvasNodeInteraction } from "../../../shared/twin-actions";
 import { parseIotBinding, type IotBinding } from "../../../shared/iot-embed";
+import { parsePipeProps, parseStateBinding, type PipeProps, type StateBinding } from "../../../shared/process-control";
 import { validateTwinActionReferences } from "./twin-action-references";
 import { parseModelPresentation, type ModelPresentation } from "../../../shared/model-presentation";
 import { AppError, canAccessModule, hasGlobalRole, type AppEnv, type AuthenticatedUser, type DatabaseResult } from "./auth";
@@ -55,6 +56,7 @@ export type Model3DNodeType = "model-3d";
 export type Scene3DNodeType = "scene-3d";
 export type AssetDetailNodeType = "asset-detail";
 export type CanvasNodeType =
+  | "process-pipe"
   | OrnamentNodeType
   | ChartNodeType
   | ShapeNodeType
@@ -397,6 +399,7 @@ export type AssetDetailProps = {
 export type CanvasNode = {
   interaction?: CanvasNodeInteraction;
   iotBinding?: IotBinding;
+  stateBinding?: StateBinding;
   id: string;
   type: CanvasNodeType;
   x: number;
@@ -404,7 +407,7 @@ export type CanvasNode = {
   width: number;
   height: number;
   zIndex: number;
-  props: ChartProps | ShapeProps | DecorationProps | PanelFrameProps | DashboardProps | BasicProps | Model3DProps | Scene3DProps | AssetDetailProps | OrnamentProps;
+  props: ChartProps | ShapeProps | DecorationProps | PanelFrameProps | DashboardProps | BasicProps | Model3DProps | Scene3DProps | AssetDetailProps | OrnamentProps | PipeProps;
   resourceRefs: string[];
   dataBindingRefs: string[];
 };
@@ -490,6 +493,7 @@ const colorPattern = /^#[0-9a-fA-F]{6}$/;
 const encoder = new TextEncoder();
 const minimumNodeSizes: Record<CanvasNodeType, { width: number; height: number }> = {
   ...ornamentMinimumSizes,
+  "process-pipe": { width: 1, height: 1 },
   "line-chart": { width: 240, height: 160 },
   "bar-chart": { width: 240, height: 160 },
   "area-chart": { width: 240, height: 160 },
@@ -971,6 +975,7 @@ const isBasicNodeType = (value: unknown): value is BasicNodeType =>
   value === "select";
 
 const isCanvasNodeType = (value: unknown): value is CanvasNodeType =>
+  value === "process-pipe" ||
   isOrnamentNodeType(value) ||
   value === "line-chart" ||
   value === "bar-chart" ||
@@ -997,9 +1002,13 @@ const validateNode = (value: unknown): CanvasNode => {
   const type = rawType as CanvasNodeType;
 
   const props = requireObject(node.props, "canvas node props");
-  let validatedProps: ChartProps | ShapeProps | DecorationProps | PanelFrameProps | DashboardProps | BasicProps | Model3DProps | Scene3DProps | AssetDetailProps | OrnamentProps | null = null;
+  let validatedProps: CanvasNode["props"] | null = null;
 
-  if (isOrnamentNodeType(type)) {
+  if (type === "process-pipe") {
+    const parsed = parsePipeProps(props);
+    if (!parsed.ok) throw new AppError(400, "invalid_canvas_node", parsed.message);
+    validatedProps = parsed.value;
+  } else if (isOrnamentNodeType(type)) {
     const parsed = parseOrnamentProps(type, props);
     if (!parsed.ok) throw new AppError(400, "invalid_canvas_node", parsed.message);
     validatedProps = parsed.value;
@@ -1453,8 +1462,8 @@ const validateNode = (value: unknown): CanvasNode => {
   }
   const resourceRefs = requireStringArray(node.resourceRefs, "node.resourceRefs", true);
   const dataBindingRefs = requireStringArray(node.dataBindingRefs, "node.dataBindingRefs", true);
-  if ((isOrnamentNodeType(type) || isAnimatedDecorationNodeType(type)) && (resourceRefs.length > 0 || dataBindingRefs.length > 0)) {
-    invalid("invalid_canvas_node", "Title, local icon, and animated decoration components do not accept external resources or data bindings.");
+  if ((type === "process-pipe" || isOrnamentNodeType(type) || isAnimatedDecorationNodeType(type)) && (resourceRefs.length > 0 || dataBindingRefs.length > 0)) {
+    invalid("invalid_canvas_node", "Pipe, title, local icon, and animated decoration components do not accept external resources or data bindings.");
   }
   if ((isScene3DNodeType(type) || isAssetDetailNodeType(type)) && (resourceRefs.length > 0 || dataBindingRefs.length > 0)) {
     invalid("invalid_canvas_node", "3D scene references and asset detail components do not accept resource or data-binding references.");
@@ -1508,7 +1517,7 @@ const validateNode = (value: unknown): CanvasNode => {
     dataBindingRefs,
   };
   if (Object.hasOwn(node, "interaction")) {
-    if (type === "scene-3d" || type === "model-3d") invalid("invalid_canvas_interaction", "3D components cannot define 2D click interactions.");
+    if (type === "scene-3d" || type === "model-3d" || type === "process-pipe") invalid("invalid_canvas_interaction", "3D and pipe components cannot define 2D click interactions.");
     const interaction = parseCanvasNodeInteraction(node.interaction);
     if (!interaction.ok) invalid("invalid_canvas_interaction", `Node ${validated.id}: ${interaction.message}`);
     if (interaction.ok) validated.interaction = interaction.value;
@@ -1517,6 +1526,11 @@ const validateNode = (value: unknown): CanvasNode => {
     const binding = parseIotBinding(node.iotBinding, type);
     if (!binding.ok) invalid("invalid_canvas_iot_binding", `Node ${validated.id}: ${binding.message}`);
     if (binding.ok) validated.iotBinding = binding.value;
+  }
+  if (Object.hasOwn(node, "stateBinding")) {
+    const binding = parseStateBinding(node.stateBinding);
+    if (!binding.ok) invalid("invalid_canvas_state_binding", `Node ${validated.id}: ${binding.message}`);
+    if (binding.ok) validated.stateBinding = binding.value;
   }
 
   if (!Number.isInteger(validated.zIndex)) {
@@ -1626,6 +1640,9 @@ export const applyCanvasPatch = async (
   user: AuthenticatedUser,
   patch: CanvasPatch,
 ): Promise<CanvasDocument> => {
+  if (patch.upsertNodes.some((node) => node.type === "process-pipe" || Object.hasOwn(node, "stateBinding"))) {
+    throw new AppError(501, "canvas_process_control_not_supported", "This server does not support process pipes or state bindings; use the current Java backend.");
+  }
   if (patch.upsertNodes.some((node) => Object.hasOwn(node, "iotBinding"))) {
     throw new AppError(501, "canvas_iot_binding_not_supported", "This server does not support IoT canvas bindings; use the current Java backend.");
   }
