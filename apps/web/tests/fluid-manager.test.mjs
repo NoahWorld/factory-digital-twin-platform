@@ -19,6 +19,43 @@ const resources = (runtime) => {
 };
 const within = (actual, expected, epsilon = 1e-5) => assert.ok(Math.abs(actual - expected) <= epsilon, `${actual} differs from ${expected}`);
 
+test('continuous flow stays inside its pipe envelope through unequal runs and 3D elbows', () => {
+  const runtime = manager();
+  // Long horizontal runs expose spline overshoot; short branches expose corner shortcuts.
+  const points = [[0, 0, 0], [0, 2, 0], [12, 2, 0], [12, 2.02, 0], [12, 2.02, 5], [12, 6, 5]];
+  const segments = points.slice(1).map((point, i) => new THREE.Line3(new THREE.Vector3(...points[i]), new THREE.Vector3(...point)));
+  const nearest = new THREE.Vector3();
+  const distanceToPipe = (point) => Math.min(...segments.map(segment => segment.closestPointToPoint(point, true, nearest).distanceTo(point)));
+  for (const kind of ['gas', 'liquid', 'molten']) for (const direction of ['forward', 'reverse']) {
+    const config = fluid({ kind, direction, mode: 'stream', radius: .048, points });
+    runtime.reconcile([config]);
+    const surface = runtime.getObjects()[0].getObjectByName('fluid-surface');
+    if (surface) {
+      const positions = surface.geometry.getAttribute('position');
+      for (let i = 0; i < positions.count; i++) {
+        assert.ok(distanceToPipe(new THREE.Vector3().fromBufferAttribute(positions, i)) <= config.radius + 2e-6,
+          `${kind}/${direction}: surface leaves the pipe at vertex ${i}`);
+      }
+      // Inspect triangle interiors too: connecting samples must not cut across a bend.
+      const indices = surface.geometry.index.array;
+      for (let i = 0; i < indices.length; i += 3) {
+        const centroid = new THREE.Vector3();
+        for (let j = 0; j < 3; j++) centroid.add(new THREE.Vector3().fromBufferAttribute(positions, indices[i + j]));
+        assert.ok(distanceToPipe(centroid.divideScalar(3)) <= config.radius + 2e-6, `${kind}: surface cuts a corner`);
+      }
+    }
+    for (let frame = 0; frame < 50; frame++) {
+      runtime.update(.13, true, 1);
+      const mesh = particles(runtime);
+      for (let i = 0; i < mesh.geometry.instanceCount; i++) {
+        const extent = distanceToPipe(center(runtime, i)) + mesh.geometry.getAttribute('aSize').getX(i) / 2;
+        assert.ok(extent <= config.radius + 2e-6, `${kind}/${direction}: particle ${i} escapes by ${extent - config.radius}`);
+      }
+    }
+  }
+  runtime.dispose();
+});
+
 test('all three fluids independently support stream/diffuse and world-space bounds', () => {
   const parent = new THREE.Group();
   parent.position.set(5, 2, -7);
@@ -42,6 +79,29 @@ test('all three fluids independently support stream/diffuse and world-space boun
   }
   runtime.dispose();
   assert.equal(parent.children.length, 0);
+});
+
+test('continuous return paths keep finite frames and select the authored elbow rather than a bowed spline', () => {
+  const runtime = manager();
+  runtime.reconcile([fluid({ mode: 'stream', kind: 'gas', radius: .05, points: [[0, 0, 0], [0, 2, 0], [12, 2, 0], [12, 0, 0]] })]);
+  const hitsAt = (x, y) => new THREE.Raycaster(new THREE.Vector3(x, y, 2), new THREE.Vector3(0, 0, -1)).intersectObjects(runtime.getObjects(), true);
+  runtime.getBounds(); // Update world matrices before raycasting.
+  assert.equal(runtime.pickId(hitsAt(0, 2)[0].object), 'test-fluid');
+  assert.ok(hitsAt(6, 2).length > 0, 'Straight pipe is selectable');
+  assert.equal(hitsAt(6, 2.3).length, 0, 'No invisible pick volume above the pipe');
+  for (const points of [
+    [[0, 0, 0], [1, 0, 0], [0, 0, 0]],
+    [[0, 0, 0], [10, 0, 0], [0, 0, 0], [0, 1e-20, 0]],
+  ]) {
+    runtime.reconcile([fluid({ points, direction: 'reverse' })]);
+    for (let frame = 0; frame < 3; frame++) {
+      runtime.update(frame * .15, true, 1);
+      runtime.getObjects()[0].traverse(object => {
+        for (const attribute of Object.values(object.geometry?.attributes ?? {})) assert.ok(Array.from(attribute.array).every(Number.isFinite));
+      });
+    }
+  }
+  runtime.dispose();
 });
 
 test('billboard bounds remain conservative under rotated, nonuniform parent transforms', () => {

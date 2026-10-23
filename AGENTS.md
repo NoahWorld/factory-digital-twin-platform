@@ -193,6 +193,8 @@
 
 ## 开发与质量要求
 
+- 连续流 `mode: "stream"` 沿保存路径点的折线运行，保留所有弯头；曲面、拾取体、粒子及距离纹理使用同一套采样和累计距离，粒子软边须包含在配置半径内。禁止用平滑样条让管内流动偏离直管，也不能只增加均匀采样点来掩盖短管段拐角被跳过的问题。扩散流保留平滑路径与扩散行为；回归纳入 `pnpm test:fluids`。
+
 - 当前技术栈：pnpm workspace；`apps/web` 为 React + Vite + TypeScript；运行后端为独立 `factory-digital-twin-backend` 的 Java 21 + Spring Boot，`deploy/local` 为 Docker Compose。`apps/api` 为历史 TypeScript Cloudflare Worker + D1，`apps/backend` 为历史 Java 快照。启动和验证命令以根目录 `README.md` 与各应用 `package.json` 为准。
 - 2026-09-17 后端设计补充：用户要求同时支持客户独立部署和平台统一托管，并说明有充足 Java 后端团队资源；设计首选据此调整为 Java + Spring Boot、PostgreSQL、Valkey、S3 兼容存储与 Docker Compose，详见 [后端架构设计建议](./docs/backend-architecture-proposal.md)。历史 Node/Fastify 选型属于旧建议。Java 本地首版现已实现，运行方式、接口与未完成范围以 [Java 后端说明](./apps/backend/README.md) 为准。
 - 2026-09-18 已把 `factory-digital-twin-config` 的云端业务快照和旧 Wrangler 本地状态中的 3D 工厂、组合大屏、上传模型与图片导入本地 PostgreSQL/SeaweedFS，结果与可复现命令见 [Cloudflare 到本地迁移记录](./docs/cloudflare-to-local-migration.md)。Cloudflare 身份、密码散列和会话不得迁入 Java；项目成员要显式映射到本地账号并留下审计记录。云端与旧 Wrangler 源数据保持不变，后续不得把旧 D1 当作本地开发的写入目标。
