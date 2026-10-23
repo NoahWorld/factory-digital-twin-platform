@@ -23,9 +23,9 @@ export function demoValue(metric: DemoMetric, tick: number, phase: number): numb
   return Number((metric.base + metric.amplitude * (Math.sin(tick * .37 + phase) * .7 + Math.cos(tick * .19 + phase) * .3)).toFixed(metric.digits));
 }
 
-export function bindDemoDevices(instances: StandaloneSceneInstance[]): Map<string, string> {
+export function bindDemoDevices(instances: StandaloneSceneInstance[], devices: DemoDevice[] = metalSaltDemo.devices): Map<string, string> {
   const bindings = new Map<string, string>();
-  for (const device of metalSaltDemo.devices) {
+  for (const device of devices) {
     const matches = instances.filter(instance => instance.visible && instance.label.replace(/\s/g, "") === device.label.replace(/\s/g, ""));
     if (matches.length !== 1) throw new UserFacingError(`看板设备“${device.label}”需对应一个可见场景模型，目前匹配 ${matches.length} 个。请在场景中检查名称和显隐。`);
     bindings.set(device.key, matches[0].id);

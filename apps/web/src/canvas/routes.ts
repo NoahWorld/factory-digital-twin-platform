@@ -1,27 +1,13 @@
-import type { CanvasTemplateId } from "./templates";
-import { standaloneSceneRoutePath, type ProjectType } from "../../../../shared/standalone-3d";
-import type { SceneTemplateId } from "../scene/scene-templates";
-
 export const projectCanvasPath = (projectId: string): string =>
   `/api/v1/projects/${encodeURIComponent(projectId)}/canvas`;
 
-export const projectListRoutePath = (projectType: ProjectType): string =>
-  `#/projects?type=${projectType}`;
+export const projectListRoutePath = (): string => "#/projects";
 
 export const canvasRoutePath = (
   projectId: string,
   suffix: "canvas" | "preview",
 ): string =>
   `#/projects/${encodeURIComponent(projectId)}/${suffix}`;
-
-export const projectTemplateCanvasPath = (
-  projectId: string,
-  templateId: CanvasTemplateId,
-): string =>
-  `${canvasRoutePath(projectId, "canvas")}?template=${encodeURIComponent(templateId)}`;
-
-export const projectTemplateScenePath = (projectId: string, templateId: SceneTemplateId): string =>
-  `${standaloneSceneRoutePath(projectId, "edit")}?template=${encodeURIComponent(templateId)}`;
 
 export const modelEditorRoutePath = (
   projectId: string,

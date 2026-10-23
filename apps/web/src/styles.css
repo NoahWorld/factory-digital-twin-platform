@@ -406,12 +406,9 @@ input:focus {
 .workspace-footer-brand > div { display: grid; min-width: 0; gap: 5px; }
 .workspace-footer-brand strong { color: var(--ui-text); font-size: 0.8rem; font-weight: 600; overflow-wrap: anywhere; }
 .workspace-footer-brand span { font-size: 0.68rem; letter-spacing: 0.06em; }
-.workspace-footer-caption { display: flex; gap: 14px; font-size: 0.7rem; letter-spacing: 0.04em; }
-.workspace-footer-caption > span { color: var(--ui-accent); }
 
 @media (max-width: 580px) {
   .workspace-footer { gap: 16px; padding: 20px; }
-  .workspace-footer-caption { width: 100%; padding-left: 80px; }
 }
 
 .topbar-main {
@@ -688,76 +685,20 @@ input:focus {
   padding: 28px clamp(24px, 3vw, 64px) 90px;
 }
 
-.project-type-tabs-shell {
+.project-list-toolbar {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
+  justify-content: space-between;
   gap: 12px;
   margin: 0 0 20px;
 }
 
-.project-type-tabs {
-  display: inline-flex;
-  gap: 4px;
-  padding: 3px;
-  border: 1px solid var(--ui-border);
-  border-radius: 10px;
-  background: var(--ui-surface-muted);
-}
-
-.project-type-tabs button {
-  display: inline-flex;
-  min-height: 34px;
-  align-items: center;
-  gap: 7px;
-  padding: 5px 10px;
-  border: 1px solid transparent;
-  border-radius: 7px;
-  color: var(--ui-text-muted);
-  background: transparent;
-  font: inherit;
-  white-space: nowrap;
-  transition: border-color 160ms ease, color 160ms ease, background 160ms ease;
-}
-
-.project-type-tabs button:hover {
+.project-list-toolbar h1 {
+  margin: 0;
   color: var(--ui-text-strong);
-  background: color-mix(in srgb, var(--ui-accent) 15%, transparent);
-}
-
-.project-type-tabs button.is-active {
-  border-color: var(--ui-accent-border);
-  color: var(--ui-accent);
-  background: var(--ui-accent-soft);
-}
-
-.project-type-tabs #project-type-tab-3d.is-active {
-  border-color: var(--ui-purple-border);
-  color: var(--ui-purple);
-  background: var(--ui-purple-soft);
-}
-
-.project-type-tabs button:focus-visible {
-  outline: 2px solid var(--ui-accent);
-  outline-offset: 2px;
-}
-
-.project-type-tabs button > span {
-  font-size: 0.78rem;
+  font-size: 1.25rem;
   font-weight: 600;
-}
-
-.project-type-tabs button small {
-  display: grid;
-  min-width: 18px;
-  height: 18px;
-  padding: 0 4px;
-  place-items: center;
-  border-radius: 999px;
-  color: var(--ui-text);
-  background: color-mix(in srgb, var(--ui-surface) 48%, transparent);
-  font-size: 0.66rem;
-  font-variant-numeric: tabular-nums;
 }
 
 .state-card,
@@ -821,23 +762,6 @@ input:focus {
   line-height: 1.65;
 }
 
-.empty-projects-filtered {
-  min-height: 300px;
-}
-
-.empty-projects-filtered .empty-icon {
-  width: 62px;
-  color: var(--ui-accent);
-  font-size: 0.8rem;
-  font-weight: 900;
-  letter-spacing: 0.08em;
-}
-
-.empty-projects-filtered .empty-icon.is-3d {
-  border-color: var(--ui-purple-border);
-  color: var(--ui-purple);
-}
-
 .permission-note {
   margin-bottom: 0 !important;
   color: var(--ui-warning) !important;
@@ -847,28 +771,6 @@ input:focus {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
   gap: 16px;
-}
-
-.dashboard-case-section {
-  margin-bottom: 32px;
-}
-
-.dashboard-case-section .project-card-body {
-  grid-template-rows: auto auto 1fr auto;
-}
-
-.dashboard-case-section .project-card h3 {
-  margin: 12px 0 8px;
-  font-size: 0.9375rem;
-  line-height: 1.5;
-}
-
-.dashboard-case-section .project-card p {
-  margin: 0 0 16px;
-  color: var(--ui-text-muted);
-  font-size: 0.8125rem;
-  font-weight: 400;
-  line-height: 1.6;
 }
 
 .project-card {
@@ -925,6 +827,16 @@ input:focus {
   color: var(--ui-accent);
   font-size: 2rem;
   font-style: normal;
+}
+
+.project-card-cover-empty svg {
+  width: 32px;
+  height: 32px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .project-card-body {
@@ -8724,20 +8636,6 @@ input:focus {
 .project-type-picker input { margin-top: 2px; }
 .project-type-picker strong { color: var(--ui-text-strong); font-size: 0.78rem; }
 .project-type-picker span { grid-column: 2; color: var(--ui-text-muted); font-size: 0.67rem; line-height: 1.5; }
-
-.project-type-tag {
-  padding: 3px 7px;
-  border: 1px solid var(--ui-border-strong);
-  border-radius: 999px;
-  color: var(--ui-accent);
-  background: color-mix(in srgb, var(--ui-surface-raised) 45%, transparent);
-  font-size: 0.56rem;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-}
-
-.project-type-tag.is-3d { border-color: var(--ui-purple-border); color: var(--ui-purple); background: var(--ui-purple-soft); }
-.project-card-3d .project-card-cover { background: radial-gradient(circle at 50% 42%, var(--ui-surface-raised) 0, var(--ui-surface) 45%, var(--ui-surface) 100%); }
 
 .standalone-3d-editor,
 .standalone-3d-preview {

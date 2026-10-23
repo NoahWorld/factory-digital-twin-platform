@@ -13,8 +13,6 @@ import { projectAssetsPath, type ProjectAsset, type ProjectAssetListResponse } f
 import type { EmbeddedSceneRuntimeSelection } from "../canvas/EmbeddedSceneNode";
 import { findModelSceneNode, type ModelSceneSnapshot } from "../canvas/model-scene";
 import { canvasRoutePath, modelEditorRoutePath, projectCanvasPath, projectListRoutePath } from "../canvas/routes";
-import { TemplateDialog } from "../canvas/TemplateDialog";
-import { getCanvasTemplate, instantiateCanvasTemplate, type CanvasTemplateId } from "../canvas/templates";
 import { ThemeDialog } from "../canvas/ThemeDialog";
 import { applyCanvasThemeToNode, applyCanvasThemeToNodes, canvasThemePresetLabels } from "../canvas/themes";
 import { CANVAS_DRAG_TYPE, componentLabels, createCanvasNode, isAssetDetailNodeType, isBackgroundNodeType, isModel3DNodeType, isScene3DNodeType, parseScene3DProps, type CanvasDocument, type CanvasNode, type CanvasNodeType, type CanvasPatchResponse, type CanvasResponse, type CanvasTheme, type ModelNodeAppearance } from "../canvas/types";
@@ -35,7 +33,6 @@ import { publishTwinActions, subscribeTwinActions } from "../twin/action-events"
 
 type CanvasPageProps = {
   initialAssetId?: string;
-  initialTemplateId?: CanvasTemplateId;
   mode: "edit" | "preview";
   projectId: string;
   publicView?: boolean;
@@ -49,7 +46,7 @@ const runtimeAppearances: Partial<Record<DeviceVisualStatus, ModelNodeAppearance
   warning: { color: "#f6c344", opacity: 1, visible: true },
 };
 
-export function CanvasPage({ initialAssetId, initialTemplateId, mode, projectId, publicView = false }: CanvasPageProps) {
+export function CanvasPage({ initialAssetId, mode, projectId, publicView = false }: CanvasPageProps) {
   const [document, setDocument] = useState<CanvasDocument | null>(null);
   const iotRuntime = useIotEmbed(document, mode === "preview");
   const [projectName, setProjectName] = useState("");
@@ -61,7 +58,6 @@ export function CanvasPage({ initialAssetId, initialTemplateId, mode, projectId,
   const notify = useNotifications();
   const [configurationError, setConfigurationError] = useState<string | null>(null);
   const [showDataSources, setShowDataSources] = useState(false);
-  const [showTemplates, setShowTemplates] = useState(false);
   const [showThemes, setShowThemes] = useState(false);
   const [themeNotice, setThemeNotice] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
@@ -136,7 +132,6 @@ export function CanvasPage({ initialAssetId, initialTemplateId, mode, projectId,
   }, [actionCatalog.scenes, actionRuntime.execute, embeddedSceneProjectIds, mode, projectId]);
   const dirtyNodeIdsRef = useRef(new Set<string>());
   const deletedNodeIdsRef = useRef(new Set<string>());
-  const initialTemplateAppliedRef = useRef(false);
 
   useEffect(() => {
     let active = true;
@@ -525,28 +520,6 @@ export function CanvasPage({ initialAssetId, initialTemplateId, mode, projectId,
     event.dataTransfer.effectAllowed = "copy";
   };
 
-  const applyTemplate = useCallback((templateId: CanvasTemplateId) => {
-    if (!document || !canEdit || saving) return;
-    const nextNodes = instantiateCanvasTemplate(templateId, document.nodes);
-    const template = getCanvasTemplate(templateId);
-    const patchNodeCount = document.nodes.length + nextNodes.length;
-    if (patchNodeCount > 100) {
-      notify.warning(`无法套用模板：替换操作包含 ${patchNodeCount} 个节点，超过单次保存上限 100。请先保存并删除部分旧组件。`);
-      return;
-    }
-
-    dirtyNodeIdsRef.current.clear();
-    deletedNodeIdsRef.current.clear();
-    nextNodes.forEach((node) => dirtyNodeIdsRef.current.add(node.id));
-    document.nodes.forEach((node) => deletedNodeIdsRef.current.add(node.id));
-    setDocument({ ...document, nodes: nextNodes, theme: template.canvasTheme });
-    selectCanvasNode(null);
-    setConfigurationError(null);
-    setThemeNotice(`已应用“${template.name}”配色；模板中的 3D 组件沿用原有 3D 配置。`);
-    setDirty(true);
-    setShowTemplates(false);
-  }, [canEdit, document, saving, selectCanvasNode]);
-
   const applyTheme = useCallback((theme: CanvasTheme) => {
     if (!document || !canEdit || saving) return;
     const nextNodes = applyCanvasThemeToNodes(document.nodes, theme);
@@ -560,24 +533,9 @@ export function CanvasPage({ initialAssetId, initialTemplateId, mode, projectId,
     setShowThemes(false);
   }, [canEdit, document, saving]);
 
-  useEffect(() => {
-    if (!initialTemplateId || loading || !document || initialTemplateAppliedRef.current) return;
-    initialTemplateAppliedRef.current = true;
-
-    if (mode !== "edit") {
-      notify.warning("模板只能在 2D 画布编辑模式中套用。");
-    } else if (!canEdit) {
-      notify.warning("当前项目是只读项目，不能套用模板。");
-    } else {
-      applyTemplate(initialTemplateId);
-    }
-
-    window.history.replaceState(null, "", canvasRoutePath(projectId, "canvas"));
-  }, [applyTemplate, canEdit, document, initialTemplateId, loading, mode, projectId]);
-
   if (loading) return <main className="canvas-page-state"><p className="eyebrow">Canvas</p><h1>正在加载画布…</h1></main>;
   if (loadError || !document) {
-    return <main className="canvas-page-state error-state"><p className="eyebrow">Canvas error</p><h1>画布加载失败</h1><p>{loadError ?? "接口没有返回画布文档。"}</p>{!publicView ? <a className="secondary-button" href={projectListRoutePath("2d")}>返回项目列表</a> : null}</main>;
+    return <main className="canvas-page-state error-state"><p className="eyebrow">Canvas error</p><h1>画布加载失败</h1><p>{loadError ?? "接口没有返回画布文档。"}</p>{!publicView ? <a className="secondary-button" href={projectListRoutePath()}>返回项目列表</a> : null}</main>;
   }
 
   const editable = mode === "edit" && canEdit && !saving;
@@ -586,7 +544,7 @@ export function CanvasPage({ initialAssetId, initialTemplateId, mode, projectId,
     <main aria-label={`${projectName}${mode === "preview" ? "预览" : "编辑"}`} className={`canvas-page canvas-page-${mode}`}>
       {mode === "edit" ? <header className="canvas-toolbar">
         <div className="canvas-toolbar-context">
-          <div className="canvas-toolbar-title">{!publicView ? <a aria-label="返回项目列表" className="canvas-back-link" href={projectListRoutePath("2d")}>←</a> : null}<div><span>2D 画布</span><strong>{projectName}</strong></div></div>
+          <div className="canvas-toolbar-title">{!publicView ? <a aria-label="返回项目列表" className="canvas-back-link" href={projectListRoutePath()}>←</a> : null}<div><span>2D 画布</span><strong>{projectName}</strong></div></div>
           <div aria-label="画布信息" className="canvas-document-meta"><span>{document.width} × {document.height}</span><span>{canvasThemePresetLabels[document.theme.presetId]}</span><span className={dirty ? "is-dirty" : "is-saved"}>{dirty ? "有未保存更改" : "已保存"}</span></div>
         </div>
         <div className="canvas-toolbar-actions">
@@ -597,7 +555,6 @@ export function CanvasPage({ initialAssetId, initialTemplateId, mode, projectId,
           <div aria-label="画布设置" className="canvas-toolbar-group" role="group">
             <span className="canvas-toolbar-group-label">画布设置</span>
             <div className="canvas-toolbar-group-buttons">
-              <button className="secondary-button compact-button" disabled={!canEdit || saving} onClick={() => setShowTemplates(true)} type="button"><ToolbarIcon name="template" />模板</button>
               <button className="secondary-button compact-button canvas-theme-button" disabled={!canEdit || saving} onClick={() => setShowThemes(true)} type="button"><span aria-hidden="true" className="canvas-theme-swatch" style={{ backgroundColor: document.theme.accentColor }} />主题</button>
               <button className="secondary-button compact-button" onClick={() => setShowDataSources(true)} type="button"><ToolbarIcon name="data" />数据源</button>
             </div>
@@ -686,13 +643,6 @@ export function CanvasPage({ initialAssetId, initialTemplateId, mode, projectId,
           editable={canEdit && !saving}
           onClose={() => setShowDataSources(false)}
           projectId={projectId}
-        />
-      ) : null}
-      {showTemplates ? (
-        <TemplateDialog
-          editable={canEdit && !saving}
-          onApply={applyTemplate}
-          onClose={() => setShowTemplates(false)}
         />
       ) : null}
       {showThemes ? (

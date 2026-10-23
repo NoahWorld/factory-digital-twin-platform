@@ -16,6 +16,8 @@
 - 统一部署路径 `/twin/`，从 IoT 同源入口访问；开发时 IoT 8000 将 `/twin` 以 HTTP 代理到 5173 并保留路径；Vite HMR 直接连接 5173。不要启用 `/twin` 的 Umi 2 WebSocket 代理，否则升级处理器冲突可导致 8000 进程退出。IoT 仍使用原 Node 16 / Umi 2 / React 16 构建链，两个前端分别构建和部署。直接访问 5173 不共享 8000 的 localStorage。
 - 身份只读取 IoT `x-access-token`，通过 `X-Access-Token` 调用 `/authorize/me` 验证；无会话引导至 IoT，401 失效，403 展示拒绝。不再提供登录、初始化管理员、用户管理、独立退出或匿名分享页。前端不得按用户名、旧平台角色或本地缓存授予权限。
 - 会话复用要求同一浏览器用户配置与同源地址，Chrome 与 Codex 内置浏览器不共享登录状态。登录提示区分“当前浏览器未登录”与“IoT 登录已失效”，显示当前访问地址但不输出令牌。
+- IoT 会话入口的未登录、过期、验证中与连接失败界面统一使用 `apps/web/src/components/IotSessionGate.tsx`，沿用平台主题变量；登录与重新验证按钮独立排列，浏览器排查说明在帮助区展开，鉴权流程继续由 `App` 负责。
+- IoT 工作台仅保留「项目」「静态资源」导航，不显示账号身份文字。项目统一列表，展示看板与所有创建的项目放在同一个网格，不设置用途分区，不按 2D/3D 分页或标注类型；旧 `#/projects?type=2d/3d` 书签也展示全部项目。保留创建时的编辑方式选择及底层项目类型，已有项目仍进入各自编辑器。模板中心、模板创建及两个编辑器的套用模板功能已移除，旧模板地址明确提示停用并引导返回项目，不能再修改项目草稿。
 - 不再要求 `twin-project` / `twin-resource` 权限。有效 IoT 身份即可使用两个编辑器；IoT 后端按现有租户隔离，非租户账号共用 system 工作区。`projectRole:owner` / `editable:true` 是兼容旧 DTO 的编辑能力，不代表新建项目成员制度。设备访问仍经过 IoT 原设备控制器及其原有权限校验。
 - 全部 JSON API 走 `src/api.ts`，将逻辑 `/api/v1/*` 映射到开发 `/cloud/twin/*`、生产 `/cloudPro/api/twin/*`，要求 `{status:200,result}`；拒绝旧裸 JSON 和身份接口，不允许静默切回原后端。业务 404 必须与孪生模块未实现区分，日志不包含令牌、签名 URL、查询串或原始响应体。
 - 模型、图片、音视频及封面先由 IoT 鉴权，再获取 30 秒以上、5 分钟以内的临时访问地址；文件使用 IoT MinIO，元数据保存在 IoT。所有私有资源经过 `src/iot/resources.ts`，禁止公开桶、永久链接和前端 MinIO 密钥。内置演示模型仍是明确列举的公开静态文件。
@@ -27,7 +29,7 @@
 - 接口与部署的当前契约见 [IoT 接入说明](docs/iot-integration.md)。验证入口：`pnpm test:iot-integration`、`pnpm test:iot-integration:browser`、`pnpm test:api-errors`、`pnpm test:project-covers`、`pnpm test:model-asset-covers`、`pnpm test:scene-runtime`、`pnpm test:twin-drive`、`pnpm test:uuid`。隔离浏览器脚本不代替真实 IoT/MinIO 验收；本地验证记录见接入说明。
 - 管路/状态改动运行 `pnpm test:process-control`、`pnpm test:iot-embed`、`pnpm test:iot-integration`、`pnpm check`、`pnpm build`。导出 IoT 后端契约使用 `node scripts/backend-contracts.mjs --iot --backend-dir <IoT后端路径>`，追加 `--check` 校验同步；不得运行默认导出去修改原独立后端。
 
-- 金属盐参观展示看板位于 `#/projects/{id}/metal-salt-dashboard`，复用当前 IoT 已保存场景及共享 3D renderer，严格只读。七设备的模拟参数配置独立保存在 `src/dashboard/metal-salt-demo.ts`，必须明确标识模拟，不能写入 IoT 设备数据或用作真实请求失败的兜底；缺失/重名/隐藏设备须报错。看板在读取场景后以 `chemicalWorkshopScene` 展示预设化工环境（替换 `builtin:workshop-*` 配景，保留 IoT 设备及管道），不回写原场景。默认全屏背景与正面低俯角镜头，展示镜头 `cameraFraming` 仅由可信前端传入，不加入保存契约。规则与入口见 [金属盐看板](docs/metal-salt-dashboard.md)。
+- 金属盐正式看板必须使用已有 2D 画布原生组件 + `scene-3d` 引用组合，不新增专用看板创建入口、配置表单或编辑器。普通项目使用 `/canvas` 编辑、`/preview` 预览与现有 IoT 保存/删除接口；引用源场景但不拥有其模型，删除画布不影响源场景。2026-10-23 的独立 dashboard demo 按用户要求暂留只读预览，旧 `/dashboard/edit` 地址兼容进入预览，相关存量读取接口暂留，不能继续用它创建正式项目。组合交付记录见 `demo-assets/metal-salt-composite/README.md`。
 
 ## 产品定位
 

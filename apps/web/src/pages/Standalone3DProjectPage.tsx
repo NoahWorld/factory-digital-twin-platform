@@ -1,4 +1,3 @@
-import { metalSaltDemo } from "../dashboard/metal-salt-demo";
 import { loadIotProjects } from "../iot/projects";
 import { useNotifications } from "../components/NotificationProvider";
 import { createUuid } from "../uuid";
@@ -28,8 +27,7 @@ import { useIotEmbed, useIotFluids } from "../canvas/useIotEmbed";
 import { errorMessage, request, reportError } from "../api";
 import { findBuiltinModel, latestBuiltinModel } from "../../../../shared/builtin-models";
 import { Select } from "../components/Select";
-import { SceneTemplateDialog } from "../scene/SceneTemplateDialog";
-import { getSceneTemplate, instantiateSceneTemplate, measureScenePerformance, sceneBudgetViolation, type SceneTemplateId } from "../scene/scene-templates";
+import { measureScenePerformance, sceneBudgetViolation } from "../scene/scene-templates";
 import { projectAssetsPath, type ProjectAsset, type ProjectAssetListResponse } from "../canvas/assets";
 import { Model3DNode } from "../canvas/Model3DNode";
 import { CanvasSurface } from "../canvas/CanvasSurface";
@@ -107,7 +105,6 @@ type ScenePatch = {
 };
 
 type Standalone3DProjectPageProps = {
-  initialTemplateId?: SceneTemplateId;
   mode: "edit" | "preview";
   projectId: string;
   publicView?: boolean;
@@ -128,7 +125,7 @@ const modelName = (asset: ModelAsset): string => {
 const sameJson = (left: unknown, right: unknown): boolean =>
   JSON.stringify(left) === JSON.stringify(right);
 
-export default function Standalone3DProjectPage({ initialTemplateId, mode, projectId, publicView = false }: Standalone3DProjectPageProps) {
+export default function Standalone3DProjectPage({ mode, projectId, publicView = false }: Standalone3DProjectPageProps) {
   const [projectName, setProjectName] = useState("");
   const [savedScene, setSavedScene] = useState<StandaloneSceneDocument | null>(null);
   const [draftScene, setDraftScene] = useState<StandaloneSceneDocument | null>(null);
@@ -152,9 +149,6 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
   const [limits, setLimits] = useState<typeof STANDALONE_3D_LIMITS>(STANDALONE_3D_LIMITS);
   const [models, setModels] = useState<ModelAsset[]>([]);
   const [previewModel, setPreviewModel] = useState<ModelAsset | null>(null);
-  const [showTemplates, setShowTemplates] = useState(false);
-  const [templateError, setTemplateError] = useState<string | null>(null);
-  const initialTemplateApplied = useRef(false);
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [linkedAssets, setLinkedAssets] = useState<ProjectAsset[]>([]);
   const [linkedAssetsLoading, setLinkedAssetsLoading] = useState(false);
@@ -305,7 +299,7 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
   }, [mode, libraryView, fluidEditor.selectedId]);
 
   useEffect(() => {
-    if (mode !== "edit" || !editable || saving || extrasPending || previewModel || showTemplates || showTwinEditor || fluidEditor.selectedId || fluidEditor.session || extrasSelection?.kind === "map") return;
+    if (mode !== "edit" || !editable || saving || extrasPending || previewModel || showTwinEditor || fluidEditor.selectedId || fluidEditor.session || extrasSelection?.kind === "map") return;
     const handleShortcut = (event: KeyboardEvent) => {
       if (event.defaultPrevented || event.isComposing || event.altKey || event.ctrlKey || event.metaKey) return;
       const target = event.target;
@@ -315,7 +309,7 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
     };
     window.addEventListener("keydown", handleShortcut);
     return () => window.removeEventListener("keydown", handleShortcut);
-  }, [mode, editable, saving, extrasPending, extrasSelection?.kind, previewModel, showTemplates, showTwinEditor, fluidEditor.selectedId, fluidEditor.session]);
+  }, [mode, editable, saving, extrasPending, extrasSelection?.kind, previewModel, showTwinEditor, fluidEditor.selectedId, fluidEditor.session]);
 
   const dirty = extrasPending || !!fluidEditor.session || (savedScene !== null && draftScene !== null && !sameJson(savedScene, draftScene));
   useEffect(() => {
@@ -664,39 +658,6 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
     notify.info(`已把“${modelName(asset)}”加入场景，保存后生效。`);
   };
 
-  const applySceneTemplate = useCallback((templateId: SceneTemplateId, requireNewProject = false) => {
-    const currentScene = draftSceneRef.current;
-    if (fluidEditor.session) { setTemplateError("请先应用或取消流体路径，再套用场景模板。"); return; }
-    if (!currentScene || !savedScene) {
-      setTemplateError("场景尚未加载完成，不能套用模板。");
-      return;
-    }
-    try {
-      const next = instantiateSceneTemplate({ templateId, currentScene, savedScene, models, limits, editable: editable && mode === "edit", requireNewProject });
-      draftSceneRef.current = next;
-      setDraftScene(next);
-      fluidEditor.reset();
-      setSelectedInstanceId(null);
-      setLibraryView("layers");
-      setInspectorView("scene");
-      setTemplateError(null);
-
-      setShowTemplates(false);
-      notify.info(`“${getSceneTemplate(templateId).name}”已载入草稿，保存场景后生效。${(next.fluids?.length ?? 0) > 0 ? "现有流体配置及路径已保留。" : ""}`);
-    } catch (reason) {
-      reportError(reason, { operation: "scene.template.apply", projectId, templateId });
-      notify.error(reason);
-    }
-  }, [editable, limits, mode, models, projectId, savedScene, fluidEditor.session, fluidEditor.reset]);
-
-  useEffect(() => {
-    if (!initialTemplateId || loading || !savedScene || initialTemplateApplied.current) return;
-    initialTemplateApplied.current = true;
-    applySceneTemplate(initialTemplateId, true);
-    // A template is a one-time editing intent, not a persistent scene source.
-    window.history.replaceState(null, "", standaloneSceneRoutePath(projectId, "edit"));
-  }, [applySceneTemplate, initialTemplateId, loading, projectId, savedScene]);
-
   const updateBuiltinModels = () => {
     const current = draftSceneRef.current;
     if (!editable || !current || !savedScene) return;
@@ -842,7 +803,7 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
     return <main className="canvas-page-state"><h1>正在加载独立 3D 场景…</h1></main>;
   }
   if (error && !draftScene) {
-    return <main className="canvas-page-state error-state"><h1>3D 项目加载失败</h1><p>{error}</p>{!publicView ? <a className="secondary-button" href={projectListRoutePath("3d")}>返回项目</a> : null}</main>;
+    return <main className="canvas-page-state error-state"><h1>3D 项目加载失败</h1><p>{error}</p>{!publicView ? <a className="secondary-button" href={projectListRoutePath()}>返回项目</a> : null}</main>;
   }
   if (!draftScene || draftScene.projectId !== projectId || !rendererNode) return null;
 
@@ -927,7 +888,7 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
     <main className={`standalone-3d-editor${twinEditor ? " is-configuring-twin" : ""}`}>
       <header className="standalone-3d-toolbar">
         <div className="standalone-toolbar-meta">
-          <a className="secondary-button compact-button" href={projectListRoutePath("3d")} onClick={(event) => { if (fluidEditor.session) { event.preventDefault(); notify.warning("请先应用并保存或取消当前流体路径，再离开编辑器。"); setInspectorView("fluid"); } }}>返回项目</a>
+          <a className="secondary-button compact-button" href={projectListRoutePath()} onClick={(event) => { if (fluidEditor.session) { event.preventDefault(); notify.warning("请先应用并保存或取消当前流体路径，再离开编辑器。"); setInspectorView("fluid"); } }}>返回项目</a>
           <div className="standalone-3d-title"><strong>{projectName}</strong><span>3D 场景编辑</span></div>
           <details className="standalone-scene-usage"><summary>场景用量</summary>
             <div className="standalone-3d-budget" title="通过明确预算阻止浏览器无上限加载">
@@ -942,7 +903,6 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
         <div className="standalone-toolbar-group" role="group" aria-label="场景搭建">
           <span className="standalone-toolbar-label">场景搭建</span>
           <button className="secondary-button compact-button" onClick={() => setLibraryView("models")} type="button" title="从模型库加入工业模型、植物或流体">添加模型</button>
-          {editable ? <button className="secondary-button compact-button" disabled={saving || !!fluidEditor.session} title="选择一套场景布局作为搭建起点；替换模型与场景设置，保留流体路径" onClick={() => { setTemplateError(null); setShowTemplates(true); }} type="button">模板</button> : null}
           {editable && draftScene.instances.some(instance => {
             const latest = latestBuiltinModel(instance.modelAssetId);
             return latest && latest.id !== instance.modelAssetId;
@@ -960,7 +920,6 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
         </div>
         <div className="standalone-toolbar-group is-delivery" role="group" aria-label="保存与交付">
           <span className="standalone-toolbar-label">保存与交付</span>
-          {metalSaltDemo.devices.every(device => draftScene.instances.some(instance => instance.label.replace(/\s/g, "") === device.label.replace(/\s/g, ""))) ? <a className="secondary-button compact-button" href={`#/projects/${encodeURIComponent(projectId)}/metal-salt-dashboard`} target="_blank" rel="noopener noreferrer" title="使用已保存场景打开金属盐模拟展示看板">产线看板</a> : null}
           <a className="secondary-button compact-button" href={standaloneSceneRoutePath(projectId, "preview")} target="_blank" rel="noopener noreferrer" title="在新页签中预览" onClick={(event) => { if (dirty) { event.preventDefault(); notify.warning(fluidEditor.session ? "请先应用流体路径并保存场景，再进入预览。" : "请先保存场景，再预览已保存的配置。"); if (fluidEditor.session) setInspectorView("fluid"); } }}>预览</a>
           <PublicationPanel projectId={projectId} canEdit={editable} disabled={dirty || saving || !!fluidEditor.session} />
           <button className="primary-button compact-button" disabled={!dirty || saving || !editable || extrasPending} onClick={() => void save()} type="button">
@@ -1248,7 +1207,6 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
         </div> : null}
       </aside>
       {previewModel ? <ModelAssetPreviewDialog asset={previewModel} key={previewModel.id} name={modelName(previewModel)} onClose={() => setPreviewModel(null)} projectId={projectId} /> : null}
-      {showTemplates ? <SceneTemplateDialog editable={editable && !saving} error={templateError} onApply={applySceneTemplate} onClose={() => setShowTemplates(false)} /> : null}
       {twin.error ? <div className="twin-load-error twin-error" role="alert">数据配置加载失败：{twin.error}</div> : null}
       {twinEditor}
     </main>

@@ -146,11 +146,11 @@ test("preview replaces an unavailable bound component without leaking its author
   assert.doesNotMatch(editMarkup, /点位数据未知/);
 });
 
-test("binding inspector explains scene variables and stays absent on unrelated components", () => {
+test("binding inspector explains IoT device properties and stays absent on unrelated components", () => {
   const renderInspector = (target) => renderToStaticMarkup(createElement(IotBindingInspector, { node: target, document: doc([target]), editable: true, onNodeChange: ignore, onValidationChange: ignore }));
-  const markup = renderInspector(node());
-  assert.match(markup, /画面点位名称/);
-  assert.match(markup, /不需要设备 ID/);
+  const markup = renderInspector(node("metric-card", "readout", binding("pump-01/temperature")));
+  assert.match(markup, /设备 ID \/ 属性 ID/);
+  assert.doesNotMatch(markup, /请填写 设备ID\/属性ID/);
   assert.match(markup, /共声明 1 个点位/);
   assert.equal(renderInspector(node("rectangle", "shape", false)), "");
 });

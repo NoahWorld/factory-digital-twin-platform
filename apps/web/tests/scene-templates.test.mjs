@@ -1,10 +1,8 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import { builtinModels } from "../../../shared/builtin-models";
 import { STANDALONE_3D_LIMITS } from "../../../shared/standalone-3d";
 import { workshopInstances, workshopSettings } from "../../../shared/workshop-layout";
 import { getSceneTemplate, instantiateSceneTemplate, isSceneTemplateId, sceneTemplates } from "../src/scene/scene-templates";
-import { projectTemplateScenePath } from "../src/canvas/routes";
 
 const blank = () => ({ instances: [], linked2dProjectId: null, projectId: "test-3d", revision: 0, settings: { ...workshopSettings }, updatedAt: "test" });
 const apply = (overrides = {}) => instantiateSceneTemplate({ templateId: "production-workshop", currentScene: blank(), savedScene: blank(), models: builtinModels, limits: STANDALONE_3D_LIMITS, editable: true, ...overrides });
@@ -65,16 +63,5 @@ check("all performance budgets and total patch changes are checked", () => {
   for (const [key, value, message] of cases) assert.throws(() => apply({ limits: { ...STANDALONE_3D_LIMITS, [key]: value } }), message);
   const previous = { ...blank(), revision: 1, instances: Array.from({ length: 3 }, (_, index) => ({ ...structuredClone(workshopInstances[0]), id: `old-${index}` })) };
   assert.throws(() => apply({ currentScene: previous, savedScene: previous }), /101 个实例变更/);
-});
-check("3D route and template UI cannot silently create a 2D canvas", () => {
-  assert.equal(projectTemplateScenePath("p/1", "production-workshop"), "#/projects/p%2F1/scene?template=production-workshop");
-  const app = readFileSync("apps/web/src/App.tsx", "utf8");
-  assert.match(app, /projectType: templateId\?\.projectType \?\? projectType/);
-  const editor = readFileSync("apps/web/src/pages/Standalone3DProjectPage.tsx", "utf8");
-  assert.doesNotMatch(editor, /替换为新版示例车间|搭建示例车间|assembleWorkshop/);
-  assert.match(editor, /<SceneTemplateDialog/);
-  const gallery = readFileSync("apps/web/src/scene/SceneTemplateGallery.tsx", "utf8");
-  assert.doesNotMatch(gallery, /Model3DNode|WebGLRenderer|GLTFLoader/);
-  assert.match(gallery, /loading="lazy"/);
 });
 console.log(`PASS: ${checks} scene template checks.`);

@@ -31,6 +31,8 @@ const userMessages: Readonly<Record<string, string>> = {
   iot_device_data_pending: "IoT 设备尚未上报属性数据，请检查设备连接。",
   iot_data_timeout: "IoT 数据读取超时，请稍后重试。",
   revision_conflict: "数据已被其他操作更新，请重新加载后再保存。",
+  dashboard_not_found: "此项目没有看板配置，请返回项目列表重新打开。",
+  project_referenced: "该项目仍被其他看板、场景或发布版本引用，请先解除引用再删除。",
   project_reference_unavailable: "关联项目不存在或正在删除，请检查项目关联。",
   project_deleting: "项目正在删除，请重试删除以完成资源清理。",
   publication_draft_changed: "草稿或关联数据已变化，请重新打开发布面板。",

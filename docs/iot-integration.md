@@ -1,6 +1,6 @@
 # `iot-3d` 接入约定
 
-更新于 2026-10-21。前端分支 `iot-3d` 从 `main` 的 `61c71a1` 创建。IoT 前后端继续在当前 `huanggang-jinshuyan` 分支开发，不升级 Umi 2 / React 16 / Node 16 或 Java 8 / Spring Boot 2.3.7 / WebFlux。独立 DTwin 后端未修改、未启动。
+更新于 2026-10-22。前端分支 `iot-3d` 从 `main` 的 `61c71a1` 创建。IoT 前端使用 `master-pro`，IoT 后端使用 `huanggang-jinshuyan`，不升级 Umi 2 / React 16 / Node 16 或 Java 8 / Spring Boot 2.3.7 / WebFlux。独立 DTwin 后端未修改、未启动。
 
 ## 当前范围
 
@@ -109,3 +109,11 @@ Chrome 与 Codex 内置浏览器不共享会话；`localhost`、`127.0.0.1`、�
 前端 `pnpm check`、`pnpm build`、`test:iot-integration`（16 项）、`test:api-errors`（57 项）通过；实时驱动测试也已通过。后端 `TwinContractsTest` 7 项通过并打包成功，覆盖契约、修订号、IoT 数据/权限传播、Spring 代理、发布冻结与引用保护。隔离测试不能替代现场设备验收。
 
 仍需用真实上报设备核对属性、采样时间、断线/陈旧、阈值告警及多租户账号；未宣称完成这些现场验证。AI/BIM 等后台任务未移植。Git 提交与推送不等于部署到服务器，原独立后端数据未迁移或删除。
+
+### 旧独立演示看板兼容接口（不用于新项目）
+
+`POST /twin/projects` 可在 `projectType: "2d"` 时提供 `dashboard` 配置。GET `/twin/projects/{id}/dashboard` 返回 project 和 dashboard（revision、config）；PATCH 同路径提交 name、config、expectedRevision，冲突返回 409。前端继续通过 `/api/v1` 适配请求。
+
+配置的 sourceProjectId 必须引用同工作区可见的 3D 项目，七个设备名称须唯一匹配可见场景实例。看板自身无源资源所有权，通过原项目 DELETE 接口独立删除。项目引用检查阻止删除仍被看板引用的场景。普通画布/场景编辑和发布接口拒绝看板项目，看板直接预览已保存配置。
+
+2026-10-23 修正：正式看板使用普通 2D 项目、原生组件和 scene-3d 引用，继续使用 GET/PATCH canvas。专用配置表单及创建入口已删除；存量 dashboard 接口暂保留以读取用户要求保留的 demo，不作为正式项目创建链路。

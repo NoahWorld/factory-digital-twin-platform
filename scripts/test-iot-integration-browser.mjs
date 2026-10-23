@@ -17,6 +17,7 @@ const project = {
   createdAt: "2026-10-20T00:00:00Z", updatedAt: "2026-10-20T00:00:00Z",
   coverStatus: "ready", coverRevision: 1, coverUrl: "/api/v1/projects/test-line/cover.png?revision=1",
 };
+const canvasProject = { ...project, id: "test-board", name: "测试组合看板", projectType: "2d", coverUrl: null };
 const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/nXcAAAAASUVORK5CYII=", "base64");
 // Contract fixtures only. No connection to production data, MinIO or a DTwin backend.
 const server = await createServer({
@@ -51,7 +52,7 @@ const server = await createServer({
           ] });
         }
         if (path === "/cloud/twin/projects" && req.method === "GET") {
-          return mode === "missing-module" ? send(null, 404) : send({ projects: [project], nextOffset: null });
+          return mode === "missing-module" ? send(null, 404) : send({ projects: [project, canvasProject], nextOffset: null });
         }
         if (path === "/cloud/twin/projects/test-line/cover.png/access") {
           return send({ url: "/__test_cover.png", expiresAt: Date.now() + 120_000 });
@@ -76,8 +77,8 @@ try {
   page.on("pageerror", error => pageErrors.push(error.message));
   const origin = new URL(server.resolvedUrls.local[0]).origin;
   await page.goto(`${origin}/twin/`);
-  await page.getByRole("heading", { name: "当前浏览器未登录 IoT" }).waitFor();
-  await page.getByText(`当前访问地址：${origin}`, { exact: true }).waitFor();
+  await page.getByRole("heading", { name: "请先登录 IoT" }).waitFor();
+  await page.locator(".iot-gate-origin").getByText(origin, { exact: true }).waitFor();
   assert.equal(await page.locator('input[type="password"]').count(), 0);
   assert.equal(requests.length, 0, "anonymous visits must not load business data");
   assert.equal(await page.getByRole("link", { name: "前往 IoT 登录" }).getAttribute("href"), "/user/login");
@@ -87,7 +88,13 @@ try {
     window.dispatchEvent(new StorageEvent("storage", { key: "x-access-token" }));
   });
   await page.getByRole("heading", { name: "测试产线", exact: true }).waitFor();
-  assert.equal(await page.getByRole("tab", { name: /3D 场景/ }).getAttribute("aria-selected"), "true");
+  await page.getByRole("heading", { name: "测试组合看板", exact: true }).waitFor();
+  assert.equal(await page.getByRole("tab", { name: /2D 看板|3D 场景/ }).count(), 0);
+  for (const type of ["2d", "3d"]) {
+    await page.goto(`${origin}/twin/#/projects?type=${type}`);
+    await page.getByRole("heading", { name: "测试产线", exact: true }).waitFor();
+    await page.getByRole("heading", { name: "测试组合看板", exact: true }).waitFor();
+  }
   assert.equal(await page.getByText("用户管理", { exact: true }).count(), 0);
   await page.waitForFunction(() => {
     const cover = document.querySelector('img[alt="测试产线 项目封面"]');
@@ -121,6 +128,11 @@ try {
   assert.equal(await page.getByText("尚未获得模块权限").count(), 0);
 
   mode = "authorized";
+  for (const path of ["#/templates", "#/projects/test-line/scene?template=production-workshop", "#/projects/test-board/canvas?template=overview"]) {
+    await page.goto(`${origin}/twin/${path}`);
+    await page.getByRole("heading", { name: "页面地址无效" }).waitFor();
+    await page.getByText("模板功能已移除，请从项目列表进入编辑器。", { exact: true }).waitFor();
+  }
   await page.goto(`${origin}/twin/#/users`);
   await page.getByRole("heading", { name: "页面地址无效" }).waitFor();
   await page.goto(`${origin}/twin/#/share/retired`);
@@ -134,7 +146,7 @@ try {
     localStorage.removeItem("x-access-token");
     window.dispatchEvent(new StorageEvent("storage", { key: "x-access-token" }));
   });
-  await page.getByRole("heading", { name: "当前浏览器未登录 IoT" }).waitFor();
+  await page.getByRole("heading", { name: "请先登录 IoT" }).waitFor();
 
   for (const path of ["/twin/branding/kingdom-logo.png", "/twin/decoders/draco/draco_decoder.wasm"]) {
     const result = await fetch(`${origin}${path}`);
@@ -142,7 +154,8 @@ try {
     assert.ok((await result.arrayBuffer()).byteLength > 0);
   }
   assert.deepEqual(pageErrors, []);
-  console.log("PASS: IoT session, permissions, draft retention, signed cover, missing module, retired routes, expiry and /twin/ static assets (isolated contract fixtures).");
+  assert.equal(requests.some(item => item.method !== "GET"), false, "retired routes must not mutate project drafts");
+  console.log("PASS: IoT session, unified project list, legacy bookmarks, disabled templates, permissions, draft retention, signed cover, missing module, retired routes, expiry and /twin/ static assets (isolated contract fixtures).");
 } finally {
   await browser?.close();
   await server.close();

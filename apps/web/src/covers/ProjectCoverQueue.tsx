@@ -11,6 +11,7 @@ import { captureProjectContent } from "./capture";
 import "./covers.css";
 
 export type CoverProject = {
+  dashboard?: { sourceProjectId: string };
   id: string; name: string; projectType: "2d" | "3d";
   projectRole: "owner" | "editor" | "viewer" | null;
   coverUrl: string | null; coverStatus: "pending" | "ready";
@@ -97,7 +98,7 @@ export default function ProjectCoverQueue({ projects, onComplete }: {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [retrying, setRetrying] = useState(false);
   const [retryError, setRetryError] = useState<string | null>(null);
-  const eligible = projects.filter((project) => project.coverStatus === "pending"
+  const eligible = projects.filter((project) => !project.dashboard && project.coverStatus === "pending"
     && (project.projectRole === "owner" || project.projectRole === "editor"));
   const current = eligible.find((project) => !errors[taskKey(project)]);
   const failed = eligible.filter((project) => errors[taskKey(project)]);
