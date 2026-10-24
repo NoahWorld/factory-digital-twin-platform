@@ -31,10 +31,16 @@ test('invalid bindings, pipe props, interactions and resource references fail at
     { ...pipe(), props: { ...createPipeProps(0, 0), script: 'forbidden' } },
     { ...pipe(), props: { ...createPipeProps(0, 0), waypoints: [{ x: 16385, y: 0 }] } },
     { ...pipe(), interaction: { clickActions: [] } },
+    { ...pipe(), interaction: { hiddenInPreview: true, visibilityGroup: 'process', clickActions: [{ type: 'message', title: '', text: 'Forbidden' }] } },
     { ...pipe(), resourceRefs: ['external'] },
     { ...pipe(), dataBindingRefs: ['external'] },
   ];
   for (const node of invalid) assert.throws(() => validateCanvasPatch(patch(node)), error => error.status === 400);
+});
+
+test('pipes retain grouped visibility metadata without accepting click actions', () => {
+  const grouped = { ...pipe(), interaction: { clickActions: [], hiddenInPreview: true, visibilityGroup: 'process' } };
+  assert.deepEqual(validateCanvasPatch(patch(grouped)).upsertNodes, [grouped]);
 });
 
 test('historical Worker rejects unsupported state persistence before accessing storage', async () => {

@@ -77,6 +77,14 @@ try {
   const empty = await applyStandaloneScenePatch(env, "scene", user, scenePatch(2, [instance([])]));
   assert.deepEqual(empty.instances[0].clickActions, []);
   assert.equal(database.prepare("SELECT click_actions_json FROM standalone_3d_instances WHERE project_id = 'scene'").get().click_actions_json, "[]");
+  const group = { hiddenInPreview: true, visibilityGroup: "process", clickActions: [] };
+  const groupAction = { type: "panel-group", groupId: "process", operation: "toggle" };
+  canvas = await applyCanvasPatch(env, "canvas", user, canvasPatch(canvas.revision, [node("label", group), node("trigger", { hiddenInPreview: false, clickActions: [groupAction] })]));
+  assert.deepEqual((await getCanvas(env, "canvas")).nodes.find(item => item.id === "label").interaction, group);
+  await assert.rejects(() => applyCanvasPatch(env, "canvas", user, canvasPatch(canvas.revision, [], ["label"])), error => error.code === "invalid_twin_action_reference");
+  assert.equal((await getCanvas(env, "canvas")).revision, canvas.revision);
+  await applyStandaloneScenePatch(env, "scene", user, scenePatch(empty.revision, [instance([groupAction])]));
+  await assert.rejects(() => validateTwinActionReferences(env, only3d, { kind: "scene", projectId: "scene", linked2dProjectId: "canvas", instances: [instance([groupAction])] }), error => error.code === "invalid_twin_action_reference");
   database.close();
   console.log("PASS: strict declarative actions, limits, legacy/empty round trips, SQL persistence, merged-target deletion and cross-project permission checks.");
 } finally { rmSync(temporary, { recursive: true, force: true }); }

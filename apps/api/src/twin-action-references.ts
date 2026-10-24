@@ -64,6 +64,13 @@ export const validateTwinActionReferences = async (env: AppEnv, user: Authentica
       }
       continue;
     }
+    if (action.type === "panel-group") {
+      const candidates = source.kind === "canvas" ? source.nodes : (await env.DB.prepare("SELECT id, node_type, interaction_json FROM canvas_nodes WHERE project_id = ?")
+        .bind(projectId).all<{ id: string; node_type: string; interaction_json: string | null }>()).results.map(row => ({id:row.id,type:row.node_type,interaction:row.interaction_json === null ? undefined : JSON.parse(row.interaction_json) as CanvasNodeInteraction}));
+      const group = candidates.filter(node => node.interaction?.visibilityGroup === action.groupId);
+      if (!group.length || group.some(node => node.type === "scene-3d" || node.type === "model-3d")) fail(`2D display group ${action.groupId} is missing or contains 3D nodes.`);
+      continue;
+    }
     if (!nodes.has(projectId!)) {
       const rows = await env.DB.prepare("SELECT id, node_type FROM canvas_nodes WHERE project_id = ?")
         .bind(projectId).all<{ id: string; node_type: string }>();

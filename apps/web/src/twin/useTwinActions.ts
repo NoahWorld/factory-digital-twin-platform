@@ -35,6 +35,9 @@ export function validateTwinActionTargets(actions: readonly TwinAction[], contex
       if (!node) throw new Error(`${prefix}：2D 项目 ${context.canvasDocument?.projectId ?? "未关联"} 中找不到组件 ${action.nodeId}。`);
       if (action.type === "panel" && (node.type === "model-3d" || node.type === "scene-3d")) throw new Error(`${prefix}：组件 ${action.nodeId} 是 3D 内容，显示交互仅支持纯 2D 组件。`);
       if (action.type === "set-text" && node.type !== "plain-text") throw new Error(`${prefix}：组件 ${action.nodeId} 不是纯文本，不能更新内容。`);
+    } else if (action.type === "panel-group") {
+      const nodes = context.canvasDocument?.nodes.filter(node => node.interaction?.visibilityGroup === action.groupId) ?? [];
+      if (!nodes.length || nodes.some(node => node.type === "scene-3d" || node.type === "model-3d")) throw new Error(`${prefix}：找不到可显示的 2D 分组 ${action.groupId}。`);
     } else if (action.type === "select-asset") {
       if (!context.assets.some((asset) => asset.assetId === action.assetId)) throw new Error(`${prefix}：业务设备 ${action.assetId} 不存在或当前账号无权访问。`);
     } else if (action.type === "focus-model") {
@@ -65,6 +68,12 @@ export function planTwinActions(actions: readonly TwinAction[], context: TwinAct
         const node = context.canvasDocument!.nodes.find((candidate) => candidate.id === action.nodeId)!;
         const visible = Object.hasOwn(next.nodeVisibility, action.nodeId) ? next.nodeVisibility[action.nodeId] : !node.interaction?.hiddenInPreview;
         next.nodeVisibility[action.nodeId] = action.operation === "toggle" ? !visible : action.operation === "show";
+        break;
+      }
+      case "panel-group": {
+        const nodes = context.canvasDocument!.nodes.filter(node => node.interaction?.visibilityGroup === action.groupId);
+        const visible = next.nodeVisibility[nodes[0].id] ?? !nodes[0].interaction?.hiddenInPreview;
+        nodes.forEach(node => { next.nodeVisibility[node.id] = action.operation === "toggle" ? !visible : action.operation === "show"; });
         break;
       }
       case "set-text": next.textOverrides[action.nodeId] = action.text; break;

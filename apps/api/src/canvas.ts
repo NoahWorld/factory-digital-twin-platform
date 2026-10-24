@@ -1517,9 +1517,10 @@ const validateNode = (value: unknown): CanvasNode => {
     dataBindingRefs,
   };
   if (Object.hasOwn(node, "interaction")) {
-    if (type === "scene-3d" || type === "model-3d" || type === "process-pipe") invalid("invalid_canvas_interaction", "3D and pipe components cannot define 2D click interactions.");
+    if (type === "scene-3d" || type === "model-3d") invalid("invalid_canvas_interaction", "3D components cannot define 2D click interactions.");
     const interaction = parseCanvasNodeInteraction(node.interaction);
     if (!interaction.ok) invalid("invalid_canvas_interaction", `Node ${validated.id}: ${interaction.message}`);
+    if (interaction.ok && type === "process-pipe" && interaction.value.clickActions.length) invalid("invalid_canvas_interaction", "Pipe components cannot define click actions.");
     if (interaction.ok) validated.interaction = interaction.value;
   }
   if (Object.hasOwn(node, "iotBinding")) {

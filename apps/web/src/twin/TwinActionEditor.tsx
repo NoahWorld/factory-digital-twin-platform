@@ -26,6 +26,7 @@ const actionLabels: Record<TwinAction["type"], string> = {
   message: "弹出文字消息",
   "select-asset": "查看设备详情 / 联动设备",
   panel: "显示 / 隐藏 2D 组件",
+  "panel-group": "显示 / 隐藏 2D 分组",
   "focus-model": "聚焦 3D 模型",
   "set-text": "更新 2D 文本",
 };
@@ -39,9 +40,11 @@ export function TwinActionEditor({ actions, onChange, disabled = false, canvasDo
   const editorId = useId();
   const nodes = (canvasDocument?.nodes ?? []).filter((node) => node.type !== "model-3d" && node.type !== "scene-3d");
   const plainTextNodes = nodes.filter((node) => node.type === "plain-text");
+  const groups = [...new Set(nodes.flatMap(node => node.interaction?.visibilityGroup ? [node.interaction.visibilityGroup] : []))];
   const replace = (index: number, action: TwinAction) => onChange(actions.map((existing, position) => position === index ? action : existing));
   const createAction = (type: TwinAction["type"]): TwinAction => {
     switch (type) {
+      case "panel-group": return { type, groupId: groups[0] ?? "", operation: "toggle" };
       case "message": return { type, title: "消息", text: "" };
       case "select-asset": return { type, assetId: assets[0]?.assetId ?? "" };
       case "panel": return { type, nodeId: nodes[0]?.id ?? "", operation: "show" };
@@ -102,6 +105,10 @@ export function TwinActionEditor({ actions, onChange, disabled = false, canvasDo
                 <label htmlFor={`${fieldId}-text`}>新的文本内容</label>
                 <textarea id={`${fieldId}-text`} maxLength={TWIN_ACTION_LIMITS.maximumTextLength} onChange={(event) => replace(index, { ...action, text: event.target.value })} rows={3} value={action.text} />
               </>}
+            </> : null}
+            {action.type === "panel-group" ? <>
+              <label>目标显示分组<Select value={action.groupId} onValueChange={groupId => replace(index, {...action, groupId})}><option value="">选择分组</option>{unavailableOption({label:"分组",present:groups.includes(action.groupId),value:action.groupId})}{groups.map(id => <option key={id} value={id}>{id}</option>)}</Select></label>
+              <label>显示方式<Select value={action.operation} onValueChange={operation => replace(index, {...action, operation: operation as "show" | "hide" | "toggle"})}><option value="show">显示</option><option value="hide">隐藏</option><option value="toggle">切换</option></Select></label>
             </> : null}
             {action.type === "focus-model" ? <>
               <label htmlFor={`${fieldId}-project`}>3D 场景</label>

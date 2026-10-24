@@ -4,8 +4,9 @@ export type TwinSelectAssetAction = { type: "select-asset"; assetId: string };
 export type TwinPanelAction = { type: "panel"; nodeId: string; operation: "show" | "hide" | "toggle" };
 export type TwinFocusModelAction = { type: "focus-model"; projectId: string; instanceId: string };
 export type TwinSetTextAction = { type: "set-text"; nodeId: string; text: string };
-export type TwinAction = TwinMessageAction | TwinSelectAssetAction | TwinPanelAction | TwinFocusModelAction | TwinSetTextAction;
-export type CanvasNodeInteraction = { clickActions: TwinAction[]; hiddenInPreview: boolean };
+export type TwinPanelGroupAction = { type: "panel-group"; groupId: string; operation: "show" | "hide" | "toggle" };
+export type TwinAction = TwinMessageAction | TwinSelectAssetAction | TwinPanelAction | TwinFocusModelAction | TwinSetTextAction | TwinPanelGroupAction;
+export type CanvasNodeInteraction = { clickActions: TwinAction[]; hiddenInPreview: boolean; visibilityGroup?: string };
 
 export const TWIN_ACTION_LIMITS = { maximumActions: 8, maximumTitleLength: 80, maximumTextLength: 2000 } as const;
 export const TWIN_ACTION_ID_PATTERN = "^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}(?![\\s\\S])";
@@ -33,6 +34,9 @@ export const parseTwinActions = (value: unknown): ParseResult<TwinAction[]> => {
       case "panel":
         if (!exactKeys(action, ["type", "nodeId", "operation"]) || !identifier(action.nodeId) || typeof action.operation !== "string" || !["show", "hide", "toggle"].includes(action.operation)) return error("组件 ID 或显示操作无效，或存在额外字段。");
         break;
+      case "panel-group":
+        if (!exactKeys(action, ["type", "groupId", "operation"]) || !identifier(action.groupId) || typeof action.operation !== "string" || !["show", "hide", "toggle"].includes(action.operation)) return error("显示分组或操作无效。");
+        break;
       case "focus-model":
         if (!exactKeys(action, ["type", "projectId", "instanceId"]) || !identifier(action.projectId) || !identifier(action.instanceId)) return error("场景 ID 或模型实例 ID 无效，或存在额外字段。");
         break;
@@ -47,7 +51,8 @@ export const parseTwinActions = (value: unknown): ParseResult<TwinAction[]> => {
 };
 
 export const parseCanvasNodeInteraction = (value: unknown): ParseResult<CanvasNodeInteraction> => {
-  if (!record(value) || !exactKeys(value, ["clickActions", "hiddenInPreview"]) || typeof value.hiddenInPreview !== "boolean") return { ok: false, message: "组件交互必须包含 clickActions 数组和 hiddenInPreview 布尔值，不能包含额外字段。" };
+  if (!record(value) || Object.keys(value).some(k => !["clickActions", "hiddenInPreview", "visibilityGroup"].includes(k)) || typeof value.hiddenInPreview !== "boolean") return { ok: false, message: "组件交互字段无效。" };
+  if (value.visibilityGroup !== undefined && !identifier(value.visibilityGroup)) return {ok:false,message:"显示分组 ID 无效。"};
   const actions = parseTwinActions(value.clickActions);
-  return actions.ok ? { ok: true, value: { clickActions: actions.value, hiddenInPreview: value.hiddenInPreview } } : actions;
+  return actions.ok ? { ok: true, value: { ...value, clickActions: actions.value } as CanvasNodeInteraction } : actions;
 };

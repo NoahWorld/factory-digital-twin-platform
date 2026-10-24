@@ -156,7 +156,7 @@ try{
  for(const type of ['PipePoint','PipeEndpoint'])for(const key of ['x','y'])field(type,key,{minimum:0,maximum:P.maximumCoordinate});
  field('PipeEndpoint','nodeId',{minLength:1,maxLength:P.maximumNodeIdLength});
  definitions.CanvasNode.allOf.push({if:{required:['type'],properties:{type:{const:'process-pipe'}}},then:{
-   not:{required:['interaction']},properties:{resourceRefs:{maxItems:0},dataBindingRefs:{maxItems:0}},
+   properties:{resourceRefs:{maxItems:0},dataBindingRefs:{maxItems:0},interaction:{properties:{clickActions:{maxItems:0}}}},
  }});
  write('process-control-limits.json',{...P,maximumPointKeyLength:IOT_BINDING_LIMITS.maxPointKeyLength,maximumPoints:IOT_BINDING_LIMITS.maxPointCount});
  field('StandaloneScenePatch','decorations',{maxItems:D.maximumDecorations});
@@ -218,6 +218,8 @@ try{
    opacity:{minimum:FLUID_LIMITS.minimumOpacity,maximum:FLUID_LIMITS.maximumOpacity},
  }))constrain(definitions.FluidDefinition.properties[field],limits);
  definitions.FluidPoint.items.forEach(item=>Object.assign(item,{minimum:-FLUID_LIMITS.maximumCoordinate,maximum:FLUID_LIMITS.maximumCoordinate}));
+ field('CanvasNodeInteraction','visibilityGroup',{pattern:idPattern,maxLength:120});
+ field('TwinPanelGroupAction','groupId',{pattern:idPattern,maxLength:120});
  constrain(definitions.CanvasNodeInteraction.properties.clickActions,{maxItems:TWIN_ACTION_LIMITS.maximumActions});
  constrain(definitions.StandaloneSceneInstance.properties.clickActions,{maxItems:TWIN_ACTION_LIMITS.maximumActions});
  for(const [name,fields] of Object.entries({TwinMessageAction:{title:{minLength:0,maxLength:TWIN_ACTION_LIMITS.maximumTitleLength,pattern:TWIN_ACTION_TEXT_PATTERN},text:{minLength:1,maxLength:TWIN_ACTION_LIMITS.maximumTextLength,pattern:TWIN_ACTION_TEXT_PATTERN}},TwinSelectAssetAction:{assetId:{pattern:TWIN_ACTION_ASSET_ID_PATTERN}},TwinPanelAction:{nodeId:{pattern:TWIN_ACTION_ID_PATTERN}},TwinFocusModelAction:{projectId:{pattern:TWIN_ACTION_ID_PATTERN},instanceId:{pattern:TWIN_ACTION_ID_PATTERN}},TwinSetTextAction:{nodeId:{pattern:TWIN_ACTION_ID_PATTERN},text:{minLength:0,maxLength:TWIN_ACTION_LIMITS.maximumTextLength,pattern:TWIN_ACTION_TEXT_PATTERN}}}))for(const [field,limits] of Object.entries(fields))constrain(definitions[name].properties[field],limits);

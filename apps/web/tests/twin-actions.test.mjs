@@ -4,6 +4,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { TwinActionEditor } from "../src/twin/TwinActionEditor";
 import { TwinActionFeedback } from "../src/twin/TwinActionFeedback";
+import { parseCanvasNodeInteraction, parseTwinActions } from "../../../shared/twin-actions";
 import { emptyTwinActionState, planTwinActions, validateTwinActionTargets } from "../src/twin/useTwinActions";
 import { createTwinActionReceiver, parseTwinActionEvent, publishTwinActions, subscribeTwinActions, TWIN_ACTION_EVENT_NAME } from "../src/twin/action-events";
 
@@ -29,6 +30,40 @@ const newEvent = (overrides = {}) => ({
   correlationId: "correlation-a", timestamp: new Date().toISOString(),
   actions: [{ type: "message", title: "消息", text: "设备已选择" }],
   ...overrides,
+});
+
+test("a native 2D group toggles equipment, labels and pipes together without rewriting their layout", () => {
+  const nodes = ["vector-icon", "plain-text", "process-pipe"].map((type, index) => ({
+    id: `process-${index}`, type, x: index * 100, y: 80,
+    interaction: { hiddenInPreview: true, clickActions: [], visibilityGroup: "process" },
+  }));
+  const grouped = { ...context, canvasDocument: { ...context.canvasDocument, nodes } };
+  const saved = structuredClone(grouped);
+  const action = { type: "panel-group", groupId: "process", operation: "toggle" };
+  const shown = planTwinActions([action], grouped, emptyTwinActionState());
+  assert.deepEqual(shown.state.nodeVisibility, { "process-0": true, "process-1": true, "process-2": true });
+  const hidden = planTwinActions([action], grouped, shown.state);
+  assert.deepEqual(hidden.state.nodeVisibility, { "process-0": false, "process-1": false, "process-2": false });
+  assert.deepEqual(grouped, saved);
+  assert.throws(() => planTwinActions([{ ...action, groupId: "deleted" }], grouped, shown.state), /deleted/);
+  assert.throws(() => planTwinActions([action], { ...grouped, canvasDocument: { ...grouped.canvasDocument, nodes: [...nodes, { ...nodes[0], id: "scene", type: "scene-3d" }] } }, shown.state), /process/);
+});
+
+test("group identifiers and operations are bounded and invalid references remain visible in the editor", () => {
+  const interaction = { clickActions: [], hiddenInPreview: true, visibilityGroup: "process" };
+  assert.deepEqual(parseCanvasNodeInteraction(interaction), { ok: true, value: interaction });
+  for (const visibilityGroup of [null, "", "bad group", "x".repeat(121), "process\n"]) {
+    assert.equal(parseCanvasNodeInteraction({ ...interaction, visibilityGroup }).ok, false);
+  }
+  for (const action of [
+    { type: "panel-group", groupId: "process", operation: "execute" },
+    { type: "panel-group", groupId: "process", operation: ["show"] },
+    { type: "panel-group", groupId: "process", operation: "show", script: "forbidden" },
+  ]) assert.equal(parseTwinActions([action]).ok, false);
+  const markup = renderToStaticMarkup(createElement(TwinActionEditor, {
+    ...context, onChange() {}, actions: [{ type: "panel-group", groupId: "missing", operation: "toggle" }],
+  }));
+  assert.match(markup, /不可用的分组/);
 });
 
 test("one click can change a panel, its message and selected device/model without mutating saved documents", () => {
