@@ -11,9 +11,7 @@ import type {
   BufferGeometry,
   Material,
   Mesh,
-  MeshBasicMaterial,
   Object3D,
-  RingGeometry,
   Texture,
 } from "three";
 import {
@@ -320,7 +318,8 @@ const SingleModel3DNode = memo(function SingleModel3DNode({
       import("three/examples/jsm/postprocessing/RenderPass.js"),
       import("three/examples/jsm/postprocessing/UnrealBloomPass.js"),
       import("three/examples/jsm/postprocessing/OutputPass.js"),
-    ]).then(([THREE, { createModelLoader }, { OrbitControls }, { RoomEnvironment }, { EffectComposer }, { RenderPass }, { UnrealBloomPass }, { OutputPass }]) => {
+      import("../scene/runtime-selection-outline"),
+    ]).then(([THREE, { createModelLoader }, { OrbitControls }, { RoomEnvironment }, { EffectComposer }, { RenderPass }, { UnrealBloomPass }, { OutputPass }, { RuntimeSelectionOutline }]) => {
       if (cancelled) return;
 
       const scene = new THREE.Scene();
@@ -399,11 +398,7 @@ const SingleModel3DNode = memo(function SingleModel3DNode({
       let animationMixer: InstanceType<typeof THREE.AnimationMixer> | null = null;
       let animationRoot: Object3D | null = null;
       let selectionHelper: InstanceType<typeof THREE.BoxHelper> | null = null;
-      let selectionRing: Mesh<RingGeometry, MeshBasicMaterial> | null = null;
-      let selectionTarget: Object3D | null = null;
-      const selectionBounds = new THREE.Box3();
-      const selectionSize = new THREE.Vector3();
-      const selectionCenter = new THREE.Vector3();
+      const runtimeSelectionOutline = new RuntimeSelectionOutline(renderer, scene, camera);
       let visible = true;
       let lastFrame = performance.now();
 
@@ -471,6 +466,7 @@ const SingleModel3DNode = memo(function SingleModel3DNode({
         const height = Math.max(container.clientHeight, 1);
         renderer.setSize(width, height, false);
         composer?.setSize(width, height);
+        runtimeSelectionOutline.resize(width, height);
         camera.aspect = width / height;
         camera.updateProjectionMatrix();
         fitCameraToModel();
@@ -484,7 +480,7 @@ const SingleModel3DNode = memo(function SingleModel3DNode({
       });
       intersectionObserver.observe(container);
 
-      const renderSceneFrame = () => {
+      const renderBaseFrame = () => {
         // Keep the same render passes as the live view, including studio bloom/output.
         // Transparent models retain the existing compositing path without opaque bloom.
         const currentSettings = modelPropsRef.current;
@@ -492,6 +488,7 @@ const SingleModel3DNode = memo(function SingleModel3DNode({
         if (composer && currentSettings.presentation.lighting === "studio" && currentSettings.backgroundOpacity === 1) composer.render();
         else renderer.render(scene, camera);
       };
+      const renderSceneFrame = () => runtimeSelectionOutline.render(renderBaseFrame);
       renderer.setAnimationLoop((now) => {
         if (!visible || document.hidden) {
           lastFrame = now;
@@ -506,25 +503,6 @@ const SingleModel3DNode = memo(function SingleModel3DNode({
           modelRoot.rotation.y += deltaSeconds * settingsRef.current.rotationSpeed;
         }
         selectionHelper?.update();
-        if (selectionRing && selectionTarget) {
-          selectionBounds.setFromObject(selectionTarget);
-          if (selectionBounds.isEmpty()) {
-            selectionRing.visible = false;
-          } else {
-            selectionRing.visible = true;
-            selectionBounds.getSize(selectionSize);
-            selectionBounds.getCenter(selectionCenter);
-            const radius = Math.max(selectionSize.x, selectionSize.z, 0.12) * 0.68;
-            const pulse = 1 + Math.sin(now * 0.005) * 0.07;
-            selectionRing.position.set(
-              selectionCenter.x,
-              selectionBounds.min.y + Math.max(selectionSize.y * 0.01, 0.008),
-              selectionCenter.z,
-            );
-            selectionRing.scale.setScalar(radius * pulse);
-            selectionRing.material.opacity = 0.68 + Math.sin(now * 0.005) * 0.16;
-          }
-        }
         controls.update();
         renderSceneFrame();
       });
@@ -624,13 +602,7 @@ const SingleModel3DNode = memo(function SingleModel3DNode({
               selectionHelper.material.dispose();
               selectionHelper = null;
             }
-            if (selectionRing) {
-              scene.remove(selectionRing);
-              selectionRing.geometry.dispose();
-              selectionRing.material.dispose();
-              selectionRing = null;
-            }
-            selectionTarget = null;
+            runtimeSelectionOutline.clear();
           };
           clearRuntimeSelectionState = clearSelectionState;
 
@@ -649,22 +621,7 @@ const SingleModel3DNode = memo(function SingleModel3DNode({
             }
             if (style === "none") return;
             if (style === "runtime") {
-              selectionTarget = selectedObject;
-              selectionRing = new THREE.Mesh(
-                new THREE.RingGeometry(0.76, 1, 64),
-                new THREE.MeshBasicMaterial({
-                  color: 0x35d8ff,
-                  depthTest: false,
-                  depthWrite: false,
-                  opacity: 0.82,
-                  side: THREE.DoubleSide,
-                  toneMapped: false,
-                  transparent: true,
-                }),
-              );
-              selectionRing.rotation.x = -Math.PI / 2;
-              selectionRing.renderOrder = 100000;
-              scene.add(selectionRing);
+              runtimeSelectionOutline.set(selectedObject);
               return;
             }
             const helper = new THREE.BoxHelper(selectedObject, 0x5ad8ff);
@@ -955,6 +912,7 @@ const SingleModel3DNode = memo(function SingleModel3DNode({
         animationRoot = null;
         clearRuntimeSelectionState?.();
         clearRuntimeSelectionState = null;
+        runtimeSelectionOutline.dispose();
         restoreRuntimeAppearanceState?.();
         restoreRuntimeAppearanceState = null;
         disposeSceneResources(scene);
