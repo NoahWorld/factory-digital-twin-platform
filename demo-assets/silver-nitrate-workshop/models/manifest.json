@@ -108,16 +108,16 @@
     {
       "id": "workshop",
       "name": "硝酸银化工车间与管路",
-      "filename": "workshop.9652e379987c.glb",
-      "sha256": "9652e379987c9fcafec00ae01ea69a9b267dc981d8246f7e0d66f8c56eacfca6",
-      "bytes": 2320296,
+      "filename": "workshop.0c8e9615aa1a.glb",
+      "sha256": "0c8e9615aa1ab2f545b04e72d32e2bb332b52f4a878f2e90ceed8d6f04984dd5",
+      "bytes": 3185516,
       "nodes": 30,
       "meshes": 28,
       "animations": 0,
       "dimensions": [
-        18.01799964904785,
-        4.565000206232071,
-        11.008999824523926
+        28.01799964904785,
+        6.574999958276749,
+        20.01799964904785
       ]
     }
   ],

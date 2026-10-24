@@ -105,39 +105,96 @@ function workshop(g){
  mats.safety=new T.MeshStandardMaterial({name:'safety_yellow',color:'#c99e35',metalness:.3,roughness:.46});
  mats.light=new T.MeshStandardMaterial({name:'diffused_workshop_light',color:'#dcecf5',emissive:'#aecbdf',emissiveIntensity:1.35,roughness:.35});
  mats.panel=new T.MeshStandardMaterial({name:'wall_panel_alternate',color:'#2c3e47',metalness:.3,roughness:.55});
- box(g,'密封混凝土地坪',[18,.16,11],[0,-.08,0],'floor');
- // Large concrete bays and expansion joints, rather than a decorative screen grid.
- for(let x=-9;x<=9;x+=3)box(g,'地坪伸缩缝',[.018,.004,11],[x,.004,0],'joint');
- for(let z=-5.5;z<=5.5;z+=2.2)box(g,'地坪伸缩缝',[18,.004,.018],[0,.004,z],'joint');
- for(let i=0;i<12;i++){
-  const x=-8.25+i*1.5;
-  box(g,'金属墙板',[1.48,4.3,.12],[x,2.15,-5.3],i%2?'panel':'wall');
-  box(g,'墙板竖缝',[.023,4.3,.028],[x-.74,2.15,-5.22],'dark');
-  box(g,'墙板压条',[1.47,.04,.045],[x,2.55,-5.2],'dark');
+ // 28 × 20 m, three structural bays. Front/left walls and roof skin are cut away for inspection.
+ box(g,'密封混凝土地坪',[28,.16,20],[0,-.08,-1],'floor');
+ const paint=(name,w,d,x,z,material)=>mesh(g,name,new T.PlaneGeometry(w,d),[x,.004,z],material,[-Math.PI/2,0,0]);
+ for(let x=-14;x<=14;x+=3.5)paint('地坪伸缩缝',.018,20,x,-1,'joint');
+ for(let z=-11;z<=9;z+=2.5)paint('地坪伸缩缝',28,.018,0,z,'joint');
+ for(let i=0;i<14;i++){
+  const x=-13+i*2;
+  box(g,'后墙金属墙板',[1.98,6.4,.12],[x,3.2,-10.7],i%2?'panel':'wall');
+  box(g,'墙板竖缝',[.025,6.4,.035],[x-.99,3.2,-10.61],'dark');
  }
- box(g,'墙根防腐踢脚',[18,.26,.10],[0,.13,-5.19],'dark');
- // I-section columns, base plates and longitudinal beams.
- for(const x of [-8,-4,0,4,8]){
-  box(g,'结构柱腹板',[.10,4.4,.27],[x,2.2,-5.05],'dark');
-  for(const z of [-5.2,-4.9])box(g,'结构柱翼缘',[.30,4.4,.04],[x,2.2,z],'steel');
-  box(g,'柱脚底板',[.45,.055,.55],[x,.028,-5.05],'dark');
-  for(const dx of [-.17,.17])for(const dz of [-.2,.2])cyl(g,'柱脚螺栓',.025,.09,[x+dx,.07,-5.05+dz]);
+ // The far side continues all the way to the front aisle, making the room's depth readable.
+ for(let i=0;i<10;i++){
+  const z=-10+i*2;
+  box(g,'侧墙金属墙板',[.12,6.4,1.98],[13.7,3.2,z],i%2?'panel':'wall');
+  box(g,'侧墙竖缝',[.035,6.4,.025],[13.61,3.2,z-.99],'dark');
  }
- for(const y of [2.65,4.24]){box(g,'水平墙梁',[18,.13,.18],[0,y,-4.99],'dark');box(g,'梁翼缘',[18,.025,.24],[0,y+.075,-4.99],'steel');}
- for(const x of [-6,6]){
-  line(g,'墙体斜撑',[x-1.85,.35,-5.08],[x+1.85,2.55,-5.08],.035,'steel');
-  line(g,'墙体斜撑',[x+1.85,.35,-5.08],[x-1.85,2.55,-5.08],.035,'steel');
+ box(g,'后墙防腐踢脚',[28,.3,.10],[0,.15,-10.58],'dark');
+ box(g,'侧墙防腐踢脚',[.10,.3,20],[13.58,.15,-1],'dark');
+ const column=(x,z)=>{
+  box(g,'钢柱腹板',[.12,6.4,.30],[x,3.2,z],'dark');
+  for(const dz of [-.17,.17])box(g,'钢柱翼缘',[.38,6.4,.045],[x,3.2,z+dz],'steel');
+  box(g,'柱脚底板',[.55,.065,.58],[x,.033,z],'dark');
+  for(const dx of [-.21,.21])for(const dz of [-.22,.22])cyl(g,'柱脚螺栓',.028,.1,[x+dx,.08,z+dz]);
+  box(g,'防撞护脚',[.40,.45,.39],[x,.24,z],'safety');
+ };
+ for(const x of [-13.4,-6.7,0,6.7,13.4])column(x,-10.35);
+ for(const z of [-4.2,2.0,8.2])column(13.4,z);
+ // Camera-side structure is retained only behind the equipment, keeping the cutaway unobstructed.
+ column(-13.4,-4.2);
+ for(const y of [2.8,5.0,6.25]){
+  box(g,'后墙水平梁',[27,.16,.22],[0,y,-10.35],'dark');
+  box(g,'侧墙水平梁',[.22,.16,18.6],[13.4,y,-1.1],'dark');
  }
- // Clerestory frames and ventilation louvres give the wall readable depth.
- for(const x of [-6,-2,2,6]){
-  box(g,'高窗边框',[2.9,.85,.08],[x,3.4,-5.18],'dark');
-  box(g,'高窗玻璃',[2.76,.71,.035],[x,3.4,-5.12],'glass');
-  for(const dx of [-.46,.46])box(g,'高窗竖梃',[.035,.74,.06],[x+dx,3.4,-5.08],'steel');
+ for(const x of [-10,10]){
+  line(g,'墙体斜撑',[x-2.8,.45,-10.3],[x+2.8,2.7,-10.3],.04,'steel');
+  line(g,'墙体斜撑',[x+2.8,.45,-10.3],[x-2.8,2.7,-10.3],.04,'steel');
  }
- for(const x of [-7.1,5.8]){
-  box(g,'通风百叶框',[1.0,.64,.08],[x,1.7,-5.16],'dark');
-  for(let y=1.44;y<=1.98;y+=.09)box(g,'通风百叶片',[.89,.035,.08],[x,y,-5.09],'steel',[.3,0,0]);
+ // Two open roof trusses and longitudinal ties establish a full-height chemical workshop.
+ for(const z of [-10.35,-4.2]){
+  for(const y of [5.85,6.35])box(g,'屋架弦杆',[26.8,.11,.13],[0,y,z],'dark');
+  for(let x=-13.4;x<13.3;x+=1.675){
+   line(g,'屋架斜腹杆',[x,5.85,z],[x+1.675,6.35,z],.025,'steel');
+   line(g,'屋架竖腹杆',[x,5.85,z],[x,6.35,z],.025,'steel');
+  }
  }
+ for(const x of [-13.4,-6.7,0,6.7,13.4])box(g,'屋面纵向系杆',[.10,.13,6.15],[x,6.35,-7.275],'dark');
+ for(const x of [-10,-5,0,5,10]){
+  box(g,'后墙高窗框',[3.8,1.1,.09],[x,4.18,-10.56],'dark');
+  box(g,'后墙高窗玻璃',[3.64,.94,.035],[x,4.18,-10.49],'glass');
+  for(const dx of [-.9,0,.9])box(g,'后墙窗竖梃',[.035,1.0,.05],[x+dx,4.18,-10.45],'steel');
+ }
+ for(const z of [-7,-1,5]){
+  box(g,'侧墙高窗框',[.09,1.1,3.8],[13.56,4.18,z],'dark');
+  box(g,'侧墙高窗玻璃',[.035,.94,3.64],[13.49,4.18,z],'glass');
+  for(const dz of [-.9,0,.9])box(g,'侧墙窗竖梃',[.05,1,.035],[13.45,4.18,z+dz],'steel');
+ }
+ // Rear service aisle, ventilation trunk and inspection cabinets are building fittings.
+ for(const z of [-8.3,-6.1,6.8])paint('检修通道标线',25,.07,0,z,'safety');
+ for(const x of [-10.2,10.2])paint('纵向检修标线',.07,14,x,-.7,'safety');
+ box(g,'高位通风干管',[25,.48,.52],[0,5.45,-9.95],'steel');
+ for(const x of [-9,-3,3,9]){
+  box(g,'送风支管',[.36,.32,1.3],[x,5.38,-9.1],'steel');
+  box(g,'送风口',[.60,.40,.08],[x,5.35,-8.44],'dark');
+  for(let y=5.2;y<5.52;y+=.07)box(g,'风口百叶',[.52,.022,.05],[x,y,-8.38],'steel');
+ }
+ for(const x of [-9,-3,3,9])for(const z of [-7.4,5.5]){
+  for(const dx of [-.8,.8])line(g,'吊灯拉杆',[x+dx,5.9,z],[x+dx,5.25,z],.012,'steel');
+  box(g,'通道条形灯壳',[2.0,.12,.22],[x,5.2,z],'dark');
+  box(g,'通道条形灯罩',[1.87,.035,.18],[x,5.12,z],'light');
+ }
+ // Utilities continue along the rear wall and feed the original process rack.
+ for(const [i,m] of ['blue','teal','steel'].entries()){
+  const y=3.8+i*.25;
+  line(g,'后墙公用总管',[-12,y,-9.5],[12,y,-9.5],.07,m);
+  line(g,'公用总管转接',[-8,y,-9.5],[-8,y,-4.5],.07,m);
+ }
+ for(const x of [-11.8,-10.6,-9.4]){
+  box(g,'配电柜',[1.0,2.0,.55],[x,1.06,-10.1],'steel');
+  box(g,'配电柜底座',[1.08,.12,.62],[x,.06,-10.1],'dark');
+  box(g,'配电柜门',[.87,1.81,.02],[x,1.08,-9.81],'panel');
+  box(g,'配电柜仪表',[.25,.18,.03],[x,1.6,-9.78],'glass');
+  line(g,'柜门拉手',[x+.29,.9,-9.76],[x+.29,1.12,-9.76],.015,'steel');
+ }
+ // Emergency wash station at the side of the maintenance aisle; no logistics props.
+ line(g,'冲淋立管',[-11.5,0,-5.3],[-11.5,2.65,-5.3],.04,'teal');
+ line(g,'冲淋横管',[-11.5,2.65,-5.3],[-11.5,2.65,-4.8],.04,'teal');
+ cyl(g,'冲淋喷头',.2,.08,[-11.5,2.57,-4.8],'steel');
+ cyl(g,'洗眼盆',.25,.10,[-11.5,1.1,-5.0],'steel');
+ line(g,'洗眼支管',[-11.5,1.0,-5.3],[-11.5,1.0,-5.0],.03,'teal');
+ paint('冲淋站边线',1.3,.07,-11.5,-4.2,'safety');
  // Service pipe rack, saddles and cable trays; no roof blocks the cutaway view.
  for(const x of [-7,0,7]){
   box(g,'管廊立柱',[.12,4.4,.12],[x,2.2,-4.6],'dark');
@@ -179,8 +236,8 @@ function workshop(g){
  for(let y=.35;y<.7;y+=.07)box(g,'电柜通风缝',[.55,.018,.012],[-6.8,y,-3.365],'dark');
  line(g,'电缆导管',[-6.8,1.88,-3.6],[-6.8,3.95,-3.6],.025,'steel');
  line(g,'导管转弯',[-6.8,3.95,-3.6],[-6.8,3.95,-3.96],.025,'steel');
- box(g,'壁挂接线箱',[.55,.7,.22],[5.85,.95,-4.92],'steel');
- for(const dx of [-.16,.16])line(g,'电气穿线管',[5.85+dx,1.3,-4.91],[5.85+dx,3.92,-4.91],.018,'steel');
+ box(g,'壁挂接线箱',[.55,.7,.22],[5.85,.95,-10.45],'steel');
+ for(const dx of [-.16,.16])line(g,'电气穿线管',[5.85+dx,1.3,-10.42],[5.85+dx,3.92,-10.42],.018,'steel');
  // Expanded grated service platform behind the evaporator; preserve access.
  box(g,'检修平台框架',[2.5,.12,1.05],[-2.0,1.08,-.35],'dark');
  for(let x=-3.2;x<-0.75;x+=.12)box(g,'平台格栅',[.025,.035,.98],[x,1.16,-.35],'steel');
@@ -199,9 +256,9 @@ function workshop(g){
   for(const [y,z] of [[.15,1.5],[1.05,.25]])line(g,'扶手立杆',[x,y,z],[x,y+.95,z],.03,'safety');
  }
  // Fire cabinet belongs to the building, not the production equipment inventory.
- box(g,'消防箱',[.55,.95,.22],[-8.1,.78,-4.98],'red');
- box(g,'消防箱面板',[.42,.70,.015],[-8.1,.8,-4.855],'dark');
- for(const x of [-8.2,-8.0]){cyl(g,'灭火器',.055,.40,[x,.72,-4.83],'red');line(g,'灭火器提把',[x-.04,.95,-4.83],[x+.04,.95,-4.83],.012,'steel');}
+ box(g,'消防箱',[.55,.95,.22],[7.6,.78,-10.43],'red');
+ box(g,'消防箱面板',[.42,.70,.015],[7.6,.8,-10.305],'dark');
+ for(const x of [7.5,7.7]){cyl(g,'灭火器',.055,.40,[x,.72,-10.28],'red');line(g,'灭火器提把',[x-.04,.95,-10.28],[x+.04,.95,-10.28],.012,'steel');}
  // Static background is merged by material to keep added detail inexpensive.
  g.updateMatrixWorld(true);
  const batches=new Map();
