@@ -1,3 +1,4 @@
+import { validFluidBindings } from "../../../shared/scene-playback";
 import { findBuiltinModel } from "../../../shared/builtin-models";
 import { findBuiltinImage } from "../../../shared/builtin-images";
 import { parseCanvasNodeInteraction, type CanvasNodeInteraction } from "../../../shared/twin-actions";
@@ -379,6 +380,7 @@ export type Model3DProps = {
 };
 
 export type Scene3DProps = {
+  playbackBindings?: import("../../../shared/scene-playback").SceneFluidBinding[];
   sceneProjectId: string | null;
   interactionEnabled: boolean;
 };
@@ -1350,11 +1352,13 @@ const validateNode = (value: unknown): CanvasNode => {
       }
     }
   } else if (isScene3DNodeType(type)) {
+    if (props.playbackBindings !== undefined && !validFluidBindings(props.playbackBindings)) invalid("invalid_canvas_node", "props.playbackBindings must contain unique device IDs and valid fluid IDs.");
     validatedProps = {
       sceneProjectId: props.sceneProjectId === null
         ? null
         : requireIdentifier(props.sceneProjectId, "props.sceneProjectId"),
       interactionEnabled: requireBoolean(props.interactionEnabled, "props.interactionEnabled"),
+      ...(props.playbackBindings !== undefined ? {playbackBindings: props.playbackBindings as import("../../../shared/scene-playback").SceneFluidBinding[]} : {}),
     };
   } else if (isAssetDetailNodeType(type)) {
     const maximumMetrics = requireNumber(props.maximumMetrics, "props.maximumMetrics", 1, 12);

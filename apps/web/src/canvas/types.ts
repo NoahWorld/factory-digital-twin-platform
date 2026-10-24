@@ -413,7 +413,10 @@ export type Model3DProps = {
   transformOverrides: Record<string, ModelNodeTransform>;
 };
 
+import { validFluidBindings } from "../../../../shared/scene-playback";
+
 export type Scene3DProps = {
+  playbackBindings?: import("../../../../shared/scene-playback").SceneFluidBinding[];
   sceneProjectId: string | null;
   interactionEnabled: boolean;
 };
@@ -1678,6 +1681,7 @@ export const parseScene3DProps = (props: Record<string, unknown>): Scene3DPropsR
   ) {
     return { ok: false, message: "sceneProjectId 必须为空或合法的 3D 项目 ID" };
   }
+  if (props.playbackBindings !== undefined && !validFluidBindings(props.playbackBindings)) return {ok:false,message:"设备与流体启停绑定无效"};
   if (typeof props.interactionEnabled !== "boolean") {
     return { ok: false, message: "interactionEnabled 必须是布尔值" };
   }
@@ -1686,6 +1690,7 @@ export const parseScene3DProps = (props: Record<string, unknown>): Scene3DPropsR
     value: {
       sceneProjectId: props.sceneProjectId,
       interactionEnabled: props.interactionEnabled,
+      ...(props.playbackBindings !== undefined ? {playbackBindings: props.playbackBindings as import("../../../../shared/scene-playback").SceneFluidBinding[]} : {}),
     },
   };
 };

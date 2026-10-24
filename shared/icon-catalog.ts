@@ -1,6 +1,14 @@
 // Curated from Lucide 0.468.0. See licenses/lucide.txt (ISC/MIT).
 // Only this local allowlist is rendered; no external SVG, font, CDN, or script is loaded.
+// Process symbols below are original platform geometry, distinct from the Lucide entries.
 export const iconCatalog = [
+  {"id": "process-reactor", "label": "搅拌反应罐", "category": "工艺", "body": "<rect x=\"4\" y=\"6\" width=\"16\" height=\"14\" rx=\"4\"/><path d=\"M0 12h4m16 0h4M12 20v4M9 2h6v4H9zM12 6v11m-4-2 8 2m-8 0 8-2M7 20v3m10-3v3\"/>"},
+  {"id": "process-tank", "label": "收集罐", "category": "工艺", "body": "<rect x=\"4\" y=\"4\" width=\"16\" height=\"16\" rx=\"4\"/><path d=\"M12 0v4m-12 8h4m16 0h4M12 20v4M4 8h16M7 20v3m10-3v3\"/>"},
+  {"id": "process-condenser", "label": "冷凝换热器", "category": "工艺", "body": "<rect x=\"4\" y=\"4\" width=\"16\" height=\"16\" rx=\"3\"/><path d=\"M12 0v4m0 16v4M0 12h4m16 0h4M7 7l10 3-10 4 10 3\"/>"},
+  {"id": "process-separator", "label": "固液分离器", "category": "工艺", "body": "<path d=\"M4 6h16v10l-6 4v4h-4v-4l-6-4ZM4 10h16M0 12h4m16 0h4M12 0v6M6 17v6m12-6v6\"/>"},
+  {"id": "process-pump", "label": "离心泵", "category": "工艺", "body": "<circle cx=\"11\" cy=\"12\" r=\"7\"/><path d=\"m8 8 7 4-7 4ZM0 12h4m14 0h6M8 19l-2 4h12l-2-4M11 0v5\"/>"},
+  {"id": "process-valve", "label": "工艺阀门", "category": "工艺", "body": "<path d=\"M0 12h4m16 0h4M4 6l16 12V6L4 18ZM12 12V3m-4 0h8\"/>"},
+
   {
     "id": "wrench",
     "label": "设备检修",

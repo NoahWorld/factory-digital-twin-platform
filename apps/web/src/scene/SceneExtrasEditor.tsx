@@ -26,7 +26,7 @@ export type SceneExtrasEditorProps = {
 type Vec3 = [number, number, number];
 type Tab = "environment" | "military" | "alarms" | "map";
 const tabs: { id: Tab; label: string }[] = [{ id: "environment", label: "环境" }, { id: "military", label: "军事" }, { id: "alarms", label: "房间报警" }, { id: "map", label: "地图" }];
-const labels: Record<DecorationKind, string> = { tree: "乔木", shrub: "灌木", river: "河流", "military-truck": "运输车", "military-tent": "帐篷", "military-radar": "雷达", "military-armored": "装甲车" };
+const labels: Record<DecorationKind, string> = { "security-camera": "监控摄像头", tree: "乔木", shrub: "灌木", river: "河流", "military-truck": "运输车", "military-tent": "帐篷", "military-radar": "雷达", "military-armored": "装甲车" };
 const alarmLabels: Record<RoomAlarmStatus["state"], string> = { normal: "正常", alarm: "报警", waiting: "等待数据", stale: "数据陈旧", offline: "失联", error: "错误" };
 function Numeric({ name, value, min, max, disabled, onChange, onInvalid, integer = false, exclusiveMin = false }: { name: string; value: number; min: number; max: number; disabled: boolean; onChange: (value: number) => void; onInvalid: (name: string, bad: boolean) => void; integer?: boolean; exclusiveMin?: boolean }) {
   const [text, setText] = useState(String(value));

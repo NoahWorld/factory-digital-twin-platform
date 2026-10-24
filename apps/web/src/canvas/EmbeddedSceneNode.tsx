@@ -1,3 +1,5 @@
+import { playbackSceneError, projectPlaybackScene } from "../twin/playback-projection";
+import type { PlaybackState } from "../../../../shared/scene-playback";
 import { memo, useCallback, useEffect, useMemo, useState, type ComponentProps } from "react";
 import { errorMessage, request } from "../api";
 import type { TwinAction } from "../../../../shared/twin-actions";
@@ -35,6 +37,7 @@ export type EmbeddedSceneRuntimeSelection = {
 };
 
 type EmbeddedSceneNodeProps = {
+  playback?: PlaybackState;
   editable: boolean;
   interactive: boolean;
   node: CanvasNode;
@@ -66,6 +69,7 @@ function EmbeddedLiveScene({ projectId, scene, rendererProps }: {
 }
 
 export const EmbeddedSceneNode = memo(function EmbeddedSceneNode({
+  playback = {},
   editable,
   interactive,
   node,
@@ -114,10 +118,12 @@ export const EmbeddedSceneNode = memo(function EmbeddedSceneNode({
     return () => { active = false; };
   }, [editable, onSelectionChange, publication, sceneProjectId]);
 
+  const playbackError = response && parsed.ok ? playbackSceneError(response.scene, parsed.value.playbackBindings) : null;
+  const projectedScene = useMemo(() => response && !playbackError ? projectPlaybackScene(response.scene, playback, parsed.ok ? parsed.value.playbackBindings : []) : null, [response, playback, node.props, playbackError]);
   const rendererNode = useMemo((): CanvasNode | null => {
-    if (!response) return null;
-    return standaloneRendererNode(response.scene, `${node.id}:embedded-scene`);
-  }, [node.id, response]);
+    if (!projectedScene) return null;
+    return standaloneRendererNode(projectedScene, `${node.id}:embedded-scene`);
+  }, [node.id, projectedScene]);
 
   const selectInstance = useCallback((_rendererNodeId: string, instanceId: string | null) => {
     if (!response || !instanceId) {
@@ -148,6 +154,7 @@ export const EmbeddedSceneNode = memo(function EmbeddedSceneNode({
   if (!sceneProjectId) {
     return <div className="embedded-scene-state" data-cover-state="empty"><strong>选择一个 3D 场景</strong><span>在右侧属性栏绑定已搭建的独立 3D 项目。</span></div>;
   }
+  if (playbackError) return <div className="embedded-scene-state is-error" data-cover-state="error" data-cover-error={playbackError} role="alert"><strong>模拟启停绑定无效</strong><span>{playbackError}。请在 3D 场景组件中修正设备与管路绑定。</span></div>;
   if (loadError) {
     return <div className="embedded-scene-state is-error" data-cover-state="error" data-cover-error={loadError} role="alert"><strong>3D 场景加载失败</strong><span>{loadError}</span></div>;
   }
@@ -158,7 +165,7 @@ export const EmbeddedSceneNode = memo(function EmbeddedSceneNode({
   const rendererProps: ComponentProps<typeof Model3DNode> = {
     decorations: response.scene.decorations,
     staticMap: response.scene.staticMap,
-    fluids: response.scene.fluids ?? [],
+    fluids: projectedScene?.fluids ?? [],
     cameraControlsEnabled: !editable,
     editable: false,
     interactive: interactive && parsed.value.interactionEnabled,

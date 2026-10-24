@@ -91,11 +91,13 @@ export function CanvasPage({ initialAssetId, mode, projectId, publicView = false
   const focusActionModel = useCallback((sceneProjectId: string, instanceId: string) => {
     setModelFocusRequest({ projectId: sceneProjectId, instanceId, requestId: createUuid() });
   }, []);
-  const actionRuntime = useTwinActions({ canvasDocument: document, assets: projectAssets, scenes: actionCatalog.scenes, contextKey: `${projectId}:${mode}`, onSelectAsset: selectActionAsset, onFocusModel: focusActionModel });
+  const playbackSelection = useMemo(() => modelFocusRequest ? { [modelFocusRequest.projectId]: modelFocusRequest.instanceId } : embeddedSceneSelection ? { [embeddedSceneSelection.sceneProjectId]: embeddedSceneSelection.instanceId } : {}, [modelFocusRequest, embeddedSceneSelection]);
+  const actionRuntime = useTwinActions({ selection: playbackSelection, canvasDocument: document, assets: projectAssets, scenes: actionCatalog.scenes, contextKey: `${projectId}:${mode}`, onSelectAsset: selectActionAsset, onFocusModel: focusActionModel });
   const executeActions = useCallback((actions: readonly TwinAction[], source: string, originProjectId = projectId) => {
     if (mode !== "preview" || !actionRuntime.execute(actions, source)) return;
     try {
-      const canvasActions = actions.filter((action) => action.type !== "focus-model");
+      // Playback is local to this preview; another window has its own selected device and gates.
+      const canvasActions = actions.filter((action) => action.type !== "focus-model" && action.type !== "scene-playback");
       if (canvasActions.length) publishTwinActions({ originProjectId, targetProjectId: projectId, actions: canvasActions });
       const targetProjects = new Set(actions.flatMap((action) => action.type === "focus-model" ? [action.projectId] : []));
       for (const targetProjectId of targetProjects) {
@@ -604,6 +606,8 @@ export function CanvasPage({ initialAssetId, mode, projectId, publicView = false
           runtimeAssetConnection={embeddedSceneSelection?.assetId ? embeddedRuntimeConnection : selectedRuntimeConnection}
           runtimeAssetError={embeddedSceneSelection?.assetId ? embeddedRuntimeError : runtimeSetupError}
           runtimeAssetLoading={embeddedSceneSelection?.assetId ? embeddedAssetListLoading : assetListLoading}
+          runtimePlayback={actionRuntime.playback}
+          runtimeSelection={playbackSelection}
           runtimeNodeVisibility={actionRuntime.nodeVisibility}
           runtimeTextOverrides={actionRuntime.textOverrides}
           selectedModelSceneNodePath={selectedModelSceneNodePath}

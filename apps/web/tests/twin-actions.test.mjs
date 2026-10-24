@@ -236,3 +236,75 @@ test("broadcast transport failures are visible instead of reporting a successful
     console.error = previousError;
   }
 });
+
+
+// A real authored canvas exercises cross-component gates and reference validation.
+import { composeCanvas, composeScene } from "../../../demo-assets/silver-nitrate-workshop/author";
+import { sceneFluidBindings } from "../../../demo-assets/silver-nitrate-workshop/process-configuration";
+import { parseCanvasNodeInteraction, parseTwinActions } from "../../../shared/twin-actions";
+import { validFluidBindings } from "../../../shared/scene-playback";
+import { projectPlaybackNode, projectPlaybackScene } from "../src/twin/playback-projection";
+import { parseSceneDecorations } from "../../../shared/scene-decorations";
+import { isOrnamentNodeType, parseOrnamentProps } from "../../../shared/canvas-ornaments";
+const authored = composeCanvas("scene-a");
+const authoredScene = {...composeScene({}, true), projectId:"scene-a", name:"工艺场景", settings:{playAnimations:true,autoRotate:true}};
+const authoredContext = {canvasDocument:{projectId:"board",...authored},scenes:[authoredScene],assets:[],selection:{"scene-a":"silver-neutral"}};
+const control = (target,operation="toggle") => ({type:"scene-playback",projectId:"scene-a",target,operation});
+test("native process diagram is selectable, bounded and has valid scene / fluid bindings",()=>{
+  assert.ok(authored.nodes.length <= 100);
+  assert.equal(new Set(authored.nodes.map(n=>n.id)).size,authored.nodes.length);
+  for(const node of authored.nodes){
+    assert.ok(node.x>=0 && node.y>=0 && node.x+node.width<=1920 && node.y+node.height<=1080,node.id);
+    if(isOrnamentNodeType(node.type)) {
+      const parsed = parseOrnamentProps(node.type,node.props);
+      assert.equal(parsed.ok,true,node.id);
+      assert.deepEqual(parsed.value,node.props,`${node.id}: authored props must match the persistence contract without discarded fields`);
+    }
+    if(node.interaction){assert.equal(parseCanvasNodeInteraction(node.interaction).ok,true,node.id);validateTwinActionTargets(node.interaction.clickActions,authoredContext);}
+  }
+  assert.equal(validFluidBindings(sceneFluidBindings()),true);
+  assert.equal(parseSceneDecorations(authoredScene.decorations).ok,true);
+  assert.equal(authoredScene.decorations.filter(d=>d.kind==="security-camera").length,3);
+  assert.equal(projectPlaybackScene(authoredScene,{},sceneFluidBindings()),authoredScene);
+  assert.throws(()=>projectPlaybackScene(authoredScene,{},[{instanceId:"missing",fluidIds:[]}]),/missing/);
+  assert.throws(()=>projectPlaybackScene(authoredScene,{},[{instanceId:"silver-neutral",fluidIds:["missing-flow"]}]),/missing-flow/);
+});
+test("global pause preserves independent device gates and resume keeps manually paused equipment stopped",()=>{
+  const before=structuredClone(authoredScene);
+  let state=planTwinActions([control("selected","pause")],authoredContext,emptyTwinActionState()).state;
+  state=planTwinActions([control("scene","pause")],authoredContext,state).state;
+  let scene=projectPlaybackScene(authoredScene,state.playback,sceneFluidBindings());
+  assert.equal(scene.settings.playAnimations,false);assert.equal(scene.settings.autoRotate,false);
+  assert.ok(scene.fluids.every(f=>!f.playing));
+  state=planTwinActions([control("scene","play")],authoredContext,state).state;
+  scene=projectPlaybackScene(authoredScene,state.playback,sceneFluidBindings());
+  assert.equal(scene.instances.find(i=>i.id==="silver-neutral").animation.enabled,false);
+  assert.equal(scene.instances.find(i=>i.id==="silver-evaporator").animation.enabled,true);
+  assert.equal(scene.fluids.find(f=>f.id==="silver-n-e").playing,false);
+  assert.equal(scene.fluids.find(f=>f.id==="silver-vapor").playing,true);
+  const pipe=authored.nodes.find(n=>n.id==="silver-pid-pipe-n-e");
+  assert.equal(projectPlaybackNode(pipe,state.playback,authoredContext.selection).props.flowing,false);
+  state=planTwinActions([control("selected","play")],authoredContext,state).state;
+  assert.equal(projectPlaybackNode(pipe,state.playback,authoredContext.selection).props.flowing,true);
+  assert.deepEqual(authoredScene,before);
+});
+test("2D view switches as one group and unavailable actions fail without partial effects",()=>{
+  const action={type:"panel-group",groupId:"silver-process-view",operation:"show"};
+  assert.throws(()=>planTwinActions([{...action,operation:["show"]}],authoredContext,emptyTwinActionState()),/显示分组或操作无效/);
+  const state=planTwinActions([action],authoredContext,emptyTwinActionState()).state;
+  const grouped=authored.nodes.filter(n=>n.interaction?.visibilityGroup===action.groupId);
+  assert.ok(grouped.length>30);assert.ok(grouped.every(n=>state.nodeVisibility[n.id]));
+  assert.equal(state.nodeVisibility["silver-scene"],undefined);
+  const hidden=planTwinActions([{...action,operation:"hide"}],authoredContext,state).state;
+  assert.ok(grouped.every(n=>hidden.nodeVisibility[n.id]===false));
+  assert.throws(()=>planTwinActions([action,control(["missing"])],authoredContext,emptyTwinActionState()),/missing/);
+  assert.throws(()=>planTwinActions([control("selected")],{...authoredContext,selection:{}},emptyTwinActionState()),/先选择/);
+  const button=authored.nodes.find(n=>n.id==="silver-device-playback");
+  assert.equal(projectPlaybackNode(button,{},{}).props.disabled,true);
+  assert.equal(projectPlaybackNode(button,{"scene-a":{playing:false,instances:{}}},authoredContext.selection).props.text,"整线已暂停");
+});
+test("playback declarations reject empty, duplicate and executable targets",()=>{
+  for(const target of [[],["x","x"],["x\n"],{script:"x"}])assert.equal(parseTwinActions([control(target)]).ok,false);
+  assert.equal(parseCanvasNodeInteraction({clickActions:[],hiddenInPreview:false,playbackBinding:{projectId:"a",target:"scene",url:"x"}}).ok,false);
+  assert.equal(validFluidBindings([{instanceId:"a",fluidIds:["x","x"]}]),false);
+});

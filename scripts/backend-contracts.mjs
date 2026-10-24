@@ -218,6 +218,17 @@ try{
    opacity:{minimum:FLUID_LIMITS.minimumOpacity,maximum:FLUID_LIMITS.maximumOpacity},
  }))constrain(definitions.FluidDefinition.properties[field],limits);
  definitions.FluidPoint.items.forEach(item=>Object.assign(item,{minimum:-FLUID_LIMITS.maximumCoordinate,maximum:FLUID_LIMITS.maximumCoordinate}));
+ field('CanvasNodeInteraction','visibilityGroup',{pattern:idPattern,maxLength:120});
+ field('PlaybackBinding','projectId',{pattern:idPattern,maxLength:120});
+ field('TwinPanelGroupAction','groupId',{pattern:idPattern,maxLength:120});
+ field('TwinPlaybackAction','projectId',{pattern:idPattern,maxLength:120});
+ const playbackTargets=definitions.PlaybackTarget.anyOf.find(item=>item.type==='array');
+ Object.assign(playbackTargets,{minItems:1,maxItems:128,uniqueItems:true});
+ Object.assign(playbackTargets.items,{pattern:idPattern,maxLength:120});
+ field('SceneFluidBinding','instanceId',{pattern:idPattern,maxLength:120});
+ field('SceneFluidBinding','fluidIds',{maxItems:128,uniqueItems:true});
+ Object.assign(definitions.SceneFluidBinding.properties.fluidIds.items,{pattern:idPattern,maxLength:120});
+ field('Scene3DProps','playbackBindings',{maxItems:128});
  constrain(definitions.CanvasNodeInteraction.properties.clickActions,{maxItems:TWIN_ACTION_LIMITS.maximumActions});
  constrain(definitions.StandaloneSceneInstance.properties.clickActions,{maxItems:TWIN_ACTION_LIMITS.maximumActions});
  for(const [name,fields] of Object.entries({TwinMessageAction:{title:{minLength:0,maxLength:TWIN_ACTION_LIMITS.maximumTitleLength,pattern:TWIN_ACTION_TEXT_PATTERN},text:{minLength:1,maxLength:TWIN_ACTION_LIMITS.maximumTextLength,pattern:TWIN_ACTION_TEXT_PATTERN}},TwinSelectAssetAction:{assetId:{pattern:TWIN_ACTION_ASSET_ID_PATTERN}},TwinPanelAction:{nodeId:{pattern:TWIN_ACTION_ID_PATTERN}},TwinFocusModelAction:{projectId:{pattern:TWIN_ACTION_ID_PATTERN},instanceId:{pattern:TWIN_ACTION_ID_PATTERN}},TwinSetTextAction:{nodeId:{pattern:TWIN_ACTION_ID_PATTERN},text:{minLength:0,maxLength:TWIN_ACTION_LIMITS.maximumTextLength,pattern:TWIN_ACTION_TEXT_PATTERN}}}))for(const [field,limits] of Object.entries(fields))constrain(definitions[name].properties[field],limits);

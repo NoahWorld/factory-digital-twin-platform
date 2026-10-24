@@ -28,6 +28,9 @@
 - 同一 IoT 身份在窗口聚焦时重新验证不能卸载编辑器、丢弃未保存草稿；临时授权校验失败时禁用交互并允许重试，账号或权限变化应重新隔离工作区。资源未加载完不得生成“成功”的空封面。
 - 接口与部署的当前契约见 [IoT 接入说明](docs/iot-integration.md)。验证入口：`pnpm test:iot-integration`、`pnpm test:iot-integration:browser`、`pnpm test:api-errors`、`pnpm test:project-covers`、`pnpm test:model-asset-covers`、`pnpm test:scene-runtime`、`pnpm test:twin-drive`、`pnpm test:uuid`。隔离浏览器脚本不代替真实 IoT/MinIO 验收；本地验证记录见接入说明。
 - 管路/状态改动运行 `pnpm test:process-control`、`pnpm test:iot-embed`、`pnpm test:iot-integration`、`pnpm check`、`pnpm build`。导出 IoT 后端契约使用 `node scripts/backend-contracts.mjs --iot --backend-dir <IoT后端路径>`，追加 `--check` 校验同步；不得运行默认导出去修改原独立后端。
+- 原生画布可通过 `visibilityGroup` 与 `panel-group` 动作切换一组组件；编辑态始终显示以便调整，`hiddenInPreview` 只控制初始预览。`scene-playback` 动作控制整个场景、当前选中设备或指定设备；`shared/scene-playback.ts` 维护严格契约。启停只影响当前预览的模拟动画与绑定管路，不持久化运行状态、不广播至其他窗口、不下发现场命令。
+- `scene-3d` 的 `playbackBindings` 显式关联实例与流体；2D 管路及状态文本用 `playbackBinding` 联动。整线暂停保留各设备启停选择，恢复时不能误启动此前已暂停的设备；多个设备关联同一管路时，任一暂停即停流。缺失的场景、设备、分组与流体引用须明确报错。改动运行 `pnpm test:twin-actions` 及上述管路回归。
+- `security-camera` 为可复用的静态参数化场景装饰，通过模型库添加并沿用装饰变换、预算和保存链路。摄像头外形不代表已接入视频或现场监控；不新增视频流请求。
 
 - 金属盐正式看板必须使用已有 2D 画布原生组件 + `scene-3d` 引用组合，不新增专用看板创建入口、配置表单或编辑器。普通项目使用 `/canvas` 编辑、`/preview` 预览与现有 IoT 保存/删除接口；引用源场景但不拥有其模型，删除画布不影响源场景。2026-10-23 的独立 dashboard demo 按用户要求暂留只读预览，旧 `/dashboard/edit` 地址兼容进入预览，相关存量读取接口暂留，不能继续用它创建正式项目。组合交付记录见 `demo-assets/metal-salt-composite/README.md`。
 

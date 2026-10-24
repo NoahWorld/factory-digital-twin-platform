@@ -34,7 +34,7 @@ export const validateTwinActionReferences = async (env: AppEnv, user: Authentica
   for (const item of sources) for (const [index, action] of item.actions.entries()) {
     const fail = (message: string): never => { throw new AppError(400, "invalid_twin_action_reference", `${source.kind} ${source.projectId}, item ${item.id}, clickActions[${index}]: ${message}`); };
     if (action.type === "message") continue;
-    if (action.type === "focus-model") {
+    if (action.type === "focus-model" || action.type === "scene-playback") {
       if (source.kind === "scene" && action.projectId !== source.projectId) fail("A 3D model can only focus another model in its own scene.");
       await requireProject(action.projectId, "3d", fail);
       if (!scenes.has(action.projectId)) {
@@ -48,7 +48,8 @@ export const validateTwinActionReferences = async (env: AppEnv, user: Authentica
       const target = scenes.get(action.projectId)!;
       if (source.kind === "canvas" && target.linked2dProjectId !== source.projectId
         && !source.nodes.some((node) => node.type === "scene-3d" && (node.props as Record<string, unknown>).sceneProjectId === action.projectId)) fail(`Scene ${action.projectId} is not linked to or referenced by this canvas.`);
-      if (!target.instances.has(action.instanceId)) fail(`Model instance ${action.instanceId} does not exist in scene ${action.projectId}.`);
+      const ids = action.type === "focus-model" ? [action.instanceId] : Array.isArray(action.target) ? action.target : [];
+      for (const id of ids) if (!target.instances.has(id)) fail(`Model instance ${id} does not exist in scene ${action.projectId}.`);
       continue;
     }
     const projectId = source.kind === "canvas" ? source.projectId : source.linked2dProjectId;
@@ -62,6 +63,13 @@ export const validateTwinActionReferences = async (env: AppEnv, user: Authentica
         if (!asset) fail(`Business asset ${action.assetId} does not exist in 2D project ${projectId}.`);
         assets.add(key);
       }
+      continue;
+    }
+    if (action.type === "panel-group") {
+      const candidates = source.kind === "canvas" ? source.nodes : (await env.DB.prepare("SELECT id, node_type, interaction_json FROM canvas_nodes WHERE project_id = ?")
+        .bind(projectId).all<{ id: string; node_type: string; interaction_json: string | null }>()).results.map(row => ({id:row.id,type:row.node_type,interaction:row.interaction_json === null ? undefined : JSON.parse(row.interaction_json) as CanvasNodeInteraction}));
+      const group = candidates.filter(node => node.interaction?.visibilityGroup === action.groupId);
+      if (!group.length || group.some(node => node.type === "scene-3d" || node.type === "model-3d")) fail(`2D display group ${action.groupId} is missing or contains 3D nodes.`);
       continue;
     }
     if (!nodes.has(projectId!)) {

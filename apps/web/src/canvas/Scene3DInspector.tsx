@@ -3,6 +3,8 @@ import { Select } from "../components/Select";
 import { useEffect, useMemo, useState } from "react";
 import { errorMessage, request } from "../api";
 import { componentLabels, parseScene3DProps, type CanvasNode } from "./types";
+import { playbackSceneError } from "../twin/playback-projection";
+import { standaloneScenePath, type StandaloneSceneDocument } from "../../../../shared/standalone-3d";
 import { standaloneSceneRoutePath } from "../../../../shared/standalone-3d";
 
 type ProjectSummary = {
@@ -24,6 +26,17 @@ export function Scene3DInspector({
   onValidationChange: (message: string | null) => void;
 }) {
   const parsed = parseScene3DProps(node.props);
+  const sceneId = parsed.ok ? parsed.value.sceneProjectId : null;
+  const [scene, setScene] = useState<StandaloneSceneDocument | null>(null);
+  const [bindingError, setBindingError] = useState<string | null>(null);
+  useEffect(() => {
+    let active = true;
+    setScene(null); setBindingError(null);
+    if (sceneId) void request<{scene:StandaloneSceneDocument}>(standaloneScenePath(sceneId))
+      .then(result => { if (active) setScene(result.scene); })
+      .catch(reason => { if (active) setBindingError(`设备与管路加载失败：${errorMessage(reason)}`); });
+    return () => { active = false; };
+  }, [sceneId]);
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -39,7 +52,7 @@ export function Scene3DInspector({
         ? "请选择一个独立 3D 场景"
         : !loading && !sceneProjects.some((project) => project.id === parsed.value.sceneProjectId)
           ? "当前账号无法访问所选 3D 场景"
-          : null;
+          : bindingError ?? (scene ? playbackSceneError(scene, parsed.value.playbackBindings) : null);
 
   useEffect(() => {
     let active = true;
@@ -82,7 +95,7 @@ export function Scene3DInspector({
             disabled={!editable || loading}
             onValueChange={(value) => onNodeChange({
               ...node,
-              props: { ...parsed.value, sceneProjectId: value || null },
+              props: { ...parsed.value, sceneProjectId: value || null, playbackBindings: [] },
             })}
             value={parsed.value.sceneProjectId ?? ""}
           >
@@ -110,6 +123,25 @@ export function Scene3DInspector({
           <span>允许旋转镜头并点击设备</span>
         </label>
         <p className="inspector-help">编辑画布时拖动整个组件；模型点击事件在源 3D 项目中配置。预览时可联动设备、文字提示和当前画布组件。作为 3D 的透明叠加层时不重复展示此 3D 节点。</p>
+      </section>
+      <section className="inspector-section">
+        <div className="inspector-section-title"><strong>设备启停联动管路</strong></div>
+        {bindingError ? <p role="alert" className="inspector-inline-error">{bindingError}</p> : null}
+        {sceneId && !scene && !bindingError ? <p role="status">正在读取设备与管路…</p> : null}
+        {scene ? (parsed.value.playbackBindings ?? []).map((binding, index) => <fieldset key={index} disabled={!editable}>
+          <label>设备<Select value={binding.instanceId} onValueChange={instanceId => onNodeChange({...node, props:{...parsed.value, playbackBindings: (parsed.value.playbackBindings ?? []).map((b,i) => i === index ? {...b,instanceId} : b)}})}>
+            {!scene.instances.some(i => i.id === binding.instanceId) ? <option value={binding.instanceId}>已失效：{binding.instanceId}</option> : null}
+            {scene.instances.filter(i => i.renderMode === "interactive").map(i => <option key={i.id} value={i.id} disabled={(parsed.value.playbackBindings ?? []).some((b,j)=>j!==index && b.instanceId===i.id)}>{i.label}</option>)}
+          </Select></label>
+          {(scene.fluids ?? []).map(fluid => <label className="inspector-check-row" key={fluid.id}><input type="checkbox" checked={binding.fluidIds.includes(fluid.id)} onChange={event => onNodeChange({...node, props:{...parsed.value, playbackBindings:(parsed.value.playbackBindings ?? []).map((b,i) => i === index ? {...b,fluidIds:event.target.checked ? [...b.fluidIds,fluid.id] : b.fluidIds.filter(id=>id!==fluid.id)} : b)}})}/><span>{fluid.label}</span></label>)}
+          {binding.fluidIds.filter(id => !scene.fluids?.some(f => f.id === id)).map(id => <p key={id} className="inspector-inline-error">已失效的管路：{id}<button type="button" onClick={() => onNodeChange({...node, props:{...parsed.value,playbackBindings:(parsed.value.playbackBindings ?? []).map((b,i)=>i===index?{...b,fluidIds:b.fluidIds.filter(f=>f!==id)}:b)}})}>移除</button></p>)}
+          <button className="inspector-action-button is-danger" type="button" onClick={() => onNodeChange({...node, props:{...parsed.value, playbackBindings:(parsed.value.playbackBindings ?? []).filter((_,i)=>i!==index)}})}>删除此绑定</button>
+        </fieldset>) : null}
+        <button className="secondary-button" type="button" disabled={!editable || !scene?.instances.some(i=>i.renderMode === "interactive" && !parsed.value.playbackBindings?.some(b=>b.instanceId===i.id))} onClick={() => {
+          const instance=scene?.instances.find(i=>i.renderMode === "interactive" && !parsed.value.playbackBindings?.some(b=>b.instanceId===i.id));
+          if (instance) onNodeChange({...node, props:{...parsed.value, playbackBindings:[...(parsed.value.playbackBindings ?? []), {instanceId:instance.id,fluidIds:[]}]}});
+        }}>添加设备绑定</button>
+        <p className="inspector-help">设备暂停时，其动画及勾选的管路停止。多台设备共用一条管路时，任一设备暂停即停止该管路。</p>
       </section>
     </aside>
   );

@@ -16,6 +16,7 @@ export const modelLibraryCategories: { id: ModelLibraryCategory; label: string }
 ];
 
 export const decorationLibraryItems: { kind: DecorationKind; name: string; category: ModelLibraryCategory; description: string; icon: string }[] = [
+  { kind: "security-camera", name: "监控摄像头", category: "industrial", description: "车间安防摄像头模型", icon: "CCTV" },
   { kind: "tree", name: "乔木", category: "plants", description: "可调整颜色与树形", icon: "♠" },
   { kind: "shrub", name: "灌木", category: "plants", description: "可调整颜色与冠形", icon: "♣" },
   { kind: "river", name: "河流", category: "water", description: "可编辑路径与水流", icon: "≋" },

@@ -1,3 +1,4 @@
+import { playbackIds, type PlaybackState, type PlaybackSelection } from "../../../../shared/scene-playback";
 import { errorMessage, reportError } from "../errors";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { parseTwinActions, type TwinAction } from "../../../../shared/twin-actions";
@@ -7,11 +8,13 @@ import type { TwinActionScene } from "./TwinActionEditor";
 
 export type TwinActionMessage = { title: string; text: string };
 export type TwinActionState = {
+  playback?: PlaybackState;
   nodeVisibility: Record<string, boolean>;
   textOverrides: Record<string, string>;
   messages: TwinActionMessage[];
 };
 export type TwinActionContext = {
+  selection?: PlaybackSelection;
   canvasDocument: CanvasDocument | null;
   assets: readonly ProjectAsset[];
   scenes: readonly TwinActionScene[];
@@ -35,6 +38,15 @@ export function validateTwinActionTargets(actions: readonly TwinAction[], contex
       if (!node) throw new Error(`${prefix}：2D 项目 ${context.canvasDocument?.projectId ?? "未关联"} 中找不到组件 ${action.nodeId}。`);
       if (action.type === "panel" && (node.type === "model-3d" || node.type === "scene-3d")) throw new Error(`${prefix}：组件 ${action.nodeId} 是 3D 内容，显示交互仅支持纯 2D 组件。`);
       if (action.type === "set-text" && node.type !== "plain-text") throw new Error(`${prefix}：组件 ${action.nodeId} 不是纯文本，不能更新内容。`);
+    } else if (action.type === "panel-group") {
+      const nodes = context.canvasDocument?.nodes.filter(node => node.interaction?.visibilityGroup === action.groupId) ?? [];
+      if (!nodes.length || nodes.some(node => node.type === "scene-3d" || node.type === "model-3d")) throw new Error(`${prefix}：找不到可显示的 2D 分组 ${action.groupId}。`);
+    } else if (action.type === "scene-playback") {
+      const scene = context.scenes.find(s => s.projectId === action.projectId);
+      if (!scene) throw new Error(`${prefix}：场景尚未加载。`);
+      const ids = playbackIds(action, context.selection ?? {});
+      if (action.target === "selected" && !ids.length) throw new Error("请先选择一个设备。");
+      for (const id of ids) if (!scene.instances.some(i => i.id === id && i.visible && i.renderMode === "interactive")) throw new Error(`${prefix}：设备 ${id} 不存在、已隐藏或不可交互。`);
     } else if (action.type === "select-asset") {
       if (!context.assets.some((asset) => asset.assetId === action.assetId)) throw new Error(`${prefix}：业务设备 ${action.assetId} 不存在或当前账号无权访问。`);
     } else if (action.type === "focus-model") {
@@ -56,6 +68,7 @@ export function planTwinActions(actions: readonly TwinAction[], context: TwinAct
     nodeVisibility: { ...state.nodeVisibility },
     textOverrides: { ...state.textOverrides },
     messages: [...state.messages],
+    playback: { ...state.playback },
   };
   const effects: TwinAction[] = [];
   for (const action of parsed) {
@@ -67,6 +80,23 @@ export function planTwinActions(actions: readonly TwinAction[], context: TwinAct
         next.nodeVisibility[action.nodeId] = action.operation === "toggle" ? !visible : action.operation === "show";
         break;
       }
+      case "panel-group": {
+        const nodes = context.canvasDocument!.nodes.filter(node => node.interaction?.visibilityGroup === action.groupId);
+        const visible = next.nodeVisibility[nodes[0].id] ?? !nodes[0].interaction?.hiddenInPreview;
+        nodes.forEach(node => { next.nodeVisibility[node.id] = action.operation === "toggle" ? !visible : action.operation === "show"; });
+        break;
+      }
+      case "scene-playback": {
+        const previous = next.playback![action.projectId] ?? { playing: true, instances: {} };
+        const scene = { ...previous, instances: { ...previous.instances } };
+        const ids = playbackIds(action, context.selection ?? {});
+        const playing = action.target === "scene" ? scene.playing : ids.every(id => scene.instances[id] !== false);
+        const nextPlaying = action.operation === "toggle" ? !playing : action.operation === "play";
+        if (action.target === "scene") scene.playing = nextPlaying;
+        else ids.forEach(id => { scene.instances[id] = nextPlaying; });
+        next.playback![action.projectId] = scene;
+        break;
+      }
       case "set-text": next.textOverrides[action.nodeId] = action.text; break;
       case "focus-model": case "select-asset": effects.push(action); break;
     }
@@ -74,7 +104,7 @@ export function planTwinActions(actions: readonly TwinAction[], context: TwinAct
   return { state: next, effects };
 }
 
-export function useTwinActions({ canvasDocument, assets, scenes, contextKey, onSelectAsset, onFocusModel }: TwinActionRuntimeOptions) {
+export function useTwinActions({ canvasDocument, assets, scenes, selection, contextKey, onSelectAsset, onFocusModel }: TwinActionRuntimeOptions) {
   const [state, setState] = useState<TwinActionState>(emptyTwinActionState);
   const stateRef = useRef(state);
   const [error, setError] = useState<string | null>(null);
@@ -88,7 +118,7 @@ export function useTwinActions({ canvasDocument, assets, scenes, contextKey, onS
 
   const execute = useCallback((actions: readonly TwinAction[], source: string): boolean => {
     try {
-      const plan = planTwinActions(actions, { canvasDocument, assets, scenes }, stateRef.current);
+      const plan = planTwinActions(actions, { canvasDocument, assets, scenes, selection }, stateRef.current);
       for (const action of plan.effects) {
         if (action.type === "select-asset" && !onSelectAsset) throw new Error(`当前页面未提供业务设备详情处理器（${action.assetId}）。`);
         if (action.type === "focus-model" && !onFocusModel) throw new Error(`当前页面未提供模型聚焦处理器（${action.projectId}/${action.instanceId}）。`);
@@ -107,7 +137,7 @@ export function useTwinActions({ canvasDocument, assets, scenes, contextKey, onS
       setError(message);
       return false;
     }
-  }, [assets, canvasDocument, contextKey, onFocusModel, onSelectAsset, scenes]);
+  }, [assets, canvasDocument, contextKey, onFocusModel, onSelectAsset, scenes, selection]);
 
   const dismissMessage = useCallback(() => {
     const next = { ...stateRef.current, messages: stateRef.current.messages.slice(1) };

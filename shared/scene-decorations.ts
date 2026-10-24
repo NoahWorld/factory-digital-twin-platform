@@ -1,5 +1,5 @@
 /** Compact, self-contained procedural objects in local Y-up scene coordinates. */
-export type DecorationKind = 'tree' | 'shrub' | 'river' | 'military-truck' | 'military-tent' | 'military-radar' | 'military-armored';
+export type DecorationKind = 'security-camera' | 'tree' | 'shrub' | 'river' | 'military-truck' | 'military-tent' | 'military-radar' | 'military-armored';
 export type SceneDecoration = {
   id: string; label: string; kind: DecorationKind; visible: boolean;
   transform: { position: [number, number, number]; rotation: [number, number, number]; scale: [number, number, number] };
@@ -12,7 +12,7 @@ export const SCENE_DECORATION_LIMITS = {
   minimumRiverWidth: 0.1, maximumRiverWidth: 100, maximumRiverSpeed: 10,
   minimumRiverOpacity: 0.05, maximumLabelLength: 80,
 } as const;
-const kinds: DecorationKind[] = ['tree', 'shrub', 'river', 'military-truck', 'military-tent', 'military-radar', 'military-armored'];
+const kinds: DecorationKind[] = ['security-camera', 'tree', 'shrub', 'river', 'military-truck', 'military-tent', 'military-radar', 'military-armored'];
 const common = ['id','label','kind','visible','transform','color','accentColor','seed'];
 const matchKeys = (value: Record<string, unknown>, keys: string[]) => Object.keys(value).length === keys.length && keys.every(key => Object.hasOwn(value, key));
 const numberIn = (v: unknown, lo: number, hi: number): v is number => typeof v === 'number' && Number.isFinite(v) && v >= lo && v <= hi;
@@ -68,13 +68,13 @@ export function sceneRiverEdges(points: readonly [number,number,number][], width
   return edges;
 }
 export function createSceneDecoration(id: string, kind: DecorationKind): SceneDecoration {
-  const names: Record<DecorationKind,string> = {tree:'乔木',shrub:'灌木',river:'河流','military-truck':'运输车','military-tent':'帐篷','military-radar':'雷达','military-armored':'装甲车'};
+  const names: Record<DecorationKind,string> = {'security-camera':'监控摄像头',tree:'乔木',shrub:'灌木',river:'河流','military-truck':'运输车','military-tent':'帐篷','military-radar':'雷达','military-armored':'装甲车'};
   const military = kind.startsWith('military-');
   return {
     id, kind, label:names[kind], visible:true,
     transform:{position:[0,0,0],rotation:[0,0,0],scale:[1,1,1]},
-    color: kind === 'river' ? '#2688a8' : military ? '#526747' : '#4c8b53',
-    accentColor: kind === 'river' ? '#9bdce4' : military ? '#a0a879' : '#8fbd69',
+    color: kind === 'security-camera' ? '#dce6eb' : kind === 'river' ? '#2688a8' : military ? '#526747' : '#4c8b53',
+    accentColor: kind === 'security-camera' ? '#738795' : kind === 'river' ? '#9bdce4' : military ? '#a0a879' : '#8fbd69',
     seed:0,
     ...(kind === 'river' ? {river:{points:[[0,0,0],[5,0,0]] as [number,number,number][],width:2,speed:1,opacity:0.82,playing:true}} : {}),
   };
@@ -124,6 +124,7 @@ export function sceneDecorationBudget(definitions: readonly SceneDecoration[]) {
   let meshes=0, triangles=0, animatedInstances=0;
   for (const d of definitions) {
     if (d.kind === 'river') { meshes+=1; triangles+=2*((d.river?.points.length ?? 64)-1); if (d.river?.playing) animatedInstances++; }
+    else if (d.kind === 'security-camera') {meshes+=6;triangles+=256;}
     else if (d.kind === 'tree') {meshes+=4;triangles+=120;}
     else if (d.kind === 'shrub') {meshes+=3;triangles+=60;}
     else if (d.kind === 'military-tent') {meshes+=3;triangles+=80;}

@@ -26,6 +26,8 @@ const actionLabels: Record<TwinAction["type"], string> = {
   message: "弹出文字消息",
   "select-asset": "查看设备详情 / 联动设备",
   panel: "显示 / 隐藏 2D 组件",
+  "panel-group": "显示 / 隐藏 2D 分组",
+  "scene-playback": "模拟启停（场景 / 设备）",
   "focus-model": "聚焦 3D 模型",
   "set-text": "更新 2D 文本",
 };
@@ -39,9 +41,12 @@ export function TwinActionEditor({ actions, onChange, disabled = false, canvasDo
   const editorId = useId();
   const nodes = (canvasDocument?.nodes ?? []).filter((node) => node.type !== "model-3d" && node.type !== "scene-3d");
   const plainTextNodes = nodes.filter((node) => node.type === "plain-text");
+  const groups = [...new Set(nodes.flatMap(node => node.interaction?.visibilityGroup ? [node.interaction.visibilityGroup] : []))];
   const replace = (index: number, action: TwinAction) => onChange(actions.map((existing, position) => position === index ? action : existing));
   const createAction = (type: TwinAction["type"]): TwinAction => {
     switch (type) {
+      case "panel-group": return {type, groupId: nodes.find(n => n.interaction?.visibilityGroup)?.interaction?.visibilityGroup ?? "", operation: "toggle"};
+      case "scene-playback": return {type, projectId: scenes[0]?.projectId ?? "", target: "scene", operation: "toggle"};
       case "message": return { type, title: "消息", text: "" };
       case "select-asset": return { type, assetId: assets[0]?.assetId ?? "" };
       case "panel": return { type, nodeId: nodes[0]?.id ?? "", operation: "show" };
@@ -60,7 +65,8 @@ export function TwinActionEditor({ actions, onChange, disabled = false, canvasDo
       {error ? <p className="error-text" role="alert">{error}</p> : null}
       {actions.map((action, index) => {
         const fieldId = `${editorId}-${index}`;
-        const selectedScene = action.type === "focus-model" ? scenes.find((scene) => scene.projectId === action.projectId) : undefined;
+        const selectedScene = action.type === "focus-model" || action.type === "scene-playback" ? scenes.find((scene) => scene.projectId === action.projectId) : undefined;
+        const playbackDevices = selectedScene?.instances.filter(i => i.visible && i.renderMode === "interactive") ?? [];
         const selectableNodes = action.type === "set-text" ? plainTextNodes : nodes;
         return (
           <fieldset className="twin-action-card" disabled={disabled} key={index}>
@@ -102,6 +108,18 @@ export function TwinActionEditor({ actions, onChange, disabled = false, canvasDo
                 <label htmlFor={`${fieldId}-text`}>新的文本内容</label>
                 <textarea id={`${fieldId}-text`} maxLength={TWIN_ACTION_LIMITS.maximumTextLength} onChange={(event) => replace(index, { ...action, text: event.target.value })} rows={3} value={action.text} />
               </>}
+            </> : null}
+            {action.type === "panel-group" ? <>
+              <label>目标显示分组<Select value={action.groupId} onValueChange={groupId => replace(index, {...action, groupId})}><option value="">选择分组</option>{unavailableOption({label:"分组",present:groups.includes(action.groupId),value:action.groupId})}{groups.map(id => <option key={id} value={id}>{id}</option>)}</Select></label>
+              <label>显示方式<Select value={action.operation} onValueChange={operation => replace(index, {...action, operation: operation as "show" | "hide" | "toggle"})}><option value="show">显示</option><option value="hide">隐藏</option><option value="toggle">切换</option></Select></label>
+            </> : null}
+            {action.type === "scene-playback" ? <>
+              <label>3D 场景<Select value={action.projectId} onValueChange={projectId => replace(index, {...action, projectId, target: "scene"})}><option value="">选择场景</option>{unavailableOption({label:"场景",present:Boolean(selectedScene),value:action.projectId})}{scenes.map(s => <option key={s.projectId} value={s.projectId}>{s.name}</option>)}</Select></label>
+              <label>控制对象<Select value={Array.isArray(action.target) ? "devices" : action.target} onValueChange={target => replace(index, {...action, target: target === "devices" ? [playbackDevices[0].id] : target as "scene" | "selected"})}><option value="scene">整个数字孪生</option><option value="selected">当前选中设备</option><option value="devices" disabled={!playbackDevices.length}>指定设备</option></Select></label>
+              {Array.isArray(action.target) ? [...playbackDevices, ...action.target.filter(id => !playbackDevices.some(i => i.id === id)).map(id => ({id,label:`不可用的设备（${id}）`}))].map(i => <label className="inspector-check-row" key={i.id}><input type="checkbox" checked={action.target.includes(i.id)} disabled={action.target.length === 1 && action.target.includes(i.id) && playbackDevices.some(d => d.id === i.id)} onChange={event => {if(Array.isArray(action.target))replace(index,{...action,target:event.target.checked ? [...action.target,i.id] : action.target.filter(id=>id!==i.id)});}}/>{i.label}</label>) : null}
+              {Array.isArray(action.target) && (!action.target.length || action.target.some(id => !playbackDevices.some(i => i.id === id))) ? <p className="error-text" role="alert">请选择至少一台可用设备，并移除失效引用。</p> : null}
+              <label>操作<Select value={action.operation} onValueChange={operation => replace(index, {...action, operation: operation as "play" | "pause" | "toggle"})}><option value="toggle">切换暂停 / 启动</option><option value="pause">暂停</option><option value="play">启动</option></Select></label>
+              <p className="inspector-help">仅控制当前看板的模拟动画与绑定管路，不下发现场指令。</p>
             </> : null}
             {action.type === "focus-model" ? <>
               <label htmlFor={`${fieldId}-project`}>3D 场景</label>

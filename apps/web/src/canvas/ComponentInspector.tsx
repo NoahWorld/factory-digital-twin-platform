@@ -10,6 +10,7 @@ import { PanelFrameInspector } from "./PanelFrameInspector";
 import { Scene3DInspector } from "./Scene3DInspector";
 import { OrnamentInspector } from "./OrnamentInspector";
 import { isOrnamentNodeType } from "../../../../shared/canvas-ornaments";
+import { PlaybackBindingEditor } from "../twin/PlaybackBindingEditor";
 import { TwinActionEditor, type TwinActionScene } from "../twin/TwinActionEditor";
 import type { ProjectAsset } from "./assets";
 import {
@@ -648,15 +649,12 @@ export function ComponentInspector(props: ComponentInspectorProps) {
       {node.type === "process-pipe" && props.canvasDocument ? <PipeInspector key={`pipe-${node.id}`} node={node} document={props.canvasDocument} editable={editable} onChange={onNodeChange} onValidationChange={setComponentError} /> : <ComponentConfigurationInspector {...props} onValidationChange={setComponentError} />}
       <IotBindingInspector key={`iot-${node.id}`} node={node} document={props.canvasDocument} editable={editable} onNodeChange={onNodeChange} onValidationChange={setIotError} />
       <StateBindingEditor key={`state-${node.id}`} binding={node.stateBinding} flowControls={node.type === "process-pipe"} disabled={!editable} onChange={stateBinding => { const next = { ...node }; if (stateBinding) next.stateBinding = stateBinding; else delete next.stateBinding; onNodeChange(next); }} onValidationChange={setStateError} />
+      {node.type !== "scene-3d" && node.type !== "model-3d" ? <PlaybackBindingEditor node={node} editable={editable} scenes={props.actionScenes ?? []} onChange={onNodeChange} /> : null}
       <section className="inspector-section canvas-interaction-inspector">
         <div className="inspector-section-title"><strong>联动事件</strong><span>预览态生效</span></div>
         {node.type === "process-pipe" ? <p className="inspector-help">管路外观由状态联动控制，点击事件请配置在设备组件上。</p> : node.type === "model-3d" || node.type === "scene-3d" ? (
           <p className="inspector-help">模型点击事件请在源 3D 项目中配置。3D 透明叠加层仅展示 2D 组件，不会重复加载这里的 3D 内容。</p>
         ) : <>
-        <label className="inspector-check-row">
-          <input checked={node.interaction?.hiddenInPreview ?? false} disabled={!editable} type="checkbox" onChange={(event) => onNodeChange({ ...node, interaction: { clickActions: node.interaction?.clickActions ?? [], hiddenInPreview: event.target.checked } })} />
-          <span>预览时默认隐藏（由联动事件显示）</span>
-        </label>
         <TwinActionEditor
           actions={node.interaction?.clickActions ?? []}
           assets={props.actionAssets}
@@ -664,7 +662,7 @@ export function ComponentInspector(props: ComponentInspectorProps) {
           disabled={!editable}
           error={props.actionError}
           loading={props.actionLoading}
-          onChange={(clickActions) => onNodeChange({ ...node, interaction: { clickActions, hiddenInPreview: node.interaction?.hiddenInPreview ?? false } })}
+          onChange={(clickActions) => onNodeChange({ ...node, interaction: { ...node.interaction, clickActions, hiddenInPreview: node.interaction?.hiddenInPreview ?? false } })}
           scenes={props.actionScenes}
         />
         </>}

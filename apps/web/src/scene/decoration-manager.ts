@@ -34,7 +34,15 @@ function build(d: SceneDecoration): RecordEntry {
   const mat=(color:string,flatShading=true) => new THREE.MeshStandardMaterial({color,roughness:0.84,metalness:0.04,flatShading});
   const main=()=>mat(d.color), accent=()=>mat(d.accentColor);
   try {
-    if (d.kind === 'tree') {
+    if (d.kind === 'security-camera') {
+      const plate=add(new THREE.BoxGeometry(.28,.38,.08),main(),'wall-mount');plate.position.set(0,0,-.32);
+      const arm=add(new THREE.BoxGeometry(.09,.09,.48),main(),'bracket');arm.position.set(0,-.08,-.08);
+      const joint=add(new THREE.SphereGeometry(.1,8,6),accent(),'pivot');joint.position.set(0,.02,.15);
+      const head=new THREE.Group();root.add(head);head.position.set(0,.13,.23);head.rotation.x=.22;
+      add(new THREE.BoxGeometry(.32,.25,.58),main(),'camera-housing',head);
+      const hood=add(new THREE.BoxGeometry(.38,.04,.68),main(),'sun-shield',head);hood.position.set(0,.15,.04);
+      const lens=add(new THREE.CylinderGeometry(.09,.09,.08,12),mat('#142a37'),'lens',head);lens.rotation.x=Math.PI/2;lens.position.z=.33;
+    } else if (d.kind === 'tree') {
       const trunk=add(new THREE.CylinderGeometry(0.18,0.27,2.1,6),mat('#70523b'),'trunk'); trunk.position.y=1.05;
       for(let i=0;i<3;i++) { const crown=add(new THREE.ConeGeometry(1.35-i*0.18,1.65,7),i===1?accent():main(),'crown'); crown.position.y=2.25+i*0.68; crown.rotation.y=(d.seed%17)*0.03+i*0.3; }
     } else if (d.kind === 'shrub') {
