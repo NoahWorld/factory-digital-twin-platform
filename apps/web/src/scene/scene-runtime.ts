@@ -28,6 +28,7 @@ import type { StaticMapDefinition } from "../../../../shared/static-map";
 import { createWalkPhysics, type WalkPhysics, type WalkSceneConfig } from "./walk-physics";
 import { createWalkControls } from "./walk-controls";
 import { TwinDriveRuntime, type TwinDriveAttachment } from "./twin-drive-runtime";
+import { RuntimeSelectionOutline } from "./runtime-selection-outline";
 import { createTwinTargetPickingService, TwinTargetSelectionOutline } from "./twin-target-selection";
 import type { TwinTarget } from "../../../../shared/twin-drive";
 import { createNativePlayback, type AnimationProgress, type NativePlaybackMode } from "./native-playback";
@@ -214,13 +215,10 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
     let primaryPathsByObject = new Map<Object3D, string>();
     let primaryObjectsByPath = new Map<string, Object3D>();
     let selectionHelper: InstanceType<typeof THREE.BoxHelper> | null = null;
-    let selectionRing: THREE.Mesh<THREE.RingGeometry, THREE.MeshBasicMaterial> | null = null;
-    let selectionTarget: Object3D | null = null;
+    const runtimeSelectionOutline = new RuntimeSelectionOutline(renderer, scene, camera);
+    constructionCleanup.push(() => runtimeSelectionOutline.dispose());
     const twinSelectionOutline = new TwinTargetSelectionOutline(scene);
     constructionCleanup.push(() => twinSelectionOutline.dispose());
-    const selectionBounds = new THREE.Box3();
-    const selectionSize = new THREE.Vector3();
-    const selectionCenter = new THREE.Vector3();
     let transformTarget: { kind: "instance" | "decoration"; id: string; object: Object3D } | null = null;
     let transformDragging = false;
     let transformPointerId: number | null = null;
@@ -308,19 +306,13 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
 
     const clearSelection = () => {
       twinSelectionOutline.clear();
+      runtimeSelectionOutline.clear();
       if (selectionHelper) {
         scene.remove(selectionHelper);
         selectionHelper.geometry.dispose();
         selectionHelper.material.dispose();
         selectionHelper = null;
       }
-      if (selectionRing) {
-        scene.remove(selectionRing);
-        selectionRing.geometry.dispose();
-        selectionRing.material.dispose();
-        selectionRing = null;
-      }
-      selectionTarget = null;
     };
 
     const cancelTransformDrag = () => {
@@ -438,6 +430,7 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
       scene.remove(transformHelper);
       transformControls.dispose();
       clearSelection();
+      runtimeSelectionOutline.dispose();
       document.removeEventListener("visibilitychange", updateLoop);
       twinRuntime?.dispose(); twinRuntime = null;
       fluidGuide.dispose();
@@ -733,23 +726,6 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
       updateSceneBounds();
     };
 
-    const updateRuntimeSelectionRing = (now: number) => {
-      if (!selectionRing || !selectionTarget) return;
-      selectionBounds.setFromObject(selectionTarget);
-      if (selectionBounds.isEmpty()) {
-        selectionRing.visible = false;
-        return;
-      }
-      selectionRing.visible = true;
-      selectionBounds.getSize(selectionSize);
-      selectionBounds.getCenter(selectionCenter);
-      const radius = Math.max(selectionSize.x, selectionSize.z, 0.12) * 0.68;
-      const pulse = 1 + Math.sin(now * 0.005) * 0.07;
-      selectionRing.position.set(selectionCenter.x, selectionBounds.min.y + Math.max(selectionSize.y * 0.01, 0.008), selectionCenter.z);
-      selectionRing.scale.setScalar(radius * pulse);
-      selectionRing.material.opacity = 0.68 + Math.sin(now * 0.005) * 0.16;
-    };
-
     const applySelection = (path: string | null, instanceId: string | null, style: SceneSelectionStyle) => {
       clearSelection();
       if (desired.twinTargetSelection) {
@@ -783,23 +759,7 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
         scene.add(selectionHelper);
         return;
       }
-      selectionTarget = selected;
-      selectionRing = new THREE.Mesh(
-        new THREE.RingGeometry(0.76, 1, 64),
-        new THREE.MeshBasicMaterial({
-          color: 0x35d8ff,
-          depthTest: false,
-          depthWrite: false,
-          opacity: 0.82,
-          side: THREE.DoubleSide,
-          toneMapped: false,
-          transparent: true,
-        }),
-      );
-      selectionRing.rotation.x = -Math.PI / 2;
-      selectionRing.renderOrder = 100000;
-      scene.add(selectionRing);
-      updateRuntimeSelectionRing(performance.now());
+      runtimeSelectionOutline.set(selected);
     };
 
     const pick = createSceneObjectPickingService(camera, renderer.domElement);
@@ -828,6 +788,7 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
       const width = Math.max(container.clientWidth, 1);
       const height = Math.max(container.clientHeight, 1);
       renderer.setSize(width, height, false);
+      runtimeSelectionOutline.resize(width, height);
       camera.aspect = width / height;
       if (walk) { walk.camera.aspect = camera.aspect; walk.camera.updateProjectionMatrix(); }
       camera.updateProjectionMatrix();
@@ -848,7 +809,7 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
           camera.updateProjectionMatrix();
         }
       }
-      renderer.render(scene, camera);
+      runtimeSelectionOutline.render();
     };
     unregisterCoverSurface = registerCoverSurface(renderer.domElement, () => {
       if (disposed || contextLost || renderer.getContext().isContextLost()) {
@@ -887,7 +848,6 @@ export function createSceneRuntime({ container, projectId, canvasNodeId, initial
       twinRuntime?.tick(Date.now(), animationConflict, now);
       selectionHelper?.update();
       twinSelectionOutline.update();
-      updateRuntimeSelectionRing(now);
       if (walk) {
         try { walk.controls.update(frameMs / 1000); }
         catch (reason) { navigationError(reason); }
