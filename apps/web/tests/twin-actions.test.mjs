@@ -244,6 +244,7 @@ import { sceneFluidBindings } from "../../../demo-assets/silver-nitrate-workshop
 import { parseCanvasNodeInteraction, parseTwinActions } from "../../../shared/twin-actions";
 import { validFluidBindings } from "../../../shared/scene-playback";
 import { projectPlaybackNode, projectPlaybackScene } from "../src/twin/playback-projection";
+import { linkedPlaybackBindings, projectRuntimePlayback } from "../src/twin/preview-playback";
 import { parseSceneDecorations } from "../../../shared/scene-decorations";
 import { isOrnamentNodeType, parseOrnamentProps } from "../../../shared/canvas-ornaments";
 const authored = composeCanvas("scene-a");
@@ -307,4 +308,62 @@ test("playback declarations reject empty, duplicate and executable targets",()=>
   for(const target of [[],["x","x"],["x\n"],{script:"x"}])assert.equal(parseTwinActions([control(target)]).ok,false);
   assert.equal(parseCanvasNodeInteraction({clickActions:[],hiddenInPreview:false,playbackBinding:{projectId:"a",target:"scene",url:"x"}}).ok,false);
   assert.equal(validFluidBindings([{instanceId:"a",fluidIds:["x","x"]}]),false);
+});
+
+test("standalone preview resolves all linked views and reports invalid binding references", () => {
+  const scene = { projectId: "scene-a", instances: [{ id: "pump" }], fluids: [{ id: "water" }, { id: "steam" }] };
+  const view = (id, sceneProjectId, playbackBindings) => ({ id, type: "scene-3d", props: { sceneProjectId, interactionEnabled: true, playbackBindings } });
+  const canvas = { nodes: [
+    view("first", "scene-a", [{ instanceId: "pump", fluidIds: ["water"] }]),
+    view("second", "scene-a", [{ instanceId: "pump", fluidIds: ["water", "steam"] }]),
+    view("other", "scene-b", [{ instanceId: "other-pump", fluidIds: ["other-water"] }]),
+  ] };
+  const before = structuredClone(canvas);
+  assert.deepEqual(linkedPlaybackBindings(scene, canvas), { ok: true, value: [{ instanceId: "pump", fluidIds: ["water", "steam"] }] });
+  assert.deepEqual(linkedPlaybackBindings(scene, null), { ok: true, value: [] });
+  assert.deepEqual(canvas, before);
+  assert.match(linkedPlaybackBindings(scene, { nodes: [view("broken", "scene-a", [{ instanceId: "pump", fluidIds: ["missing"] }])] }).message, /broken.*missing/);
+  assert.match(linkedPlaybackBindings(scene, { nodes: [view("malformed", "scene-a", [{ instanceId: "pump", fluidIds: ["water", "water"] }])] }).message, /malformed.*绑定无效/);
+});
+
+test("preview playback gates IoT-projected fluids without overriding live properties or restarting stopped flow", () => {
+  const scene = { projectId: "scene-a", settings: { playAnimations: true, autoRotate: true },
+    instances: [{ id: "pump", visible: true, renderMode: "interactive", animation: { enabled: true, speed: 1 } }],
+    fluids: [{ id: "water", playing: true, speed: 1, color: "#fff" }, { id: "steam", playing: true, speed: 1, color: "#fff" }],
+  };
+  const runtimeFluids = [{ id: "water", playing: true, speed: 2.5, color: "#13c8a3" }, { id: "steam", playing: false, speed: 0, color: "#ff3300" }];
+  const bindings = [{ instanceId: "pump", fluidIds: ["water", "steam"] }];
+  const before = structuredClone({ scene, runtimeFluids });
+  const initialProjection = projectRuntimePlayback(scene, runtimeFluids, undefined, bindings);
+  assert.deepEqual(initialProjection.fluids, runtimeFluids);
+  assert.equal(initialProjection.settings.playAnimations, true);
+  const actionContext = { canvasDocument: null, assets: [], scenes: [scene], selection: { "scene-a": "pump" } };
+  let state = planTwinActions([control("selected", "pause")], actionContext, emptyTwinActionState()).state;
+  let projected = projectRuntimePlayback(scene, runtimeFluids, state.playback, bindings);
+  assert.ok(projected.fluids.every(fluid => !fluid.playing));
+  assert.equal(projected.instances[0].animation.enabled, false);
+  assert.equal(projected.fluids[0].speed, 2.5);
+  assert.equal(projected.fluids[0].color, "#13c8a3");
+  state = planTwinActions([control("selected", "play")], actionContext, state).state;
+  projected = projectRuntimePlayback(scene, runtimeFluids, state.playback, bindings);
+  assert.equal(projected.fluids[0].playing, true);
+  assert.equal(projected.fluids[1].playing, false);
+  assert.equal(projected.fluids[1].color, "#ff3300");
+  state = planTwinActions([control("scene", "pause")], actionContext, state).state;
+  projected = projectRuntimePlayback(scene, runtimeFluids, state.playback, bindings);
+  assert.equal(projected.settings.playAnimations, false);
+  assert.ok(projected.fluids.every(fluid => !fluid.playing));
+  assert.deepEqual({ scene, runtimeFluids }, before);
+});
+
+test("selected equipment detail and controls share the same preview playback state", () => {
+  const selection = { "scene-a": "pump" };
+  const binding = { projectId: "scene-a", target: "selected" };
+  const detail = { type: "plain-text", props: { text: "设备状态" }, interaction: { playbackBinding: binding, clickActions: [] } };
+  const button = { type: "button", props: { text: "启停" }, interaction: { clickActions: [control("selected")] } };
+  const state = { "scene-a": { playing: true, instances: { pump: false } } };
+  assert.equal(projectPlaybackNode(detail, state, selection).props.text, "已暂停");
+  assert.equal(projectPlaybackNode(button, state, selection).props.text, "启动该设备");
+  assert.equal(projectPlaybackNode(button, state, selection).props.disabled, false);
+  assert.equal(projectPlaybackNode(button, state, {}).props.disabled, true);
 });

@@ -1,5 +1,5 @@
 import { playbackSceneError, projectPlaybackScene } from "../twin/playback-projection";
-import type { PlaybackState } from "../../../../shared/scene-playback";
+import type { PlaybackState, SceneFluidBinding } from "../../../../shared/scene-playback";
 import { memo, useCallback, useEffect, useMemo, useState, type ComponentProps } from "react";
 import { errorMessage, request } from "../api";
 import type { TwinAction } from "../../../../shared/twin-actions";
@@ -50,10 +50,12 @@ type EmbeddedSceneNodeProps = {
 const ignoreSceneNodeSelection = () => undefined;
 
 /** Mounted only for interactive preview: editors and screenshot jobs never open a point stream. */
-function EmbeddedLiveScene({ projectId, scene, rendererProps }: {
+function EmbeddedLiveScene({ projectId, scene, rendererProps, playback, playbackBindings }: {
   projectId: string;
   scene: StandaloneSceneDocument;
   rendererProps: ComponentProps<typeof Model3DNode>;
+  playback: PlaybackState;
+  playbackBindings?: SceneFluidBinding[];
 }) {
   const twin = useTwinDrive(projectId);
   const [diagnostics, setDiagnostics] = useState<TwinDriveDiagnostics | null>(null);
@@ -63,7 +65,7 @@ function EmbeddedLiveScene({ projectId, scene, rendererProps }: {
     onDiagnostics: setDiagnostics,
   } : undefined, [twin.document, twin.source]);
   return <>
-    <RoomAlarmSceneNode scene={scene} rendererProps={{ ...rendererProps, twinDrive: attachment }} />
+    <RoomAlarmSceneNode scene={scene} rendererProps={{ ...rendererProps, twinDrive: attachment }} playback={playback} playbackBindings={playbackBindings} />
     <TwinDriveStatus document={twin.document} error={twin.error} stream={twin.stream} diagnostics={diagnostics} onReload={twin.reload} onReconnect={twin.reconnect} />
   </>;
 }
@@ -183,7 +185,7 @@ export const EmbeddedSceneNode = memo(function EmbeddedSceneNode({
 
   return (
     <div className="embedded-scene-node" data-cover-state="ready">
-      {!editable && interactive ? <EmbeddedLiveScene key={sceneProjectId} projectId={sceneProjectId} scene={response.scene} rendererProps={rendererProps} />
+      {!editable && interactive ? <EmbeddedLiveScene key={sceneProjectId} projectId={sceneProjectId} scene={response.scene} rendererProps={rendererProps} playback={playback} playbackBindings={parsed.value.playbackBindings} />
         : <Model3DNode {...rendererProps} />}
       {editable ? <div className="embedded-scene-reference">引用场景 · {response.project.name}</div> : null}
     </div>

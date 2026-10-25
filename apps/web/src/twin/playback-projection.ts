@@ -26,7 +26,8 @@ export function projectPlaybackNode(node: CanvasNode, state: PlaybackState, sele
   if (binding) {
     const running = playbackRunning(binding, state, selection);
     if (node.type === "process-pipe") props = {...props, flowing: props.flowing && running};
-    if (node.type === "plain-text") props = {...props, text: binding.target === "selected" && !selection[binding.projectId] ? "请选择设备" : `${running ? "模拟运行" : "已暂停"} · 演示数据`, textColor: running ? "#63d6c3" : "#e3b778"};
+    // Playback describes the scene's local animation state, not the provenance of its data.
+    if (node.type === "plain-text") props = {...props, text: binding.target === "selected" && !selection[binding.projectId] ? "请选择设备" : running ? "运行中" : "已暂停", textColor: running ? "#63d6c3" : "#e3b778"};
   }
   if (action?.type === "scene-playback" && node.type === "button") {
     const running = playbackRunning(action, state, selection);

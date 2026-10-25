@@ -56,6 +56,7 @@ import { AssetRuntimeDetailPanel } from "../twin/AssetRuntimeDetailPanel";
 import { TwinActionEditor } from "../twin/TwinActionEditor";
 import { TwinActionFeedback } from "../twin/TwinActionFeedback";
 import { useTwinActions } from "../twin/useTwinActions";
+import { linkedPlaybackBindings, projectRuntimePlayback } from "../twin/preview-playback";
 import { useLinkedTwinScenes } from "../twin/useLinkedTwinScenes";
 import { publishTwinActions, subscribeTwinActions } from "../twin/action-events";
 import { useAssetRuntimeConnections } from "../twin/useAssetRuntimeConnections";
@@ -410,14 +411,9 @@ export default function Standalone3DProjectPage({ mode, projectId, publicView = 
     [draftScene?.instances, models, extrasCost],
   );
 
-  const rendererNode = useMemo(
-    () => draftScene ? standaloneRendererNode(draftScene) : null,
-    [draftScene],
-  );
-
   const linkedSceneCatalog = useLinkedTwinScenes(draftScene?.linked2dProjectId ?? "", linkedCanvas);
   const actionScenes = useMemo(() => draftScene ? [
-    { projectId, name: projectName, instances: draftScene.instances },
+    { projectId, name: projectName, instances: draftScene.instances, fluids: draftScene.fluids },
     ...linkedSceneCatalog.scenes.filter((scene) => scene.projectId !== projectId),
   ] : linkedSceneCatalog.scenes, [draftScene, projectId, projectName, linkedSceneCatalog.scenes]);
   const focusActionModel = useCallback((targetProjectId: string, instanceId: string) => {
@@ -430,16 +426,26 @@ export default function Standalone3DProjectPage({ mode, projectId, publicView = 
     const instance = draftScene?.instances.find((candidate) => candidate.assetId === assetId && candidate.visible);
     if (instance) setSelectedInstanceId((current) => draftScene?.instances.some((candidate) => candidate.id === current && candidate.assetId === assetId && candidate.visible) ? current : instance.id);
   }, [draftScene?.instances]);
+  const playbackSelection = useMemo(() => selectedInstanceId && draftScene?.instances.some(instance => instance.id === selectedInstanceId && instance.visible && instance.renderMode === "interactive")
+    ? { [projectId]: selectedInstanceId } : {}, [projectId, selectedInstanceId, draftScene?.instances]);
   const interactions = useTwinActions({
-    canvasDocument: linkedCanvas, assets: linkedAssets, scenes: actionScenes,
+    canvasDocument: linkedCanvas, assets: linkedAssets, scenes: actionScenes, selection: playbackSelection,
     contextKey: `${projectId}:${draftScene?.linked2dProjectId ?? ""}:${mode}:${linkedCanvas?.revision ?? ""}:${draftScene?.revision ?? ""}`,
     onSelectAsset: selectActionAsset, onFocusModel: focusActionModel,
   });
+  const playbackBindings = useMemo(() => draftScene && mode === "preview" ? linkedPlaybackBindings(draftScene, linkedCanvas) : null, [draftScene, linkedCanvas, mode]);
+  const previewScene = useMemo(() => draftScene && playbackBindings?.ok
+    ? projectRuntimePlayback(draftScene, fluidRuntime.fluids, interactions.playback, playbackBindings.value) : null,
+  [draftScene, playbackBindings, fluidRuntime.fluids, interactions.playback]);
+  const rendererNode = useMemo(() => {
+    const scene = mode === "preview" ? previewScene : draftScene;
+    return scene ? standaloneRendererNode(scene) : null;
+  }, [draftScene, previewScene, mode]);
   const executeAndPublish = useCallback((actions: readonly TwinAction[], source: string, originProjectId = projectId) => {
     if (!interactions.execute(actions, source)) return;
     setInteractionTransportError(null);
     try {
-      const canvasActions = actions.filter((action) => action.type !== "focus-model");
+      const canvasActions = actions.filter((action) => action.type !== "focus-model" && action.type !== "scene-playback");
       if (canvasActions.length && draftScene?.linked2dProjectId) {
         publishTwinActions({ actions: canvasActions, originProjectId, targetProjectId: draftScene.linked2dProjectId });
       }
@@ -805,6 +811,9 @@ export default function Standalone3DProjectPage({ mode, projectId, publicView = 
   if (error && !draftScene) {
     return <main className="canvas-page-state error-state"><h1>3D 项目加载失败</h1><p>{error}</p>{!publicView ? <a className="secondary-button" href={projectListRoutePath()}>返回项目</a> : null}</main>;
   }
+  if (mode === "preview" && playbackBindings && !playbackBindings.ok) {
+    return <main className="canvas-page-state error-state" role="alert"><h1>启停绑定无效</h1><p>{playbackBindings.message}。请在关联画布的 3D 场景组件中修正设备与管路绑定。</p></main>;
+  }
   if (!draftScene || draftScene.projectId !== projectId || !rendererNode) return null;
 
   const sceneView = (
@@ -820,7 +829,7 @@ export default function Standalone3DProjectPage({ mode, projectId, publicView = 
       editable={false}
       interactive
       instanceTransformMode={mode === "edit" && !showTwinEditor && editable && !saving && !extrasPending && extrasSelection?.kind !== "map" && !fluidEditor.selectedId && !fluidEditor.session ? instanceTransformMode : null}
-      fluids={mode === "edit" ? fluidEditor.previewFluids : fluidRuntime.fluids}
+      fluids={mode === "edit" ? fluidEditor.previewFluids : previewScene?.fluids}
       selectedFluidId={mode === "edit" ? fluidEditor.selectedId : null}
       fluidEditor={mode === "edit" ? fluidEditor.rendererEditor : null}
       onFluidPoint={mode === "edit" ? fluidEditor.onPoint : undefined}
@@ -866,6 +875,7 @@ export default function Standalone3DProjectPage({ mode, projectId, publicView = 
             onNodeChange={ignoreSceneNodeSelection} onSelectNode={ignoreSceneNodeSelection}
             onNodeActions={overlayNodeActions}
             runtimeNodeVisibility={interactions.nodeVisibility} runtimeTextOverrides={interactions.textOverrides}
+            runtimePlayback={interactions.playback} runtimeSelection={playbackSelection}
             runtimeAsset={selectedAsset} runtimeAssetConnection={selectedAsset ? runtimeConnections[selectedAsset.id] : undefined}
             runtimeAssetLoading={linkedAssetsLoading} runtimeAssetError={runtimeSetupError}
           /> : null}
