@@ -132,7 +132,8 @@ function workshop(g){
  };
  for(const x of [-13.4,-6.7,0,6.7,13.4])column(x,-10.35);
  for(const z of [-4.2,2.0,8.2])column(13.4,z);
- // Camera-side structure is retained only behind the equipment, keeping the cutaway unobstructed.
+ // Main camera-side roof structure stays behind the equipment; the lighting
+ // support below sits at the outside edge to keep the equipment view clear.
  column(-13.4,-4.2);
  for(const y of [2.8,5.0,6.25]){
   box(g,'后墙水平梁',[27,.16,.22],[0,y,-10.35],'dark');
@@ -170,8 +171,23 @@ function workshop(g){
   box(g,'送风口',[.60,.40,.08],[x,5.35,-8.44],'dark');
   for(let y=5.2;y<5.52;y+=.07)box(g,'风口百叶',[.52,.022,.05],[x,y,-8.38],'steel');
  }
- for(const x of [-9,-3,3,9])for(const z of [-7.4,5.5]){
-  for(const dx of [-.8,.8])line(g,'吊灯拉杆',[x+dx,5.9,z],[x+dx,5.25,z],.012,'steel');
+ // Give every aisle light a continuous support path to the building. The rear
+ // lighting rail meets the existing longitudinal roof ties; the front rail is
+ // an open truss seated on the side-wall beam and a column at the cutaway edge.
+ for(const y of [6.15,6.35])box(g,'后排吊灯承重梁翼缘',[26.8,.06,.22],[0,y,-7.4],'dark');
+ box(g,'后排吊灯承重梁腹板',[26.8,.20,.06],[0,6.25,-7.4],'dark');
+ column(-13.4,5.5);
+ for(const y of [5.85,6.35])box(g,'前排吊灯桁架弦杆',[26.8,.11,.13],[0,y,5.5],'dark');
+ for(let x=-13.4;x<13.3;x+=1.675){
+  line(g,'前排吊灯桁架斜撑',[x,5.85,5.5],[x+1.675,6.35,5.5],.025,'steel');
+  line(g,'前排吊灯桁架竖撑',[x,5.85,5.5],[x,6.35,5.5],.025,'steel');
+ }
+ for(const x of [-13.4,13.4])box(g,'吊灯桁架连接板',[.30,.58,.035],[x,6.10,5.58],'steel');
+ for(const x of [-9,-3,3,9])for(const [z,anchorY] of [[-7.4,6.15],[5.5,5.85]]){
+  for(const dx of [-.8,.8]){
+   box(g,'吊灯锚固板',[.14,.035,.18],[x+dx,anchorY-.04,z],'steel');
+   line(g,'吊灯拉杆',[x+dx,anchorY,z],[x+dx,5.25,z],.012,'steel');
+  }
   box(g,'通道条形灯壳',[2.0,.12,.22],[x,5.2,z],'dark');
   box(g,'通道条形灯罩',[1.87,.035,.18],[x,5.12,z],'light');
  }
