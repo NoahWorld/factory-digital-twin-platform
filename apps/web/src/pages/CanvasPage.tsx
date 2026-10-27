@@ -632,6 +632,7 @@ export function CanvasPage({ initialAssetId, initialTemplateId, mode, projectId,
           previewMode={mode === "preview"}
           runtimeControlsEnabled={mode === "preview"}
           embeddedSceneSelection={embeddedSceneSelection}
+          runtimeSelection={modelFocusRequest ?? (embeddedSceneSelection ? { projectId: embeddedSceneSelection.sceneProjectId, instanceId: embeddedSceneSelection.instanceId } : null)}
           modelInteractionEnabled={mode === "preview"}
           onCreateNode={createNode}
           onEmbeddedSceneSelectionChange={selectEmbeddedSceneAsset}

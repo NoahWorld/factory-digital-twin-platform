@@ -13,6 +13,16 @@ export const isRuntimeNodeVisible = (node: CanvasNode, visibility: Record<string
 export const runtimeNodeCapturesPointer = (node: CanvasNode) =>
   runtimeControlNodeTypes.has(node.type) || (node.interaction?.clickActions.length ?? 0) > 0;
 
+export type RuntimeModelSelection = { projectId: string; instanceId: string } | null;
+
+/** Only an unambiguous focus action identifies a visual for a selected model. */
+export const runtimeNodeModelSelected = (node: CanvasNode, selection: RuntimeModelSelection): boolean | undefined => {
+  if (node.type !== "button" && node.type !== "vector-icon") return undefined;
+  const targets = node.interaction?.clickActions.filter((action) => action.type === "focus-model") ?? [];
+  if (targets.length !== 1) return undefined;
+  return selection?.projectId === targets[0].projectId && selection.instanceId === targets[0].instanceId;
+};
+
 /** Overrides are session state only. Never change the persisted document or its props in place. */
 export const projectRuntimeNode = (node: CanvasNode, textOverrides: Record<string, string>): CanvasNode => {
   const text = textOverrides[node.id];

@@ -2037,6 +2037,18 @@ input:focus {
   filter: grayscale(0.45);
 }
 
+.canvas-node.is-runtime-model-selected .basic-button-node {
+  color: #f2fffe;
+  border-color: #72fff1;
+  background: linear-gradient(135deg, #168d88, #07565e);
+  box-shadow: inset 0 0 16px rgba(128, 255, 243, 0.3), 0 0 12px rgba(75, 255, 234, 0.45);
+}
+
+.canvas-node.is-runtime-model-selected .local-vector-icon {
+  stroke: #72fff1;
+  filter: drop-shadow(0 0 5px rgba(75, 255, 234, 0.85));
+}
+
 .basic-fullscreen-toggle-node {
   position: relative;
   display: flex;

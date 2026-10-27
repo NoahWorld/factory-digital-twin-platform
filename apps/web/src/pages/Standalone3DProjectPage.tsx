@@ -902,6 +902,7 @@ export default function Standalone3DProjectPage({ initialTemplateId, mode, proje
           {linkedCanvas ? <CanvasSurface
             document={linkedCanvas} editable={false} presentation="overlay"
             iotRuntimeNodes={linkedIotRuntime.nodes}
+            runtimeSelection={selectedInstanceId ? { projectId, instanceId: selectedInstanceId } : null}
             selectedNodeId={null} selectedModelSceneNodePath={null}
             onCreateNode={ignoreSceneNodeSelection} onModelSceneNodeSelect={ignoreSceneNodeSelection}
             onNodeChange={ignoreSceneNodeSelection} onSelectNode={ignoreSceneNodeSelection}

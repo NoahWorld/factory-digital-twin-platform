@@ -187,7 +187,10 @@ export function PublicationRunPage({ projectId, versionId }: { projectId: string
       setEmbeddedSelection(null);
       setSelectedAssetId(asset.id);
     },
-    onFocusModel: (sceneProjectId, instanceId) => setFocus({ projectId: sceneProjectId, instanceId, requestId: createUuid() }),
+    onFocusModel: (sceneProjectId, instanceId) => {
+      setFocus({ projectId: sceneProjectId, instanceId, requestId: createUuid() });
+      if (sceneProjectId === projectId) setSelectedInstanceId(instanceId);
+    },
   });
   const selectedAsset = assets.find((asset) => asset.id === selectedAssetId) ?? null;
   const execute = (steps: readonly TwinAction[], source: string) => {
@@ -214,7 +217,8 @@ export function PublicationRunPage({ projectId, versionId }: { projectId: string
         document={canvas} editable={false} modelInteractionEnabled runtimeControlsEnabled
         iotRuntimeNodes={iotRuntime.nodes}
         selectedNodeId={null} selectedModelSceneNodePath={null}
-        embeddedSceneSelection={embeddedSelection} onEmbeddedSceneSelectionChange={setEmbeddedSelection}
+        embeddedSceneSelection={embeddedSelection} onEmbeddedSceneSelectionChange={(selection) => { setFocus(null); setEmbeddedSelection(selection); }}
+        runtimeSelection={focus ?? (embeddedSelection ? { projectId: embeddedSelection.sceneProjectId, instanceId: embeddedSelection.instanceId } : null)}
         modelFocusRequest={focus} onEmbeddedSceneActions={(selection, steps) => {
           if (selection.linked2dProjectId && selection.linked2dProjectId !== projectId
             && steps.some((step) => step.type !== "focus-model" && step.type !== "message")) {
@@ -235,6 +239,7 @@ export function PublicationRunPage({ projectId, versionId }: { projectId: string
       {!isCanvas && rendererNode && scene ? <section className="standalone-3d-preview-stage" data-canvas-fullscreen-root>
         <RoomAlarmSceneNode scene={scene} rendererProps={{ cameraControlsEnabled: true, editable: false, interactive: true, node: rendererNode,
           onModelInstanceSelect: (_nodeId, instanceId) => {
+            setFocus(null);
             setSelectedInstanceId(instanceId);
             const instance = scene.instances.find((candidate) => candidate.id === instanceId);
             if (!instance || instance.renderMode === "background") return;
@@ -244,9 +249,11 @@ export function PublicationRunPage({ projectId, versionId }: { projectId: string
             if (steps.length) execute(steps, `模型 ${instance.label}`);
           },
           onSceneNodeSelect: ignore, projectId, runtimeControlsEnabled: false,
-          selectedModelInstanceId: selectedInstanceId, selectedSceneNodePath: null }} />
+          selectedModelInstanceId: selectedInstanceId, selectedSceneNodePath: null,
+          modelFocusRequest: focus?.projectId === projectId ? focus : null }} />
         {canvas ? <CanvasSurface document={canvas} editable={false} presentation="overlay"
           iotRuntimeNodes={iotRuntime.nodes}
+          runtimeSelection={selectedInstanceId ? { projectId, instanceId: selectedInstanceId } : null}
           selectedNodeId={null} selectedModelSceneNodePath={null}
           onCreateNode={ignore} onModelSceneNodeSelect={ignore} onNodeChange={ignore} onSelectNode={ignore}
           onNodeActions={(node: CanvasNode) => execute(node.interaction?.clickActions ?? [], `组件 ${node.id}`)}

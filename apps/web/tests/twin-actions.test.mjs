@@ -8,6 +8,20 @@ import { parseCanvasNodeInteraction, parseTwinActions } from "../../../shared/tw
 import { emptyTwinActionState, planTwinActions, validateTwinActionTargets } from "../src/twin/useTwinActions";
 import { createTwinActionReceiver, parseTwinActionEvent, publishTwinActions, subscribeTwinActions, TWIN_ACTION_EVENT_NAME } from "../src/twin/action-events";
 
+import { runtimeNodeModelSelected } from "../src/canvas/runtime-projection";
+
+test("model selection highlights only controls with one matching explicit scene target", () => {
+  const focus = { type: "focus-model", projectId: "scene-a", instanceId: "model-a" };
+  const node = { type: "button", interaction: { clickActions: [focus], hiddenInPreview: false } };
+  assert.equal(runtimeNodeModelSelected(node, { projectId: "scene-a", instanceId: "model-a" }), true);
+  assert.equal(runtimeNodeModelSelected({ ...node, type: "vector-icon" }, { projectId: "scene-a", instanceId: "model-b" }), false);
+  assert.equal(runtimeNodeModelSelected(node, { projectId: "scene-b", instanceId: "model-a" }), false);
+  assert.equal(runtimeNodeModelSelected(node, null), false);
+  assert.equal(runtimeNodeModelSelected({ ...node, type: "plain-text" }, { projectId: "scene-a", instanceId: "model-a" }), undefined);
+  assert.equal(runtimeNodeModelSelected({ ...node, interaction: { clickActions: [focus, { ...focus, instanceId: "model-b" }] } }, { projectId: "scene-a", instanceId: "model-a" }), undefined);
+  assert.equal(runtimeNodeModelSelected({ type: "button" }, { projectId: "scene-a", instanceId: "model-a" }), undefined);
+});
+
 const context = {
   canvasDocument: {
     projectId: "canvas-a",
