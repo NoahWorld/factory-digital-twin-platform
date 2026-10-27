@@ -1,7 +1,7 @@
 import { defineConfig, loadEnv, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import { decoderAssets } from "./decoder-assets";
-import { resolveProductName } from "./product.config";
+import { COMPANY_NAME, resolveProductName } from "./product.config";
 
 const PRODUCT_NAME_PLACEHOLDER = "{{PRODUCT_NAME}}";
 
@@ -23,7 +23,8 @@ function productNameHtmlPlugin(productName: string): Plugin {
         throw new Error(`index.html 缺少产品名称占位符 ${PRODUCT_NAME_PLACEHOLDER}`);
       }
 
-      return html.split(PRODUCT_NAME_PLACEHOLDER).join(escapeHtml(productName));
+      return html.split(PRODUCT_NAME_PLACEHOLDER).join(escapeHtml(productName))
+        .split("{{COMPANY_NAME}}").join(escapeHtml(COMPANY_NAME));
     },
   };
 }

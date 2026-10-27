@@ -214,7 +214,8 @@ export function PublicationRunPage({ projectId, versionId }: { projectId: string
         document={canvas} editable={false} modelInteractionEnabled runtimeControlsEnabled
         iotRuntimeNodes={iotRuntime.nodes}
         selectedNodeId={null} selectedModelSceneNodePath={null}
-        embeddedSceneSelection={embeddedSelection} onEmbeddedSceneSelectionChange={setEmbeddedSelection}
+        embeddedSceneSelection={embeddedSelection} onEmbeddedSceneSelectionChange={(selection) => { setFocus(null); setEmbeddedSelection(selection); }}
+        runtimeSelection={focus ? { [focus.projectId]: focus.instanceId } : embeddedSelection ? { [embeddedSelection.sceneProjectId]: embeddedSelection.instanceId } : {}}
         modelFocusRequest={focus} onEmbeddedSceneActions={(selection, steps) => {
           if (selection.linked2dProjectId && selection.linked2dProjectId !== projectId
             && steps.some((step) => step.type !== "focus-model" && step.type !== "message")) {

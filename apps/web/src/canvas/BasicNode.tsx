@@ -208,7 +208,7 @@ function TextLinkNode({ editable, node, props }: { editable: boolean; node: Canv
   );
 }
 
-function ButtonNode({ editable, node, props }: { editable: boolean; node: CanvasNode; props: ButtonProps }) {
+function ButtonNode({ editable, node, props, runtimeModelSelected }: { editable: boolean; node: CanvasNode; props: ButtonProps; runtimeModelSelected?: boolean }) {
   const content = (
     <span
       className={`basic-button-node${props.disabled ? " is-disabled" : ""}`}
@@ -222,7 +222,7 @@ function ButtonNode({ editable, node, props }: { editable: boolean; node: Canvas
     </span>
   );
   if (!props.href || props.disabled) return (
-    <button className="basic-button-link basic-action-button" disabled={props.disabled} tabIndex={editable ? -1 : 0} type="button">
+    <button aria-pressed={runtimeModelSelected} className="basic-button-link basic-action-button" disabled={props.disabled} tabIndex={editable ? -1 : 0} type="button">
       {content}
     </button>
   );
@@ -417,10 +417,12 @@ export const BasicNode = memo(function BasicNode({
   editable,
   node,
   projectId,
+  runtimeModelSelected,
 }: {
   editable: boolean;
   node: CanvasNode;
   projectId: string;
+  runtimeModelSelected?: boolean;
 }) {
   const parsed = parseBasicProps(node.type as BasicNodeType, node.props);
   if (!parsed.ok) {
@@ -431,7 +433,7 @@ export const BasicNode = memo(function BasicNode({
   if (node.type === "text-link") return <TextLinkNode editable={editable} node={node} props={parsed.value as TextLinkProps} />;
   if (node.type === "image") return <ImageNode node={node} projectId={projectId} props={parsed.value as ImageProps} />;
   if (node.type === "carousel") return <CarouselNode editable={editable} node={node} projectId={projectId} props={parsed.value as CarouselProps} />;
-  if (node.type === "button") return <ButtonNode editable={editable} node={node} props={parsed.value as ButtonProps} />;
+  if (node.type === "button") return <ButtonNode editable={editable} node={node} props={parsed.value as ButtonProps} runtimeModelSelected={runtimeModelSelected} />;
   if (node.type === "fullscreen-toggle") return <FullscreenToggleNode editable={editable} node={node} props={parsed.value as FullscreenToggleProps} />;
   if (node.type === "switch") return <SwitchNode editable={editable} props={parsed.value as SwitchProps} />;
   if (node.type === "checkbox-group") return <CheckboxGroupNode editable={editable} node={node} props={parsed.value as CheckboxGroupProps} />;

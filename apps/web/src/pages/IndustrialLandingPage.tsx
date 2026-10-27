@@ -3,7 +3,7 @@ import { BatchModel3DNode } from "../canvas/BatchModel3DNode";
 import { LocalIcon } from "../canvas/LocalIcon";
 import type { ModelCameraView } from "../canvas/types";
 import { PRODUCT_NAME } from "../product-config";
-import { ProductLogo } from "../components/ProductLogo";
+import { ProductBrand } from "../components/ProductBrand";
 import { ContactPopover } from "../components/ContactPopover";
 import { ThemeToggle } from "../theme/ThemeToggle";
 import { demoDevices, getDemoSelection, industrialDemoNode } from "./industrial-demo-scene";
@@ -23,7 +23,7 @@ function Arrow({ direction = "right", framed = false }: { direction?: "right" | 
 }
 
 function Brand() {
-  return <span className="delivery-brand"><ProductLogo /><span>{PRODUCT_NAME}<small>3D 数字孪生交付平台</small></span></span>;
+  return <ProductBrand />;
 }
 
 function scrollToSection(id: string) {

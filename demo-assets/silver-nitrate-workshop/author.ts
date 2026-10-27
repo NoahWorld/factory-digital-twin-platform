@@ -96,7 +96,7 @@ export function composeCanvas(sceneId: string) {
   text('subtitle', 332, 44, 236, 48, '硝酸银 B 线', 17, { textColor:'#a9c7d6' });
   button('playback', 1338, 44, 168, '暂停数字孪生', [{ type:'scene-playback', projectId:sceneId, target:'scene', operation:'toggle' }]);
   add('clock', 'datetime', 1518, 24, 220, 80, { ...colors, text:'当前时间', subtitle:'', align:'right', opacity:1, showDate:true, showSeconds:true });
-  add('fullscreen', 'fullscreen-toggle', 1756, 44, 120, 48, { ...colors, enterText:'全屏', exitText:'退出全屏', fontSize:17, fontWeight:500, borderRadius:4, disabled:false });
+  add('fullscreen', 'fullscreen-toggle', 1756, 44, 120, 48, { ...colors, enterText:'全屏', exitText:'退出', fontSize:17, fontWeight:500, borderRadius:4, disabled:false });
 
   panel('production', 24, 140, 300, 224, '生产概况');
   text('production-output', 40, 190, 268, 80, '今日产量      2.48 吨\n计划完成      82.7 %', 20, { textColor:'#9de7df', fontWeight:500 });

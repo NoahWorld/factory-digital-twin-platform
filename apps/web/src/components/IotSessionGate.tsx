@@ -1,6 +1,5 @@
 import { IOT_HOME_PATH, IOT_LOGIN_PATH } from "../iot/config";
-import { PRODUCT_NAME } from "../product-config";
-import { ProductLogo } from "./ProductLogo";
+import { ProductBrand } from "./ProductBrand";
 import "./IotSessionGate.css";
 
 type IotSessionGateProps = { onRetry: () => void } & (
@@ -35,10 +34,7 @@ export function IotSessionGate(props: IotSessionGateProps) {
   return (
     <div className="iot-gate">
       <header className="iot-gate-header">
-        <div className="iot-gate-brand">
-          <ProductLogo />
-          <span>{PRODUCT_NAME}</span>
-        </div>
+        <ProductBrand />
         <a className="iot-gate-back" href={IOT_HOME_PATH} target="_top">
           <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m10 6-6 6 6 6M4 12h16" /></svg>
           返回 IoT

@@ -21,15 +21,15 @@ export function composeConfiguration(sceneId:string, actionsFor:(id:string)=>Twi
     const n:CanvasNode & {interaction:NonNullable<CanvasNode['interaction']>}={...base,id:`silver-pid-${id}`,width,height,zIndex:z,props:{...base.props,...props},interaction:{clickActions:[],hiddenInPreview:true,visibilityGroup:configurationGroup}};
     nodes.push(n);return n;
   };
-  const ink='#cde5ee',surface='#091b28',material='#57cfc6',vapor='#e3b778',water='#72a7ff',condense='#8fc9ef',returnColor='#d19df5';
-  const text=(id:string,x:number,y:number,w:number,label:string,color=ink,size=17)=>add(id,'plain-text',x,y,w,48,{text:label,fontSize:size,fontWeight:400,align:'left',fillColor:surface,borderColor:surface,textColor:color},220);
-  add('surface','rectangle',24,144,1568,744,{fillColor:surface,borderColor:'#244756',borderWidth:1,borderRadius:4,opacity:1},100);
-  text('title',48,156,560,'硝酸银 B 线 · 工艺组态',ink,21);
-  text('legend-material',650,156,170,'物料',material,16);text('legend-heat',820,156,170,'蒸气 / 加热',vapor,16);
-  text('legend-water',1010,156,220,'水 / 冷凝液',water,16);text('legend-return',1280,156,240,'母液回流',returnColor,16);
+  const ink='#f0faff',surface='#102a2c',material='#45ead7',vapor='#ffc46f',water='#79b6ff',condense='#8fdefa',returnColor='#e2a8ff';
+  const text=(id:string,x:number,y:number,w:number,label:string,color=ink,size=17)=>add(id,'plain-text',x,y,w,48,{text:label,fontSize:size,fontWeight:500,align:'left',fillColor:surface,borderColor:surface,textColor:color},220);
+  add('surface','rectangle',24,144,1568,744,{fillColor:surface,borderColor:'#437c7d',borderWidth:2,borderRadius:4,opacity:1},100);
+  text('title',48,156,560,'硝酸银 B 线 · 工艺组态','#f1faff',24);
+  text('legend-material',650,156,170,'物料',material,18);text('legend-heat',820,156,170,'蒸气 / 加热',vapor,18);
+  text('legend-water',1010,156,220,'水 / 冷凝液',water,18);text('legend-return',1280,156,240,'母液回流',returnColor,18);
   function equipment(id:string,icon:string,x:number,y:number,size:number,label:string,lx:number,ly:number,lw=238){
-    const n=add(id,'vector-icon',x-size/2,y-size/2,size,size,{icon,iconSize:size,strokeWidth:1,iconColor:ink,rotation:0,opacity:1},180);n.interaction.clickActions=actionsFor(id);
-    const b=add(`${id}-label`,'button',lx,ly,lw,48,{text:label,fontSize:17,fontWeight:500,fillColor:'#102a39',borderColor:'#285264',textColor:ink,accentColor:material,href:'',disabled:false,borderRadius:4},220);b.interaction.clickActions=actionsFor(id);
+    const n=add(id,'vector-icon',x-size/2,y-size/2,size,size,{icon,iconSize:size,strokeWidth:1.2,iconColor:ink,rotation:0,opacity:1},180);n.interaction.clickActions=actionsFor(id);
+    const b=add(`${id}-label`,'button',lx,ly,lw,48,{text:label,fontSize:19,fontWeight:600,fillColor:'#1b5067',borderColor:'#63c8d3',textColor:'#f7fdff',accentColor:'#66e3de',href:'',disabled:false,borderRadius:4},220);b.interaction.clickActions=actionsFor(id);
     return n;
   }
   const neutral=equipment('neutral','process-reactor',240,650,144,'中和罐  V10202B',122,744);
@@ -43,10 +43,10 @@ export function composeConfiguration(sceneId:string, actionsFor:(id:string)=>Twi
   const end=(node:CanvasNode,port:PipeEndpoint['port']):PipeEndpoint=>({nodeId:node.id,port,x:0,y:0});
   const free=(x:number,y:number):PipeEndpoint=>({nodeId:null,port:'right',x,y});
   function pipe(id:string,label:string,source:PipeEndpoint,target:PipeEndpoint,color:string,waypoints:PipePoint[]=[]){
-    const n=add('pipe-'+id,'process-pipe',32,210,1530,660,{label,source,target,waypoints,routing:'horizontal',color,width:4,flowing:true,direction:'forward',speed:1},130);
+    const n=add('pipe-'+id,'process-pipe',32,210,1530,660,{label,source,target,waypoints,routing:'horizontal',color,width:5,flowing:true,direction:'forward',speed:1},130);
     n.interaction={...n.interaction,playbackBinding:{projectId:sceneId,target:fluidDevices[id].map(id=>`silver-${id}`)}};
   }
-  text('feed-source',48,590,180,'自 R10103B',material,15);
+  text('feed-source',24,590,160,'自 R10103B',material,18);
   pipe('feed','进料',free(58,650),end(neutral,'left'),material);
   pipe('di-water','去离子水',free(72,250),end(neutral,'top'),water,[{x:240,y:250}]);
   pipe('n-e','中和液',end(neutral,'right'),end(evaporator,'left'),material,[{x:352,y:650},{x:352,y:276},{x:570,y:276},{x:570,y:350},{x:610,y:350}]);
@@ -59,12 +59,12 @@ export function composeConfiguration(sceneId:string, actionsFor:(id:string)=>Twi
   pipe('cooling','7℃ 水',free(1550,472),end(crystallizer,'right'),water,[{x:1128,y:472},{x:1128,y:640}]);
   pipe('return','母液',end(separator,'right'),end(returnpump,'top'),returnColor,[{x:1460,y:670}]);
   pipe('return-out','至 R10103B',end(returnpump,'right'),free(1250,800),returnColor,[{x:1508,y:750},{x:1508,y:800}]);
-  pipe('vacuum','真空 / 脱酸塔',end(collector,'right'),free(1548,325),'#a9bed4');
+  pipe('vacuum','真空 / 脱酸塔',end(collector,'right'),free(1548,325),'#bed3e4');
   pipe('collect-out','至 V10204',end(collector,'bottom'),free(1548,436),condense,[{x:1240,y:436}]);
   // Native valve symbols retain independently editable geometry.
   for(const [id,x,y,color] of [['feed',124,650,material],['water',240,468,water],['cooling',1128,574,water],['vapor',832,338,vapor]] as const){
-    add('valve-'+id,'vector-icon',x-14,y-14,28,28,{icon:'process-valve',iconSize:28,iconColor:color,strokeWidth:1.3,rotation:id==='feed'?0:90,opacity:1},190);
+    add('valve-'+id,'vector-icon',x-14,y-14,28,28,{icon:'process-valve',iconSize:28,iconColor:color,strokeWidth:1.6,rotation:id==='feed'?0:90,opacity:1},190);
   }
-  text('source',48,830,860,'依据现场「20.自动化控制系统」 · 点击设备查看与启停', '#91adbc',15);
+  text('source',48,830,860,'依据现场「20.自动化控制系统」 · 点击设备查看与启停', '#b8d5e5',18);
   return nodes;
 }

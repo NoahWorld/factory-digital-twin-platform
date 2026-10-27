@@ -1,4 +1,5 @@
 import { loadIotProjects } from "./iot/projects";
+import { groupProjects } from "./iot/project-groups";
 import { FormEvent, lazy, Suspense, useEffect, useRef, useState } from "react";
 import { standaloneSceneRoutePath, type ProjectType } from "../../../shared/standalone-3d";
 import { apiUrl, ApiRequestError, errorMessage, request } from "./api";
@@ -8,8 +9,7 @@ import { canvasRoutePath, projectListRoutePath } from "./canvas/routes";
 import { CanvasPage } from "./pages/CanvasPage";
 import { ResourcesPage } from "./pages/ResourcesPage";
 import { PublicationRunPage } from "./publications";
-import { PRODUCT_NAME } from "./product-config";
-import { ProductLogo } from "./components/ProductLogo";
+import { ProductBrand } from "./components/ProductBrand";
 import { IotSessionGate } from "./components/IotSessionGate";
 import { ThemeToggle } from "./theme/ThemeToggle";
 import type { CoverProject } from "./covers/ProjectCoverQueue";
@@ -36,6 +36,8 @@ type Project = CoverProject & {
   projectRole: "owner" | "editor" | "viewer" | null;
   coverUrl: string | null;
   projectType: ProjectType;
+  relatedProjectIds: string[];
+  has3dContent: boolean;
 };
 
 
@@ -122,6 +124,16 @@ function ActionIcon({ name }: ActionIconProps) {
     <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24">
       <path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6S2.5 12 2.5 12Z" />
       <circle cx="12" cy="12" r="2.6" />
+    </svg>
+  );
+}
+
+function ProjectTabIcon({ type }: { type: "combined" | "2d" | "3d" }) {
+  return (
+    <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24">
+      {type === "combined" ? <><rect x="3.5" y="3.5" width="7" height="7" rx="1.4" /><rect x="13.5" y="3.5" width="7" height="7" rx="1.4" /><rect x="3.5" y="13.5" width="7" height="7" rx="1.4" /><rect x="13.5" y="13.5" width="7" height="7" rx="1.4" /></> :
+        type === "2d" ? <><rect x="3.5" y="4.5" width="17" height="15" rx="2" /><path d="M3.5 9h17M8 14h3m-3 3h7" /></> :
+          <><path d="M12 3 20 7.5v9L12 21l-8-4.5v-9L12 3Z" /><path d="m4 7.5 8 4.5 8-4.5M12 12v9" /></>}
     </svg>
   );
 }
@@ -411,6 +423,7 @@ function Workspace({ user }: { user: IotUser }) {
   const notify = useNotifications();
   const [route, setRoute] = useState<WorkspaceRoute>(currentWorkspaceRoute);
   const [projects, setProjects] = useState<Project[]>([]);
+  const [projectTab, setProjectTab] = useState<"combined" | "2d" | "3d">("combined");
   const [loadingProjects, setLoadingProjects] = useState(true);
   const [projectError, setProjectError] = useState<string | null>(null);
   const [showCreateProject, setShowCreateProject] = useState(false);
@@ -437,6 +450,7 @@ function Workspace({ user }: { user: IotUser }) {
       void loadIotProjects<Project>(controller.signal)
       .then((result) => {
         if (active) {
+          groupProjects(result.projects);
           setProjects(result.projects);
         }
       })
@@ -468,7 +482,7 @@ function Workspace({ user }: { user: IotUser }) {
   }, [route.kind, user]);
 
   const createProject = (project: Project) => {
-    setProjects((current) => [project, ...current]);
+    setProjects((current) => [{ ...project, relatedProjectIds: project.relatedProjectIds ?? [], has3dContent: project.has3dContent ?? false }, ...current]);
     setShowCreateProject(false);
     if (project.projectType === "3d") {
       window.location.hash = standaloneSceneRoutePath(project.id, "edit").slice(1);
@@ -483,7 +497,7 @@ function Workspace({ user }: { user: IotUser }) {
 
   const renamedProject = (project: Project) => {
     setProjects((current) => [
-      project,
+      { ...project, relatedProjectIds: current.find((candidate) => candidate.id === project.id)?.relatedProjectIds ?? [], has3dContent: current.find((candidate) => candidate.id === project.id)?.has3dContent ?? false },
       ...current.filter((candidate) => candidate.id !== project.id),
     ]);
     setRenamingProject(null);
@@ -559,8 +573,7 @@ function Workspace({ user }: { user: IotUser }) {
       <header className="topbar">
         <div className="topbar-main">
           <a aria-label="返回 IoT" className="brand" href={IOT_HOME_PATH} target="_top">
-            <ProductLogo />
-            <span className="brand-name"><strong>{PRODUCT_NAME}</strong><small>交付工作台</small></span>
+            <ProductBrand />
           </a>
           <nav aria-label="主导航" className="topbar-nav">
             <a aria-current={route.kind === "projects" ? "page" : undefined} href={projectListRoutePath()}>项目</a>
@@ -592,7 +605,6 @@ function Workspace({ user }: { user: IotUser }) {
       ) : (
       <section aria-label="项目" className="workspace-content" id="projects">
         <div className="project-list-toolbar">
-          <h1 id="projects-title">项目</h1>
           {user.capabilities.canCreateProject ? (
             <button
               aria-label="新建项目"
@@ -615,7 +627,7 @@ function Workspace({ user }: { user: IotUser }) {
 
         {projectError ? (
           <section
-            aria-labelledby="projects-title"
+            aria-label="项目列表"
             className="state-card error-state"
             id="project-list-panel"
           >
@@ -626,7 +638,7 @@ function Workspace({ user }: { user: IotUser }) {
 
         {loadingProjects ? (
           <section
-            aria-labelledby="projects-title"
+            aria-label="项目列表"
             className="state-card"
             id="project-list-panel"
           >
@@ -635,38 +647,53 @@ function Workspace({ user }: { user: IotUser }) {
           </section>
         ) : null}
 
-        {!loadingProjects && !projectError && projects.length === 0 ? (
-          <section
-            aria-labelledby="projects-title"
-            className="empty-projects"
-            id="project-list-panel"
-          >
-            <div className="empty-icon">◇</div>
-            <h2>还没有项目</h2>
-            <p>从一个客户工厂开始，后续将为它配置模型、资产、数据和运行看板。</p>
-            {user.capabilities.canCreateProject ? (
-              <button
-                aria-label="创建第一个项目"
-                className="primary-button icon-button"
-                onClick={openBlankProjectDialog}
-                title="创建第一个项目"
-                type="button"
-              >
-                <ActionIcon name="add" />
-              </button>
-            ) : (
-              <p className="permission-note">当前账号不能创建项目，请联系 IoT 管理员分配角色或模块权限。</p>
-            )}
-          </section>
-        ) : null}
-
-        {!loadingProjects && !projectError && projects.length > 0 ? (
-          <section
-            aria-labelledby="projects-title"
-            className="project-grid"
-            id="project-list-panel"
-          >
-            {projects.map((project) => {
+        {!loadingProjects && !projectError ? (
+          <div id="project-list-panel" className="project-groups">
+            {(() => {
+              const groups = groupProjects(projects);
+              const tabs = [
+                { key: "combined" as const, title: "看板", items: groups.combined },
+                { key: "2d" as const, title: "2D", items: groups.boards },
+                { key: "3d" as const, title: "3D", items: groups.scenes },
+              ];
+              const group = tabs.find((tab) => tab.key === projectTab)!;
+              return <>
+                <div aria-label="项目分类" className="project-tabs" role="tablist">
+                  {tabs.map((tab, index) => (
+                    <button
+                      aria-controls="project-tab-panel"
+                      aria-selected={projectTab === tab.key}
+                      className="project-tab"
+                      id={`project-tab-${tab.key}`}
+                      key={tab.key}
+                      onClick={() => setProjectTab(tab.key)}
+                      onKeyDown={(event) => {
+                        let nextIndex = index;
+                        if (event.key === "ArrowRight") nextIndex = (index + 1) % tabs.length;
+                        else if (event.key === "ArrowLeft") nextIndex = (index + tabs.length - 1) % tabs.length;
+                        else if (event.key === "Home") nextIndex = 0;
+                        else if (event.key === "End") nextIndex = tabs.length - 1;
+                        else return;
+                        event.preventDefault();
+                        setProjectTab(tabs[nextIndex].key);
+                        document.getElementById(`project-tab-${tabs[nextIndex].key}`)?.focus();
+                      }}
+                      role="tab"
+                      tabIndex={projectTab === tab.key ? 0 : -1}
+                      type="button"
+                    >
+                      <span className="project-tab-icon"><ProjectTabIcon type={tab.key} /></span>
+                      <span className="project-tab-label">{tab.title}</span>
+                      <span aria-hidden="true" className="project-tab-count">{tab.items.length}</span>
+                    </button>
+                  ))}
+                </div>
+                <section aria-labelledby={`project-tab-${group.key}`} className="project-group" id="project-tab-panel" role="tabpanel" tabIndex={0}>
+                  {group.items.length ? <div className="project-grid">
+                    {group.items.map((project) => {
+              const references = project.relatedProjectIds.map((id) => groups.byId.get(id)?.name ?? "关联项目不可用");
+              const referencedBy = [...groups.incoming.get(project.id)!].map((id) => groups.byId.get(id)!.name);
+              const relationText = [references.length ? `引用：${references.join("、")}` : "", referencedBy.length ? `被引用：${referencedBy.join("、")}` : ""].filter(Boolean).join(" · ");
               const canRename = project.projectRole === "owner"
                 || project.projectRole === "editor";
               const canDelete = project.projectRole === "owner";
@@ -701,6 +728,11 @@ function Workspace({ user }: { user: IotUser }) {
                       {project.projectRole ? <span>{projectRoleText[project.projectRole]}</span> : null}
                     </div>
                     <h2 title={project.name}>{project.name}</h2>
+                    {relationText ? (
+                      <p className="project-card-relation" title={relationText}>
+                        <span>{relationText}</span>
+                      </p>
+                    ) : null}
                     <footer>
                       <span>更新于 {formatDate(project.updatedAt)}</span>
                       <div className="project-card-actions">
@@ -741,17 +773,18 @@ function Workspace({ user }: { user: IotUser }) {
                   </div>
                 </article>
               );
-            })}
-          </section>
+                    })}
+                  </div> : <p className="project-group-empty">暂无项目</p>}
+                </section>
+              </>;
+            })()}
+          </div>
         ) : null}
       </section>
       )}
 
       <footer className="workspace-footer">
-        <div className="workspace-footer-brand">
-          <ProductLogo className="workspace-footer-logo" />
-          <div><strong>{PRODUCT_NAME}</strong><span>数字孪生 · 交付工作台</span></div>
-        </div>
+        <ProductBrand />
       </footer>
 
       {showCreateProject ? (

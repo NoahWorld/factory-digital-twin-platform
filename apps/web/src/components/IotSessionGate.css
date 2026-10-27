@@ -14,25 +14,6 @@
   padding: 24px 40px;
 }
 
-.iot-gate-brand {
-  display: flex;
-  align-items: center;
-  gap: 20px;
-  min-width: 0;
-  color: var(--ui-text-strong);
-  font-size: 1rem;
-  font-weight: 650;
-}
-
-.iot-gate-brand .product-logo {
-  width: 68px;
-}
-
-.iot-gate-brand > span {
-  padding-left: 20px;
-  border-left: 1px solid var(--ui-border);
-}
-
 .iot-gate-back {
   display: inline-flex;
   flex-shrink: 0;
@@ -203,22 +184,9 @@
 
 @media (max-width: 580px) {
   .iot-gate-header {
+    flex-wrap: wrap;
     gap: 16px;
     padding: 16px 20px;
-  }
-
-  .iot-gate-brand {
-    gap: 12px;
-    font-size: 0.8125rem;
-  }
-
-  .iot-gate-brand .product-logo {
-    width: 44px;
-  }
-
-  .iot-gate-brand > span {
-    max-width: 160px;
-    padding-left: 12px;
   }
 
   .iot-gate-back {

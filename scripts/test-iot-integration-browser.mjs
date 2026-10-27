@@ -16,8 +16,9 @@ const project = {
   id: "test-line", name: "测试产线", projectType: "3d", status: "draft", projectRole: "viewer",
   createdAt: "2026-10-20T00:00:00Z", updatedAt: "2026-10-20T00:00:00Z",
   coverStatus: "ready", coverRevision: 1, coverUrl: "/api/v1/projects/test-line/cover.png?revision=1",
+  relatedProjectIds: [], has3dContent: false,
 };
-const canvasProject = { ...project, id: "test-board", name: "测试组合看板", projectType: "2d", coverUrl: null };
+const canvasProject = { ...project, id: "test-board", name: "测试组合看板", projectType: "2d", coverUrl: null, relatedProjectIds: ["test-line"], has3dContent: true };
 const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/nXcAAAAASUVORK5CYII=", "base64");
 // Contract fixtures only. No connection to production data, MinIO or a DTwin backend.
 const server = await createServer({
@@ -87,19 +88,32 @@ try {
     localStorage.setItem("x-access-token", "fixture-token");
     window.dispatchEvent(new StorageEvent("storage", { key: "x-access-token" }));
   });
-  await page.getByRole("heading", { name: "测试产线", exact: true }).waitFor();
+  const dashboardTab = page.getByRole("tab", { name: "看板", exact: true });
+  const twoDTab = page.getByRole("tab", { name: "2D", exact: true });
+  const threeDTab = page.getByRole("tab", { name: "3D", exact: true });
   await page.getByRole("heading", { name: "测试组合看板", exact: true }).waitFor();
-  assert.equal(await page.getByRole("tab", { name: /2D 看板|3D 场景/ }).count(), 0);
-  for (const type of ["2d", "3d"]) {
-    await page.goto(`${origin}/twin/#/projects?type=${type}`);
-    await page.getByRole("heading", { name: "测试产线", exact: true }).waitFor();
-    await page.getByRole("heading", { name: "测试组合看板", exact: true }).waitFor();
-  }
-  assert.equal(await page.getByText("用户管理", { exact: true }).count(), 0);
+  assert.equal(await dashboardTab.getAttribute("aria-selected"), "true");
+  assert.equal(await page.getByText("引用：测试产线", { exact: true }).count(), 1);
+  assert.equal(await page.getByRole("heading", { name: "测试产线", exact: true }).count(), 0);
+  await dashboardTab.press("ArrowRight");
+  assert.equal(await twoDTab.getAttribute("aria-selected"), "true");
+  assert.equal(await page.getByRole("tabpanel").getByText("暂无项目", { exact: true }).count(), 1);
+  await twoDTab.press("ArrowRight");
+  assert.equal(await threeDTab.getAttribute("aria-selected"), "true");
+  await page.getByRole("heading", { name: "测试产线", exact: true }).waitFor();
+  assert.equal(await page.getByText("被引用：测试组合看板", { exact: true }).count(), 1);
   await page.waitForFunction(() => {
     const cover = document.querySelector('img[alt="测试产线 项目封面"]');
     return cover?.complete && cover.naturalWidth > 0;
   });
+  for (const type of ["2d", "3d"]) {
+    await page.goto(`${origin}/twin/#/projects?type=${type}`);
+    await dashboardTab.click();
+    await page.getByRole("heading", { name: "测试组合看板", exact: true }).waitFor();
+    await threeDTab.click();
+    await page.getByRole("heading", { name: "测试产线", exact: true }).waitFor();
+  }
+  assert.equal(await page.getByText("用户管理", { exact: true }).count(), 0);
   assert.ok(requests.every(item => item.authenticated));
 
   await page.getByRole("button", { name: "新建项目", exact: true }).click();
@@ -124,7 +138,7 @@ try {
   mode = "ungranted";
   await page.evaluate(() => window.dispatchEvent(new Event("focus")));
   await page.reload();
-  await page.getByRole("heading", { name: "测试产线", exact: true }).waitFor();
+  await page.getByRole("heading", { name: "测试组合看板", exact: true }).waitFor();
   assert.equal(await page.getByText("尚未获得模块权限").count(), 0);
 
   mode = "authorized";
@@ -148,7 +162,7 @@ try {
   });
   await page.getByRole("heading", { name: "请先登录 IoT" }).waitFor();
 
-  for (const path of ["/twin/branding/kingdom-logo.png", "/twin/decoders/draco/draco_decoder.wasm"]) {
+  for (const path of ["/twin/branding/cssc-logo.svg", "/twin/decoders/draco/draco_decoder.wasm"]) {
     const result = await fetch(`${origin}${path}`);
     assert.equal(result.status, 200);
     assert.ok((await result.arrayBuffer()).byteLength > 0);

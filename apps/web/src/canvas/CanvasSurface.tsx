@@ -21,7 +21,7 @@ import type { ProjectAsset } from "./assets";
 import { projectPlaybackNode } from "../twin/playback-projection";
 import type { PlaybackState, PlaybackSelection } from "../../../../shared/scene-playback";
 import type { TwinAction } from "../../../../shared/twin-actions";
-import { canvasViewportScale, isOverlayNode, isRuntimeNodeVisible, projectRuntimeNode, runtimeControlNodeTypes, runtimeNodeCapturesPointer } from "./runtime-projection";
+import { canvasViewportScale, isOverlayNode, isRuntimeNodeVisible, projectRuntimeNode, runtimeControlNodeTypes, runtimeNodeCapturesPointer, runtimeNodeModelSelected } from "./runtime-projection";
 import { CANVAS_DRAG_TYPE, defaultNodeSizes, isAssetDetailNodeType, isBasicNodeType, isCanvasNodeType, isDashboardNodeType, isDecorationNodeType, isModel3DNodeType, isPanelFrameNodeType, isScene3DNodeType, isShapeNodeType, type CanvasDocument, type CanvasNode, type CanvasNodeType, type ModelNodeAppearance } from "./types";
 
 type ActiveDrag = {
@@ -77,6 +77,7 @@ type CanvasNodeViewProps = {
   runtimeAssetLoading: boolean;
   runtimeAppearanceOverrides: Record<string, ModelNodeAppearance>;
   selected: boolean;
+  runtimeModelSelected?: boolean;
   selectedModelSceneNodePath: string | null;
   renderZIndex: number;
   onPointerDown: (event: ReactPointerEvent<HTMLDivElement>, node: CanvasNode) => void;
@@ -99,13 +100,13 @@ const hasGeometryChanged = (previous: CanvasNode, next: CanvasNode) => (
 
 const ignoreEmbeddedSceneSelection = () => undefined;
 
-const CanvasNodeView = memo(function CanvasNodeView({ stateColor, stateLabel, iotUnavailable, editable, overlay, previewMode, runtimePlayback = {}, runtimeControlsEnabled, embeddedSceneSelection, modelInteractionEnabled, node, onEmbeddedSceneSelectionChange, onEmbeddedSceneActions, onNodeActions, modelFocusRequest, onModelSceneChange, onModelSceneNodeSelect, projectId, renderZIndex, runtimeAppearanceOverrides, runtimeAsset, runtimeAssetConnection, runtimeAssetError, runtimeAssetLoading, selected, selectedModelSceneNodePath, onPointerDown, onResizePointerDown }: CanvasNodeViewProps) {
+const CanvasNodeView = memo(function CanvasNodeView({ stateColor, stateLabel, iotUnavailable, editable, overlay, previewMode, runtimePlayback = {}, runtimeControlsEnabled, embeddedSceneSelection, modelInteractionEnabled, node, onEmbeddedSceneSelectionChange, onEmbeddedSceneActions, onNodeActions, modelFocusRequest, onModelSceneChange, onModelSceneNodeSelect, projectId, renderZIndex, runtimeAppearanceOverrides, runtimeAsset, runtimeAssetConnection, runtimeAssetError, runtimeAssetLoading, selected, runtimeModelSelected, selectedModelSceneNodePath, onPointerDown, onResizePointerDown }: CanvasNodeViewProps) {
   const actionable = previewMode && runtimeControlsEnabled && !editable && (node.interaction?.clickActions.length ?? 0) > 0 && node.props.disabled !== true;
   const keyboardAction = actionable && !runtimeControlNodeTypes.has(node.type);
   return (
     <div
       aria-label={`${node.type} 组件`}
-      className={`canvas-node${isOrnamentNodeType(node.type) ? " is-ornament" : ""}${isShapeNodeType(node.type) ? " is-shape" : ""}${isDecorationNodeType(node.type) ? " is-decoration" : ""}${isPanelFrameNodeType(node.type) ? " is-panel-frame" : ""}${isDashboardNodeType(node.type) ? " is-dashboard" : ""}${isBasicNodeType(node.type) ? " is-basic" : ""}${isModel3DNodeType(node.type) ? " is-model-3d" : ""}${isScene3DNodeType(node.type) ? " is-scene-3d" : ""}${isAssetDetailNodeType(node.type) ? " is-asset-detail" : ""}${selected ? " is-selected" : ""}${editable ? " is-editable" : ""}`}
+      className={`canvas-node${isOrnamentNodeType(node.type) ? " is-ornament" : ""}${isShapeNodeType(node.type) ? " is-shape" : ""}${isDecorationNodeType(node.type) ? " is-decoration" : ""}${isPanelFrameNodeType(node.type) ? " is-panel-frame" : ""}${isDashboardNodeType(node.type) ? " is-dashboard" : ""}${isBasicNodeType(node.type) ? " is-basic" : ""}${isModel3DNodeType(node.type) ? " is-model-3d" : ""}${isScene3DNodeType(node.type) ? " is-scene-3d" : ""}${isAssetDetailNodeType(node.type) ? " is-asset-detail" : ""}${selected ? " is-selected" : ""}${runtimeModelSelected ? " is-runtime-model-selected" : ""}${editable ? " is-editable" : ""}`}
       data-node-id={node.id}
       data-runtime-interactive={runtimeNodeCapturesPointer(node) || undefined}
       onClickCapture={actionable ? (event) => {
@@ -119,6 +120,7 @@ const CanvasNodeView = memo(function CanvasNodeView({ stateColor, stateLabel, io
       } : undefined}
       onPointerDown={editable ? (event) => onPointerDown(event, node) : undefined}
       role={keyboardAction ? "button" : "group"}
+      aria-pressed={keyboardAction ? runtimeModelSelected : undefined}
       tabIndex={keyboardAction ? 0 : undefined}
       style={{ height: node.height, transform: `translate3d(${node.x}px, ${node.y}px, 0)`, width: node.width, zIndex: renderZIndex, pointerEvents: overlay ? runtimeNodeCapturesPointer(node) ? "auto" : "none" : undefined, cursor: actionable ? "pointer" : undefined }}
     >
@@ -131,7 +133,7 @@ const CanvasNodeView = memo(function CanvasNodeView({ stateColor, stateLabel, io
           : isDashboardNodeType(node.type)
             ? <DashboardNode node={node} />
           : isBasicNodeType(node.type)
-            ? <BasicNode editable={editable || !previewMode || !runtimeControlsEnabled} node={node} projectId={projectId} />
+            ? <BasicNode editable={editable || !previewMode || !runtimeControlsEnabled} node={node} projectId={projectId} runtimeModelSelected={runtimeModelSelected} />
           : isScene3DNodeType(node.type)
             ? (
                 <EmbeddedSceneNode playback={runtimePlayback}
@@ -478,6 +480,7 @@ export function CanvasSurface({ iotRuntimeNodes = {}, children, document, editab
               runtimeAssetError={runtimeAssetError}
               runtimeAssetLoading={runtimeAssetLoading}
               selected={editable && node.id === selectedNodeId}
+              runtimeModelSelected={previewMode && !editable ? runtimeNodeModelSelected(node, runtimeSelection) : undefined}
               selectedModelSceneNodePath={
                 node.id === selectedNodeId ? selectedModelSceneNodePath : null
               }

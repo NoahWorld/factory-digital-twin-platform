@@ -3,6 +3,8 @@
 [data-ui-theme="dark"] {
   color-scheme: dark;
   --ui-color-scheme: dark;
+  --ui-brand-name: #8bd8b0;
+  --ui-brand-logo-bg: #ffffff;
   --ui-bg: #0a1422;
   --ui-surface: #0d1b2a;
   --ui-surface-raised: #152a3c;
@@ -47,6 +49,8 @@
 :root[data-ui-theme="light"] {
   color-scheme: light;
   --ui-color-scheme: light;
+  --ui-brand-name: #256a48;
+  --ui-brand-logo-bg: #ffffff;
   --ui-bg: #f3f6fb;
   --ui-surface: #ffffff;
   --ui-surface-raised: #eaf0f8;
